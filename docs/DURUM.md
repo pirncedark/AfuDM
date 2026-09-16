@@ -381,15 +381,32 @@ TUZAKLAR (vakit kaybettirdi):
   window.native (.NET formu) sonsuz derinlige inip gunlugu "Empty.Empty..." ile
   dolduruyordu (onceden de vardi, konsol olmadigi icin gorulmemisti).
 
-## VIDEO PANELI — YARIM (Python tarafi hazir, uzanti yazilmadi)
-Hedef (kullanici): IDM gibi oynayan videonun ustunde "indir" + kalite secimi.
-Hazir olan (format_test'te sinandi): `format_secimi` keyfi yukseklik (360/540 artik
-"best"e dusmuyor), VideoJob `headers` (Referer -> --referer, digerleri --add-header,
-Cookie ASLA komut satirina), `dosya_adi` (sayfa basligi, % kacisi), API `title`.
-Yapilacak: content script (all_frames, play olayi, shadow DOM dugme), background'da
-HLS master/DASH ayristirma + icerik turuyle (mpegurl/dash+xml) yakalama, YouTube
-gibi adres vermeyen sitelerde /probe (yt-dlp) yedegi, yerel HLS ile canli test.
-NOT: kullanicinin ornek verdigi korsan film sitesi icin test/ozel ayar YAPILMADI.
+## VIDEO PANELI — BITTI (2026-09-16), tests/video_panel_test.py 12/12
+IDM gibi: video oynayinca ustunde "AfuDM ile indir" -> kalite listesi -> AfuDM.
+- `extension/content.js`: all_frames (gomulu oynaticilar iframe'de), `play` olayi
+  yakalama asamasinda, golge DOM dugme, tam ekranda fullscreenElement'e tasinir,
+  240x135'ten kucuk videolar (reklam/onizleme) atlanir. Popup: "Oynayan videonun
+  ustunde indirme dugmesi goster" (`videoCatch`).
+- `background.js` secenek sirasi: HLS ana liste (#EXT-X-STREAM-INF) / DASH
+  (Representation height) -> kaliteler + sadece ses; duz dosyalar -> "Dosya";
+  hicbiri yoksa `/probe` (yt-dlp) — YouTube gibi adres vermeyen siteler.
+- Indirme: kind=video + quality=yukseklik + Referer (oynatici cercevesi) + cerezler
+  + title (sekme basligi; HLS'te yt-dlp "master" derdi).
+
+UC GERCEK TUZAK (olculdu):
+1. **MV3 service worker ~30 sn bosta KAPANIR** -> bellekteki mediaByTab gider.
+   Yakalananlar artik `chrome.storage.session`'da (`medya:<tabId>`); test SW'yi
+   CDP ile oldurup sonra secenek istiyor.
+2. **Hotlink korumasi:** SW'nin fetch'i oynaticinin Referer'ini TASIMAZ -> 403,
+   kalite listesi bos geliyordu (ilk test kosusu). Listeyi artik content.js
+   oynatici cercevesinden okuyor (`videoPlaylists` -> fetch -> `texts`);
+   okuyamazsa SW yedek.
+3. yt-dlp de `Sec-Fetch-Mode` basligi yollar: istekleri tarayicidan o baslikla
+   ayirmak YANILTIR. Test .ts parcalarina bakiyor (sayfa parca istemez).
+
+Test videolari ffmpeg test deseninden uretilir (telifli icerik YOK); oynatici BASKA
+porttan iframe, HLS Referer'siz 403. Kullanicinin ornek verdigi korsan film sitesi
+icin test/ozel ayar YAPILMADI.
 
 ## OTURUM CEREZLERI — GIRIS GEREKTIREN SITELER (2026-09-16)
 IDM'e gore en buyuk eksik buydu: uzanti yalniz link + Referer yolluyordu,
@@ -449,6 +466,7 @@ Anahtar kaynagi: `antygravitiy/.env` -> MCP_TELEGRAM_TOKEN, chat 1483248658.
     python tests/cerez_test.py           (ag gerektirmez)
     python tests/daemon_test.py          (AfuDM KAPALIYKEN)
     python tests/baslik_test.py          (AfuDM acikken; fare kullanmaz)
+    python tests/video_panel_test.py     (AfuDM acikken; ffmpeg+ffprobe gerekir, 12 test)
 
 ## ONEMLI KURALLAR
 - Portable: hicbir sey sisteme yazilmaz; `data/` ve `downloads/` klasor icinde.

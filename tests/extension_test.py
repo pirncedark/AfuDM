@@ -313,7 +313,7 @@ def main() -> int:
             # --- sayfadaki medya ---------------------------------------------
             page.evaluate("fetch('/klip.mp4').then(r => r.arrayBuffer())")
             media = wait_for(lambda: sw.evaluate(
-                "[...mediaByTab.values()].flat().map(m => m.url)"), timeout=5)
+                "chrome.storage.session.get(null).then(d => Object.values(d).flat().map(m => m.url))"), timeout=5)
             record("Sayfadaki .mp4 istegi yakalandi",
                    any(u.endswith("/klip.mp4") for u in media or []),
                    f"{len(media or [])} medya")

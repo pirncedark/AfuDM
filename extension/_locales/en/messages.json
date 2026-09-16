@@ -119,5 +119,29 @@
   },
   "optCookies": {
     "message": "Send session cookies (sites that require login)"
+  },
+  "vpDownload": {
+    "message": "Download with AfuDM"
+  },
+  "vpSearching": {
+    "message": "Looking for qualities…"
+  },
+  "vpNone": {
+    "message": "No downloadable video found on this page."
+  },
+  "vpAudio": {
+    "message": "Audio only"
+  },
+  "vpFile": {
+    "message": "File"
+  },
+  "vpStream": {
+    "message": "single quality"
+  },
+  "vpSending": {
+    "message": "Sending to AfuDM…"
+  },
+  "optVideoPanel": {
+    "message": "Show a download button on playing videos"
   }
 }

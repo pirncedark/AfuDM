@@ -22,6 +22,7 @@ async function refresh() {
   $("minSize").value = status.cfg.minSizeMB;
   $("enabled").checked = status.cfg.enabled;
   $("sendCookies").checked = status.cfg.sendCookies;
+  $("videoCatch").checked = status.cfg.videoCatch;
   if (!status.cfg.token) {
     say(chrome.i18n.getMessage("msgTokenEmpty"), "bad");
   }
@@ -71,6 +72,7 @@ $("save").onclick = async () => {
       minSizeMB: Number($("minSize").value) || 0,
       enabled: $("enabled").checked,
       sendCookies: $("sendCookies").checked,
+      videoCatch: $("videoCatch").checked,
     },
   });
   say(chrome.i18n.getMessage("msgSaved"), "ok");

@@ -119,5 +119,29 @@
   },
   "optCookies": {
     "message": "Oturum çerezlerini gönder (giriş gerektiren siteler)"
+  },
+  "vpDownload": {
+    "message": "AfuDM ile indir"
+  },
+  "vpSearching": {
+    "message": "Kaliteler aranıyor…"
+  },
+  "vpNone": {
+    "message": "Bu sayfada indirilebilir video bulunamadı."
+  },
+  "vpAudio": {
+    "message": "Sadece ses"
+  },
+  "vpFile": {
+    "message": "Dosya"
+  },
+  "vpStream": {
+    "message": "tek kalite"
+  },
+  "vpSending": {
+    "message": "AfuDM'e gönderiliyor…"
+  },
+  "optVideoPanel": {
+    "message": "Oynayan videonun üstünde indirme düğmesi göster"
   }
 }

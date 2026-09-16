@@ -22,7 +22,6 @@ const DEFAULTS = {
   sendCookies: true,
 };
 
-const mediaByTab = new Map(); // tabId -> [{url, type, ts}]
 
 async function config() {
   const stored = await chrome.storage.local.get(DEFAULTS);
@@ -118,23 +117,75 @@ chrome.downloads.onCreated.addListener(async (item) => {
 });
 
 /* --- 2) Sayfadaki medyayi izle ------------------------------------- */
+/* Yakalananlar chrome.storage.session'da: MV3 service worker ~30 sn bosta
+   kalinca KAPANIR, bellekteki liste gider. Kullanici videoyu izleyip dakikalar
+   sonra "indir" dediginde adresler hala burada olmali. */
+const MEDYA_SINIRI = 40;
+// HLS/DASH parcalari ve yan dosyalar: tek basina ise yaramaz
+const PARCA = /\.(ts|m4s|aac|vtt|webvtt|srt|key|jpg|jpeg|png|gif|webp)(\?|$)/i;
+let yazmaZinciri = Promise.resolve();
+
+function medyaTuru(url, icerikTuru = "") {
+  const tur = icerikTuru.toLowerCase();
+  if (/mpegurl/.test(tur) || /\.m3u8(\?|$)/i.test(url)) return "hls";
+  if (/dash\+xml/.test(tur) || /\.mpd(\?|$)/i.test(url)) return "dash";
+  if (/^(video|audio)\//.test(tur) || /\.(mp4|webm|mkv|mp3|m4a|flv|mov)(\?|$)/i.test(url)) return "file";
+  return "";
+}
+
+async function medyaListesi(tabId) {
+  const anahtar = "medya:" + tabId;
+  return (await chrome.storage.session.get(anahtar))[anahtar] || [];
+}
+
+function medyaKaydet(details, tur, boyut = 0) {
+  // Ayni anda gelen istekler birbirinin yazdigini ezmesin: sirayla yaz.
+  yazmaZinciri = yazmaZinciri.then(async () => {
+    const anahtar = "medya:" + details.tabId;
+    const liste = await medyaListesi(details.tabId);
+    const mevcut = liste.find((kayit) => kayit.url === details.url);
+    if (mevcut) {
+      if (boyut && !mevcut.size) mevcut.size = boyut;
+    } else {
+      liste.unshift({ url: details.url, kind: tur, type: details.type, frameId: details.frameId,
+                      size: boyut, ts: Date.now() });
+    }
+    await chrome.storage.session.set({ [anahtar]: liste.slice(0, MEDYA_SINIRI) });
+  }).catch(() => {});
+}
+
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
-    if (details.tabId < 0) return;
-    const url = details.url;
-    const isMedia =
-      /\.(m3u8|mpd|mp4|webm|mkv|mp3|m4a|flv)(\?|$)/i.test(url) ||
-      details.type === "media";
-    if (!isMedia) return;
-    const list = mediaByTab.get(details.tabId) || [];
-    if (!list.some((entry) => entry.url === url)) {
-      list.unshift({ url, type: details.type, ts: Date.now() });
-      mediaByTab.set(details.tabId, list.slice(0, 25));
-    }
+    if (details.tabId < 0 || PARCA.test(details.url)) return;
+    const tur = medyaTuru(details.url);
+    if (tur) medyaKaydet(details, tur);
   },
   { urls: ["<all_urls>"] }
 );
-chrome.tabs.onRemoved.addListener((tabId) => mediaByTab.delete(tabId));
+
+// Uzantisi olmayan adresler (ornegin /playlist?id=3) icerik turunden taninir.
+chrome.webRequest.onHeadersReceived.addListener(
+  (details) => {
+    if (details.tabId < 0 || PARCA.test(details.url)) return;
+    const baslik = (ad) => (details.responseHeaders || [])
+      .find((h) => h.name.toLowerCase() === ad)?.value || "";
+    const tur = medyaTuru(details.url, baslik("content-type"));
+    if (!tur) return;
+    // Aralik istegi (206) toplam boyutu Content-Range'de tasir.
+    const aralik = baslik("content-range").match(/\/(\d+)$/);
+    const boyut = Number(aralik ? aralik[1] : baslik("content-length")) || 0;
+    if (tur === "file" && boyut && boyut < 256 * 1024) return; // simge / ses efekti
+    medyaKaydet(details, tur, boyut);
+  },
+  { urls: ["<all_urls>"] },
+  ["responseHeaders"]
+);
+
+chrome.tabs.onRemoved.addListener((tabId) => chrome.storage.session.remove("medya:" + tabId));
+// Sekme yeni sayfaya gecince eski sayfanin medyasi karismasin.
+chrome.webNavigation.onCommitted.addListener((details) => {
+  if (details.frameId === 0) chrome.storage.session.remove("medya:" + details.tabId);
+});
 
 /* --- 3) Sag tik menusu -------------------------------------------- */
 chrome.runtime.onInstalled.addListener(() => {
@@ -161,7 +212,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === "afudm-link") {
     target = info.linkUrl || info.srcUrl || "";
   } else {
-    const media = mediaByTab.get(tab?.id ?? -1) || [];
+    const media = await medyaListesi(tab?.id ?? -1);
     target = media.length ? media[0].url : (tab?.url || "");
     kind = media.length ? "http" : "video";
   }
@@ -177,7 +228,148 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
-/* --- 4) Acilir pencere istekleri ---------------------------------- */
+/* --- 4) Video paneli (content.js) --------------------------------- */
+function insanBoyut(bayt) {
+  if (!bayt) return "";
+  const birim = ["B", "KB", "MB", "GB"];
+  let i = 0;
+  while (bayt >= 1024 && i < birim.length - 1) { bayt /= 1024; i++; }
+  return bayt.toFixed(i > 1 ? 1 : 0) + " " + birim[i];
+}
+
+function mbps(bit) {
+  return bit ? (bit / 1e6).toFixed(bit < 1e7 ? 1 : 0) + " Mbps" : "";
+}
+
+/* HLS ana listesi: her kalite bir #EXT-X-STREAM-INF satiri. Tek kalite listesi
+   (medya listesi) ise #EXTINF parcalari icerir; o zaman tek secenek vardir. */
+function hlsKaliteleri(metin) {
+  const kaliteler = new Map(); // yukseklik -> en yuksek bant genisligi
+  for (const satir of metin.split(/\r?\n/)) {
+    if (!satir.startsWith("#EXT-X-STREAM-INF")) continue;
+    const boy = Number((satir.match(/RESOLUTION=\d+x(\d+)/) || [])[1]) || 0;
+    const bant = Number((satir.match(/[:,]BANDWIDTH=(\d+)/) || [])[1]) || 0;
+    if (boy && bant >= (kaliteler.get(boy) || 0)) kaliteler.set(boy, bant);
+  }
+  return kaliteler;
+}
+
+function dashKaliteleri(metin) {
+  const kaliteler = new Map();
+  for (const temsil of metin.match(/<Representation\b[^>]*>/g) || []) {
+    const boy = Number((temsil.match(/height="(\d+)"/) || [])[1]) || 0;
+    const bant = Number((temsil.match(/bandwidth="(\d+)"/) || [])[1]) || 0;
+    if (boy && bant >= (kaliteler.get(boy) || 0)) kaliteler.set(boy, bant);
+  }
+  return kaliteler;
+}
+
+function kaliteSecenekleri(kaynak, kaliteler, referer) {
+  const secenekler = [...kaliteler.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([boy, bant]) => ({ label: boy + "p", detail: mbps(bant), url: kaynak, kind: "video",
+                             quality: String(boy), referer }));
+  secenekler.push({ label: chrome.i18n.getMessage("vpAudio"), detail: "mp3", url: kaynak, kind: "video",
+                    quality: "audio", audio_only: true, referer });
+  return secenekler;
+}
+
+async function afudmGet(cfg, yol) {
+  const yanit = await fetch(endpoint(cfg, yol), { headers: { "X-AfuDM-Token": cfg.token } });
+  const veri = await yanit.json().catch(() => ({}));
+  if (!yanit.ok || veri.ok === false) {
+    throw new Error(veri.error || chrome.i18n.getMessage("msgNoResponse", [String(yanit.status)]));
+  }
+  return veri;
+}
+
+/* Once videonun oldugu cercevenin istekleri (gomulu oynatici), sonra en yenisi. */
+async function siraliMedya(sender) {
+  const medya = await medyaListesi(sender.tab?.id ?? -1);
+  const ayniCerceve = (m) => (m.frameId === sender.frameId ? 1 : 0);
+  return medya.sort((a, b) => ayniCerceve(b) - ayniCerceve(a) || b.ts - a.ts);
+}
+
+/* Oynatma listesi metni: once content.js'in oynatici cercevesinden okudugu
+   (dogru Referer + cerezler — hotlink korumali siteler service worker'in
+   Referer'siz istegini 403 ile reddeder), yoksa service worker kendisi dener. */
+async function listeMetni(kayit, metinler) {
+  if (metinler && typeof metinler[kayit.url] === "string") return metinler[kayit.url];
+  const yanit = await fetch(kayit.url, { credentials: "include" });
+  if (!yanit.ok) throw new Error(String(yanit.status));
+  return yanit.text();
+}
+
+async function videoSecenekleri(cfg, sender, frameUrl, metinler) {
+  if (!(await afudmAlive(cfg))) {
+    return { ok: false, error: chrome.i18n.getMessage("notifyNotRunning") };
+  }
+  const referer = frameUrl || sender.url || sender.tab?.url || "";
+  const medya = await siraliMedya(sender);
+
+  const secenekler = [];
+  let tekKaliteEklendi = false;
+  for (const kayit of medya.filter((m) => m.kind === "hls" || m.kind === "dash").slice(0, 6)) {
+    try {
+      const metin = await listeMetni(kayit, metinler);
+      const kaliteler = kayit.kind === "hls" ? hlsKaliteleri(metin) : dashKaliteleri(metin);
+      if (kaliteler.size) {
+        secenekler.push(...kaliteSecenekleri(kayit.url, kaliteler, referer));
+        break; // ana liste bulundu: tek kalite listeleri onun parcasidir
+      }
+      if (kayit.kind === "hls" && /#EXTINF/.test(metin) && !tekKaliteEklendi) {
+        tekKaliteEklendi = true;
+        secenekler.push({ label: "HLS", detail: chrome.i18n.getMessage("vpStream"), url: kayit.url,
+                          kind: "video", quality: "best", referer });
+      }
+    } catch (_) { /* erisilemeyen liste: siradakine gec */ }
+  }
+  const dosyalar = new Set();
+  for (const kayit of medya.filter((m) => m.kind === "file").slice(0, 8)) {
+    if (dosyalar.has(kayit.url) || dosyalar.size >= 4) continue;
+    dosyalar.add(kayit.url);
+    const uzanti = (new URL(kayit.url).pathname.split(".").pop() || "").slice(0, 4).toUpperCase();
+    secenekler.push({ label: chrome.i18n.getMessage("vpFile") + (uzanti.length <= 4 && uzanti ? " · " + uzanti : ""),
+                      detail: insanBoyut(kayit.size), url: kayit.url, kind: "http", referer });
+  }
+  if (secenekler.length) return { ok: true, options: secenekler };
+
+  // Adres vermeyen siteler (YouTube vb.): sayfayi yt-dlp'ye sor.
+  const sayfa = sender.tab?.url || referer;
+  try {
+    const { info } = await afudmGet(cfg, "/probe?url=" + encodeURIComponent(sayfa));
+    const kaliteler = new Map();
+    for (const bicim of info.formats || []) {
+      if (bicim.height && bicim.vcodec && bicim.vcodec !== "none") kaliteler.set(bicim.height, 0);
+    }
+    return { ok: true, options: kaliteler.size ? kaliteSecenekleri(sayfa, kaliteler, referer) : [] };
+  } catch (_) {
+    return { ok: true, options: [] };
+  }
+}
+
+async function videoIndir(cfg, sender, secenek, frameUrl) {
+  if (!secenek || !/^https?:/i.test(secenek.url || "")) {
+    return { ok: false, error: chrome.i18n.getMessage("notifyNoAddress") };
+  }
+  const referer = secenek.referer || frameUrl || sender.tab?.url || "";
+  try {
+    await sendToAfudm(cfg, {
+      url: secenek.url,
+      kind: secenek.kind,
+      quality: secenek.quality,
+      audio_only: !!secenek.audio_only,
+      // HLS adresinde yt-dlp anlamli baslik bulamaz ("master"): sekme basligi kullanilir.
+      title: secenek.kind === "video" ? (sender.tab?.title || "") : undefined,
+      headers: referer ? { Referer: referer } : {},
+    });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+}
+
+/* --- 5) Acilir pencere istekleri ---------------------------------- */
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   (async () => {
     const cfg = await config();
@@ -185,13 +377,20 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
       reply({ alive: await afudmAlive(cfg), cfg });
     } else if (message.type === "media") {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      reply({ media: mediaByTab.get(tab?.id ?? -1) || [], pageUrl: tab?.url || "" });
+      reply({ media: await medyaListesi(tab?.id ?? -1), pageUrl: tab?.url || "" });
     } else if (message.type === "add") {
       try {
         reply({ ok: true, result: await sendToAfudm(cfg, message.payload) });
       } catch (error) {
         reply({ ok: false, error: error.message });
       }
+    } else if (message.type === "videoPlaylists") {
+      reply({ playlists: (await siraliMedya(sender))
+        .filter((m) => m.kind === "hls" || m.kind === "dash").slice(0, 6).map((m) => m.url) });
+    } else if (message.type === "videoOptions") {
+      reply(await videoSecenekleri(cfg, sender, message.frameUrl, message.texts));
+    } else if (message.type === "videoGrab") {
+      reply(await videoIndir(cfg, sender, message.option, message.frameUrl));
     } else if (message.type === "save") {
       await chrome.storage.local.set(message.cfg);
       reply({ ok: true });
