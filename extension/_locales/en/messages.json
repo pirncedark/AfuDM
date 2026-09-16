@@ -1,0 +1,97 @@
+{
+  "appName": {
+    "message": "AfuDM link catcher"
+  },
+  "appDesc": {
+    "message": "Sends browser downloads and page videos to AfuDM."
+  },
+  "actionTitle": {
+    "message": "AfuDM"
+  },
+  "stateConnecting": {
+    "message": "connecting"
+  },
+  "stateRunning": {
+    "message": "AfuDM running · 127.0.0.1:$PORT$",
+    "placeholders": {
+      "port": {
+        "content": "$1"
+      }
+    }
+  },
+  "stateOff": {
+    "message": "AfuDM is closed"
+  },
+  "labelUrl": {
+    "message": "Link"
+  },
+  "qBest": {
+    "message": "Best quality"
+  },
+  "q1080": {
+    "message": "1080p"
+  },
+  "q720": {
+    "message": "720p"
+  },
+  "qAudio": {
+    "message": "Audio only (mp3)"
+  },
+  "btnDownload": {
+    "message": "Download"
+  },
+  "btnGet": {
+    "message": "Get"
+  },
+  "labelMedia": {
+    "message": "Media found on this page"
+  },
+  "connSettings": {
+    "message": "Connection settings"
+  },
+  "labelPort": {
+    "message": "Port"
+  },
+  "labelToken": {
+    "message": "Key (inside data/api_endpoint.json)"
+  },
+  "labelMinSize": {
+    "message": "Smallest download to take over (MB)"
+  },
+  "optTakeover": {
+    "message": "Let AfuDM take over browser downloads"
+  },
+  "btnPair": {
+    "message": "Auto connect"
+  },
+  "btnSave": {
+    "message": "Save settings"
+  },
+  "msgQueued": {
+    "message": "Added to the AfuDM queue."
+  },
+  "msgAddFailed": {
+    "message": "could not be added"
+  },
+  "menuLink": {
+    "message": "Download with AfuDM"
+  },
+  "menuPageVideo": {
+    "message": "Download this page's video with AfuDM"
+  },
+  "notifyResumed": {
+    "message": "AfuDM is continuing the download."
+  },
+  "notifyHandoffFailed": {
+    "message": "Could not hand off to AfuDM: "
+  },
+  "notifyNotRunning": {
+    "message": "AfuDM is not running. Open the app and try again."
+  },
+  "notifyNoAddress": {
+    "message": "No downloadable address found."
+  },
+  "notifyAddFailed": {
+    "message": "Could not add: "
+  }
+}

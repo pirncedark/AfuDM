@@ -1,0 +1,423 @@
+"""yt-dlp sarmalayici: video/ses indirme, kalite secimi, playlist.
+
+Indirme motoru olarak aria2c'yi kullandirir (--downloader), boylece video
+siteleri de cok parcali indirilir. Ilerleme, yt-dlp'nin progress-template
+ciktisindan satir satir okunur.
+"""
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import threading
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from core import lang, netcheck, paths
+
+CREATE_NO_WINDOW = 0x08000000
+PROGRESS_TAG = "AFUDM"
+PROGRESS_TEMPLATE = (
+    PROGRESS_TAG
+    + "|%(progress.downloaded_bytes)s|%(progress.total_bytes)s"
+    + "|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s"
+)
+
+# ffmpeg VARKEN: en iyi video + en iyi ses ayri inip mp4'e birlestirilir.
+QUALITY_FORMATS = {
+    "best": "bestvideo*+bestaudio/best",
+    "2160": "bestvideo[height<=2160]+bestaudio/best[height<=2160]",
+    "1440": "bestvideo[height<=1440]+bestaudio/best[height<=1440]",
+    "1080": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+    "720": "bestvideo[height<=720]+bestaudio/best[height<=720]",
+    "480": "bestvideo[height<=480]+bestaudio/best[height<=480]",
+    "audio": "bestaudio/best",
+}
+
+# ffmpeg YOKKEN: birlestirecek bir sey olmadigi icin SES+VIDEO BIRLESIK gelen
+# formatlar istenir (IDM'in calisma sekli). Once mp4, sonra sesi olan herhangi
+# bir format, en sonda yt-dlp'nin kendi secimi — hicbir zaman sessiz video inmesin.
+_BIRLESIK = "best{h}[ext=mp4][acodec!=none][vcodec!=none]/best{h}[acodec!=none][vcodec!=none]/best{h}"
+COMBINED_FORMATS = {
+    "best": _BIRLESIK.format(h=""),
+    "2160": _BIRLESIK.format(h="[height<=2160]"),
+    "1440": _BIRLESIK.format(h="[height<=1440]"),
+    "1080": _BIRLESIK.format(h="[height<=1080]"),
+    "720": _BIRLESIK.format(h="[height<=720]"),
+    "480": _BIRLESIK.format(h="[height<=480]"),
+    "audio": "bestaudio[ext=m4a]/bestaudio/best",
+}
+
+
+def ffmpeg_hazir() -> bool:
+    """engine/ffmpeg.exe (veya sistemdeki ffmpeg) var mi?"""
+    return Path(paths.ffmpeg_exe()).exists()
+
+
+def format_secimi(quality: str, audio_only: bool, birlestirilebilir: bool) -> str:
+    """yt-dlp'ye verilecek -f ifadesi.
+
+    birlestirilebilir=False ise ayri video+ses ISTENMEZ; yoksa kullanici
+    sessiz video indirir. Bu, ffmpeg'siz (cekirdek) kurulumun davranisidir.
+    """
+    if audio_only or quality == "audio":
+        quality = "audio"
+    tablo = QUALITY_FORMATS if birlestirilebilir else COMBINED_FORMATS
+    return tablo.get(quality, tablo["best"])
+
+
+def ytdlp_path() -> str:
+    """Portable: engine/yt-dlp.exe; yoksa sistemdeki yt-dlp."""
+    return paths.ytdlp_exe()
+
+
+def available() -> bool:
+    try:
+        subprocess.run(
+            [ytdlp_path(), "--version"],
+            capture_output=True,
+            timeout=20,
+            creationflags=CREATE_NO_WINDOW,
+        )
+        return True
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def version() -> str:
+    try:
+        out = subprocess.run(
+            [ytdlp_path(), "--version"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            creationflags=CREATE_NO_WINDOW,
+        )
+        return out.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def is_video_site(url: str) -> bool:
+    """Dosya linki mi, video sayfasi mi? Kaba ama pratik ayrim."""
+    lowered = url.lower().split("?")[0]
+    if lowered.endswith(
+        (
+            ".zip", ".rar", ".7z", ".exe", ".msi", ".iso", ".pdf", ".apk",
+            ".dmg", ".tar", ".gz", ".torrent", ".deb", ".rpm", ".img",
+        )
+    ):
+        return False
+    if url.startswith("magnet:"):
+        return False
+    hints = (
+        "youtube.com", "youtu.be", "instagram.com", "tiktok.com", "twitter.com",
+        "x.com", "facebook.com", "vimeo.com", "dailymotion.com", "twitch.tv",
+        "reddit.com", "soundcloud.com", "bilibili.com", "odnoklassniki",
+        "vk.com", "pinterest.com", "linkedin.com", "threads.net", "rumble.com",
+    )
+    if any(h in lowered for h in hints):
+        return True
+    return ".m3u8" in lowered or ".mpd" in lowered
+
+
+def probe(url: str, timeout: float = 90.0) -> dict:
+    """Video bilgisi + format listesi (indirmeden once kalite secimi icin)."""
+    cmd = [
+        ytdlp_path(), "-J", "--no-warnings", "--no-playlist",
+        "--flat-playlist", url,
+    ]
+    proc = subprocess.run(
+        cmd, capture_output=True, text=True, timeout=timeout,
+        creationflags=CREATE_NO_WINDOW,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError((proc.stderr or "yt-dlp bilgi alamadi").strip()[:500])
+    data = json.loads(proc.stdout)
+    formats = []
+    for fmt in data.get("formats") or []:
+        formats.append(
+            {
+                "id": fmt.get("format_id"),
+                "ext": fmt.get("ext"),
+                "height": fmt.get("height"),
+                "fps": fmt.get("fps"),
+                "vcodec": fmt.get("vcodec"),
+                "acodec": fmt.get("acodec"),
+                "filesize": fmt.get("filesize") or fmt.get("filesize_approx"),
+                "note": fmt.get("format_note"),
+            }
+        )
+    return {
+        "title": data.get("title") or url,
+        "duration": data.get("duration"),
+        "thumbnail": data.get("thumbnail"),
+        "uploader": data.get("uploader"),
+        "is_playlist": data.get("_type") == "playlist",
+        "entries": len(data.get("entries") or []) if data.get("entries") else 0,
+        "formats": formats,
+    }
+
+
+@dataclass
+class VideoJob:
+    """Calisan bir yt-dlp indirmesi. aria2 GID'i yoktur; id'si 'yt:<n>' olur."""
+
+    job_id: str
+    url: str
+    dest_dir: str
+    quality: str = "best"
+    audio_only: bool = False
+    playlist: bool = False
+    title: str = ""
+    proc: subprocess.Popen | None = None
+    status: str = "active"          # active | paused | complete | error | removed
+    error: str = ""
+    downloaded: int = 0
+    total: int = 0
+    speed: int = 0
+    eta: int = 0
+    filename: str = ""
+    dil: str = "auto"               # hata metinleri bu dilde yazilir
+    ffmpeg_vardi: bool = True       # is baslarken ffmpeg var miydi (hata metni icin)
+    started_at: float = field(default_factory=time.time)
+    finished_at: float = 0.0
+    _thread: threading.Thread | None = None
+    _stop: bool = False
+
+    # --- komut kurulumu ---------------------------------------------------
+    def build_cmd(self, aria2c: str | None = None, ffmpeg_var: bool | None = None) -> list[str]:
+        aria2c = aria2c or str(paths.ARIA2C)
+        # ffmpeg yoksa birlestirme de mp3'e cevirme de yapilamaz; format secimi buna gore.
+        ffmpeg_var = ffmpeg_hazir() if ffmpeg_var is None else ffmpeg_var
+        self.ffmpeg_vardi = ffmpeg_var
+        fmt = format_secimi(self.quality, self.audio_only, ffmpeg_var)
+        out_tpl = str(Path(self.dest_dir) / "%(title).150B.%(ext)s")
+        if self.playlist:
+            out_tpl = str(
+                Path(self.dest_dir)
+                / "%(playlist_title).80B"
+                / "%(playlist_index)03d - %(title).120B.%(ext)s"
+            )
+        cmd = [
+            ytdlp_path(),
+            "--newline",
+            "--no-warnings",
+            "--progress",
+            "--progress-template", PROGRESS_TEMPLATE,
+            "--continue",
+            "--no-overwrites",
+            "--retries", "10",
+            "--fragment-retries", "10",
+            "--concurrent-fragments", "8",
+            "-o", out_tpl,
+            "-f", fmt,
+        ]
+        if ffmpeg_var:
+            cmd += ["--ffmpeg-location", paths.ffmpeg_dir()]
+            if self.audio_only or self.quality == "audio":
+                cmd += ["--extract-audio", "--audio-format", "mp3", "--audio-quality", "0"]
+            else:
+                # Tek dosya mp4 cikar (IDM gibi): ayri inen izler birlestirilir.
+                cmd += ["--merge-output-format", "mp4"]
+        # ffmpeg yoksa hicbiri istenmez: video zaten birlesik iner, ses de
+        # kaynaktaki bicimiyle (m4a/webm) kalir.
+        cmd += ["--yes-playlist"] if self.playlist else ["--no-playlist"]
+        if aria2c and Path(aria2c).exists():
+            # Video parcalarini da cok baglantili indir.
+            # IPv6 yoksa aria2c AAAA adresini deneyip "network unreachable" ile
+            # indirmeyi iptal eder; bayrak calisma aninda olculur (netcheck).
+            extra = " ".join(netcheck.aria2_ipv6_args())
+            args = "aria2c:-x16 -s16 -k1M --file-allocation=none --console-log-level=error"
+            if extra:
+                args += " " + extra
+            cmd += ["--downloader", aria2c, "--downloader-args", args]
+        cmd.append(self.url)
+        return cmd
+
+    # --- calistirma -------------------------------------------------------
+    def start(self, aria2c: str | None = None, on_update=None,
+              ffmpeg_var: bool | None = None) -> None:
+        Path(self.dest_dir).mkdir(parents=True, exist_ok=True)
+        self.proc = subprocess.Popen(
+            self.build_cmd(aria2c, ffmpeg_var),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+            creationflags=CREATE_NO_WINDOW,
+        )
+        self._thread = threading.Thread(
+            target=self._pump, args=(on_update,), daemon=True
+        )
+        self._thread.start()
+
+    _DEST_RE = re.compile(r"\[(?:download|Merger|ExtractAudio)\].*?(?:Destination:|to:)\s*(.+)$")
+    # aria2c dis indirici olarak calisirken yt-dlp kendi ilerleme satirini
+    # BASMAZ; aktaran aria2c oldugu icin ilerleme onun ozet satirindan gelir:
+    #   [#da19cb 2.8MiB/9.7MiB(29%) CN:10 DL:3.3MiB ETA:2s]
+    _ARIA_RE = re.compile(
+        r"\[#\w+\s+(?P<done>[\d.]+)(?P<du>[KMGT]?i?B)"
+        r"/(?P<total>[\d.]+)(?P<tu>[KMGT]?i?B)"
+        r"\((?P<pct>\d+)%\)"
+        r"(?:\s+CN:(?P<cn>\d+))?"
+        r"(?:\s+DL:(?P<dl>[\d.]+)(?P<su>[KMGT]?i?B))?"
+        r"(?:\s+ETA:(?P<eta>\S+?))?\]"
+    )
+    _UNITS = {"B": 1, "KiB": 1024, "MiB": 1024**2, "GiB": 1024**3, "TiB": 1024**4,
+              "KB": 1000, "MB": 1000**2, "GB": 1000**3, "TB": 1000**4}
+
+    @classmethod
+    def _bytes(cls, amount: str, unit: str) -> int:
+        try:
+            return int(float(amount) * cls._UNITS.get(unit, 1))
+        except ValueError:
+            return 0
+
+    @staticmethod
+    def _eta_seconds(text: str | None) -> int:
+        """aria2c ETA'si '2s', '1m30s', '1h2m' bicimlerinde gelir."""
+        if not text:
+            return 0
+        total = 0
+        for value, unit in re.findall(r"(\d+)([hms])", text):
+            total += int(value) * {"h": 3600, "m": 60, "s": 1}[unit]
+        return total
+
+    def _parse_aria(self, line: str) -> bool:
+        match = self._ARIA_RE.search(line)
+        if not match:
+            return False
+        data = match.groupdict()
+        self.downloaded = self._bytes(data["done"], data["du"])
+        self.total = self._bytes(data["total"], data["tu"]) or self.total
+        if data.get("dl"):
+            self.speed = self._bytes(data["dl"], data["su"])
+        self.eta = self._eta_seconds(data.get("eta"))
+        return True
+
+    def _pump(self, on_update) -> None:
+        assert self.proc is not None
+        tail: list[str] = []
+        buffer = ""
+        stream = self.proc.stdout
+        assert stream is not None
+        while True:
+            chunk = stream.read(256)
+            if not chunk:
+                break
+            buffer += chunk
+            # aria2c ilerlemeyi \r ile gunceller, yt-dlp \n kullanir: ikisini de bol
+            parts = re.split(r"[\r\n]", buffer)
+            buffer = parts.pop()
+            for line in parts:
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith(PROGRESS_TAG + "|"):
+                    self._parse_progress(line)
+                    if on_update:
+                        on_update(self)
+                    continue
+                if self._parse_aria(line):
+                    if on_update:
+                        on_update(self)
+                    continue
+                match = self._DEST_RE.search(line)
+                if match:
+                    self.filename = Path(match.group(1).strip()).name
+                tail.append(line)
+                del tail[:-30]
+        if buffer.strip():
+            if not self._parse_aria(buffer.strip()):
+                tail.append(buffer.strip())
+        code = self.proc.wait()
+        if self._stop:
+            self.status = "removed"
+        elif code == 0:
+            self.status = "complete"
+            if self.total:
+                self.downloaded = self.total
+        else:
+            self.status = "error"
+            ham = " / ".join(tail[-3:])[:500] or f"yt-dlp cikis kodu {code}"
+            self.error = self.anlasilir_hata(ham)
+        self.speed = 0
+        self.finished_at = time.time()
+        if on_update:
+            on_update(self)
+
+    @staticmethod
+    def _num(value: str) -> int:
+        try:
+            if value in ("NA", "None", ""):
+                return 0
+            return int(float(value))
+        except (TypeError, ValueError):
+            return 0
+
+    def _parse_progress(self, line: str) -> None:
+        parts = line.split("|")
+        if len(parts) < 6:
+            return
+        _, done, total, total_est, speed, eta = parts[:6]
+        self.downloaded = self._num(done)
+        self.total = self._num(total) or self._num(total_est) or self.total
+        self.speed = self._num(speed)
+        self.eta = self._num(eta)
+
+    def anlasilir_hata(self, ham: str) -> str:
+        """yt-dlp'nin ham hatasini kullanicinin anlayacagi cumleye cevirir.
+
+        En sik durum: ffmpeg yokken YouTube'dan video istemek. YouTube artik
+        ses+video birlesik format VERMIYOR (2026 olcumu), bu yuzden birlestirici
+        olmadan istenen format bulunamiyor. Ham mesaj ("Requested format is not
+        available") kullaniciya hicbir sey anlatmiyor."""
+        if "requested format is not available" in ham.lower() and not self.ffmpeg_vardi:
+            anahtar = "err.needFfmpegAudio" if self.audio_only else "err.needFfmpeg"
+            return lang.t(anahtar, self.dil)
+        return ham
+
+    # --- kontrol ----------------------------------------------------------
+    def stop(self) -> None:
+        self._stop = True
+        if self.proc and self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+        self.status = "removed"
+
+    def display_title(self) -> str:
+        """Gosterilecek baslik: yt-dlp cikti sablonu "%(title)s.%(ext)s" oldugu
+        icin dosya adinin govdesi videonun GERCEK basligidir. Dosya adi daha
+        bilinmiyorsa eklerken tahmin edilen ada, o da yoksa URL'e duseriz."""
+        if self.filename:
+            stem = Path(self.filename).stem
+            if stem:
+                return stem
+        return self.title or self.url
+
+    def to_dict(self) -> dict:
+        total = self.total or 0
+        return {
+            "gid": self.job_id,
+            "kind": "video",
+            "status": self.status,
+            "title": self.display_title(),
+            "filename": self.filename,
+            "totalLength": total,
+            "completedLength": self.downloaded,
+            "downloadSpeed": self.speed,
+            "uploadSpeed": 0,
+            "connections": 0,
+            "numSeeders": 0,
+            "eta": self.eta,
+            "dir": self.dest_dir,
+            "errorMessage": self.error,
+            "source": self.url,
+        }

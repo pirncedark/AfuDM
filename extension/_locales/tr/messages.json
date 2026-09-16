@@ -1,0 +1,97 @@
+{
+  "appName": {
+    "message": "AfuDM link yakalayıcı"
+  },
+  "appDesc": {
+    "message": "Tarayıcıdaki indirmeleri ve sayfadaki videoları AfuDM'e yönlendirir."
+  },
+  "actionTitle": {
+    "message": "AfuDM"
+  },
+  "stateConnecting": {
+    "message": "bağlanıyor"
+  },
+  "stateRunning": {
+    "message": "AfuDM çalışıyor · 127.0.0.1:$PORT$",
+    "placeholders": {
+      "port": {
+        "content": "$1"
+      }
+    }
+  },
+  "stateOff": {
+    "message": "AfuDM kapalı"
+  },
+  "labelUrl": {
+    "message": "Bağlantı"
+  },
+  "qBest": {
+    "message": "En iyi kalite"
+  },
+  "q1080": {
+    "message": "1080p"
+  },
+  "q720": {
+    "message": "720p"
+  },
+  "qAudio": {
+    "message": "Sadece ses (mp3)"
+  },
+  "btnDownload": {
+    "message": "İndir"
+  },
+  "btnGet": {
+    "message": "Al"
+  },
+  "labelMedia": {
+    "message": "Bu sayfada bulunan medya"
+  },
+  "connSettings": {
+    "message": "Bağlantı ayarları"
+  },
+  "labelPort": {
+    "message": "Port"
+  },
+  "labelToken": {
+    "message": "Anahtar (data/api_endpoint.json içinde)"
+  },
+  "labelMinSize": {
+    "message": "En küçük devralma boyutu (MB)"
+  },
+  "optTakeover": {
+    "message": "Tarayıcı indirmelerini AfuDM devralsın"
+  },
+  "btnPair": {
+    "message": "Otomatik bağlan"
+  },
+  "btnSave": {
+    "message": "Ayarları kaydet"
+  },
+  "msgQueued": {
+    "message": "AfuDM kuyruğuna eklendi."
+  },
+  "msgAddFailed": {
+    "message": "eklenemedi"
+  },
+  "menuLink": {
+    "message": "AfuDM ile indir"
+  },
+  "menuPageVideo": {
+    "message": "Bu sayfadaki videoyu AfuDM ile indir"
+  },
+  "notifyResumed": {
+    "message": "AfuDM indirmeye devam ediyor."
+  },
+  "notifyHandoffFailed": {
+    "message": "AfuDM'e devredilemedi: "
+  },
+  "notifyNotRunning": {
+    "message": "AfuDM çalışmıyor. Uygulamayı aç ve tekrar dene."
+  },
+  "notifyNoAddress": {
+    "message": "İndirilecek bir adres bulunamadı."
+  },
+  "notifyAddFailed": {
+    "message": "Eklenemedi: "
+  }
+}

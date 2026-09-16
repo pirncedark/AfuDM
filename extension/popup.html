@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>AfuDM</title>
+<style>
+  :root {
+    --bg: #14181f; --surface: #1c222c; --line: #2a3340;
+    --text: #e6eaf0; --muted: #8a97a8; --dim: #616e80;
+    --dl: #5b9dff; --done: #46c98b; --err: #f2678a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    width: 330px; margin: 0; padding: 12px 14px 14px;
+    background: var(--bg); color: var(--text);
+    font: 13px/1.45 "Segoe UI", system-ui, sans-serif;
+  }
+  header { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; }
+  header b { font-size: 14px; font-weight: 600; }
+  header b i { color: var(--dl); font-style: normal; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--err); margin-left: auto; }
+  .dot.ok { background: var(--done); }
+  #state { font-size: 11px; color: var(--dim); }
+  label { display: block; font-size: 11px; color: var(--muted); margin: 9px 0 4px; }
+  input[type="text"], input[type="number"], select {
+    width: 100%; background: #0f131a; border: 1px solid var(--line);
+    border-radius: 2px; padding: 6px 8px; color: var(--text);
+    font-family: Consolas, monospace; font-size: 12px;
+  }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  button {
+    background: var(--dl); border: 0; border-radius: 2px; color: #08131f;
+    font-weight: 600; padding: 7px 10px; cursor: pointer; font-size: 12.5px;
+  }
+  button.ghost { background: none; border: 1px solid var(--line); color: var(--text); font-weight: 400; }
+  button:hover { filter: brightness(1.1); }
+  .media { margin-top: 10px; max-height: 148px; overflow: auto; }
+  .media div {
+    display: flex; gap: 8px; align-items: center; padding: 5px 0;
+    border-bottom: 1px solid #222a35; font-family: Consolas, monospace; font-size: 11px;
+  }
+  .media span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+  .media button { padding: 3px 7px; font-size: 11px; }
+  .opt { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-top: 9px; }
+  .note { font-size: 11px; color: var(--dim); margin-top: 9px; min-height: 15px; }
+  .note.bad { color: var(--err); }
+  .note.ok { color: var(--done); }
+  details { margin-top: 10px; }
+  summary { font-size: 11.5px; color: var(--dim); cursor: pointer; }
+</style>
+</head>
+<body>
+<header>
+  <b>Afu<i>DM</i></b>
+  <span id="state" data-i18n="stateConnecting">bağlanıyor</span>
+  <span class="dot" id="dot"></span>
+</header>
+
+<label for="url" data-i18n="labelUrl">Bağlantı</label>
+<input id="url" type="text" spellcheck="false" placeholder="https:// veya magnet:">
+<div class="row" style="margin-top:8px">
+  <select id="quality">
+    <option value="best" data-i18n="qBest">En iyi kalite</option>
+    <option value="1080" data-i18n="q1080">1080p</option>
+    <option value="720" data-i18n="q720">720p</option>
+    <option value="audio" data-i18n="qAudio">Sadece ses (mp3)</option>
+  </select>
+  <button id="add" data-i18n="btnDownload">İndir</button>
+</div>
+
+<div id="mediaWrap" style="display:none">
+  <label data-i18n="labelMedia">Bu sayfada bulunan medya</label>
+  <div class="media" id="media"></div>
+</div>
+
+<div class="note" id="note"></div>
+
+<details>
+  <summary data-i18n="connSettings">Bağlantı ayarları</summary>
+  <label for="port" data-i18n="labelPort">Port</label>
+  <input id="port" type="number">
+  <label for="token" data-i18n="labelToken">Anahtar (data/api_endpoint.json içinde)</label>
+  <input id="token" type="text" spellcheck="false">
+  <label for="minSize" data-i18n="labelMinSize">En küçük devralma boyutu (MB)</label>
+  <input id="minSize" type="number" min="0" step="0.5">
+  <div class="opt"><input type="checkbox" id="enabled"> <span data-i18n="optTakeover">Tarayıcı indirmelerini AfuDM devralsın</span></div>
+  <div class="row" style="margin-top:10px">
+    <button id="pair" data-i18n="btnPair">Otomatik bağlan</button>
+    <button class="ghost" id="save" data-i18n="btnSave">Ayarları kaydet</button>
+  </div>
+</details>
+
+<script src="popup.js"></script>
+</body>
+</html>

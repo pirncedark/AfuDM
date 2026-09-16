@@ -1,0 +1,21 @@
+# --- GIZLI: asla depoya girmez ---
+# aria2 RPC anahtari, yerel API token'i, veritabani, loglar
+data/
+
+# --- Buyuk ikililer: depoya konmaz, kullanici indirir ---
+# ffmpeg 97 MB + yt-dlp 17 MB + aria2c 5.4 MB. GitHub'da 100 MB dosya siniri var
+# ve bu dosyalar zaten Ayarlar > Motorlar'dan indiriliyor (core/engines.py).
+engine/*.exe
+engine/*.dll
+
+# Paketlenmis uygulama (surum ciktisi olarak yayimlanir, kaynakta durmaz)
+AfuDM.exe
+
+# --- Uretilen / gecici ---
+build_out/
+downloads/
+__pycache__/
+*.pyc
+*.pyo
+.playwright-mcp/
+*.eski
