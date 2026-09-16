@@ -128,31 +128,51 @@ if (-not $yukle) { Yaz "yukle" "hata" "Paketlenmemis oge yukle dugmesi bulunamad
 $yukle.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
 Yaz "yukle" "tamam"
 
-# 4) Klasor secme penceresi: standart Windows diyalogu, kimlikler dilden bagimsiz
-#    (1152 = dosya/klasor adi kutusu, 1 = Tamam/Klasor sec)
-#    Chrome dosya pencerelerini AYRI bir yardimci surecte (utility) acar:
-#    tarayici surecinin kimligiyle aranirsa bulunmaz. Tum chrome.exe surecleri.
+# 4) Klasor secme penceresi. OLCULDU: Chrome onu AYRI bir chrome.exe (utility)
+#    surecinde acar ve UI Automation kok listesinde "Klasor:" kutusu / "Klasor Sec"
+#    dugmesi GORUNMEZ. Win32'de ise standart kimliklerle durur (dilden bagimsiz):
+#    1152 = Edit (Klasor:), 1 = Button (Klasor Sec). Yazi WM_SETTEXT, tik BM_CLICK.
+Add-Type -Namespace AfuDM -Name Diyalog -MemberDefinition @"
+[DllImport("user32.dll")] static extern bool EnumWindows(EnumProc cb, System.IntPtr l);
+delegate bool EnumProc(System.IntPtr h, System.IntPtr l);
+[DllImport("user32.dll")] static extern int GetWindowThreadProcessId(System.IntPtr h, out int pid);
+[DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(System.IntPtr h, System.Text.StringBuilder s, int n);
+[DllImport("user32.dll")] static extern bool IsWindowVisible(System.IntPtr h);
+[DllImport("user32.dll")] public static extern System.IntPtr GetDlgItem(System.IntPtr h, int id);
+[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern System.IntPtr SendMessage(System.IntPtr h, int m, System.IntPtr w, string l);
+[DllImport("user32.dll")] public static extern bool PostMessage(System.IntPtr h, int m, System.IntPtr w, System.IntPtr l);
+[DllImport("user32.dll")] public static extern bool IsWindow(System.IntPtr h);
+public static System.IntPtr Bul(int[] pids) {
+  System.IntPtr sonuc = System.IntPtr.Zero;
+  EnumWindows((h, l) => {
+    int pid; GetWindowThreadProcessId(h, out pid);
+    var sinif = new System.Text.StringBuilder(64); GetClassName(h, sinif, 64);
+    if (System.Array.IndexOf(pids, pid) >= 0 && sinif.ToString() == "#32770" && IsWindowVisible(h)
+        && GetDlgItem(h, 1152) != System.IntPtr.Zero && GetDlgItem(h, 1) != System.IntPtr.Zero) {
+      sonuc = h; return false;
+    }
+    return true;
+  }, System.IntPtr.Zero);
+  return sonuc;
+}
+"@
 function Diyalog {
-  $chromeSurecleri = @(Get-Process chrome -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
-  $kosul = New-Object $PC($AE::ClassNameProperty, "#32770")
-  foreach ($d in $AE::RootElement.FindAll($TS::Children, $kosul)) {
-    if ($chromeSurecleri -contains $d.Current.ProcessId -and $d.FindFirst($TS::Descendants,
-        (New-Object $PC($AE::AutomationIdProperty, "1152")))) { return $d }
-  }
+  $pids = [int[]]@(Get-Process chrome -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+  $h = [AfuDM.Diyalog]::Bul($pids)
+  if ($h -ne [System.IntPtr]::Zero) { return $h }
 }
 $diyalog = Bekle { Diyalog } 15
 if (-not $diyalog) { Yaz "klasor" "hata" "Klasor secme penceresi acilmadi"; exit 5 }
-for ($deneme = 0; $deneme -lt 3 -and (Diyalog); $deneme++) {
-  $kutu = $diyalog.FindFirst($TS::Descendants, (New-Object $PC($AE::AutomationIdProperty, "1152")))
-  $tamam = $diyalog.FindFirst($TS::Descendants, (New-Object $PC($AE::AutomationIdProperty, "1")))
-  if (-not $kutu -or -not $tamam) { Start-Sleep -Milliseconds 500; continue }
-  # Ilk denemede tam yol; pencere klasorun ICINE girdiyse bos birakip secilir.
+$WM_SETTEXT = 0x000C; $BM_CLICK = 0x00F5
+for ($deneme = 0; $deneme -lt 3 -and [AfuDM.Diyalog]::IsWindow($diyalog); $deneme++) {
+  # Ilk denemede tam yol; pencere klasorun ICINE girdiyse bos birakip "Klasor Sec".
   $deger = if ($deneme -eq 0) { $Klasor } else { "" }
-  $kutu.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($deger)
-  $tamam.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+  [void][AfuDM.Diyalog]::SendMessage([AfuDM.Diyalog]::GetDlgItem($diyalog, 1152), $WM_SETTEXT, [System.IntPtr]::Zero, $deger)
+  # PostMessage: tik diyalogu kapatirken bu betik beklemede kalmasin
+  [void][AfuDM.Diyalog]::PostMessage([AfuDM.Diyalog]::GetDlgItem($diyalog, 1), $BM_CLICK, [System.IntPtr]::Zero, [System.IntPtr]::Zero)
   Start-Sleep -Milliseconds 1500
 }
-if (Diyalog) { Yaz "klasor" "hata" "Klasor secilemedi"; exit 6 }
+if ([AfuDM.Diyalog]::IsWindow($diyalog)) { Yaz "klasor" "hata" "Klasor secilemedi"; exit 6 }
 Yaz "klasor" "tamam"
 
 # 5) Dogrula: AfuDM karti listede mi?
@@ -197,9 +217,9 @@ def sayfayi_ac(ek_argumanlar: list[str] | None = None) -> subprocess.Popen | Non
     return subprocess.Popen([chrome, *(ek_argumanlar or []), "about:blank"])
 
 
-def yolu_panoya_kopyala() -> bool:
+def panoya_kopyala(metin: str) -> bool:
     try:
-        islem = subprocess.run(["clip"], input=str(uzanti_klasoru()).encode("utf-16-le"),
+        islem = subprocess.run(["clip"], input=metin.encode("utf-16-le"),
                                creationflags=CREATE_NO_WINDOW, timeout=5)
         return islem.returncode == 0
     except (OSError, subprocess.SubprocessError):

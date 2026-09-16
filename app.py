@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import webview  # noqa: E402
 
 from api.server import LocalAPI  # noqa: E402
-from core import clipboard, engines, lang, paths, pencere  # noqa: E402
+from core import chrome_kurulum, clipboard, engines, lang, paths, pencere  # noqa: E402
 from core.manager import Manager  # noqa: E402
 
 # Pencere basligi dile gore secilir (bkz. core/lang.py); ayar okunana kadar bu durur.
@@ -71,6 +71,8 @@ class Api:
         # Motor indirmeleri: {"ffmpeg": {"durum": "iniyor", "inen": .., "toplam": ..}}
         self._motor_ilerleme: dict[str, dict] = {}
         self._ozel_baslik = False  # Windows basligi kaldirildi mi (core/pencere.py)
+        self._chrome = chrome_kurulum.OtomatikEkleme()
+        self._chrome_baslangic = 0.0
 
     # --- durum ------------------------------------------------------------
     def snapshot(self) -> dict:
@@ -239,6 +241,42 @@ class Api:
 
     def pencere_kenar(self, kenar: str) -> dict:
         return {"ok": bool(self._window and pencere.kenardan_boyutla(self._window, kenar))}
+
+    # --- Chrome'a uzanti ekleme (bkz. core/chrome_kurulum.py) ---------------
+    def chrome_durum(self) -> dict:
+        return {
+            "ok": True,
+            "chrome": bool(chrome_kurulum.chrome_yolu()),
+            "klasor": str(chrome_kurulum.uzanti_klasoru()),
+            "adres": "chrome://extensions/",
+        }
+
+    def chrome_hazirla(self) -> dict:
+        """Pencere acildi: eslestirmeyi 10 dk ac ki ELLE kurulumda da uzanti
+        kendiliginden baglansin; "baglandi" bu andan sonraki eslesmeye bakar."""
+        self._chrome_baslangic = time.time()
+        self.local_api.open_pairing(600.0)
+        return self.chrome_durum()
+
+    def chrome_otomatik(self) -> dict:
+        self._chrome_baslangic = self._chrome_baslangic or time.time()
+        # Eslestirme penceresi kurulumdan ONCE: uzanti kurulur kurulmaz baglanir.
+        baslatildi = self._chrome.baslat(once=lambda: self.local_api.open_pairing(600.0))
+        return {"ok": True, "baslatildi": baslatildi}
+
+    def chrome_ilerleme(self) -> dict:
+        durum = self._chrome.durum()
+        durum["baglandi"] = self.local_api.son_eslesme >= self._chrome_baslangic > 0
+        return {"ok": True, **durum}
+
+    def chrome_kopyala(self, ne: str) -> dict:
+        metin = "chrome://extensions/" if ne == "adres" else str(chrome_kurulum.uzanti_klasoru())
+        return {"ok": chrome_kurulum.panoya_kopyala(metin)}
+
+    def chrome_ac(self) -> dict:
+        # chrome:// adresi komut satirindan ACILMAZ: bos sekme acilir, adres kopyalanir.
+        chrome_kurulum.panoya_kopyala("chrome://extensions/")
+        return {"ok": bool(chrome_kurulum.sayfayi_ac())}
 
     def probe(self, url: str) -> dict:
         try:

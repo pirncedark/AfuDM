@@ -187,6 +187,47 @@ chrome.webNavigation.onCommitted.addListener((details) => {
   if (details.frameId === 0) chrome.storage.session.remove("medya:" + details.tabId);
 });
 
+/* --- 2b) Kendiliginden eslesme ------------------------------------ */
+/* AfuDM'in "Chrome'a ekle" otomasyonu kurulumdan ONCE eslestirme penceresini
+   acar; uzanti kurulur kurulmaz anahtari alir, kullanici hicbir sey yapmaz.
+   Pencere kapaliysa /pair reddeder (403) — anahtar yalniz o sirada verilir.
+   Service worker uyuyabilecegi icin tekrar denemeler chrome.alarms ile. */
+const ESLESME_ALARMI = "afudm-eslesme";
+const ESLESME_SURESI_MS = 10 * 60 * 1000;
+
+async function kendiligindenEslesme() {
+  const cfg = await config();
+  if (cfg.token) {
+    chrome.alarms.clear(ESLESME_ALARMI);
+    return true;
+  }
+  for (let port = 6811; port <= 6820; port++) {
+    try {
+      const yanit = await fetch(`http://127.0.0.1:${port}/pair`);
+      const veri = await yanit.json();
+      if (veri.ok && veri.token) {
+        await chrome.storage.local.set({ port, token: veri.token, enabled: true });
+        chrome.alarms.clear(ESLESME_ALARMI);
+        notify(chrome.i18n.getMessage("msgPaired"));
+        return true;
+      }
+    } catch (_) { /* bu portta AfuDM yok */ }
+  }
+  const { eslesmeBitis = 0 } = await chrome.storage.local.get("eslesmeBitis");
+  if (Date.now() > eslesmeBitis) chrome.alarms.clear(ESLESME_ALARMI);
+  return false;
+}
+
+chrome.runtime.onInstalled.addListener(async () => {
+  await chrome.storage.local.set({ eslesmeBitis: Date.now() + ESLESME_SURESI_MS });
+  chrome.alarms.create(ESLESME_ALARMI, { periodInMinutes: 0.5 });
+  kendiligindenEslesme();
+});
+chrome.runtime.onStartup.addListener(() => { kendiligindenEslesme(); });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === ESLESME_ALARMI) kendiligindenEslesme();
+});
+
 /* --- 3) Sag tik menusu -------------------------------------------- */
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({

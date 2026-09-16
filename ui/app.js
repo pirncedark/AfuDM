@@ -410,6 +410,72 @@ $("addGo").onclick = async () => {
   } catch (err) { $("addErr").textContent = err.message; }
 };
 
+/* ---------- Chrome'a ekle (core/chrome_kurulum.py) ---------- */
+function chromeCiz(durum) {
+  const adimlar = durum.adimlar || {};
+  document.querySelectorAll("#chrAdimlar li").forEach((satir) => {
+    let hal = adimlar[satir.dataset.adim] || "";
+    if (satir.dataset.adim === "baglandi") {
+      hal = durum.baglandi ? "tamam" : (adimlar.dogrula === "tamam" ? "calisiyor" : "");
+    }
+    satir.className = hal === "bekliyor" ? "" : hal;
+  });
+  const sonuc = $("chrSonuc");
+  if (durum.baglandi) {
+    sonuc.textContent = t("chr.ok");
+    sonuc.className = "chr-sonuc iyi";
+  } else if (durum.sonuc === "hata") {
+    sonuc.textContent = t(durum.mesaj === "chrome_yok" ? "chr.noChrome" : "chr.fail");
+    sonuc.className = "chr-sonuc kotu";
+    $("chrElle").open = true;  // otomasyon takildiysa elle yol hemen gorunsun
+  } else if (durum.sonuc === "kuruldu") {
+    sonuc.textContent = t("chr.waitPair");
+    sonuc.className = "chr-sonuc";
+  } else {
+    sonuc.textContent = "";
+    sonuc.className = "chr-sonuc";
+  }
+  $("chrAuto").disabled = !!durum.calisiyor || !!durum.baglandi;
+}
+
+async function chromeIzle() {
+  if (!$("chromeVeil").classList.contains("open")) {
+    clearInterval(state.chromeTimer);
+    state.chromeTimer = null;
+    return;
+  }
+  try { chromeCiz(await call("chrome_ilerleme")); } catch (_) { /* kopru yoksa sessiz */ }
+}
+
+$("openChrome").onclick = async () => {
+  try {
+    const bilgi = await call("chrome_hazirla");
+    $("chrKlasor").textContent = bilgi.klasor;
+    $("chrKlasor").title = bilgi.klasor;
+    if (!bilgi.chrome) {
+      chromeCiz({ sonuc: "hata", mesaj: "chrome_yok" });
+      $("chrAuto").disabled = true;
+    }
+  } catch (err) { toast(err.message, true); }
+  openVeil("chromeVeil");
+  chromeIzle();
+  clearInterval(state.chromeTimer);
+  state.chromeTimer = setInterval(chromeIzle, 700);
+};
+$("chrAuto").onclick = async () => {
+  $("chrAuto").disabled = true;
+  try { await call("chrome_otomatik"); } catch (err) { toast(err.message, true); }
+  chromeIzle();
+};
+document.querySelectorAll("[data-kopya]").forEach((dugme) => {
+  dugme.onclick = async () => {
+    try {
+      await call("chrome_kopyala", dugme.dataset.kopya);
+      toast(t("chr.copied"));
+    } catch (err) { toast(err.message, true); }
+  };
+});
+
 $("openSettings").onclick = async () => {
   const s = state.settings;
   $("sLang").value = s.language || "auto";

@@ -381,34 +381,40 @@ TUZAKLAR (vakit kaybettirdi):
   window.native (.NET formu) sonsuz derinlige inip gunlugu "Empty.Empty..." ile
   dolduruyordu (onceden de vardi, konsol olmadigi icin gorulmemisti).
 
-## CHROME'A OTOMATIK EKLEME — YARIM (2026-09-16), `core/chrome_kurulum.py`
-Kullanici: "uygulama icinde anlat + otomasyonla Chrome'a eklenti olarak ekle".
-Henuz ARAYUZE BAGLI DEGIL (Api/ui yok), uzanti otomatik eslesme de yazilmadi.
+## CHROME'A EKLEME — BITTI (2026-09-17), tests/chrome_ekle_test.py
+Sol menude "Chrome'a ekle" (mavi). Pencere: "Otomatik ekle" + 6 adim canli
+(sayfa, gelistirici, yukle, klasor, dogrula, AfuDM'e baglandi) + takilirsa acilan
+elle kurulum anlatimi (chrome://extensions ve klasor yolu icin Kopyala).
+Pencere acilinca eslestirme 10 dk acilir (Api.chrome_hazirla): ELLE kurulumda da
+uzanti kendiliginden baglanir.
 
-Calisan kisim (gecici Chrome profiliyle olculdu, kullanicinin profiline dokunmadan):
-  sayfa -> gelistirici modu -> "Paketlenmemis oge yukle" TAMAM.
-Kalan tek adim: klasor penceresine yolu yazmak.
+Uctan uca test (gecici Chrome profili, kullanicinin profiline dokunmaz): 5 adim
++ uzanti KENDILIGINDEN /pair ile baglandi (5 sn). AfuDM acikken de gecti (6811
+reddetti, testin sunucusu 6812).
+
+Parcalar:
+- `core/chrome_kurulum.py` — PowerShell + .NET UI Automation betigi (exe'ye ek
+  kutuphane YOK), `OtomatikEkleme` (arka planda, durum() ile izlenir).
+- uzanti `kendiligindenEslesme()`: onInstalled/onStartup + chrome.alarms (30 sn,
+  10 dk), 6811-6820 /pair; `alarms` izni.
+- `LocalAPI.son_eslesme` — anahtar en son ne zaman verildi ("baglandi" isareti).
+- i18n: `data-i18n-html` (yalniz sabit <b>/<em> metinleri), i18n_test kapsiyor.
 
 OLCULEN GERCEKLER (tekrar deneme):
 - Chrome web magazasi disi uzantiyi kendiliginden kurdurmaz; 137+ `--load-extension`
-  KAPALI. Tek yol kullanicinin tiklamalarini UI Automation ile yapmak.
-- **Chrome komut satirindan `chrome://` adresi ACMAZ** (Yeni Sekme acar).
-  Cozum (calisiyor): `about:blank` ile yeni sekme -> adres cubugu ("Adres ve arama
-  cubugu"/"Address and search bar") ValuePattern.SetValue -> Chrome ONDEYSE tek Enter.
-- Gelistirici modu Button + TogglePattern; yukle Button + InvokePattern calisiyor.
-- **Klasor penceresi ACILIYOR** ("#32770", baslik "Uzanti dizinini secin.") ama
-  tarayici surecinde DEGIL, ayri bir chrome.exe (utility) surecinde. Betikteki
-  `Diyalog` fonksiyonu AutomationId 1152 sarti yuzunden bulamiyor: klasor seciciyi
-  (FOS_PICKFOLDERS) kutu kimligi FARKLI. Siradaki: o penceredeki Edit/ComboBox'lari
-  listele (scratchpad tani.ps1 mantigi), "Klasor:"/"Folder:" kutusu + id 1 dugmesi.
-- Test sonrasi yalniz `--user-data-dir=...afudm_chrome_*` sureclerini oldur.
-
-Plan (kalan): klasor kutusu -> dogrulama (kart "AfuDM*") -> Api (chrome_otomatik,
-chrome_ilerleme, chrome_sayfa_ac, yolu_kopyala) + ayarlarda "Chrome'a ekle" penceresi
-(adim listesi + elle kurulum anlatimi + yol kopyala) -> uzantida onInstalled/alarms ile
-/pair denemesi (uygulama otomasyondan ONCE start_pairing acar) -> exe + test.
-Kullanicinin Chrome'u "kurulus tarafindan yonetiliyor": tek ilke
-ExtensionManifestV2Availability=2 (engel DEGIL, uzanti MV3).
+  KAPALI. Tek yol kullanicinin tiklamalarini yapmak.
+- **Chrome komut satirindan `chrome://` adresi ACMAZ** (Yeni Sekme acar). Cozum:
+  `about:blank` ile YENI sekme -> adres cubugu ("Adres ve arama cubugu") ValuePattern
+  -> Chrome ONDEYSE tek Enter (degilse tus gonderilmez, hata + elle yol).
+- Gelistirici modu: Button + TogglePattern; yukle: Button + InvokePattern.
+- **Klasor penceresi AYRI chrome.exe (utility) surecinde** ve UIA'da "Klasor:" kutusu
+  ile "Klasor Sec" GORUNMEZ. Win32'de standart: Edit 1152 + Button 1 -> WM_SETTEXT +
+  PostMessage(BM_CLICK). Pencere arama C# yardimcisiyla (PowerShell geri cagrisinin
+  ciktisi kaybolur).
+- Profil Preferences dosyasina bakmak YANILTIR (Chrome ~10 sn gecikmeli yazar,
+  zorla kapatilinca hic yazmaz) — kanit olarak /pair kullanildi.
+- Kullanicinin Chrome'u "kurulus tarafindan yonetiliyor": tek ilke
+  ExtensionManifestV2Availability=2 (engel DEGIL, uzanti MV3).
 
 ## VIDEO PANELI — BITTI (2026-09-16), tests/video_panel_test.py 12/12
 IDM gibi: video oynayinca ustunde "AfuDM ile indir" -> kalite listesi -> AfuDM.
@@ -496,6 +502,7 @@ Anahtar kaynagi: `antygravitiy/.env` -> MCP_TELEGRAM_TOKEN, chat 1483248658.
     python tests/daemon_test.py          (AfuDM KAPALIYKEN)
     python tests/baslik_test.py          (AfuDM acikken; fare kullanmaz)
     python tests/video_panel_test.py     (AfuDM acikken; ffmpeg+ffprobe gerekir, 12 test)
+    python tests/chrome_ekle_test.py     (Chrome gerekir; gecici profil, 7 kontrol)
 
 ## ONEMLI KURALLAR
 - Portable: hicbir sey sisteme yazilmaz; `data/` ve `downloads/` klasor icinde.

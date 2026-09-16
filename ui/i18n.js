@@ -40,6 +40,31 @@ const DICT = {
 
     "rail.openFolder": "İndirme klasörünü aç",
     "rail.settings": "Ayarlar",
+    "rail.chrome": "Chrome'a ekle",
+    "chr.title": "Chrome'a ekle",
+    "chr.intro": "Uzantı, Chrome'daki indirmeleri AfuDM'e yönlendirir ve oynayan videoların üstüne \"AfuDM ile indir\" düğmesi koyar.",
+    "chr.auto": "Otomatik ekle",
+    "chr.autoHint": "Chrome'da yeni bir sekme açılır; bitene kadar birkaç saniye bekle.",
+    "chr.s.sayfa": "Uzantılar sayfası açılıyor",
+    "chr.s.gelistirici": "Geliştirici modu açılıyor",
+    "chr.s.yukle": "\"Paketlenmemiş öğe yükle\" seçiliyor",
+    "chr.s.klasor": "AfuDM uzantı klasörü seçiliyor",
+    "chr.s.dogrula": "Uzantının eklendiği doğrulanıyor",
+    "chr.s.baglandi": "Uzantı AfuDM'e bağlanıyor",
+    "chr.manual": "Elle eklemek istersen (1 dakika)",
+    "chr.m1": "Chrome'da yeni sekme aç, adres çubuğuna yapıştır ve Enter'a bas:",
+    "chr.m2": "Sağ üstteki <b>Geliştirici modu</b> anahtarını aç.",
+    "chr.m3": "Sol üstteki <b>Paketlenmemiş öğe yükle</b> düğmesine bas. <em>\"Uzantı paketle\" değil!</em>",
+    "chr.m4": "Açılan pencerede <b>Klasör:</b> kutusuna bu yolu yapıştır, <b>Klasör Seç</b>'e bas:",
+    "chr.m5": "Bu pencere açıkken uzantı AfuDM'e kendiliğinden bağlanır; yukarıdaki son satır yeşile döner.",
+    "chr.update": "Uzantıyı güncellemek için: uzantılar sayfasında AfuDM kartındaki ⟳ simgesine bas.",
+    "chr.copy": "Kopyala",
+    "chr.copied": "Panoya kopyalandı.",
+    "chr.close": "Kapat",
+    "chr.ok": "Hazır! Uzantı Chrome'a eklendi ve AfuDM'e bağlandı.",
+    "chr.fail": "Otomatik ekleme bu adımda takıldı. Aşağıdaki elle adımlarla 1 dakikada bitirebilirsin.",
+    "chr.noChrome": "Bu bilgisayarda Google Chrome bulunamadı.",
+    "chr.waitPair": "Uzantı eklendi, AfuDM'e bağlanması bekleniyor…",
 
     "bar.add": "Link ekle",
     "bar.pauseAll": "Tümünü duraklat",
@@ -188,6 +213,31 @@ const DICT = {
 
     "rail.openFolder": "Open download folder",
     "rail.settings": "Settings",
+    "rail.chrome": "Add to Chrome",
+    "chr.title": "Add to Chrome",
+    "chr.intro": "The extension sends Chrome downloads to AfuDM and puts a \"Download with AfuDM\" button on playing videos.",
+    "chr.auto": "Add automatically",
+    "chr.autoHint": "A new tab opens in Chrome; wait a few seconds until it finishes.",
+    "chr.s.sayfa": "Opening the extensions page",
+    "chr.s.gelistirici": "Turning on Developer mode",
+    "chr.s.yukle": "Choosing \"Load unpacked\"",
+    "chr.s.klasor": "Selecting the AfuDM extension folder",
+    "chr.s.dogrula": "Checking the extension was added",
+    "chr.s.baglandi": "Connecting the extension to AfuDM",
+    "chr.manual": "Prefer to add it by hand? (1 minute)",
+    "chr.m1": "Open a new tab in Chrome, paste this into the address bar and press Enter:",
+    "chr.m2": "Turn on <b>Developer mode</b> at the top right.",
+    "chr.m3": "Click <b>Load unpacked</b> at the top left. <em>Not \"Pack extension\"!</em>",
+    "chr.m4": "In the window that opens, paste this path into the <b>Folder:</b> box and click <b>Select Folder</b>:",
+    "chr.m5": "While this window is open the extension connects to AfuDM by itself; the last line above turns green.",
+    "chr.update": "To update the extension: click ⟳ on the AfuDM card on the extensions page.",
+    "chr.copy": "Copy",
+    "chr.copied": "Copied to clipboard.",
+    "chr.close": "Close",
+    "chr.ok": "Done! The extension is in Chrome and connected to AfuDM.",
+    "chr.fail": "Automatic setup got stuck at this step. Finish it by hand below in about a minute.",
+    "chr.noChrome": "Google Chrome was not found on this computer.",
+    "chr.waitPair": "Extension added, waiting for it to connect to AfuDM…",
 
     "bar.add": "Add link",
     "bar.pauseAll": "Pause all",
@@ -341,6 +391,10 @@ function applyStatic(root) {
   const scope = root || document;
   scope.querySelectorAll("[data-i18n]").forEach((node) => {
     node.textContent = t(node.getAttribute("data-i18n"));
+  });
+  // Yalniz bu dosyadaki SABIT metinler (<b>/<em> icerir); kullanici verisi degil.
+  scope.querySelectorAll("[data-i18n-html]").forEach((node) => {
+    node.innerHTML = t(node.getAttribute("data-i18n-html"));
   });
   scope.querySelectorAll("[data-i18n-ph]").forEach((node) => {
     node.placeholder = t(node.getAttribute("data-i18n-ph"));

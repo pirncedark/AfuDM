@@ -50,6 +50,7 @@
     </nav>
     <div class="rail-foot">
       <button id="openFolder" data-i18n="rail.openFolder">İndirme klasörünü aç</button>
+      <button id="openChrome" class="rail-chrome" data-i18n="rail.chrome">Chrome'a ekle</button>
       <button id="openSettings" data-i18n="rail.settings">Ayarlar</button>
       <div class="dir-hint" id="dirHint"></div>
     </div>
@@ -190,6 +191,45 @@
       <span style="flex:1"></span>
       <button class="btn ghost" data-close="setVeil" data-i18n="set.cancel">Vazgeç</button>
       <button class="btn primary" id="setGo" data-i18n="set.save">Ayarları kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- Chrome'a uzanti ekleme (core/chrome_kurulum.py) -->
+<div class="veil" id="chromeVeil">
+  <div class="sheet">
+    <h2 data-i18n="chr.title">Chrome'a ekle</h2>
+    <div class="body">
+      <div class="hint chr-giris" data-i18n="chr.intro">Uzantı, Chrome'daki indirmeleri AfuDM'e yönlendirir ve oynayan videoların üstüne "AfuDM ile indir" düğmesi koyar.</div>
+      <div class="chr-otomatik">
+        <button class="btn primary" id="chrAuto" data-i18n="chr.auto">Otomatik ekle</button>
+        <span class="hint" data-i18n="chr.autoHint">Chrome'da yeni bir sekme açılır; bitene kadar birkaç saniye bekle.</span>
+      </div>
+      <ol class="chr-adimlar" id="chrAdimlar">
+        <li data-adim="sayfa"><i></i><span data-i18n="chr.s.sayfa">Uzantılar sayfası açılıyor</span></li>
+        <li data-adim="gelistirici"><i></i><span data-i18n="chr.s.gelistirici">Geliştirici modu açılıyor</span></li>
+        <li data-adim="yukle"><i></i><span data-i18n="chr.s.yukle">"Paketlenmemiş öğe yükle" seçiliyor</span></li>
+        <li data-adim="klasor"><i></i><span data-i18n="chr.s.klasor">AfuDM uzantı klasörü seçiliyor</span></li>
+        <li data-adim="dogrula"><i></i><span data-i18n="chr.s.dogrula">Uzantının eklendiği doğrulanıyor</span></li>
+        <li data-adim="baglandi"><i></i><span data-i18n="chr.s.baglandi">Uzantı AfuDM'e bağlanıyor</span></li>
+      </ol>
+      <div class="chr-sonuc" id="chrSonuc"></div>
+      <details class="chr-elle" id="chrElle">
+        <summary data-i18n="chr.manual">Elle eklemek istersen (1 dakika)</summary>
+        <ol>
+          <li><span data-i18n="chr.m1">Chrome'da yeni sekme aç, adres çubuğuna yapıştır ve Enter'a bas:</span>
+            <div class="chr-kopya"><code id="chrAdres">chrome://extensions/</code><button class="btn" data-kopya="adres" data-i18n="chr.copy">Kopyala</button></div></li>
+          <li data-i18n-html="chr.m2">Sağ üstteki <b>Geliştirici modu</b> anahtarını aç.</li>
+          <li data-i18n-html="chr.m3">Sol üstteki <b>Paketlenmemiş öğe yükle</b> düğmesine bas. <em>"Uzantı paketle" değil!</em></li>
+          <li><span data-i18n-html="chr.m4">Açılan pencerede <b>Klasör:</b> kutusuna bu yolu yapıştır, <b>Klasör Seç</b>'e bas:</span>
+            <div class="chr-kopya"><code id="chrKlasor"></code><button class="btn" data-kopya="klasor" data-i18n="chr.copy">Kopyala</button></div></li>
+          <li data-i18n="chr.m5">Bu pencere açıkken uzantı AfuDM'e kendiliğinden bağlanır; yukarıdaki son satır yeşile döner.</li>
+        </ol>
+        <div class="hint" data-i18n="chr.update">Uzantıyı güncellemek için: uzantılar sayfasında AfuDM kartındaki ⟳ simgesine bas.</div>
+      </details>
+    </div>
+    <div class="foot">
+      <button class="btn ghost" data-close="chromeVeil" data-i18n="chr.close">Kapat</button>
     </div>
   </div>
 </div>

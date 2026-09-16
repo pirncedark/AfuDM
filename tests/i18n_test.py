@@ -64,7 +64,7 @@ kontrol("bos metin yok", not bos, ", ".join(bos[:5]))
 
 print("2) index.html anahtarlari")
 html = (KOK / "ui" / "index.html").read_text(encoding="utf-8")
-html_anahtar = set(re.findall(r'data-i18n(?:-ph|-title)?="([^"]+)"', html))
+html_anahtar = set(re.findall(r'data-i18n(?:-ph|-title|-html)?="([^"]+)"', html))
 kontrol("index.html anahtar kullaniyor", len(html_anahtar) > 30, f"{len(html_anahtar)} anahtar")
 yok = sorted(k for k in html_anahtar if k not in tr)
 kontrol("index.html'deki her anahtar sozlukte var", not yok, ", ".join(yok[:5]))

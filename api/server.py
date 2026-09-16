@@ -35,6 +35,9 @@ class _Handler(BaseHTTPRequestHandler):
     # Uzantinin anahtari otomatik alabilecegi kisa pencere. Kullanici
     # uygulamadan "Uzantiyi bagla" deyince acilir; suresi dolunca kapanir.
     pair_until = 0.0
+    # Anahtar en son ne zaman verildi: "Chrome'a ekle" penceresi bununla
+    # uzantinin gercekten baglandigini gosterir.
+    son_eslesme = 0.0
 
     # --- yardimcilar ------------------------------------------------------
     def log_message(self, fmt: str, *args) -> None:  # konsolu kirletmesin
@@ -84,6 +87,7 @@ class _Handler(BaseHTTPRequestHandler):
         if parsed.path == "/pair":
             # Anahtari SADECE eslestirme penceresi acikken ver.
             if time.time() < _Handler.pair_until:
+                _Handler.son_eslesme = time.time()
                 self._send(200, {"ok": True, "token": self.token})
             else:
                 self._send(
@@ -208,6 +212,10 @@ class LocalAPI:
         """Uzantinin anahtari otomatik alabilecegi pencereyi ac."""
         _Handler.pair_until = time.time() + seconds
         return _Handler.pair_until
+
+    @property
+    def son_eslesme(self) -> float:
+        return _Handler.son_eslesme
 
     def stop(self) -> None:
         if self.httpd:
