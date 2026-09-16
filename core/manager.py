@@ -206,6 +206,7 @@ class Manager:
         filename: str | None = None,
         cookies: list | None = None,
         user_agent: str | None = None,
+        title: str | None = None,
     ) -> dict:
         source = source.strip()
         if not source:
@@ -226,11 +227,13 @@ class Manager:
             # Cerezler bazi sitelerde tarayicinin kimligine bagli (Cloudflare vb.)
             # split/join satir sonlarini da yok eder: basliga satir enjekte edilemez
             "user_agent": " ".join((user_agent or "").split())[:512],
+            # Video paneli sayfa basligini yollar (HLS'te yt-dlp "master" der)
+            "title": " ".join((title or "").split())[:200],
         }
         row_id = self.store.add(
             kind=kind,
             source=source,
-            title=self.guess_name(source),
+            title=options["title"] or self.guess_name(source),
             dest_dir=dest_dir,
             options=options,
             start_after=start_after,
@@ -314,6 +317,8 @@ class Manager:
             dil=str(self.store.get("language", "auto")),
             cookie_file=cerez_dosyasi,
             user_agent=options.get("user_agent", ""),
+            headers=options.get("headers") or {},
+            dosya_adi=options.get("title", ""),
         )
         self.video_jobs[job_id] = job
         job.start(aria2c=str(paths.ARIA2C), on_update=self._on_video_update)

@@ -345,6 +345,52 @@ TUZAKLAR:
 - Kapali porta fetch Windows'ta ~2 sn surer; 1 sn beklemek yetmez.
 - Sag tik menusu Playwright'tan tetiklenemez (yerel menu) — elle denenmeli.
 
+## SURUM 1.0.0 YAYINDA (2026-09-16)
+https://github.com/pirncedark/AfuDM/releases/tag/v1.0.0 — `AfuDM-v1.0.0-win64.zip`
+(19 MB, cekirdek paket), etiket f4875f1. `gh` OAuth girisiyle (keyring) — PAT YOK.
+Yayindan once zip gecici klasore acilip calistirildi: 5 MB indirme tamamlandi,
+data/ paketin icinde olustu. Pakette THIRD_PARTY_NOTICES.md (aria2 GPL-2.0).
+Git kimligi global ayarli DEGIL: commit'ler `git -c user.name=afuuu -c
+user.email=furkanu@gmail.com` ile atiliyor; `git tag -a` bu yuzden patladi,
+etiketi `gh release create` olusturdu.
+
+## OZEL BASLIK CUBUGU (2026-09-16)
+Kullanici: "header pencere gibi durmasin". `core/pencere.py` + ui (.wc dugmeleri).
+Secilen yol — frameless DEGIL (pywebview Windows'ta cercevesiz pencereyi kenardan
+boyutlandiramiyor, JS ile takilarak surukluyor, Snap yok):
+  1. WM_NCCALCSIZE alt sinifi: baslik yuksekligi istemciye katilir; sol/sag/alt
+     gorunmez kenarlar, golge, yuvarlak kose, Snap, gorev cubugu adi KORUNUR.
+     Buyutulmuste ust + kenar kalinligi (yoksa icerik ekran disina tasar — olculdu:
+     pencere -8,-8 ama istemci 0,0).
+  2. WebView2 `IsNonClientRegionSupportEnabled` — pywebview'in on_webview_ready'sinin
+     BASINA yamalanir (ayar ilk gezinmeden sonra verilirse etkisiz). `.trace` ->
+     `app-region: drag`: surukle/Snap/cift tik Windows'tan.
+  3. Ust kenar: 4px serit -> Api.pencere_kenar -> WM_NCLBUTTONDOWN(HTTOP). Fare
+     birakilmissa baslatilmaz (yapiskan pencere olmasin).
+`tests/baslik_test.py` (11) FARE KULLANMADAN dogrular: Windows'un WindowFromPoint
+kurali AfuDM agacinda taklit edilir.
+
+TUZAKLAR (vakit kaybettirdi):
+- WindowFromPoint ONDEKI BASKA uygulamayi dondurur (burada bir UnrealWindow vardi).
+- WebView2 surukleme alani icin AYRI bir Chrome_WidgetWin_0 acar; ona dogrudan
+  WM_NCHITTEST gonderince HER noktaya CAPTION der. Dogru sonuc icin z sirasi +
+  HTTRANSPARENT atlama taklit edilmeli.
+- `shown` olayinda `evaluate_js` -> "Main window failed to start" (sayfa yok).
+  `loaded` olayina tasindi; JS de pywebviewready'de kendisi soruyor.
+- **Api.window -> Api._window**: pywebview js_api ozelliklerini DOLASIYOR;
+  window.native (.NET formu) sonsuz derinlige inip gunlugu "Empty.Empty..." ile
+  dolduruyordu (onceden de vardi, konsol olmadigi icin gorulmemisti).
+
+## VIDEO PANELI — YARIM (Python tarafi hazir, uzanti yazilmadi)
+Hedef (kullanici): IDM gibi oynayan videonun ustunde "indir" + kalite secimi.
+Hazir olan (format_test'te sinandi): `format_secimi` keyfi yukseklik (360/540 artik
+"best"e dusmuyor), VideoJob `headers` (Referer -> --referer, digerleri --add-header,
+Cookie ASLA komut satirina), `dosya_adi` (sayfa basligi, % kacisi), API `title`.
+Yapilacak: content script (all_frames, play olayi, shadow DOM dugme), background'da
+HLS master/DASH ayristirma + icerik turuyle (mpegurl/dash+xml) yakalama, YouTube
+gibi adres vermeyen sitelerde /probe (yt-dlp) yedegi, yerel HLS ile canli test.
+NOT: kullanicinin ornek verdigi korsan film sitesi icin test/ozel ayar YAPILMADI.
+
 ## OTURUM CEREZLERI — GIRIS GEREKTIREN SITELER (2026-09-16)
 IDM'e gore en buyuk eksik buydu: uzanti yalniz link + Referer yolluyordu,
 Google Drive / uyelik isteyen sitelerde AfuDM hata aliyordu.
@@ -402,6 +448,7 @@ Anahtar kaynagi: `antygravitiy/.env` -> MCP_TELEGRAM_TOKEN, chat 1483248658.
     python tests/extension_test.py       (AfuDM acikken; uzanti Chromium'da, 19 test)
     python tests/cerez_test.py           (ag gerektirmez)
     python tests/daemon_test.py          (AfuDM KAPALIYKEN)
+    python tests/baslik_test.py          (AfuDM acikken; fare kullanmaz)
 
 ## ONEMLI KURALLAR
 - Portable: hicbir sey sisteme yazilmaz; `data/` ve `downloads/` klasor icinde.

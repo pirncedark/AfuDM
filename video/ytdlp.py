@@ -68,8 +68,22 @@ def format_secimi(quality: str, audio_only: bool, birlestirilebilir: bool) -> st
     """
     if audio_only or quality == "audio":
         quality = "audio"
+    if quality and quality.isdigit() and quality not in QUALITY_FORMATS:
+        # Video panelinden gelen keyfi yukseklik (360, 540...): tabloda yoksa
+        # "best"e DUSMESIN, o yukseklige gore sec.
+        h = f"[height<={int(quality)}]"
+        if birlestirilebilir:
+            return f"bestvideo{h}+bestaudio/best{h}"
+        return _KENDI_MUX.format(h=h)
     tablo = QUALITY_FORMATS if birlestirilebilir else COMBINED_FORMATS
     return tablo.get(quality, tablo["best"])
+
+
+def guvenli_ad(ad: str, sinir: int = 150) -> str:
+    """Windows dosya adinda yasak karakterleri at, sonundaki nokta/bosluk kirp."""
+    temiz = "".join("_" if ch in '<>:"/\|?*' or ord(ch) < 32 else ch for ch in ad)
+    temiz = " ".join(temiz.split())[:sinir].rstrip(". ")
+    return temiz or "video"
 
 
 def ytdlp_path() -> str:
@@ -189,6 +203,8 @@ class VideoJob:
     ffmpeg_vardi: bool = True       # is baslarken ffmpeg var miydi (hata metni icin)
     cookie_file: str = ""           # tarayicidan gelen oturum cerezleri (core/cerez.py)
     user_agent: str = ""
+    headers: dict = field(default_factory=dict)  # Referer vb. (gomulu oynaticilar ister)
+    dosya_adi: str = ""             # sayfa basligi; bossa yt-dlp'nin basligi
     started_at: float = field(default_factory=time.time)
     finished_at: float = 0.0
     _thread: threading.Thread | None = None
@@ -201,7 +217,11 @@ class VideoJob:
         ffmpeg_var = ffmpeg_hazir() if ffmpeg_var is None else ffmpeg_var
         self.ffmpeg_vardi = ffmpeg_var
         fmt = format_secimi(self.quality, self.audio_only, ffmpeg_var)
-        out_tpl = str(Path(self.dest_dir) / "%(title).150B.%(ext)s")
+        govde = "%(title).150B"
+        if self.dosya_adi:
+            # Sablonda % ozel: kullanici metnindeki % iki katlanir.
+            govde = guvenli_ad(self.dosya_adi).replace("%", "%%")
+        out_tpl = str(Path(self.dest_dir) / f"{govde}.%(ext)s")
         if self.playlist:
             out_tpl = str(
                 Path(self.dest_dir)
@@ -236,6 +256,11 @@ class VideoJob:
             cmd += ["--cookies", self.cookie_file]
         if self.user_agent:
             cmd += ["--user-agent", self.user_agent]
+        for anahtar, deger in (self.headers or {}).items():
+            if anahtar.lower() == "referer":
+                cmd += ["--referer", str(deger)]
+            elif anahtar.lower() not in ("cookie", "user-agent"):
+                cmd += ["--add-header", f"{anahtar}:{deger}"]
         if aria2c and Path(aria2c).exists():
             # Video parcalarini da cok baglantili indir.
             # IPv6 yoksa aria2c AAAA adresini deneyip "network unreachable" ile

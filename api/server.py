@@ -130,6 +130,7 @@ class _Handler(BaseHTTPRequestHandler):
                     filename=data.get("filename") or None,
                     cookies=data.get("cookies"),
                     user_agent=data.get("user_agent") or None,
+                    title=data.get("title") or None,
                 )
                 self._send(200, {"ok": True, **result})
             elif parsed.path == "/control":

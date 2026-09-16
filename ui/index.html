@@ -22,6 +22,18 @@
     <span><span data-i18n="trace.today">bugün</span> <b id="mTotal">0 B</b></span>
   </div>
   <div class="engine"><span class="dot" id="engineDot"></span><span id="engineText" data-i18n="engine.connecting">motor bağlanıyor</span></div>
+  <!-- Windows basligi yerine (core/pencere.py). Yalniz ozel baslik kurulunca gorunur. -->
+  <div class="wc" id="winControls">
+    <button class="wc-btn" id="wcMin" data-i18n-title="win.min" title="Küçült" tabindex="-1">
+      <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 5.5h10" /></svg></button>
+    <button class="wc-btn" id="wcMax" data-i18n-title="win.max" title="Büyüt" tabindex="-1">
+      <svg viewBox="0 0 10 10" aria-hidden="true"><path class="wc-max" d="M.5.5h9v9h-9z" /><path class="wc-restore" d="M.5 2.5h7v7h-7zM2.5 2.5v-2h7v7h-2" /></svg></button>
+    <button class="wc-btn wc-close" id="wcClose" data-i18n-title="win.close" title="Kapat" tabindex="-1">
+      <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 0l10 10M10 0L0 10" /></svg></button>
+  </div>
+  <div class="wc-edge" data-edge="top"></div>
+  <div class="wc-edge wc-edge-corner-l" data-edge="topleft"></div>
+  <div class="wc-edge wc-edge-corner-r" data-edge="topright"></div>
 </div>
 
 <div class="shell">

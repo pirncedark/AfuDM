@@ -103,6 +103,47 @@ button { cursor: pointer; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--err); }
 .dot.ok { background: var(--done); }
 
+/* ---------- ozel baslik cubugu (core/pencere.py) ----------
+   Windows basligi kaldirilinca bant izi basligin yerine gecer: bos alani
+   surukle (Snap + cift tikla buyut Windows'tan), dugmeler Windows 11 olculerinde. */
+.wc, .wc-edge { display: none; }
+.ozel-baslik .trace { app-region: drag; }
+.ozel-baslik .engine,
+.ozel-baslik .wc,
+.ozel-baslik .wc-edge { app-region: no-drag; }
+.ozel-baslik .engine { right: 152px; top: 9px; }
+.ozel-baslik .wc {
+  display: flex;
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 3;
+}
+.wc-btn {
+  width: 46px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  transition: background-color 90ms linear, color 90ms linear;
+}
+.wc-btn svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; shape-rendering: crispEdges; }
+.wc-btn:hover { background: #ffffff12; color: var(--text); }
+.wc-btn:active { background: #ffffff1c; }
+.wc-close:hover { background: #c42b1c; color: #fff; }
+.wc-close:active { background: #b22a1b; }
+.wc-restore { display: none; }
+.buyuk .wc-max { display: none; }
+.buyuk .wc-restore { display: inline; }
+/* Ust kenar: basligi kaldirinca Windows'un ust boyutlandirma kenari da gider. */
+.ozel-baslik .wc-edge { display: block; position: absolute; top: 0; left: 0; right: 0; height: 4px; z-index: 4; cursor: ns-resize; }
+.ozel-baslik .wc-edge-corner-l { right: auto; width: 8px; cursor: nwse-resize; }
+.ozel-baslik .wc-edge-corner-r { left: auto; width: 8px; cursor: nesw-resize; }
+.ozel-baslik.buyuk .wc-edge { display: none; }
+
 /* ---------- govde ---------- */
 .shell { display: flex; height: calc(100% - var(--trace-h)); }
 

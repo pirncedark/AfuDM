@@ -91,6 +91,28 @@ job5.ffmpeg_vardi = False
 ses_mesaj = job5.anlasilir_hata("ERROR: Requested format is not available")
 kontrol("ses isinde mp3 mesaji verilir", "mp3" in ses_mesaj, ses_mesaj[:70])
 
+print("\nVideo paneli: keyfi yukseklik, Referer, sayfa basligi")
+kontrol("tabloda olmayan 360 'best'e DUSMEZ",
+        ytdlp.format_secimi("360", False, True) == "bestvideo[height<=360]+bestaudio/best[height<=360]",
+        ytdlp.format_secimi("360", False, True))
+kontrol("ffmpeg'siz 360 kendi birlestiriciye gider",
+        "[height<=360]" in ytdlp.format_secimi("360", False, False)
+        and "[ext=m4a]" in ytdlp.format_secimi("360", False, False))
+kontrol("tablodaki 720 degismedi",
+        ytdlp.format_secimi("720", False, True) == ytdlp.QUALITY_FORMATS["720"])
+job6 = ytdlp.VideoJob(job_id="t6", url="https://cdn.ornek.com/master.m3u8", dest_dir="C:/indir",
+                      headers={"Referer": "https://oynatici.ornek.com/e/1", "Origin": "https://oynatici.ornek.com",
+                               "Cookie": "gizli=1"},
+                      dosya_adi='Film: "Adı" / %100 ?')
+cmd6 = job6.build_cmd(aria2c="yok.exe", ffmpeg_var=True)
+kontrol("Referer yt-dlp'ye --referer ile gider",
+        cmd6[cmd6.index("--referer") + 1] == "https://oynatici.ornek.com/e/1")
+kontrol("diger basliklar --add-header ile gider", "Origin:https://oynatici.ornek.com" in cmd6)
+kontrol("Cookie basligi komut satirina YAZILMAZ", not any("gizli=1" in parca for parca in cmd6))
+cikti = cmd6[cmd6.index("-o") + 1]
+kontrol("sayfa basligi dosya adi olur, yasak karakter ve % kacisi",
+        cikti.endswith('Film_ _Adı_ _ %%100 _.%(ext)s'), cikti)
+
 print()
 if hatalar:
     print("BASARISIZ:", ", ".join(hatalar))

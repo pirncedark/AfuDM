@@ -141,6 +141,10 @@ const DICT = {
     "set.notify": "Bitince Telegram'a haber ver",
     "set.shutdown": "Hepsi bitince bilgisayarı kapat",
     "set.pair": "Uzantıyı bağla",
+    "win.min": "Küçült",
+    "win.max": "Büyüt",
+    "win.restore": "Önceki boyut",
+    "win.close": "Kapat",
     "set.cancel": "Vazgeç",
     "set.save": "Ayarları kaydet",
 
@@ -285,6 +289,10 @@ const DICT = {
     "set.notify": "Notify Telegram when finished",
     "set.shutdown": "Shut down the computer when all are done",
     "set.pair": "Pair the extension",
+    "win.min": "Minimize",
+    "win.max": "Maximize",
+    "win.restore": "Restore",
+    "win.close": "Close",
     "set.cancel": "Cancel",
     "set.save": "Save settings",
 

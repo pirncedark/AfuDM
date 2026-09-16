@@ -532,6 +532,29 @@ window.afudmClipboard = (url) => {
   openVeil("addVeil");
 };
 
-window.addEventListener("pywebviewready", () => { state.ready = true; });
+/* ---------- ozel baslik cubugu (core/pencere.py) ---------- */
+window.afudmPencere = async () => {
+  if (!window.pywebview || !window.pywebview.api.pencere_durumu) return;
+  const durum = await window.pywebview.api.pencere_durumu();
+  document.documentElement.classList.toggle("ozel-baslik", !!durum.ozel);
+  document.documentElement.classList.toggle("buyuk", !!durum.buyuk);
+  $("wcMax").title = t(durum.buyuk ? "win.restore" : "win.max");
+};
+$("wcMin").onclick = () => window.pywebview.api.pencere_kucult();
+$("wcMax").onclick = async () => { await window.pywebview.api.pencere_buyut(); window.afudmPencere(); };
+$("wcClose").onclick = () => window.pywebview.api.pencere_kapat();
+document.querySelectorAll(".wc-edge").forEach((kenar) => {
+  kenar.addEventListener("mousedown", (event) => {
+    if (event.button === 0) window.pywebview.api.pencere_kenar(kenar.dataset.edge);
+  });
+});
+// Buyut/geri al Windows'tan da gelebilir (cift tik, Snap, Win+Yukari): simgeyi esitle.
+let pencereZamanlayici;
+window.addEventListener("resize", () => {
+  clearTimeout(pencereZamanlayici);
+  pencereZamanlayici = setTimeout(() => window.afudmPencere(), 120);
+});
+
+window.addEventListener("pywebviewready", () => { state.ready = true; window.afudmPencere(); });
 tick();
 drawTrace();

@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import webview  # noqa: E402
 
 from api.server import LocalAPI  # noqa: E402
-from core import clipboard, engines, lang, paths  # noqa: E402
+from core import clipboard, engines, lang, paths, pencere  # noqa: E402
 from core.manager import Manager  # noqa: E402
 
 # Pencere basligi dile gore secilir (bkz. core/lang.py); ayar okunana kadar bu durur.
@@ -64,10 +64,13 @@ class Api:
     def __init__(self, manager: Manager, local_api: LocalAPI) -> None:
         self.manager = manager
         self.local_api = local_api
-        self.window: webview.Window | None = None
+        # Alt cizgili: pywebview js_api'nin ozelliklerini DOLASIR; `window.native`
+        # (.NET formu) sonsuz derinlige inip gunlugu "Empty.Empty..." ile dolduruyordu.
+        self._window: webview.Window | None = None
         self._baslik_dili: str | None = None
         # Motor indirmeleri: {"ffmpeg": {"durum": "iniyor", "inen": .., "toplam": ..}}
         self._motor_ilerleme: dict[str, dict] = {}
+        self._ozel_baslik = False  # Windows basligi kaldirildi mi (core/pencere.py)
 
     # --- durum ------------------------------------------------------------
     def snapshot(self) -> dict:
@@ -81,10 +84,10 @@ class Api:
         Arayuzdeki metinleri app.js ceviriyor ama pencere basligi Windows'un
         elinde — dil nereden degisirse degissin (Ayarlar penceresi, yerel API
         veya Windows dili) her turda burada esitlenir."""
-        if not dil or dil == self._baslik_dili or self.window is None:
+        if not dil or dil == self._baslik_dili or self._window is None:
             return
         try:
-            self.window.set_title(lang.t("window.title", dil))
+            self._window.set_title(lang.t("window.title", dil))
             self._baslik_dili = dil
         except Exception:
             pass
@@ -208,6 +211,35 @@ class Api:
                 return {"ok": True}
         return {"ok": False, "error": lang.t("err.notFound", str(self.manager.store.get("language", "auto")))}
 
+    # --- ozel baslik cubugu (bkz. core/pencere.py) ------------------------
+    def pencere_kucult(self) -> dict:
+        if self._window:
+            self._window.minimize()
+        return {"ok": True}
+
+    def pencere_buyut(self) -> dict:
+        if self._window:
+            if pencere.buyutulmus_mu(self._window):
+                self._window.restore()
+            else:
+                self._window.maximize()
+        return self.pencere_durumu()
+
+    def pencere_kapat(self) -> dict:
+        if self._window:
+            self._window.destroy()
+        return {"ok": True}
+
+    def pencere_durumu(self) -> dict:
+        return {
+            "ok": True,
+            "ozel": self._ozel_baslik,
+            "buyuk": bool(self._window and pencere.buyutulmus_mu(self._window)),
+        }
+
+    def pencere_kenar(self, kenar: str) -> dict:
+        return {"ok": bool(self._window and pencere.kenardan_boyutla(self._window, kenar))}
+
     def probe(self, url: str) -> dict:
         try:
             return {"ok": True, "info": self.manager.probe_video(url)}
@@ -287,6 +319,7 @@ def main() -> int:
         print(f"UYARI: yerel API acilamadi: {exc}")
 
     api = Api(manager, local_api)
+    pencere.webview2_hazirligini_yama()  # CSS app-region: drag, ilk sayfadan once
     window = webview.create_window(
         lang.t("window.title", str(manager.store.get("language", "auto"))),
         str(paths.UI / "index.html"),
@@ -297,7 +330,26 @@ def main() -> int:
         background_color="#14181F",
         text_select=False,
     )
-    api.window = window
+    api._window = window
+
+    def baslik_hazir() -> None:
+        try:
+            ozel = pencere.basligi_kaldir(window)
+        except Exception as exc:  # kaldirilamazsa Windows basligi kalir, uygulama calisir
+            print(f"UYARI: ozel baslik kurulamadi: {exc}")
+            ozel = False
+        api._ozel_baslik = ozel
+
+    def sayfa_hazir() -> None:
+        # Pencere gosterildiginde sayfa henuz yuklenmemis olabilir (evaluate_js
+        # o anda istisna firlatir); dugmeleri sayfa yuklenince goster.
+        try:
+            window.evaluate_js("window.afudmPencere && window.afudmPencere()")
+        except Exception:
+            pass
+
+    window.events.shown += baslik_hazir
+    window.events.loaded += sayfa_hazir
 
     watcher = clipboard.ClipboardWatcher(
         on_link=lambda url: window.evaluate_js(
