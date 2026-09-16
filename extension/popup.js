@@ -22,7 +22,7 @@ async function refresh() {
   $("minSize").value = status.cfg.minSizeMB;
   $("enabled").checked = status.cfg.enabled;
   if (!status.cfg.token) {
-    say("Anahtar bos. AfuDM klasorundeki data/api_endpoint.json icindeki anahtari asagiya yapistir.", "bad");
+    say(chrome.i18n.getMessage("msgTokenEmpty"), "bad");
   }
 
   const found = await ask({ type: "media" });
@@ -42,7 +42,7 @@ async function refresh() {
 }
 
 async function send(url, kind) {
-  if (!url) { say("Once bir baglanti gir.", "bad"); return; }
+  if (!url) { say(chrome.i18n.getMessage("msgNoUrl"), "bad"); return; }
   const quality = $("quality").value;
   const result = await ask({
     type: "add",
@@ -71,21 +71,28 @@ $("save").onclick = async () => {
       enabled: $("enabled").checked,
     },
   });
-  say("Ayarlar kaydedildi.", "ok");
+  say(chrome.i18n.getMessage("msgSaved"), "ok");
   refresh();
 };
 $("pair").onclick = async () => {
   const port = Number($("port").value) || 6811;
+  let response;
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/pair`);
-    const data = await response.json();
-    if (!data.ok) throw new Error(data.error || "eslestirme reddedildi");
-    await ask({ type: "save", cfg: { port, token: data.token, enabled: true } });
-    say("Baglandi. Artik tarayici indirmelerini AfuDM devraliyor.", "ok");
-    refresh();
-  } catch (error) {
-    say(error.message, "bad");
+    response = await fetch(`http://127.0.0.1:${port}/pair`);
+  } catch (_) {
+    say(chrome.i18n.getMessage("notifyNotRunning"), "bad"); // AfuDM kapali / port yanlis
+    return;
   }
+  const data = await response.json().catch(() => ({}));
+  if (!data.ok) {
+    // Sunucunun Turkce metni yerine tarayici dilinde anlat.
+    say(response.status === 403 ? chrome.i18n.getMessage("msgPairClosed")
+      : chrome.i18n.getMessage("msgNoResponse", [String(response.status)]), "bad");
+    return;
+  }
+  await ask({ type: "save", cfg: { port, token: data.token, enabled: true } });
+  say(chrome.i18n.getMessage("msgPaired"), "ok");
+  refresh();
 };
 
 $("url").addEventListener("keydown", (event) => {

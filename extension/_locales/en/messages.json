@@ -93,5 +93,28 @@
   },
   "notifyAddFailed": {
     "message": "Could not add: "
+  },
+  "msgTokenEmpty": {
+    "message": "Key is empty. In AfuDM press Settings > Pair the extension and click \"Auto connect\", or paste the key from data/api_endpoint.json below."
+  },
+  "msgNoUrl": {
+    "message": "Enter a link first."
+  },
+  "msgSaved": {
+    "message": "Settings saved."
+  },
+  "msgPaired": {
+    "message": "Connected. AfuDM now takes over browser downloads."
+  },
+  "msgPairClosed": {
+    "message": "Pairing is closed — press Settings > Pair the extension in AfuDM, then try again."
+  },
+  "msgNoResponse": {
+    "message": "AfuDM did not respond ($CODE$)",
+    "placeholders": {
+      "code": {
+        "content": "$1"
+      }
+    }
   }
 }

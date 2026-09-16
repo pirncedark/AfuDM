@@ -1,5 +1,5 @@
 # AfuDM — Durum & Devam Notu
-Son guncelleme: 2026-09-16 13:45
+Son guncelleme: 2026-09-16 (uzanti canli testi)
 
 ## Ne yapiyoruz
 IDM yerine gecen, PORTABLE (tek klasor, kopyala-calistir) Windows masaustu
@@ -314,7 +314,36 @@ Ikisi de yerel izlerle calisir; izler yoksa ATLANIR.
 2. Cekirdek paket + istege bagli motor indirme (kullanici "1" dedi):
    gonderilen klasor aria2 + AfuDM.exe + eklenti; 4K/mp3 isteyen uygulama
    icinden motorlari indirir, engine/ icine gider (portable bozulmaz).
-3. Tarayici uzantisini Chrome'a yukleyip devralmayi canli dene.
+3. ~~Tarayici uzantisini Chrome'a yukleyip devralmayi canli dene.~~ BITTI — asagida.
+
+## TARAYICI UZANTISI CANLI TEST — 12/12 GECTI (2026-09-16)
+`python tests/extension_test.py` — uzanti GERCEK Chromium'a `--load-extension`
+ile yuklenir (Playwright). ONKOSUL: AfuDM acik. AG GEREKTIRMEZ: dosyalar
+127.0.0.1'deki gecici sunucudan gelir.
+  service worker ayakta | acilir pencere "AfuDM çalışıyor" | eslestirme kapaliyken
+  reddedildi, acikken anahtar alindi | tarayici indirmesi AfuDM'e devredildi ve
+  TAMAMLANDI, tarayicidaki kopya silindi | .txt devralinmadi | AfuDM kapaliyken
+  indirmeye dokunulmadi | sayfadaki .mp4 yakalandi | JS hatasi yok
+
+Eslestirmeyi calisan uygulamanin penceresine dokunmadan sinamak icin ayni token
+dosyasini kullanan IKINCI bir `LocalAPI` (6899) acilip `open_pairing()` cagriliyor.
+DIKKAT: `LocalAPI.start()` `data/api_endpoint.json`'u kendi portuyla EZER —
+test yedekleyip geri yaziyor.
+
+**CANLI TESTIN BULDUGU KUSUR (duzeltildi):** acilir penceredeki 5 mesaj
+`popup.js`'te SABIT ve aksansiz Turkce'ydi ("Baglandi. Artik...", sunucunun
+"eslestirme kapali" metni). Ingilizce kullanici Turkce goruyordu; i18n testi
+yakalayamadi cunku sadece getMessage anahtarlarini kontrol ediyor. Simdi
+`msgTokenEmpty/msgNoUrl/msgSaved/msgPaired/msgPairClosed/msgNoResponse` locale'de;
+403 -> msgPairClosed, baglanti yok -> notifyNotRunning. EN de canli dogrulandi.
+
+TUZAKLAR:
+- Ayarlar `<details>` icinde KATLI gelir; once `details summary` tiklanmali,
+  yoksa `#port` doldurulamaz ve `inner_text("#pair")` BOS doner.
+- Uzanti sayfasinda CSP `unsafe-eval` yasak: `page.wait_for_function("...")`
+  CALISMAZ — Python tarafinda `inner_text` ile yokla.
+- Kapali porta fetch Windows'ta ~2 sn surer; 1 sn beklemek yetmez.
+- Sag tik menusu Playwright'tan tetiklenemez (yerel menu) — elle denenmeli.
 
 ## TELEGRAM BILDIRIMI — DOGRULANDI (2026-09-16 15:04)
 Gercek bot anahtariyla denendi, Turkce ve Ingilizce bildirim IKISI DE gitti
@@ -328,6 +357,7 @@ Anahtar kaynagi: `antygravitiy/.env` -> MCP_TELEGRAM_TOKEN, chat 1483248658.
     python tests/smoke.py                (gercek indirme, 17 test)
     python tests/netcheck_test.py        (ag gerektirmez)
     python tests/manager_test.py         (ag gerektirmez)
+    python tests/extension_test.py       (AfuDM acikken; uzanti Chromium'da, 12 test)
 
 ## ONEMLI KURALLAR
 - Portable: hicbir sey sisteme yazilmaz; `data/` ve `downloads/` klasor icinde.

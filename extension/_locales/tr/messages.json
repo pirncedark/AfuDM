@@ -93,5 +93,28 @@
   },
   "notifyAddFailed": {
     "message": "Eklenemedi: "
+  },
+  "msgTokenEmpty": {
+    "message": "Anahtar boş. AfuDM'de Ayarlar > Uzantıyı bağla'ya basıp \"Otomatik bağlan\"a tıkla ya da data/api_endpoint.json içindeki anahtarı aşağıya yapıştır."
+  },
+  "msgNoUrl": {
+    "message": "Önce bir bağlantı gir."
+  },
+  "msgSaved": {
+    "message": "Ayarlar kaydedildi."
+  },
+  "msgPaired": {
+    "message": "Bağlandı. Artık tarayıcı indirmelerini AfuDM devralıyor."
+  },
+  "msgPairClosed": {
+    "message": "Eşleştirme kapalı — AfuDM'de Ayarlar > Uzantıyı bağla'ya bas, sonra tekrar dene."
+  },
+  "msgNoResponse": {
+    "message": "AfuDM yanıt vermedi ($CODE$)",
+    "placeholders": {
+      "code": {
+        "content": "$1"
+      }
+    }
   }
 }

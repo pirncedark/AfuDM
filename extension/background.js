@@ -46,7 +46,7 @@ async function sendToAfudm(cfg, body) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.ok === false) {
-    throw new Error(data.error || `AfuDM yanit vermedi (${response.status})`);
+    throw new Error(data.error || chrome.i18n.getMessage("msgNoResponse", [String(response.status)]));
   }
   return data;
 }
