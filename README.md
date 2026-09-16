@@ -67,14 +67,26 @@ menu follow too. The browser extension uses the browser's own language.
 
 ## Browser extension
 
-1. Chrome/Edge → `chrome://extensions` → enable Developer mode
-2. "Load unpacked" → pick the `extension` folder here
-3. In AfuDM press **Settings → Pair the extension** (opens a 2-minute window)
-4. Click the extension icon → **Auto connect**
+**One click:** in AfuDM press **Add to Chrome** (left menu) → **Add automatically**.
+AfuDM opens the extensions page, turns on Developer mode, loads the `extension`
+folder and the extension connects to AfuDM by itself. Keep your hands off the
+keyboard for a few seconds. If a step gets stuck, the same window shows the
+manual steps with copy buttons.
 
-From then on AfuDM takes over browser downloads, detects media on the page and
-adds "Download with AfuDM" to the right-click menu. When AfuDM is closed the
-extension stays out of the way and the browser downloads normally.
+By hand: `chrome://extensions` → Developer mode → **Load unpacked** (not "Pack
+extension") → pick the `extension` folder. Keep AfuDM's *Add to Chrome* window
+open and the extension pairs automatically.
+
+What it does:
+- takes over browser downloads (and sends session cookies, so sites that need a
+  login work too — cookies are never stored in AfuDM's database)
+- **video panel:** a "Download with AfuDM" button appears on playing videos, also
+  inside embedded players; pick 1080p / 720p / audio only. Qualities come from the
+  page's HLS/DASH playlist, or from yt-dlp on sites like YouTube
+- "Download with AfuDM" in the right-click menu
+
+When AfuDM is closed the extension stays out of the way and the browser
+downloads normally. DRM-protected streams (Netflix etc.) cannot be downloaded.
 
 ## Tests
 
@@ -189,14 +201,25 @@ menüsü de döner. Tarayıcı uzantısı tarayıcının dilini kullanır.
 
 ## Tarayıcı uzantısı
 
-1. Chrome/Edge → `chrome://extensions` → Geliştirici modu açık
-2. "Paketlenmemiş öğe yükle" → buradaki `extension` klasörünü seç
-3. AfuDM'de **Ayarlar → Uzantıyı bağla**'ya bas (2 dakikalık pencere açılır)
-4. Uzantı simgesine tıkla → **Otomatik bağlan**
+**Tek tık:** AfuDM'de sol menüden **Chrome'a ekle** → **Otomatik ekle**. AfuDM
+uzantılar sayfasını açar, Geliştirici modunu açar, `extension` klasörünü yükler ve
+uzantı AfuDM'e kendiliğinden bağlanır. Birkaç saniye klavyeye/fareye dokunma.
+Bir adımda takılırsa aynı pencerede kopyala düğmeli elle kurulum anlatımı açılır.
 
-Bundan sonra tarayıcıdaki indirmeleri AfuDM devralır, sayfadaki videoları algılar,
-sağ tık menüsüne "AfuDM ile indir" ekler. AfuDM kapalıysa uzantı hiçbir şeye
-karışmaz.
+Elle: `chrome://extensions` → Geliştirici modu → **Paketlenmemiş öğe yükle**
+("Uzantı paketle" değil) → `extension` klasörünü seç. AfuDM'deki *Chrome'a ekle*
+penceresi açıkken uzantı kendiliğinden bağlanır.
+
+Ne yapar:
+- tarayıcı indirmelerini devralır (oturum çerezlerini de gönderir, giriş isteyen
+  sitelerde de çalışır — çerezler AfuDM'in veritabanına yazılmaz)
+- **video paneli:** oynayan videonun üstünde "AfuDM ile indir" düğmesi çıkar, gömülü
+  oynatıcılarda da; 1080p / 720p / sadece ses seç. Kaliteler sayfanın HLS/DASH
+  listesinden, YouTube gibi sitelerde yt-dlp'den gelir
+- sağ tık menüsünde "AfuDM ile indir"
+
+AfuDM kapalıysa uzantı hiçbir şeye karışmaz. DRM korumalı yayınlar (Netflix vb.)
+indirilemez.
 
 ## Test
 
