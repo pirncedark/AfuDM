@@ -22,7 +22,7 @@ KOK = Path(__file__).resolve().parent
 CIKTI = KOK / "build_out" / "paket"
 
 # Paketin icine giren dosyalar. engine/ ozel: hangi motorun gireceği secime bagli.
-KOPYALANACAK_DOSYALAR = ("AfuDM.exe", "README.md")
+KOPYALANACAK_DOSYALAR = ("AfuDM.exe", "README.md", "THIRD_PARTY_NOTICES.md")
 KOPYALANACAK_KLASORLER = ("ui", "extension")
 
 CEKIRDEK_MOTORLAR = ("aria2c.exe",)
