@@ -345,6 +345,13 @@ TUZAKLAR:
 - Kapali porta fetch Windows'ta ~2 sn surer; 1 sn beklemek yetmez.
 - Sag tik menusu Playwright'tan tetiklenemez (yerel menu) — elle denenmeli.
 
+## GERCEK CHROME'DA DENENDI (2026-09-17) — kullanici Telegram'dan "sen dene"
+- Chrome'a ekle otomasyonu KULLANICININ Chrome'una kurdu (5 adim), uzanti 4,6 sn'de
+  /pair ile baglandi. (Eslestirme sunucusu AfuDM kapatilip 6811'de ayni anahtarla
+  acildi: uzanti eslesmede portu KAYDEDER, baska porta eslesirse sonra kopar.)
+- Chrome'da https://download.thinkbroadband.com/5MB.zip acildi -> AfuDM devraldi,
+  5 MB tamam; Chrome Indirilenler'de kopya YOK.
+
 ## SURUM 1.1.0 YAYINDA (2026-09-17)
 https://github.com/pirncedark/AfuDM/releases/tag/v1.1.0 — `AfuDM-v1.1.0-win64.zip`
 (19 MB), etiket 5904beb, sha256 80a21633... Kullanici Telegram'dan "1" ile onayladi.
