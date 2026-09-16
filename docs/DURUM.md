@@ -381,6 +381,35 @@ TUZAKLAR (vakit kaybettirdi):
   window.native (.NET formu) sonsuz derinlige inip gunlugu "Empty.Empty..." ile
   dolduruyordu (onceden de vardi, konsol olmadigi icin gorulmemisti).
 
+## CHROME'A OTOMATIK EKLEME — YARIM (2026-09-16), `core/chrome_kurulum.py`
+Kullanici: "uygulama icinde anlat + otomasyonla Chrome'a eklenti olarak ekle".
+Henuz ARAYUZE BAGLI DEGIL (Api/ui yok), uzanti otomatik eslesme de yazilmadi.
+
+Calisan kisim (gecici Chrome profiliyle olculdu, kullanicinin profiline dokunmadan):
+  sayfa -> gelistirici modu -> "Paketlenmemis oge yukle" TAMAM.
+Kalan tek adim: klasor penceresine yolu yazmak.
+
+OLCULEN GERCEKLER (tekrar deneme):
+- Chrome web magazasi disi uzantiyi kendiliginden kurdurmaz; 137+ `--load-extension`
+  KAPALI. Tek yol kullanicinin tiklamalarini UI Automation ile yapmak.
+- **Chrome komut satirindan `chrome://` adresi ACMAZ** (Yeni Sekme acar).
+  Cozum (calisiyor): `about:blank` ile yeni sekme -> adres cubugu ("Adres ve arama
+  cubugu"/"Address and search bar") ValuePattern.SetValue -> Chrome ONDEYSE tek Enter.
+- Gelistirici modu Button + TogglePattern; yukle Button + InvokePattern calisiyor.
+- **Klasor penceresi ACILIYOR** ("#32770", baslik "Uzanti dizinini secin.") ama
+  tarayici surecinde DEGIL, ayri bir chrome.exe (utility) surecinde. Betikteki
+  `Diyalog` fonksiyonu AutomationId 1152 sarti yuzunden bulamiyor: klasor seciciyi
+  (FOS_PICKFOLDERS) kutu kimligi FARKLI. Siradaki: o penceredeki Edit/ComboBox'lari
+  listele (scratchpad tani.ps1 mantigi), "Klasor:"/"Folder:" kutusu + id 1 dugmesi.
+- Test sonrasi yalniz `--user-data-dir=...afudm_chrome_*` sureclerini oldur.
+
+Plan (kalan): klasor kutusu -> dogrulama (kart "AfuDM*") -> Api (chrome_otomatik,
+chrome_ilerleme, chrome_sayfa_ac, yolu_kopyala) + ayarlarda "Chrome'a ekle" penceresi
+(adim listesi + elle kurulum anlatimi + yol kopyala) -> uzantida onInstalled/alarms ile
+/pair denemesi (uygulama otomasyondan ONCE start_pairing acar) -> exe + test.
+Kullanicinin Chrome'u "kurulus tarafindan yonetiliyor": tek ilke
+ExtensionManifestV2Availability=2 (engel DEGIL, uzanti MV3).
+
 ## VIDEO PANELI — BITTI (2026-09-16), tests/video_panel_test.py 12/12
 IDM gibi: video oynayinca ustunde "AfuDM ile indir" -> kalite listesi -> AfuDM.
 - `extension/content.js`: all_frames (gomulu oynaticilar iframe'de), `play` olayi
