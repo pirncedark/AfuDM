@@ -257,6 +257,48 @@ DIKKAT: Bu makinede sistem yt-dlp/ffmpeg KURULU. "Motor yokken ne oluyor"
 testleri bu yuzden yaniltici sonuc verir — `ffmpeg_var=False` gibi degerleri
 ZORLA vermek gerekir, dosyayi silmek YETMEZ.
 
+## MP4 BIRLESTIRICI YAZILDI VE CALISIYOR (2026-09-16 19:00)
+`video/mp4mux.py` (~590 satir) — ffmpeg OLMADAN ayri video ve ses izini tek mp4'te
+toplar. Yeniden kodlama YOK: sikistirilmis ornekler oldugu gibi kopyalanir.
+
+Okuma: hem PARCALANMIS (moof/trun, YouTube video izi) hem DUZ (stbl tablolari,
+m4a) MP4. Yazma: duz MP4 — ftyp + moov(iki trak) + tek mdat, ~1 sn'lik
+DONUSUMLU yiginlar (yoksa yavas diskte ses/goruntu takilir).
+
+**KANIT — ffmpeg'in kendi ciktisiyla kare kare karsilastirildi:**
+  46368 karenin (video+ses) HEPSI ayni md5, zaman damgalari dahil.
+  Tam kod cozme: sifir hata.
+
+**SENKRONU BOZAN TUZAK (elst):** B-kare kullanan videoda ilk ornegin gosterim
+kaymasi (cts) sifir degildir — burada 512 tik = tam bir kare. Duzenleme listesi
+(edts/elst) yazilmazsa video sese gore BIR KARE GEC baslar. ffmpeg tam olarak
+bunu yapiyor (`medya_zamani=512`); biz de oyle yapiyoruz. Ilk denemede elst yoktu
+ve fark SADECE kare karsilastirmasinda goruldu — gozle anlasilmazdi.
+
+Akisa baglanti (`video/ytdlp.py`):
+- ffmpeg yoksa format olarak `bv*[ext=mp4]+ba[ext=m4a]` istenir; yt-dlp
+  birlestiremez, iki dosyayi birakir, `_kendi_birlestir()` devralir.
+- Basarisiz olursa indirme HATAYA DUSMEZ: parcalar diskte kalir.
+- Kodek bagimsiz: `stsd` oldugu gibi kopyalandigi icin h264 de AV1 de calisir
+  (gercek testte yt-dlp AV1 secti, sorunsuz birlesti).
+
+**UCTAN UCA TEST (gercek indirme, ffmpeg HIC YOKKEN):**
+  yt-dlp "exe versions: none" | 2 parca indi | tek mp4 kaldi | 26 sn
+  ffprobe: av1 854x480 19037 kare + aac 27331 kare | tam kod cozme hatasiz
+
+### ffmpeg'i "yok" saymanin YOLU (test ederken sasirtti)
+yt-dlp ffmpeg'i UC yerde arar ve hepsini kapatmak gerekir:
+  1. `--ffmpeg-location` (biz vermiyoruz)
+  2. PATH (bu makinede WinGet + Python Scripts'te kurulu)
+  3. **KENDI KLASORU** — `engine/yt-dlp.exe` yanindaki `engine/ffmpeg.exe`
+Sadece PATH'i temizlemek YETMEZ; `engine/ffmpeg.exe` de gecici kaldirilmali.
+Bunu bilmeden yapilan iki test "birlestirici calisti" sanisi verdi; oysa dosyayi
+ffmpeg uretmisti (imza: uretilen dosyada `udta` ve `free` kutusu var, bizimkinde yok).
+
+Testler: `tests/mux_ayristirma_test.py` (ornek okuma, 17 kontrol),
+`tests/mux_test.py` (birlestirme + ffprobe + tam kod cozme, 16 kontrol).
+Ikisi de yerel izlerle calisir; izler yoksa ATLANIR.
+
 ## SIRADAKI IS
 1. **MP4 BIRLESTIRICI (karar bekliyor).** Kullanici "IDM gibi kendi birlestiricimiz
    olsun, paket 23 MB'a insin" dedi. YouTube'un iki izi de MP4 ailesinden:

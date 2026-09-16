@@ -28,13 +28,19 @@ kontrol("en iyi video + en iyi ses istenir", "bestvideo" in f and "bestaudio" in
 f1080 = ytdlp.format_secimi("1080", audio_only=False, birlestirilebilir=True)
 kontrol("1080 siniri korunur", "height<=1080" in f1080, f1080)
 
-print("2) ffmpeg YOKKEN (birlestirme yapilamaz)")
+print("2) ffmpeg YOKKEN (birlestirmeyi KENDIMIZ yapiyoruz)")
+# Artik ffmpeg yoksa da iki izi ayri isteyebiliyoruz: video/mp4mux.py birlestiriyor.
+# Sart su: iki iz de MP4 ailesinden olmali (video mp4 + ses m4a), cunku
+# birlestiricimiz webm/opus'u mp4'e koyamaz.
 f = ytdlp.format_secimi("best", audio_only=False, birlestirilebilir=False)
-kontrol("ayri video+ses ISTENMEZ", "bestvideo" not in f, f)
-kontrol("sesi olan format sart kosulur", "acodec!=none" in f, f)
-kontrol("once mp4 denenir", "ext=mp4" in f, f)
+kontrol("ayri iz istenir (kendi birlestiricimiz icin)", "bv*" in f and "+ba" in f, f)
+kontrol("video mp4 sart kosulur", "[ext=mp4]" in f, f)
+kontrol("ses m4a sart kosulur", "ba[ext=m4a]" in f, f)
+kontrol("son care birlesik format", "acodec!=none" in f, f)
 f720 = ytdlp.format_secimi("720", audio_only=False, birlestirilebilir=False)
 kontrol("720 siniri korunur", "height<=720" in f720, f720)
+kontrol("sinir hem ayri hem birlesik secenege uygulanir",
+        f720.count("height<=720") >= 3, f"{f720.count('height<=720')} yerde")
 kontrol("yine de bir yedek zincir var", "/" in f720, f720)
 
 print("3) Sadece ses")

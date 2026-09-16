@@ -33,6 +33,10 @@ yerden sürer — aria2 oturumu her 15 saniyede diske yazılır.
 **Video.** YouTube, Instagram, TikTok ve yt-dlp'nin desteklediği her yer.
 Kalite seçimi (4K'ya kadar), sadece ses (mp3), playlist'in tamamı.
 
+**ffmpeg'siz birleştirme.** YouTube sesi ve görüntüyü ayrı gönderir. ffmpeg
+kurulu değilse AfuDM iki izi kendi birleştiricisiyle (`video/mp4mux.py`) tek mp4
+yapar — yeniden kodlama yok, kalite değişmez. Böylece çekirdek paket 22 MB kalır.
+
 **Torrent.** Magnet ve `.torrent`. Canlı seed/peer sayısı, gönderilen bayt, oran.
 DHT, PEX ve LPD açık; tracker listesi her gün otomatik yenilenir, böylece
 yorgun torrentlerde de peer bulur.

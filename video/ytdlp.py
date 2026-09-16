@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from core import lang, netcheck, paths
+from . import mp4mux
 
 CREATE_NO_WINDOW = 0x08000000
 PROGRESS_TAG = "AFUDM"
@@ -35,17 +36,21 @@ QUALITY_FORMATS = {
     "audio": "bestaudio/best",
 }
 
-# ffmpeg YOKKEN: birlestirecek bir sey olmadigi icin SES+VIDEO BIRLESIK gelen
-# formatlar istenir (IDM'in calisma sekli). Once mp4, sonra sesi olan herhangi
-# bir format, en sonda yt-dlp'nin kendi secimi — hicbir zaman sessiz video inmesin.
-_BIRLESIK = "best{h}[ext=mp4][acodec!=none][vcodec!=none]/best{h}[acodec!=none][vcodec!=none]/best{h}"
+# ffmpeg YOKKEN: yt-dlp birlestiremez ama BIZ birlestirebiliriz (video/mp4mux.py).
+# Bu yuzden iki izi de MP4 ailesinden isteriz — video mp4, ses m4a — yt-dlp ikisini
+# ayri dosya olarak birakir, isi biz bitiririz.
+# Son care olarak birlesik bir format, en sonda yt-dlp'nin kendi secimi durur;
+# boylece hicbir kosulda sessiz video inmez.
+_KENDI_MUX = ("bv*{h}[ext=mp4]+ba[ext=m4a]/"
+              "best{h}[ext=mp4][acodec!=none][vcodec!=none]/"
+              "best{h}[acodec!=none][vcodec!=none]/best{h}")
 COMBINED_FORMATS = {
-    "best": _BIRLESIK.format(h=""),
-    "2160": _BIRLESIK.format(h="[height<=2160]"),
-    "1440": _BIRLESIK.format(h="[height<=1440]"),
-    "1080": _BIRLESIK.format(h="[height<=1080]"),
-    "720": _BIRLESIK.format(h="[height<=720]"),
-    "480": _BIRLESIK.format(h="[height<=480]"),
+    "best": _KENDI_MUX.format(h=""),
+    "2160": _KENDI_MUX.format(h="[height<=2160]"),
+    "1440": _KENDI_MUX.format(h="[height<=1440]"),
+    "1080": _KENDI_MUX.format(h="[height<=1080]"),
+    "720": _KENDI_MUX.format(h="[height<=720]"),
+    "480": _KENDI_MUX.format(h="[height<=480]"),
     "audio": "bestaudio[ext=m4a]/bestaudio/best",
 }
 
@@ -180,6 +185,7 @@ class VideoJob:
     eta: int = 0
     filename: str = ""
     dil: str = "auto"               # hata metinleri bu dilde yazilir
+    parca_dosyalari: list[str] = field(default_factory=list)  # ffmpeg'siz birlestirme icin
     ffmpeg_vardi: bool = True       # is baslarken ffmpeg var miydi (hata metni icin)
     started_at: float = field(default_factory=time.time)
     finished_at: float = 0.0
@@ -328,7 +334,10 @@ class VideoJob:
                     continue
                 match = self._DEST_RE.search(line)
                 if match:
-                    self.filename = Path(match.group(1).strip()).name
+                    hedef = match.group(1).strip()
+                    self.filename = Path(hedef).name
+                    if hedef not in self.parca_dosyalari:
+                        self.parca_dosyalari.append(hedef)
                 tail.append(line)
                 del tail[:-30]
         if buffer.strip():
@@ -338,6 +347,8 @@ class VideoJob:
         if self._stop:
             self.status = "removed"
         elif code == 0:
+            if not self.ffmpeg_vardi:
+                self._kendi_birlestir(on_update)
             self.status = "complete"
             if self.total:
                 self.downloaded = self.total
@@ -368,6 +379,49 @@ class VideoJob:
         self.total = self._num(total) or self._num(total_est) or self.total
         self.speed = self._num(speed)
         self.eta = self._num(eta)
+
+    def _kendi_birlestir(self, on_update=None) -> None:
+        """ffmpeg yokken iki izi KENDI birlestiricimizle tek mp4'e cevirir.
+
+        yt-dlp ffmpeg bulamayinca "formatlar birlestirilmeyecek" deyip iki dosyayi
+        (ornegin Baslik.f137.mp4 + Baslik.f140.m4a) OLDUGU GIBI birakir. Burasi o
+        iki dosyayi alip tek dosya yapar ve parcalari siler.
+
+        Basarisiz olursa indirmeyi HATAYA DUSURMEZ: parcalar diskte kalir, kullanici
+        en azindan videoya ve sese ayri ayri sahiptir."""
+        if len(self.parca_dosyalari) != 2:
+            return
+        yollar = [Path(d) for d in self.parca_dosyalari]
+        if not all(y.exists() for y in yollar):
+            return
+        try:
+            izler = [(y, mp4mux.izi_oku(y)) for y in yollar]
+        except Exception:
+            return          # MP4 ailesinden degil (webm vb.) — dokunma
+        video = next((y for y, iz in izler if iz.tur == "vide"), None)
+        ses = next((y for y, iz in izler if iz.tur == "soun"), None)
+        if video is None or ses is None:
+            return
+        # "Baslik.f137.mp4" -> "Baslik.mp4"
+        taban = re.sub(r"\.f\d+$", "", video.stem)
+        hedef = video.with_name(taban + ".mp4")
+        if hedef.exists() and hedef not in (video, ses):
+            hedef = video.with_name(taban + " (birlesik).mp4")
+        try:
+            gecici = hedef.with_suffix(".mp4.yarim")
+            mp4mux.birlestir(video, ses, gecici)
+            gecici.replace(hedef)
+            for y in (video, ses):
+                try:
+                    y.unlink()
+                except OSError:
+                    pass
+            self.filename = hedef.name
+            if on_update:
+                on_update(self)
+        except Exception as exc:
+            # Parcalar duruyor; kullanici kaybetmesin diye sessizce birak.
+            self.error = "birlestirilemedi: %s" % str(exc)[:160]
 
     def anlasilir_hata(self, ham: str) -> str:
         """yt-dlp'nin ham hatasini kullanicinin anlayacagi cumleye cevirir.
