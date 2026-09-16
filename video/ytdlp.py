@@ -187,6 +187,8 @@ class VideoJob:
     dil: str = "auto"               # hata metinleri bu dilde yazilir
     parca_dosyalari: list[str] = field(default_factory=list)  # ffmpeg'siz birlestirme icin
     ffmpeg_vardi: bool = True       # is baslarken ffmpeg var miydi (hata metni icin)
+    cookie_file: str = ""           # tarayicidan gelen oturum cerezleri (core/cerez.py)
+    user_agent: str = ""
     started_at: float = field(default_factory=time.time)
     finished_at: float = 0.0
     _thread: threading.Thread | None = None
@@ -230,6 +232,10 @@ class VideoJob:
         # ffmpeg yoksa hicbiri istenmez: video zaten birlesik iner, ses de
         # kaynaktaki bicimiyle (m4a/webm) kalir.
         cmd += ["--yes-playlist"] if self.playlist else ["--no-playlist"]
+        if self.cookie_file:
+            cmd += ["--cookies", self.cookie_file]
+        if self.user_agent:
+            cmd += ["--user-agent", self.user_agent]
         if aria2c and Path(aria2c).exists():
             # Video parcalarini da cok baglantili indir.
             # IPv6 yoksa aria2c AAAA adresini deneyip "network unreachable" ile

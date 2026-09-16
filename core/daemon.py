@@ -94,6 +94,8 @@ class Aria2Daemon:
     def start(self, timeout: float = 20.0) -> Aria2RPC:
         if self.rpc.alive():
             # Zaten calisan bir ornek var (ayni token ile) — ona baglan.
+            # Onu BIZ baslatmadik: stop() da kapatmamali (baska AfuDM/test
+            # kapaninca calisan uygulamanin motoru olmesin).
             return self.rpc
         if not paths.ARIA2C.exists():
             raise FileNotFoundError(f"aria2c.exe bulunamadi: {paths.ARIA2C}")
@@ -117,6 +119,8 @@ class Aria2Daemon:
         raise TimeoutError("aria2c RPC %.0f saniyede yanit vermedi" % timeout)
 
     def stop(self) -> None:
+        if self.proc is None:
+            return  # motoru biz baslatmadik
         try:
             if self.rpc.alive():
                 self.rpc.save_session()

@@ -1,6 +1,7 @@
 """aria2 JSON-RPC istemcisi. Sadece stdlib kullanir (ek bagimlilik yok)."""
 from __future__ import annotations
 
+import http.client
 import itertools
 import json
 import urllib.error
@@ -45,6 +46,12 @@ class Aria2RPC:
             raise Aria2Error(f"{method}: {message}") from exc
         except urllib.error.URLError as exc:
             raise Aria2Error(f"aria2 RPC erisilemedi: {exc}") from exc
+        except (OSError, http.client.HTTPException, ValueError) as exc:
+            # Motor kapanirken baglanti yarida kopar (RemoteDisconnected,
+            # ConnectionResetError, zaman asimi) ya da govde bozuk gelir.
+            # Bunlar URLError DEGIL; cevrilmezse "except Aria2Error" bekleyen
+            # yoklama dongusu coker.
+            raise Aria2Error(f"aria2 RPC baglantisi koptu: {exc!r}") from exc
         if "error" in body:
             raise Aria2Error(body["error"].get("message", "bilinmeyen aria2 hatasi"))
         return body["result"]

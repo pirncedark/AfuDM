@@ -20,7 +20,7 @@ from pathlib import Path
 
 from video import ytdlp
 
-from . import lang, paths, trackers
+from . import cerez, lang, paths, trackers
 from .daemon import Aria2Daemon
 from .db import Store
 from .rpc import Aria2Error
@@ -53,9 +53,13 @@ class Manager:
         self._last_tracker_check = 0.0
         self._known_complete: set[str] = set()
         self.last_error: str = ""
+        # Oturum cerezleri: kayit kimligi -> cerezler. BILEREK veritabaninda degil
+        # (bkz. core/cerez.py); is bitince/silinince birakilir.
+        self._cerezler: dict[int, list[dict]] = {}
 
     # --- yasam dongusu ----------------------------------------------------
     def start(self) -> None:
+        cerez.artiklari_temizle()
         self.rpc = self.daemon.start()
         self.apply_settings()
         if self.store.get("auto_update_trackers"):
@@ -200,6 +204,8 @@ class Manager:
         start_after: float | None = None,
         headers: dict | None = None,
         filename: str | None = None,
+        cookies: list | None = None,
+        user_agent: str | None = None,
     ) -> dict:
         source = source.strip()
         if not source:
@@ -217,6 +223,9 @@ class Manager:
             "playlist": playlist,
             "headers": headers or {},
             "filename": filename or "",
+            # Cerezler bazi sitelerde tarayicinin kimligine bagli (Cloudflare vb.)
+            # split/join satir sonlarini da yok eder: basliga satir enjekte edilemez
+            "user_agent": " ".join((user_agent or "").split())[:512],
         }
         row_id = self.store.add(
             kind=kind,
@@ -226,6 +235,9 @@ class Manager:
             options=options,
             start_after=start_after,
         )
+        temiz = cerez.temizle(cookies)
+        if temiz:
+            self._cerezler[row_id] = temiz
         if start_after:
             when = time.strftime("%H:%M", time.localtime(start_after))
             self.store.log("info", f"zamanlandi ({when}): {source[:80]}")
@@ -257,9 +269,14 @@ class Manager:
         aria_options: dict[str, object] = {"dir": dest_dir}
         if options.get("filename"):
             aria_options["out"] = options["filename"]
-        headers = options.get("headers") or {}
+        headers = [f"{k}: {v}" for k, v in (options.get("headers") or {}).items()]
+        cerezler = self._cerezler.get(row["id"])
+        if cerezler:
+            headers.append("Cookie: " + cerez.baslik(cerezler))
         if headers:
-            aria_options["header"] = [f"{k}: {v}" for k, v in headers.items()]
+            aria_options["header"] = headers
+        if options.get("user_agent"):
+            aria_options["user-agent"] = options["user_agent"]
         return self.rpc.add_uri([row["source"]], aria_options)
 
     def _launch_torrent(self, row: dict, dest_dir: str) -> str:
@@ -283,6 +300,8 @@ class Manager:
         with self._lock:
             self._video_seq += 1
             job_id = f"yt:{self._video_seq}"
+        cerezler = self._cerezler.get(row["id"])
+        cerez_dosyasi = str(cerez.dosya_yaz(job_id, cerezler)) if cerezler else ""
         job = ytdlp.VideoJob(
             job_id=job_id,
             url=row["source"],
@@ -293,6 +312,8 @@ class Manager:
             title=row["title"] or row["source"],
             # Hata metinleri kullanicinin dilinde yazilsin
             dil=str(self.store.get("language", "auto")),
+            cookie_file=cerez_dosyasi,
+            user_agent=options.get("user_agent", ""),
         )
         self.video_jobs[job_id] = job
         job.start(aria2c=str(paths.ARIA2C), on_update=self._on_video_update)
@@ -308,12 +329,15 @@ class Manager:
             "title": job.display_title(),
         }
         if job.status in ("complete", "error", "removed"):
+            # Surdurmede _launch dosyayi bellekten yeniden yazar.
+            cerez.sil(job.job_id)
             fields["finished_at"] = job.finished_at or time.time()
             if job.error:
                 fields["error"] = job.error[:500]
         self.store.update_by_gid(job.job_id, **fields)
         if job.status == "complete" and job.job_id not in self._known_complete:
             self._known_complete.add(job.job_id)
+            self._cerez_birak(self.store.by_gid(job.job_id))
             self._on_complete(job.display_title(), job.total)
 
     # --- video yardimcilari ----------------------------------------------
@@ -378,9 +402,16 @@ class Manager:
             targets.append(Path(row["dest_dir"]) / row["filename"])
         if delete_files:
             self._delete_targets(targets, row)
+        if gid.startswith("yt:"):
+            cerez.sil(gid)
+        self._cerez_birak(row)
         if row:
             self.store.update_by_id(row["id"], status="removed", finished_at=time.time())
         return True
+
+    def _cerez_birak(self, row: dict | None) -> None:
+        if row:
+            self._cerezler.pop(row["id"], None)
 
     @staticmethod
     def _delete_targets(targets: list[Path], row: dict | None) -> None:
@@ -616,6 +647,7 @@ class Manager:
                     fields["finished_at"] = time.time()
                 if state == "complete":
                     fields["finished_at"] = time.time()
+                    self._cerez_birak(row)
                 self.store.update_by_gid(gid, **fields)
             # magnet -> gercek torrent: aria2 yeni GID uretir, kaydi tasiyoruz
             followed = status.get("followedBy") or []

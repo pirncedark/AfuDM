@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import secrets
+import socket
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -127,6 +128,8 @@ class _Handler(BaseHTTPRequestHandler):
                     playlist=bool(data.get("playlist")),
                     headers=data.get("headers") or {},
                     filename=data.get("filename") or None,
+                    cookies=data.get("cookies"),
+                    user_agent=data.get("user_agent") or None,
                 )
                 self._send(200, {"ok": True, **result})
             elif parsed.path == "/control":
@@ -154,6 +157,23 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(400, {"ok": False, "error": str(exc)[:400]})
 
 
+class _ExclusiveServer(ThreadingHTTPServer):
+    """Portu PAYLASMAYAN sunucu.
+
+    HTTPServer SO_REUSEADDR acar; Windows'ta bu, ayni portu IKINCI bir surecin de
+    acabilmesi demek (olculdu: api_smoke calisan AfuDM'in 6811'ine ortak oldu,
+    istekler rastgele surece gitti). Port doluysa bind HATA vermeli ki
+    LocalAPI.start() bir sonraki portu denesin.
+    """
+
+    allow_reuse_address = False
+
+    def server_bind(self) -> None:
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 class LocalAPI:
     def __init__(self, manager, port: int = 6811) -> None:
         self.token = load_or_create_token()
@@ -167,7 +187,7 @@ class LocalAPI:
         last_error: Exception | None = None
         for port in range(self.port, self.port + 10):
             try:
-                self.httpd = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
+                self.httpd = _ExclusiveServer(("127.0.0.1", port), _Handler)
                 self.port = port
                 break
             except OSError as exc:

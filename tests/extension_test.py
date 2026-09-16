@@ -10,6 +10,9 @@ Sinananlar (hepsi uzantinin KENDI koduyla):
   - atlanacak uzantilar (.txt) devralinmiyor
   - AfuDM kapaliyken indirmeye DOKUNULMUYOR (tarayici kendisi indiriyor)
   - sayfadaki .mp4 istegi yakalaniyor
+  - GIRIS GEREKTIREN dosya: HttpOnly oturum cerezi + tarayici kimligi AfuDM'e
+    gidiyor, yonlendirme sonrasi adres (finalUrl) kullaniliyor, cerez
+    veritabanina YAZILMIYOR; cerez gonderimi kapatilinca sunucu 403 veriyor
 
 Eslestirme icin calisan uygulamanin penceresine dokunulmaz: ayni token
 dosyasini kullanan IKINCI bir API (6899) acilip eslestirme penceresi acilir.
@@ -65,9 +68,47 @@ def api(path: str, token: str = "", body: dict | None = None):
         return 0, {}
 
 
+OTURUM = "oturum=AfuDM-test-7c1e"
+KORUMALI = os.urandom(2 * 1048576)
+
+
 class _Quiet(SimpleHTTPRequestHandler):
+    # (Cookie, User-Agent) — yalniz AfuDM'in (aria2) istekleri; tarayicininkiler
+    # Sec-Fetch-Mode basligi tasir, aria2 tasimaz.
+    aria2_istekleri: list[tuple[str, str]] = []
+
     def log_message(self, fmt, *args):
         pass
+
+    def _yonlendir(self, hedef: str, cerez: str = "") -> None:
+        self.send_response(302)
+        if cerez:
+            self.send_header("Set-Cookie", cerez + "; HttpOnly; Path=/")
+        self.send_header("Location", hedef)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def do_GET(self):  # noqa: N802
+        if self.path == "/giris":
+            return self._yonlendir("/index.html", OTURUM)
+        if self.path == "/yonlen":
+            return self._yonlendir("/korumali.zip")
+        if self.path == "/korumali.zip":
+            cerez = self.headers.get("Cookie") or ""
+            if not self.headers.get("Sec-Fetch-Mode"):
+                _Quiet.aria2_istekleri.append((cerez, self.headers.get("User-Agent") or ""))
+            if OTURUM not in cerez:
+                self.send_response(403)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Length", str(len(KORUMALI)))
+            self.end_headers()
+            self.wfile.write(KORUMALI)
+            return
+        return super().do_GET()
 
 
 class _QuietServer(ThreadingHTTPServer):
@@ -108,7 +149,8 @@ def main() -> int:
     (site_dir / "klip.mp4").write_bytes(os.urandom(64 * 1024))
     (site_dir / "index.html").write_text(
         '<a id="devral" href="devral.zip">z</a> <a id="kapali" href="kapali.zip">k</a>'
-        ' <a id="txt" href="not.txt" download>t</a>', "utf-8")
+        ' <a id="txt" href="not.txt" download>t</a> <a id="korumali" href="yonlen">g</a>',
+        "utf-8")
     site, site_port = serve_files(site_dir)
     base = f"http://127.0.0.1:{site_port}"
 
@@ -158,6 +200,7 @@ def main() -> int:
             popup.click("details summary")  # ayarlar katli gelir, kullanici gibi ac
             pair_label = popup.inner_text("#pair").strip()
             record("Acilir pencere Turkce", pair_label == "Otomatik bağlan", pair_label)
+            record("Cerez gonderimi varsayilan ACIK", popup.is_checked("#sendCookies"))
 
             popup.fill("#port", str(pair_port))
             popup.click("#pair")
@@ -213,6 +256,59 @@ def main() -> int:
             record("AfuDM kapaliyken tarayici indirmesine dokunulmadi", bool(kept),
                    f"{kept[0]['fileSize'] // 1048576} MB tarayicida" if kept else "")
             set_cfg(port=APP_PORT)
+
+            # --- giris gerektiren dosya (cerez) ------------------------------
+            def korumali_item():
+                _, snap = api("/snapshot", token)
+                return next((i for i in snap.get("items", [])
+                             if i["gid"] not in gids_before
+                             and "korumali" in i.get("source", "")
+                             and i["gid"] not in added_gids), None)
+
+            page.goto(base + "/giris")  # HttpOnly oturum cerezi kondu
+            page.click("#korumali")
+            item = wait_for(korumali_item, timeout=20)
+            if item:
+                added_gids.append(item["gid"])
+            record("Yonlendirme sonrasi adres (finalUrl) kullanildi",
+                   bool(item) and item["source"].endswith("/korumali.zip"),
+                   item["source"].rsplit("/", 1)[-1] if item else "")
+
+            def durum(gid):
+                _, snap = api("/snapshot", token)
+                return next((i for i in snap.get("items", []) if i["gid"] == gid), {})
+
+            son = wait_for(lambda: durum(item["gid"]).get("status") in ("complete", "error")
+                           and durum(item["gid"]), timeout=30) if item else {}
+            record("Giris gerektiren dosya AfuDM'de TAMAMLANDI",
+                   (son or {}).get("status") == "complete",
+                   f"{(son or {}).get('status')} {(son or {}).get('errorMessage', '')[:40]}")
+            istekler = list(_Quiet.aria2_istekleri)
+            record("HttpOnly oturum cerezi AfuDM'e gitti",
+                   any(OTURUM in c for c, _ in istekler), f"{len(istekler)} aria2 istegi")
+            record("Tarayici kimligi (User-Agent) AfuDM'e gitti",
+                   any("Chrome" in ua for _, ua in istekler),
+                   (istekler[-1][1][:40] if istekler else ""))
+            db_bayt = b"".join(f.read_bytes() for f in (ROOT / "data").glob("afudm.db*"))
+            record("Cerez veritabanina YAZILMADI", OTURUM.split("=")[1].encode() not in db_bayt,
+                   f"{len(db_bayt) // 1024} KB tarandi")
+            if item:
+                api("/control", token, {"action": "remove", "gid": item["gid"],
+                                         "delete_files": True})
+
+            set_cfg(sendCookies=False)
+            _Quiet.aria2_istekleri.clear()
+            page.click("#korumali")
+            item = wait_for(korumali_item, timeout=20)
+            if item:
+                added_gids.append(item["gid"])
+            son = wait_for(lambda: durum(item["gid"]).get("status") in ("complete", "error")
+                           and durum(item["gid"]), timeout=30) if item else {}
+            record("Cerez gonderimi KAPALIYKEN sunucu reddetti",
+                   (son or {}).get("status") == "error"
+                   and not any(OTURUM in c for c, _ in _Quiet.aria2_istekleri),
+                   (son or {}).get("errorMessage", "")[:50])
+            set_cfg(sendCookies=True)
 
             # --- sayfadaki medya ---------------------------------------------
             page.evaluate("fetch('/klip.mp4').then(r => r.arrayBuffer())")

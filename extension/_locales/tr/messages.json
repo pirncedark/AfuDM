@@ -116,5 +116,8 @@
         "content": "$1"
       }
     }
+  },
+  "optCookies": {
+    "message": "Oturum çerezlerini gönder (giriş gerektiren siteler)"
   }
 }

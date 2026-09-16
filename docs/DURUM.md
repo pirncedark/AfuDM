@@ -345,6 +345,48 @@ TUZAKLAR:
 - Kapali porta fetch Windows'ta ~2 sn surer; 1 sn beklemek yetmez.
 - Sag tik menusu Playwright'tan tetiklenemez (yerel menu) — elle denenmeli.
 
+## OTURUM CEREZLERI — GIRIS GEREKTIREN SITELER (2026-09-16)
+IDM'e gore en buyuk eksik buydu: uzanti yalniz link + Referer yolluyordu,
+Google Drive / uyelik isteyen sitelerde AfuDM hata aliyordu.
+
+Akis: uzanti `chrome.cookies.getAll({url})` ile tarayicinin O ADRESE gonderecegi
+cerezleri (HttpOnly dahil) + `navigator.userAgent` yollar. Adres olarak
+yonlendirme SONRASI `item.finalUrl` kullanilir. Popup'ta "Oturum çerezlerini
+gönder" (varsayilan acik).
+- HTTP  -> aria2'ye indirme basina `Cookie:` basligi + `user-agent` secenegi
+- Video -> yt-dlp'ye `--cookies data/cerez/yt_N.txt` + `--user-agent`
+
+**OLCULDU — aria2 `load-cookies` INDIRME BASINA YOK SAYILIYOR** (kabul ediyor,
+hata vermiyor, ama cerez gitmiyor; yalniz global `--load-cookies` calisiyor).
+Bu yuzden baslik kullaniliyor; alan adi sizintisini `finalUrl` + getAll({url})
+onluyor. Yeniden denemeye degmez.
+
+GUVENLIK: cerez VERITABANINA YAZILMAZ (`Manager._cerezler`, bellekte; is
+bitince/silinince birakilir). yt-dlp dosyasi is bitince silinir, acilista
+artiklar temizlenir. Satir sonu/sekme iceren cerez atilir (enjeksiyon).
+Bilinen sinir: aria2 duraklatilan isin secenegini `aria2.session`'a yazar
+(data/ icinde, rpc sirri ile ayni yerde). yt-dlp'nin cerez politikasi
+hostOnly bayragini yok sayar: cerez AYNI sitenin alt alanlarina da gider.
+
+Testler: `tests/cerez_test.py` (23, ag yok) + `tests/extension_test.py` artik
+**19/19** (giris gerektiren dosya tamamlandi, cerez kapaliyken 403, DB taramasi).
+Video cerez yolu komut + dosya duzeyinde test edildi; gercek girisli bir video
+sitesiyle DENENMEDI.
+
+## YOLDA BULUNAN 3 GERCEK KUSUR (duzeltildi)
+1. **Test calisan uygulamanin motorunu olduruyordu.** `Aria2Daemon.start()` acik
+   motora baglaniyor, `stop()` kendi baslatmadigi motoru da kapatiyordu. Ikinci
+   AfuDM ya da api_smoke kapaninca ilkinin indirmeleri dururdu. Artik yalniz
+   baslatan kapatir. `tests/daemon_test.py` (AfuDM KAPALIYKEN calisir; kusurlu
+   kodda DUSTUGU dogrulandi — shutdown eszamansiz, 3 sn beklemeden gizleniyor).
+2. **Ayni port iki kez aciliyordu.** HTTPServer SO_REUSEADDR acar; Windows'ta bu
+   portu PAYLASMAK demek. api_smoke calisan AfuDM'in 6811'ine ortak oldu, istekler
+   rastgele surece gitti. `_ExclusiveServer` (SO_EXCLUSIVEADDRUSE) -> artik 6812'ye
+   geciyor. api_smoke da api_endpoint.json'u yedekleyip geri yaziyor.
+3. **`rpc.call()` kopan baglantiyi Aria2Error'a cevirmiyordu** (RemoteDisconnected,
+   ConnectionResetError URLError DEGIL). `except Aria2Error` bekleyen yoklama
+   dongusu coker. Artik ceviriyor.
+
 ## TELEGRAM BILDIRIMI — DOGRULANDI (2026-09-16 15:04)
 Gercek bot anahtariyla denendi, Turkce ve Ingilizce bildirim IKISI DE gitti
 (`Manager.notify_telegram` -> True). Test sonrasi ayarlar GERI ALINDI; AfuDM'de
@@ -357,7 +399,9 @@ Anahtar kaynagi: `antygravitiy/.env` -> MCP_TELEGRAM_TOKEN, chat 1483248658.
     python tests/smoke.py                (gercek indirme, 17 test)
     python tests/netcheck_test.py        (ag gerektirmez)
     python tests/manager_test.py         (ag gerektirmez)
-    python tests/extension_test.py       (AfuDM acikken; uzanti Chromium'da, 12 test)
+    python tests/extension_test.py       (AfuDM acikken; uzanti Chromium'da, 19 test)
+    python tests/cerez_test.py           (ag gerektirmez)
+    python tests/daemon_test.py          (AfuDM KAPALIYKEN)
 
 ## ONEMLI KURALLAR
 - Portable: hicbir sey sisteme yazilmaz; `data/` ve `downloads/` klasor icinde.

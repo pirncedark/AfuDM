@@ -43,6 +43,10 @@ def request(port: int, path: str, token: str | None = None, body: dict | None = 
 
 def main() -> int:
     print("AfuDM yerel API testi\n")
+    # LocalAPI.start() api_endpoint.json'u EZER; AfuDM aciksa uzanti yanlis
+    # porta gider. Yedekle, sonda geri yaz.
+    endpoint = Path(__file__).resolve().parent.parent / "data" / "api_endpoint.json"
+    endpoint_backup = endpoint.read_text("utf-8") if endpoint.exists() else None
     manager = Manager()
     manager.start()
     api = LocalAPI(manager, port=6811)
@@ -97,6 +101,8 @@ def main() -> int:
     finally:
         api.stop()
         manager.stop()
+        if endpoint_backup is not None:
+            endpoint.write_text(endpoint_backup, encoding="utf-8")
 
     passed = sum(1 for _, ok, _ in results if ok)
     print(f"\n{'=' * 52}\nSONUC: {passed}/{len(results)} test gecti")

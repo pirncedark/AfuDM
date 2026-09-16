@@ -7,6 +7,9 @@
      3. AfuDM kapaliysa hicbir seye dokunma — tarayici kendi isini yapar.
      4. Sayfadaki video/m3u8 istekleri kaydedilir; kullanici sag tik veya
         açılır pencereden "AfuDM ile indir" der.
+     5. Giris gerektiren siteler icin tarayicinin O ADRESE gonderecegi cerezler
+        ve tarayici kimligi (User-Agent) de yollanir; AfuDM bunlari diske/
+        veritabanina yazmaz (core/cerez.py).
 */
 
 const DEFAULTS = {
@@ -16,6 +19,7 @@ const DEFAULTS = {
   minSizeMB: 1,
   skipExtensions: "html,htm,css,js,json,xml,svg,ico,woff,woff2,txt",
   videoCatch: true,
+  sendCookies: true,
 };
 
 const mediaByTab = new Map(); // tabId -> [{url, type, ts}]
@@ -38,11 +42,26 @@ async function afudmAlive(cfg) {
   }
 }
 
+/* Tarayicinin BU adrese gonderecegi cerezler. getAll({url}) alan adi, yol ve
+   secure eslesmesini tarayicinin kendisi gibi yapar: baska siteye cerez gitmez. */
+async function cookiesFor(cfg, url) {
+  if (!cfg.sendCookies || !/^https?:/i.test(url || "")) return [];
+  try {
+    const list = await chrome.cookies.getAll({ url });
+    return list.map(({ name, value, domain, path, secure, hostOnly, expirationDate }) =>
+      ({ name, value, domain, path, secure, hostOnly, expirationDate }));
+  } catch (_) {
+    return [];
+  }
+}
+
 async function sendToAfudm(cfg, body) {
+  const payload = { user_agent: navigator.userAgent, ...body };
+  if (!payload.cookies) payload.cookies = await cookiesFor(cfg, payload.url);
   const response = await fetch(endpoint(cfg, "/add"), {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-AfuDM-Token": cfg.token },
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.ok === false) {
@@ -73,17 +92,20 @@ function extensionOf(url) {
 /* --- 1) Tarayici indirmesini devral --------------------------------- */
 chrome.downloads.onCreated.addListener(async (item) => {
   const cfg = await config();
-  if (!cfg.enabled || !item.url || item.url.startsWith("blob:") || item.url.startsWith("data:")) {
+  // Yonlendirmelerden SONRAKI adres: cerezler de bu adrese gore secilir,
+  // boylece aria2 yonlendirme zincirinde cerezi baska alana tasimaz.
+  const url = item.finalUrl || item.url;
+  if (!cfg.enabled || !url || url.startsWith("blob:") || url.startsWith("data:")) {
     return;
   }
   const skip = cfg.skipExtensions.split(",").map((s) => s.trim()).filter(Boolean);
-  if (skip.includes(extensionOf(item.url))) return;
+  if (skip.includes(extensionOf(url))) return;
   if (item.fileSize > 0 && item.fileSize < cfg.minSizeMB * 1048576) return;
   if (!(await afudmAlive(cfg))) return; // AfuDM kapali: tarayici devam etsin
 
   try {
     await sendToAfudm(cfg, {
-      url: item.url,
+      url,
       kind: "http",
       filename: item.filename ? item.filename.split(/[\\/]/).pop() : undefined,
       headers: item.referrer ? { Referer: item.referrer } : {},
