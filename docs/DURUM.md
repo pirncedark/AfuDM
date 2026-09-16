@@ -345,6 +345,13 @@ TUZAKLAR:
 - Kapali porta fetch Windows'ta ~2 sn surer; 1 sn beklemek yetmez.
 - Sag tik menusu Playwright'tan tetiklenemez (yerel menu) — elle denenmeli.
 
+## SURUM 1.1.0 YAYINDA (2026-09-17)
+https://github.com/pirncedark/AfuDM/releases/tag/v1.1.0 — `AfuDM-v1.1.0-win64.zip`
+(19 MB), etiket 5904beb, sha256 80a21633... Kullanici Telegram'dan "1" ile onayladi.
+Icerik: Chrome'a ekle, video paneli, oturum cerezleri, ozel baslik, cekirdek
+duzeltmeler. Yayindan once zip gecici klasore acildi: 5 MB indirme tamam, pencere
+yanit veriyor, baslik_test paketlenmis exe'de de gecti.
+
 ## SURUM 1.0.0 YAYINDA (2026-09-16)
 https://github.com/pirncedark/AfuDM/releases/tag/v1.0.0 — `AfuDM-v1.0.0-win64.zip`
 (19 MB, cekirdek paket), etiket f4875f1. `gh` OAuth girisiyle (keyring) — PAT YOK.
