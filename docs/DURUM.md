@@ -24,7 +24,12 @@ indirme listesi (http + torrent + video ayni anda) arayuzde dogru akti.
 - [x] Testler: `tests/smoke.py` (gercek indirme), `tests/netcheck_test.py`,
       `tests/manager_test.py` (son ikisi AG GEREKTIRMEZ, saniyeler surer)
 
-## SON TAM TEST (2026-09-16 17:46) — 17/17 GECTI
+## SON TAM TEST (2026-09-16 19:10) — 17/17 GECTI
+Birlestirici eklendikten SONRA kosuldu; gerileme yok.
+Cevrimdisi takimlar da yesil: netcheck, manager, i18n, format, engines,
+mux_ayristirma (17 kontrol), mux (16 kontrol).
+
+## ONCEKI TAM TEST (2026-09-16 17:46) — 17/17 GECTI
 Bugunun BUTUN degisikliklerinden sonra kosuldu (dil katmani, motor yonetimi,
 format secimi, magnet/baslik duzeltmeleri dahil). Gerileme yok.
   HTTP 16 baglanti | duraklat->surdur bayt kaybi yok | magnet 5 seed/46 peer
