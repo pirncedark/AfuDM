@@ -23,7 +23,7 @@ import webview  # noqa: E402
 from api.server import LocalAPI  # noqa: E402
 
 VARSAYILAN_API_PORT = 6811   # uzantinin da ilk denedigi port
-from core import (baslangic, chrome_kurulum, clipboard, engines, iliskilendir,  # noqa: E402
+from core import (baslangic, chrome_kurulum, clipboard, engines, guc, iliskilendir,  # noqa: E402
                   kaydet, lang, paths, pencere)
 from core.manager import Manager  # noqa: E402
 
@@ -361,6 +361,18 @@ class Api:
         except Exception as exc:
             return {"ok": False, "error": str(exc)[:200]}
         return self.telefon_durumu()
+
+    # --- uyku / telefondan uyandirma (core/guc.py) -----------------------
+    def guc_durumu(self) -> dict:
+        """Ayarlar icin: ag kartinin MAC'i ve uyandirmaya hazir olup olmadigi."""
+        try:
+            return {"ok": True, **guc.durum()}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:200]}
+
+    def simdi_uyu(self) -> dict:
+        """Kullanici "simdi uyut" derse (deneme icin)."""
+        return {"ok": bool(guc.uyut())}
 
     def add_links(self, payload: dict) -> dict:
         urls = payload.get("urls") or []

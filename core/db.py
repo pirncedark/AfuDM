@@ -62,6 +62,8 @@ DEFAULTS: dict[str, Any] = {
     "telegram_bot_token": "",
     "telegram_chat_id": "",
     "shutdown_when_done": False,
+    # Bitince UYUT (kapatma degil): uyanista sifre istemez, is kaldigi yerden surer
+    "sleep_when_done": False,
     "seed_ratio": 1.0,
     "auto_update_trackers": True,
     "video_quality": "best",

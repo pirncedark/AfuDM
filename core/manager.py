@@ -872,6 +872,21 @@ class Manager:
                 ["shutdown", "/s", "/t", "60", "/c", "AfuDM: indirmeler bitti"],
                 creationflags=0x08000000,
             )
+        elif self.store.get("sleep_when_done") and self._all_idle():
+            # Kapatma DEGIL uyku: uyanista Windows sifresi istenmez ve AfuDM
+            # zaten calisiyor olur (bkz. core/guc.py). Once 20 sn bekleriz ki
+            # kullanici "vazgectim" derse duraklatabilsin.
+            self.store.log("warn", "tum isler bitti — bilgisayar 20 sn sonra uyutuluyor")
+            threading.Timer(20.0, self._uyut_gerekirse).start()
+
+    def _uyut_gerekirse(self) -> None:
+        """Bekleme bitince HALA bos mu? Yeni is geldiyse uyutma."""
+        if not self.store.get("sleep_when_done") or not self._all_idle():
+            self.store.log("info", "uyutma iptal: yeni is var")
+            return
+        from . import guc
+        if not guc.uyut():
+            self.store.log("warn", "uyutma basarisiz (guc ayarlari engelliyor olabilir)")
 
     def _all_idle(self) -> bool:
         try:

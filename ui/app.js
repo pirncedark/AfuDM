@@ -569,6 +569,8 @@ $("openSettings").onclick = async () => {
   $("sTrackers").checked = !!s.auto_update_trackers;
   $("sNotify").checked = !!s.notify_telegram;
   $("sShutdown").checked = !!s.shutdown_when_done;
+  $("sSleep").checked = !!s.sleep_when_done;
+  gucDurumu();
   $("sKaydet").checked = s.kaydetme_penceresi !== false;
   $("sKategori").checked = s.kategori_klasorleri !== false;
   $("sTepsi").checked = s.tepsiye_kucult !== false;
@@ -660,6 +662,33 @@ $("sTelefonKopya").onclick = async () => {
   }
 };
 
+/* Telefondan uyandirma: tarayici UDP gonderemez, bu yuzden uyandirmayi
+   telefondaki bir WoL uygulamasi yapar — burada MAC'i ve kartin hazir olup
+   olmadigini gosteriyoruz (bkz. core/guc.py). */
+async function gucDurumu() {
+  try {
+    const bilgi = await call("guc_durumu");
+    $("sMac").value = bilgi.mac || "";
+    const anahtar = bilgi.wol === true ? "wol.acik"
+      : bilgi.wol === false ? "wol.kapali" : "wol.bilinmiyor";
+    let metin = t(anahtar, { kart: bilgi.kart || "?" });
+    if (!bilgi.hazir) metin += t("wol.hazirDegil");
+    $("wolDurum").textContent = metin;
+  } catch (_) { $("wolDurum").textContent = ""; }
+}
+
+$("sMacKopya").onclick = async () => {
+  if (!$("sMac").value) return;
+  try {
+    await navigator.clipboard.writeText($("sMac").value);
+    toast(t("toast.kopyalandi"));
+  } catch (_) {
+    $("sMac").select();
+    document.execCommand("copy");
+    toast(t("toast.kopyalandi"));
+  }
+};
+
 /* ---------- motorlar (Ayarlar icinde) ---------- */
 async function renderEngines() {
   const kutu = $("engines");
@@ -741,6 +770,7 @@ $("setGo").onclick = async () => {
     auto_update_trackers: $("sTrackers").checked,
     notify_telegram: $("sNotify").checked,
     shutdown_when_done: $("sShutdown").checked,
+    sleep_when_done: $("sSleep").checked,
     kaydetme_penceresi: $("sKaydet").checked,
     kategori_klasorleri: $("sKategori").checked,
     tepsiye_kucult: $("sTepsi").checked,

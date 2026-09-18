@@ -186,6 +186,7 @@
         <label class="opt"><input type="checkbox" id="sTrackers"> <span data-i18n="set.trackers">Tracker listesini günlük güncelle</span></label>
         <label class="opt"><input type="checkbox" id="sNotify"> <span data-i18n="set.notify">Bitince Telegram'a haber ver</span></label>
         <label class="opt"><input type="checkbox" id="sShutdown"> <span data-i18n="set.shutdown">Hepsi bitince bilgisayarı kapat</span></label>
+        <label class="opt"><input type="checkbox" id="sSleep"> <span data-i18n="set.sleep">Hepsi bitince bilgisayarı uyut</span></label>
         <label class="opt"><input type="checkbox" id="sKaydet"> <span data-i18n="set.kaydet">İndirmeden önce kaydetme penceresini göster</span></label>
         <label class="opt"><input type="checkbox" id="sKategori"> <span data-i18n="set.kategori">Dosyaları kategori klasörlerine ayır</span></label>
         <label class="opt"><input type="checkbox" id="sTepsi"> <span data-i18n="set.tepsi">Küçültünce sistem tepsisine in</span></label>
@@ -193,6 +194,15 @@
         <label class="opt"><input type="checkbox" id="sTorrent"> <span data-i18n="set.torrent">.torrent ve magnet linklerini AfuDM açsın</span></label>
         <label class="opt"><input type="checkbox" id="sBasTepside"> <span data-i18n="set.basTepside">Açılışta pencere açılmasın, tepside başlasın</span></label>
         <label class="opt"><input type="checkbox" id="sTelefon"> <span data-i18n="set.telefon">Telefondan bağlan (aynı Wi-Fi)</span></label>
+      </div>
+      <div>
+        <label data-i18n="set.wol">Telefondan uyandırma (Wake-on-LAN)</label>
+        <div class="yol-satir">
+          <input id="sMac" type="text" spellcheck="false" readonly>
+          <button class="btn" id="sMacKopya" data-i18n="set.kopyala">Kopyala</button>
+        </div>
+        <div class="hint" id="wolDurum"></div>
+        <div class="hint" data-i18n="set.wolHint">Telefonuna bir Wake-on-LAN uygulaması kur ve bu MAC adresini gir. Bilgisayar uykudayken uyandırır, AfuDM kaldığı yerden devam eder — şifre sorulmaz.</div>
       </div>
       <div id="telefonKutu" style="display:none">
         <label data-i18n="set.telefonAdres">Telefonun tarayıcısına bu adresi yaz</label>

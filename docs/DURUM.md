@@ -607,6 +607,31 @@ NOT: PC KAPATILIRSA acilista Windows sifresi yuzunden AfuDM baslamaz
 KAPAT yerine UYUT; uyandiginda oturum zaten acik, ekran kilitli olsa bile
 indirme surer.
 
+## UYKU + TELEFONDAN UYANDIRMA (2026-09-18), core/guc.py, tests/guc_test.py
+Kullanicinin itirazi dogruydu: "PC'de sifre var". KAPATMA calismaz — acilista
+Windows sifresi istenir ve Baslangic'taki AfuDM oturum acilana kadar BASLAMAZ.
+UYKU calisir: uyanista oturum zaten acik (ekran kilitli olsa bile), is kaldigi
+yerden surer, sifre sorulmaz.
+
+- `core/guc.py`: `uyut()` (powrprof SetSuspendState, hazirda bekletme DEGIL),
+  `aktif_kart()` (ad + MAC), `wol_acik_mi()` (True/False/**None = okunamadi**,
+  bunlar birbirine karistirilmamali), `uyandirmaya_hazir()` (powercfg
+  wake_armed), `wol_gonder()` (sihirli paket: 6x0xFF + MAC'in 16 tekrari).
+- Ayar `sleep_when_done`: hepsi bitince 20 sn bekleyip uyutur; bekleme
+  sonunda YENI IS geldiyse uyutmaz (`_uyut_gerekirse`).
+- Ayarlar'da MAC + kopyala + kartin durumu yaziyor.
+
+OLCULEN GERCEK (bu makine): kart "Ethernet 3" (Realtek PCIe GbE),
+MAC 30-9C-23-E0-FF-82, sihirli paket ayari ACIK, ama `powercfg
+-devicequery wake_armed` listesinde ag karti YOK (yalniz klavye/fare).
+Yani uyandirma uykuda denenmeli; gerekirse Aygit Yoneticisi > kart >
+Guc Yonetimi'nden "bu aygitin bilgisayari uyandirmasina izin ver" acilmali.
+
+MIMARI SINIR: **tarayici UDP paketi gonderemez**, bu yuzden telefondaki AfuDM
+arayuzu makineyi KENDISI uyandiramaz. Uyandirmayi telefondaki bir WoL
+uygulamasi yapar; AfuDM MAC'i ve kartin durumunu gosterir. (PC kapaliyken
+zaten AfuDM sunucusu da calismaz — sayfa acilmaz.)
+
 ## IS SIRASI (kullanici, Telegram 2026-09-17)
 1. ~~Kaydetme penceresi~~ — BITTI (2026-09-18, yukari bak).
 2. ~~Telefon arayuzu~~ — BITTI (2026-09-18, yukari bak). Kullanici "2 yap" dedi.
