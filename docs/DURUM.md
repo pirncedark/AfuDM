@@ -527,6 +527,19 @@ NOT — UZANTI GUNCELLENMELI: kalite listesindeki duzeltmeler (sayfa ses
 efektlerinin elenmesi, genislikli etiket) Chrome'daki uzanti YENILENMEDEN
 gorunmez: chrome://extensions -> AfuDM kartindaki (yenile) simgesi.
 
+## v1.2.0 YAYINLANDI (2026-09-18, kullanici onayiyla)
+`gh release create v1.2.0` — paket `build_out/AfuDM-v1.2.0-win64.zip` (20.1 MB,
+cekirdek: aria2 var, yt-dlp/ffmpeg Ayarlar'dan iniyor).
+https://github.com/pirncedark/AfuDM/releases/tag/v1.2.0
+
+Surum notu (TR+EN) bugunku her seyi anlatiyor: kaydetme penceresi, seed
+guncelleme penceresi + kendi tracker'larin, tek kopya, tepsi/acilis,
+.torrent-magnet baglama, 403 cerez duzeltmesi, tepsi simgesi kok nedeni,
+Turkce karakter, kuyruk kimligi, uzanti kalite listesi temizligi.
+
+TUZAK: `Path("AfuDM-v1.2.0-win64").with_suffix(".zip")` ".0-win64" kismini
+UZANTI sanip "AfuDM-v1.2.zip" uretiyor — zip adini metin olarak birlestir.
+
 ## IS SIRASI (kullanici, Telegram 2026-09-17)
 1. ~~Kaydetme penceresi~~ — BITTI (2026-09-18, yukari bak).
 2. SIRADA (bilgisayar sistemi bitince): **Android uygulamasi** — telefon + PC birlikte
