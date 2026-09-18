@@ -78,6 +78,7 @@ class Api:
         self._motor_ilerleme: dict[str, dict] = {}
         self._ozel_baslik = False  # Windows basligi kaldirildi mi (core/pencere.py)
         self._chrome = chrome_kurulum.OtomatikEkleme()
+        self._tepsi = None              # pystray simgesi (bkz. build_tray)
         self._bekleyenler = kaydet.Bekleyenler()
         self._chrome_baslangic = 0.0
 
@@ -451,13 +452,19 @@ def calisan_ornege_yolla(link: str) -> bool:
         return False       # acik degil (ya da baska bir program o portta)
 
 
-def build_tray(window, manager: Manager) -> None:
-    """Sistem tepsisi simgesi. pystray yoksa sessizce atlanir."""
+def build_tray(window, manager: Manager):
+    """Sistem tepsisi simgesi; kurulan simgeyi dondurur (kurulamazsa None).
+
+    Donen deger onemli: simge YOKSA "kucultunce tepsiye in" davranisi
+    kapatilir, yoksa pencere gizlenir ve uygulamaya ulasilamaz."""
     try:
         import pystray
         from PIL import Image, ImageDraw
-    except ImportError:
-        return
+    except ImportError as exc:
+        # Paketlenmis exe'de konsol YOK: sebep veritabanina da yazilir,
+        # yoksa "simge neden gorunmuyor" disaridan anlasilmiyor.
+        manager.store.log("warn", f"tepsi simgesi kurulamadi (import): {exc}")
+        return None
 
     image = Image.new("RGBA", (64, 64), (20, 24, 31, 255))
     draw = ImageDraw.Draw(image)
@@ -503,7 +510,15 @@ def build_tray(window, manager: Manager) -> None:
         pystray.MenuItem(yazi("tray.quit"), quit_app),
     )
     icon = pystray.Icon("AfuDM", image, "AfuDM", menu)
-    threading.Thread(target=icon.run, daemon=True).start()
+
+    def calistir() -> None:
+        try:
+            icon.run()
+        except Exception as exc:                 # simge kurulamazsa sebebi kalsin
+            manager.store.log("warn", f"tepsi simgesi calismadi: {exc!r}")
+
+    threading.Thread(target=calistir, daemon=True).start()
+    return icon
 
 
 def main() -> int:
@@ -550,10 +565,31 @@ def main() -> int:
     from api.server import _Handler as _ApiHandler  # noqa: E402
     _ApiHandler.on_ask = local_api_handler_ask
 
+    def tepsi_bildirimi() -> None:
+        # Windows 11 YENI bir uygulamanin tepsi simgesini varsayilan olarak
+        # "gizli simgeler" (^) altina koyar ve bu disaridan degistirilemez.
+        # Kullanici pencerenin nereye gittigini bilsin diye BIR KEZ soylenir.
+        if manager.store.get("tepsi_bildirimi_yapildi"):
+            return
+        manager.store.set("tepsi_bildirimi_yapildi", True)
+        simge = getattr(api, "_tepsi", None)
+        if simge is None:
+            return
+        try:
+            simge.notify(
+                lang.t("tray.hidden", str(manager.store.get("language", "auto"))), "AfuDM"
+            )
+        except Exception:
+            pass
+
     def baslik_hazir() -> None:
         try:
             pencere.kucultunce_gizle(
-                window, lambda: bool(manager.store.get("tepsiye_kucult"))
+                window,
+                # Tepsi simgesi kurulamadiysa GIZLEME: pencereye donus yolu kalmaz.
+                lambda: bool(manager.store.get("tepsiye_kucult"))
+                and getattr(api, "_tepsi", None) is not None,
+                tepsi_bildirimi,
             )
         except Exception as exc:
             print(f"UYARI: tepsiye kucultme kurulamadi: {exc}")
@@ -587,9 +623,13 @@ def main() -> int:
     )
 
     def on_start() -> None:
-        watcher.prime()
-        watcher.start()
-        build_tray(window, manager)
+        # ONCE tepsi: pano izleyicisi patlarsa simge de kurulmadan kalirdi.
+        api._tepsi = build_tray(window, manager)
+        try:
+            watcher.prime()
+            watcher.start()
+        except Exception as exc:
+            print(f"UYARI: pano izleyici baslatilamadi: {exc}")
 
     try:
         webview.start(on_start, debug=bool(os.environ.get("AFUDM_DEBUG")))

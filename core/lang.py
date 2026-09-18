@@ -19,6 +19,10 @@ _TEXTS = {
     "tr": {
         "window.title": "AfuDM — indirme yöneticisi",
         "tray.show": "Pencereyi göster",
+        "tray.hidden": (
+            "AfuDM tepside çalışmaya devam ediyor. Simge görev çubuğundaki "
+            "^ okunun altında; oradan sürükleyip görev çubuğuna sabitleyebilirsin."
+        ),
         "tray.hide": "Pencereyi gizle",
         "tray.pauseAll": "Tümünü duraklat",
         "tray.resumeAll": "Tümünü sürdür",
@@ -39,6 +43,10 @@ _TEXTS = {
     "en": {
         "window.title": "AfuDM — download manager",
         "tray.show": "Show window",
+        "tray.hidden": (
+            "AfuDM keeps running in the tray. The icon sits under the ^ arrow on "
+            "the taskbar; drag it onto the taskbar to keep it visible."
+        ),
         "tray.hide": "Hide window",
         "tray.pauseAll": "Pause all",
         "tray.resumeAll": "Resume all",

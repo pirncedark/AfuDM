@@ -1,5 +1,5 @@
 # AfuDM — Durum & Devam Notu
-Son guncelleme: 2026-09-18 (video hatasi, baslangic/tepsi/torrent, kaydetme penceresi)
+Son guncelleme: 2026-09-18 (tepsi simgesi kok nedeni + gorsel dogrulama)
 
 ## Ne yapiyoruz
 IDM yerine gecen, PORTABLE (tek klasor, kopyala-calistir) Windows masaustu
@@ -410,6 +410,42 @@ ornegi 0 saniyede cikti (link acik ornege gitti, pencere acilmadi); yeni
 
 BEKLEYEN GORSEL DOGRULAMA (pencere gerektirir, kullanici oyunu bitirince):
 kucultunce tepsiye inme, Ayarlar'daki bes yeni kutu, .torrent cift tiklama.
+
+## TEPSI SIMGESI — EXE'DE HIC CALISMIYORMUS (2026-09-18, KOK NEDEN)
+Kullanici "kucultunce sag altta gozukmuyor" dedi. Olculdu: kaynaktan
+(`python app.py`) tepsi simgesi VAR, paketlenmis `AfuDM.exe`'de YOK.
+
+**Kok neden:** `build_out/AfuDM.spec` excludes listesinde `PIL.ImageFont`
+vardi. `from PIL import ImageDraw` ImageFont'u import eder -> exe'de
+ImportError -> `build_tray` sessizce `return` ediyordu. Exe konsolsuz
+(runw.exe) oldugu icin hata HICBIR YERE yazilmiyordu; v1.0'dan beri boyleymis.
+
+Duzeltme:
+1. spec'ten `PIL.ImageFont` cikarildi (exe 17.7 -> 17.9 MB).
+2. `build_tray` artik hatayi VERITABANINA yaziyor (events): exe'de konsol yok,
+   tek teshis yolu bu. `icon.run()` de sarmalanip loglaniyor.
+3. `build_tray` simgeyi DONDURUYOR; simge kurulamazsa "kucultunce tepsiye in"
+   DEVREYE GIRMEZ — yoksa pencere gizlenir ve uygulamaya ulasilamazdi.
+4. Tepsi simgesi pano izleyicisinden ONCE kuruluyor (pano patlarsa simge de
+   kurulmadan kaliyordu); pano izleyici ayri try icinde.
+
+**Windows 11 gercegi (degistirilemez):** yeni bir uygulamanin tepsi simgesi
+varsayilan olarak "gizli simgeler" (^) altina konur ve bu disaridan
+zorlanamaz. Bu yuzden ILK gizlemede bir kez bildirim gosteriliyor
+("simge ^ okunun altinda, surukleyip sabitleyebilirsin" — lang: tray.hidden)
+ve Ayarlar'da ayni bilgi yaziyor.
+
+## GORSEL DOGRULAMA (2026-09-18, kullanici oyunu bitirdikten sonra)
+Gercek pencerede, gercek exe ile, ekran goruntusuyle dogrulandi:
+- Ayarlar'da bes yeni kutu dogru durumu okuyor (baslangic ACIK, torrent/magnet
+  KAYITLI) + iki ipucu (tepsi, varsayilan uygulama) gorunuyor.
+- Kucult -> pencere gorev cubugundan KALKIYOR (IsWindowVisible False), tepsi
+  simgesine cift tik -> geri geliyor. Ilk gizlemede bildirim balonu cikti.
+- `AfuDM.exe "<yol>.torrent"` -> 1 saniyede ACIK ORNEGE gitti, kaydetme
+  penceresi "Torrent" kategorisi ve downloads\Torrent hedefiyle acildi,
+  Indir -> 4.1 MB/s, 16 seed.
+- Cikan kusur: ayni anda BIRDEN COK AfuDM ornegi acilabiliyor (test sirasinda
+  6 surec vardi). Linksiz ikinci acilista da tek ornek kisiti YOK — siradaki is.
 
 ## IS SIRASI (kullanici, Telegram 2026-09-17)
 1. ~~Kaydetme penceresi~~ — BITTI (2026-09-18, yukari bak).

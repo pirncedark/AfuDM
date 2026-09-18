@@ -150,7 +150,7 @@ def one_getir(window) -> None:
 
 
 
-def kucultunce_gizle(window, etkin_mi) -> bool:
+def kucultunce_gizle(window, etkin_mi, gizlenince=None) -> bool:
     """Kucultme dugmesi pencereyi GOREV CUBUGUNDAN da kaldirsin (tepsiye insin).
 
     Windows'ta "tepsiye kucult" diye bir pencere bayragi yoktur: pencere simge
@@ -170,6 +170,8 @@ def kucultunce_gizle(window, etkin_mi) -> bool:
             try:
                 if form.WindowState == FormWindowState.Minimized and etkin_mi():
                     form.Hide()
+                    if gizlenince:
+                        gizlenince()
             except Exception:
                 pass
 
