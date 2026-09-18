@@ -70,6 +70,8 @@ DEFAULTS: dict[str, Any] = {
     "kaydetme_penceresi": True,
     # Bos hedefte indirmeler downloads/Video, downloads/Muzik... altina
     "kategori_klasorleri": True,
+    # Kucultme dugmesi pencereyi tepsiye indirsin (gorev cubugundan kalksin)
+    "tepsiye_kucult": True,
 }
 
 

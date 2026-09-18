@@ -219,6 +219,14 @@ const DICT = {
     "klas.muzik": "Müzik",
     "klas.disk": "Disk",
 
+    "set.kaydet": "İndirmeden önce kaydetme penceresini göster",
+    "set.kategori": "Dosyaları kategori klasörlerine ayır",
+    "set.tepsi": "Küçültünce sistem tepsisine in",
+    "set.baslangic": "Bilgisayar açılınca AfuDM'i başlat",
+    "set.torrent": ".torrent ve magnet linklerini AfuDM açsın",
+    "hint.torrentDefault": "Kayıt tamam. Windows'un varsayılanı hâlâ başka bir program: bir .torrent dosyasına sağ tık > Birlikte aç > Başka uygulama seç > AfuDM > \"Her zaman bunu kullan\".",
+    "hint.torrentOk": ".torrent ve magnet artık AfuDM'e bağlı.",
+
     "err.noLink": "En az bir bağlantı gir.",
     "err.noFolder": "Önce bir klasör seç.",
     "err.bridge": "köprü hazır değil",
@@ -429,6 +437,14 @@ const DICT = {
     "klas.videolar": "Videos",
     "klas.muzik": "Music",
     "klas.disk": "Drive",
+
+    "set.kaydet": "Show the save dialog before downloading",
+    "set.kategori": "Sort files into category folders",
+    "set.tepsi": "Minimize to the system tray",
+    "set.baslangic": "Start AfuDM when the computer starts",
+    "set.torrent": "Open .torrent files and magnet links with AfuDM",
+    "hint.torrentDefault": "Registered. Windows still opens these with another program: right-click a .torrent > Open with > Choose another app > AfuDM > \"Always use this app\".",
+    "hint.torrentOk": ".torrent and magnet are now handled by AfuDM.",
 
     "err.noLink": "Enter at least one link.",
     "err.noFolder": "Pick a folder first.",

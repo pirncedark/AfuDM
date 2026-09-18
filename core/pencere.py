@@ -149,6 +149,38 @@ def one_getir(window) -> None:
         pass
 
 
+
+def kucultunce_gizle(window, etkin_mi) -> bool:
+    """Kucultme dugmesi pencereyi GOREV CUBUGUNDAN da kaldirsin (tepsiye insin).
+
+    Windows'ta "tepsiye kucult" diye bir pencere bayragi yoktur: pencere simge
+    durumuna gecince gizlenir, geri donus tepsi simgesinden olur (bkz. app.py
+    build_tray). `etkin_mi` her seferinde OKUNUR, boylece ayar yeniden baslatma
+    gerektirmez.
+    """
+    if not _ETKIN or window.native is None:
+        return False
+    form = window.native
+
+    def kur():
+        from System import EventHandler
+        from System.Windows.Forms import FormWindowState
+
+        def boyut_degisti(_gonderen, _olay):
+            try:
+                if form.WindowState == FormWindowState.Minimized and etkin_mi():
+                    form.Hide()
+            except Exception:
+                pass
+
+        form.Resize += EventHandler(boyut_degisti)
+        return True
+
+    try:
+        return bool(_ui_is_parcaciginda(form, kur))
+    except Exception:
+        return False
+
 def buyutulmus_mu(window) -> bool:
     if not _ETKIN or window.native is None:
         return False

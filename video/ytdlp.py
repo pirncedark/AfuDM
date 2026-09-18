@@ -110,6 +110,8 @@ def version() -> str:
             [ytdlp_path(), "--version"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=20,
             creationflags=CREATE_NO_WINDOW,
         )
@@ -145,11 +147,14 @@ def probe(url: str, timeout: float = 90.0) -> dict:
     """Video bilgisi + format listesi (indirmeden once kalite secimi icin)."""
     cmd = [
         ytdlp_path(), "-J", "--no-warnings", "--no-playlist",
+        # --encoding OLMADAN yt-dlp ciktisini Windows konsol kod sayfasiyla yazar
+        # ve Turkce harfler '?' olur ("KANALI GERI" -> "KANALI GER?"); OLCULDU.
+        "--encoding", "utf-8",
         "--flat-playlist", url,
     ]
     proc = subprocess.run(
-        cmd, capture_output=True, text=True, timeout=timeout,
-        creationflags=CREATE_NO_WINDOW,
+        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=timeout, creationflags=CREATE_NO_WINDOW,
     )
     if proc.returncode != 0:
         raise RuntimeError((proc.stderr or "yt-dlp bilgi alamadi").strip()[:500])
@@ -209,10 +214,14 @@ class VideoJob:
     finished_at: float = 0.0
     _thread: threading.Thread | None = None
     _stop: bool = False
+    # aria2c dis indirici dusunce yt-dlp'nin KENDI indiricisiyle bir kez daha denenir
+    _yedek_denendi: bool = False
+    _aria2c: str | None = None
 
     # --- komut kurulumu ---------------------------------------------------
-    def build_cmd(self, aria2c: str | None = None, ffmpeg_var: bool | None = None) -> list[str]:
-        aria2c = aria2c or str(paths.ARIA2C)
+    def build_cmd(self, aria2c: str | None = None, ffmpeg_var: bool | None = None,
+                  dis_indirici: bool = True) -> list[str]:
+        aria2c = (aria2c or str(paths.ARIA2C)) if dis_indirici else ""
         # ffmpeg yoksa birlestirme de mp3'e cevirme de yapilamaz; format secimi buna gore.
         ffmpeg_var = ffmpeg_hazir() if ffmpeg_var is None else ffmpeg_var
         self.ffmpeg_vardi = ffmpeg_var
@@ -232,6 +241,8 @@ class VideoJob:
             ytdlp_path(),
             "--newline",
             "--no-warnings",
+            # Ciktinin kodlamasi: bkz. probe(). Dosya adi satiri buradan okunuyor.
+            "--encoding", "utf-8",
             "--progress",
             "--progress-template", PROGRESS_TEMPLATE,
             "--continue",
@@ -277,6 +288,8 @@ class VideoJob:
     def start(self, aria2c: str | None = None, on_update=None,
               ffmpeg_var: bool | None = None) -> None:
         Path(self.dest_dir).mkdir(parents=True, exist_ok=True)
+        self._aria2c = aria2c
+        self._yedek_denendi = False
         self.proc = subprocess.Popen(
             self.build_cmd(aria2c, ffmpeg_var),
             stdout=subprocess.PIPE,
@@ -337,6 +350,63 @@ class VideoJob:
         return True
 
     def _pump(self, on_update) -> None:
+        """Cikti okunur; aria2c ile dusen is yt-dlp'nin KENDI indiricisiyle tekrarlanir.
+
+        aria2c dis indirici bazi CDN'lerde (olculdu: googlevideo) 403 alip
+        "exited with code 22" diyor; ayni adres yt-dlp'nin kendi indiricisiyle
+        sorunsuz iniyor. Kullaniciya hata gostermeden once bir kez daha denenir:
+        hiz icin aria2c, olmazsa calisan yol."""
+        while True:
+            code, tail = self._akisi_oku(on_update)
+            if self._stop:
+                self.status = "removed"
+                break
+            if code == 0:
+                if not self.ffmpeg_vardi:
+                    self._kendi_birlestir(on_update)
+                self.status = "complete"
+                if self.total:
+                    self.downloaded = self.total
+                break
+            # Yalniz ARIA2C dustuyse tekrarla: "video yok/ozel" gibi kalici
+            # hatalarda ikinci kosu bosuna zaman kaybi olur.
+            if (not self._yedek_denendi and self._dis_indirici_vardi()
+                    and any("aria2c exited" in satir for satir in tail)):
+                self._yedek_denendi = True
+                self.downloaded = 0
+                self.speed = 0
+                self.parca_dosyalari.clear()
+                try:
+                    self.proc = subprocess.Popen(
+                        self.build_cmd(self._aria2c, self.ffmpeg_vardi, dis_indirici=False),
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                        bufsize=1,
+                        creationflags=CREATE_NO_WINDOW,
+                    )
+                    if on_update:
+                        on_update(self)
+                    continue
+                except OSError:
+                    pass                      # yedek de baslatilamadi: hatayi yaz
+            self.status = "error"
+            ham = " / ".join(tail[-3:])[:500] or f"yt-dlp cikis kodu {code}"
+            self.error = self.anlasilir_hata(ham)
+            break
+        self.speed = 0
+        self.finished_at = time.time()
+        if on_update:
+            on_update(self)
+
+    def _dis_indirici_vardi(self) -> bool:
+        """Dusen kosuda aria2c dis indirici kullanildi mi?"""
+        yol = self._aria2c or str(paths.ARIA2C)
+        return bool(yol) and Path(yol).exists()
+
+    def _akisi_oku(self, on_update) -> tuple[int, list[str]]:
         assert self.proc is not None
         tail: list[str] = []
         buffer = ""
@@ -374,23 +444,7 @@ class VideoJob:
         if buffer.strip():
             if not self._parse_aria(buffer.strip()):
                 tail.append(buffer.strip())
-        code = self.proc.wait()
-        if self._stop:
-            self.status = "removed"
-        elif code == 0:
-            if not self.ffmpeg_vardi:
-                self._kendi_birlestir(on_update)
-            self.status = "complete"
-            if self.total:
-                self.downloaded = self.total
-        else:
-            self.status = "error"
-            ham = " / ".join(tail[-3:])[:500] or f"yt-dlp cikis kodu {code}"
-            self.error = self.anlasilir_hata(ham)
-        self.speed = 0
-        self.finished_at = time.time()
-        if on_update:
-            on_update(self)
+        return self.proc.wait(), tail
 
     @staticmethod
     def _num(value: str) -> int:

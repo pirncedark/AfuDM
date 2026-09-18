@@ -1,5 +1,5 @@
 # AfuDM — Durum & Devam Notu
-Son guncelleme: 2026-09-18 (kaydetme penceresi + kuyruk kimligi)
+Son guncelleme: 2026-09-18 (video hatasi, baslangic/tepsi/torrent, kaydetme penceresi)
 
 ## Ne yapiyoruz
 IDM yerine gecen, PORTABLE (tek klasor, kopyala-calistir) Windows masaustu
@@ -351,6 +351,66 @@ TUZAKLAR:
    "tamamlandi" yazilmaz). `_reattach_torrent` info hash ile kaydi bulup yeni
    GID'e baglar.
 
+## VIDEO INDIRME — IKI GERCEK KUSUR DUZELTILDI (2026-09-18)
+Kullanici uzantidan video secti, liste geldi ama indirme "hata" dedi. PENCERE
+ACMADAN yeniden uretildi (Manager + VideoJob dogrudan cagrilarak).
+
+1. **aria2c dis indirici googlevideo'dan 403 aliyor** -> `ERROR: aria2c exited
+   with code 22` ve is komple dusuyordu. AYNI adres yt-dlp'nin kendi
+   indiricisiyle sorunsuz iniyor (matris: cerez var/yok x aria2c var/yok, dordu
+   de gecti; hata KARARSIZ, CDN'e bagli). Artik aria2c dusen is bir kez daha,
+   dis indirici OLMADAN denenir (`VideoJob._pump` + `build_cmd(dis_indirici=False)`).
+   Yalniz ciktida "aria2c exited" gecerse tekrarlanir: "video yok/ozel" gibi
+   kalici hatalarda ikinci kosu bosuna beklemedir (olculdu: 2 sn'de biter).
+2. **Turkce karakter bozulmasi:** "KANALI GERI ALDIM" -> "KANALI GER? ALDIM".
+   yt-dlp ciktisini Windows konsol kod sayfasiyla yaziyordu. OLCULDU:
+   PYTHONIOENCODING=utf-8 ISE YARAMIYOR, `--encoding utf-8` cozuyor. Hem
+   indirme hem probe komutuna eklendi; probe ciktisi da utf-8 okunuyor.
+   Dogrulama: gercek indirme `KANALI GERİ ALDIM ! - YouTube.mp4` olarak bitti.
+
+Uzanti: gercek kalite listesi varken sayfanin kendi ses efektleri
+(success.mp3, open.mp3...) listeyi kirletiyordu — kalite varsa yalniz video
+dosyalari ve 1 MB ustu dosyalar gosteriliyor.
+
+## SISTEM BAGLANTILARI — BASLANGIC, TEPSI, .TORRENT/MAGNET (2026-09-18)
+Kullanici istegi: "pc acildiginda acilsin, kucultunce sag alta insin, torrent
+dosyalarini da AfuDM eklesin".
+
+- `core/baslangic.py` — Windows **Baslangic klasorune** .lnk (Run anahtari
+  DEGIL: kullanici Gorev Yoneticisi > Baslangic'tan kapatabilsin). Kisayol
+  PowerShell + WScript.Shell ile yazilir, ek kutuphane yok. Test: 11 kontrol.
+  TUZAK: PowerShell 5.1 BOM'suz betikte Turkce/em-dash'i bozar — betik ASCII
+  kalir, metin PARAMETRE olarak gecilir.
+- `core/iliskilendir.py` — `.torrent` + `magnet:` icin HKCU\Software\Classes
+  kaydi. qBittorrent'in kaydi EZILMEZ: eski ProgId/komut `AfuDM_Onceki*`
+  degerlerinde yedeklenir, `kapat()` aynen geri yazar (test bunu dogruluyor).
+  OLCULEN SINIR: Windows 11'de "varsayilan uygulama" (UserChoice) kayit
+  defterinden ZORLA degistirilemez (hash korumali) — kod denemez bile;
+  `varsayilan_mi()` gercegi soyler, arayuz de kullaniciya "sag tik > Birlikte
+  ac > Her zaman bunu kullan" diye yazar.
+- `core/pencere.kucultunce_gizle` — kucultunce form gizlenir (gorev cubugundan
+  da kalkar), geri donus tepsi simgesinden. Tepsideki "Pencereyi goster" artik
+  `one_getir` kullaniyor (gizli VE simge durumundaki pencereyi de geri getirir).
+- **Komut satiri:** `AfuDM.exe <.torrent|magnet:|http...>` -> `argvden_link` +
+  `calisan_ornege_yolla`. AfuDM ZATEN ACIKSA link yerel API'ye verilir ve
+  IKINCI PENCERE ACILMAZ (iki ornek ayni veritabanina/motora asilmasin);
+  kapaliysa acilir ve link kaydetme penceresinde gelir.
+- Ayarlar'a bes yeni secenek: kaydetme penceresi, kategori klasorleri, tepsiye
+  kucult, baslangicta ac, .torrent/magnet. Windows'a dokunan ikisi ayrilan
+  cagrilarla gider: biri patlasa da otekiler ve ayarlar kaydedilir.
+
+Testler: `tests/baslangic_test.py`, `tests/iliskilendir_test.py` (ikisi de ag
+ve pencere GEREKTIRMEZ; gercek Baslangic klasorune ve gercek kayit defterine
+DOKUNMAZ — modul degiskeni gecici yere yonlendirilir).
+
+DOGRULANDI (kullanici oyundayken, pencere ACMADAN): uygulama gizli baslatildi
+(`-WindowStyle Hidden`), API cevap verdi; `python app.py magnet:...` ikinci
+ornegi 0 saniyede cikti (link acik ornege gitti, pencere acilmadi); yeni
+`AfuDM.exe` (17.7 MB) paketlendi ve gizli baslatilip ping'lendi.
+
+BEKLEYEN GORSEL DOGRULAMA (pencere gerektirir, kullanici oyunu bitirince):
+kucultunce tepsiye inme, Ayarlar'daki bes yeni kutu, .torrent cift tiklama.
+
 ## IS SIRASI (kullanici, Telegram 2026-09-17)
 1. ~~Kaydetme penceresi~~ — BITTI (2026-09-18, yukari bak).
 2. SIRADA (bilgisayar sistemi bitince): **Android uygulamasi** — telefon + PC birlikte
@@ -572,6 +632,8 @@ Anahtar kaynagi: `antygravitiy/.env` -> MCP_TELEGRAM_TOKEN, chat 1483248658.
     python tests/cerez_test.py           (ag gerektirmez)
     python tests/kaydet_test.py          (ag gerektirmez; kaydetme penceresi)
     python tests/kuyruk_test.py          (ag gerektirmez; mukerrer/GID kimligi)
+    python tests/baslangic_test.py       (ag gerektirmez; Baslangic kisayolu)
+    python tests/iliskilendir_test.py    (ag gerektirmez; .torrent/magnet kaydi)
     python tests/daemon_test.py          (AfuDM KAPALIYKEN)
     python tests/baslik_test.py          (AfuDM acikken; fare kullanmaz)
     python tests/video_panel_test.py     (AfuDM acikken; ffmpeg+ffprobe gerekir, 12 test)

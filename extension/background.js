@@ -459,6 +459,7 @@ async function videoSecenekleri(cfg, sender, frameUrl, metinler) {
     dosyaSecenekleri.push({
       label: ad || chrome.i18n.getMessage("vpFile"),
       detail: insanBoyut(kayit.size), url: kayit.url, kind: "http", referer,
+      boyut: Number(kayit.size) || 0,
     });
   }
 
@@ -482,7 +483,14 @@ async function videoSecenekleri(cfg, sender, frameUrl, metinler) {
       if (kaliteler.size) secenekler.push(...kaliteSecenekleri(sayfa, kaliteler, referer));
     } catch (_) { /* yt-dlp bu sayfayi bilmiyor: yalniz ham dosyalar kalir */ }
   }
-  return { ok: true, options: [...secenekler, ...dosyaSecenekleri] };
+  /* Gercek kalite listesi varken sayfanin kendi ses efektleri (success.mp3,
+     open.mp3...) listeyi kirletiyordu: kalite varsa yalniz VIDEO dosyalari ve
+     1 MB ustu dosyalar kalir, kucuk arayuz sesleri dusurulur. */
+  const KUCUK = 1024 * 1024;
+  const temiz = secenekler.length
+    ? dosyaSecenekleri.filter((s) => VIDEO_UZANTI.test(s.url) || (s.boyut || 0) >= KUCUK)
+    : dosyaSecenekleri;
+  return { ok: true, options: [...secenekler, ...temiz] };
 }
 
 async function videoIndir(cfg, sender, secenek, frameUrl) {

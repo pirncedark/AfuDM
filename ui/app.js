@@ -492,6 +492,10 @@ $("openSettings").onclick = async () => {
   $("sTrackers").checked = !!s.auto_update_trackers;
   $("sNotify").checked = !!s.notify_telegram;
   $("sShutdown").checked = !!s.shutdown_when_done;
+  $("sKaydet").checked = s.kaydetme_penceresi !== false;
+  $("sKategori").checked = s.kategori_klasorleri !== false;
+  $("sTepsi").checked = s.tepsiye_kucult !== false;
+  sistemDurumu();
   try {
     const info = await call("api_info");
     $("apiHint").textContent =
@@ -502,6 +506,33 @@ $("openSettings").onclick = async () => {
   state.motorTimer = setInterval(renderEngines, 1000);
   openVeil("setVeil");
 };
+
+/* ---------- sistem ayarlari: baslangic + .torrent/magnet (core/baslangic.py,
+   core/iliskilendir.py) ---------- */
+async function sistemDurumu() {
+  try {
+    const bilgi = await call("sistem_durumu");
+    $("sBaslangic").checked = !!bilgi.baslangic;
+    const torrent = (bilgi.torrent || {}).torrent || {};
+    const magnet = (bilgi.torrent || {}).magnet || {};
+    $("sTorrent").checked = !!(torrent.kayitli && magnet.kayitli);
+    // Windows'un varsayilan uygulama secimi (UserChoice) disaridan
+    // degistirilemez: kayit tamamsa bile kullaniciya dogruyu soyle.
+    $("torrentHint").textContent = !$("sTorrent").checked ? ""
+      : t(torrent.varsayilan ? "hint.torrentOk" : "hint.torrentDefault");
+  } catch (_) { /* Windows disi ya da erisim yok: kutular oldugu gibi kalir */ }
+}
+
+async function sistemAyarlariniUygula() {
+  const hatalar = [];
+  try {
+    await call("baslangic_ayarla", $("sBaslangic").checked);
+  } catch (err) { hatalar.push(err.message); }
+  try {
+    await call("torrent_iliskilendir", $("sTorrent").checked);
+  } catch (err) { hatalar.push(err.message); }
+  if (hatalar.length) toast(hatalar[0], true);
+}
 
 /* ---------- motorlar (Ayarlar icinde) ---------- */
 async function renderEngines() {
@@ -584,9 +615,15 @@ $("setGo").onclick = async () => {
     auto_update_trackers: $("sTrackers").checked,
     notify_telegram: $("sNotify").checked,
     shutdown_when_done: $("sShutdown").checked,
+    kaydetme_penceresi: $("sKaydet").checked,
+    kategori_klasorleri: $("sKategori").checked,
+    tepsiye_kucult: $("sTepsi").checked,
   };
   try {
     await call("settings_save", payload);
+    // Windows'a dokunan iki ayar (Baslangic klasoru / kayit defteri) ayri
+    // gider: biri patlarsa digerleri ve ayarlar yine de kaydedilmis olsun.
+    await sistemAyarlariniUygula();
     closeVeil("setVeil");
     toast(t("toast.saved"));
   } catch (err) { toast(err.message, true); }

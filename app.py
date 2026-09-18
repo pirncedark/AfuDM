@@ -15,12 +15,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import urllib.error  # noqa: E402
+import urllib.request  # noqa: E402
+
 import webview  # noqa: E402
 
 from api.server import LocalAPI  # noqa: E402
 
 VARSAYILAN_API_PORT = 6811   # uzantinin da ilk denedigi port
-from core import chrome_kurulum, clipboard, engines, kaydet, lang, paths, pencere  # noqa: E402
+from core import (baslangic, chrome_kurulum, clipboard, engines, iliskilendir,  # noqa: E402
+                  kaydet, lang, paths, pencere)
 from core.manager import Manager  # noqa: E402
 
 # Pencere basligi dile gore secilir (bkz. core/lang.py); ayar okunana kadar bu durur.
@@ -229,6 +233,33 @@ class Api:
             return {"ok": False, "error": str(exc)[:300]}
         return {"ok": True, **sonuc}
 
+    # --- sistem baglantilari (baslangic, .torrent/magnet) ----------------
+    # Ikisi de Windows'a dokunur (Baslangic klasoru / HKCU\Software\Classes):
+    # her acilista degil, YALNIZ Ayarlar acilinca sorulur.
+    def sistem_durumu(self) -> dict:
+        try:
+            return {
+                "ok": True,
+                "baslangic": baslangic.acik_mi(),
+                "torrent": iliskilendir.durum(),
+            }
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:200]}
+
+    def baslangic_ayarla(self, acik: bool) -> dict:
+        try:
+            baslangic.ac() if acik else baslangic.kapat()
+        except (OSError, RuntimeError) as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+        return {"ok": True, "acik": baslangic.acik_mi()}
+
+    def torrent_iliskilendir(self, acik: bool) -> dict:
+        try:
+            iliskilendir.ac() if acik else iliskilendir.kapat()
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+        return {"ok": True, "durum": iliskilendir.durum()}
+
     def add_links(self, payload: dict) -> dict:
         urls = payload.get("urls") or []
         try:
@@ -383,6 +414,43 @@ class Api:
             return {"ok": False, "error": str(exc)[:300]}
 
 
+# --- komut satirindan gelen link (.torrent cift tiklama, magnet:) -----------
+def argvden_link(argv: list[str]) -> str:
+    """Gezgin/tarayici "AfuDM.exe <yol|magnet>" diye cagirir; ilk anlamli baglanti."""
+    for arg in argv[1:]:
+        deger = arg.strip().strip('"')
+        if not deger or deger.startswith("-"):
+            continue
+        if deger.startswith(("magnet:", "http://", "https://", "ftp://")):
+            return deger
+        if deger.lower().endswith(".torrent") and Path(deger).exists():
+            return str(Path(deger).resolve())
+    return ""
+
+
+def calisan_ornege_yolla(link: str) -> bool:
+    """AfuDM zaten aciksa linki ONA ver ve ikinci pencere ACMA.
+
+    Bir .torrent'e cift tiklayinca her seferinde yeni bir AfuDM acilsaydi iki
+    ornek ayni veritabanina ve ayni motora asilirdi.
+    """
+    try:
+        bilgi = json.loads((paths.DATA / "api_endpoint.json").read_text("utf-8"))
+        port, token = int(bilgi["port"]), str(bilgi["token"])
+    except (OSError, ValueError, KeyError):
+        return False
+    govde = json.dumps({"url": link, "interactive": True}).encode("utf-8")
+    istek = urllib.request.Request(
+        f"http://127.0.0.1:{port}/add", data=govde,
+        headers={"Content-Type": "application/json", "X-AfuDM-Token": token},
+    )
+    try:
+        with urllib.request.urlopen(istek, timeout=3) as yanit:
+            return json.loads(yanit.read().decode("utf-8")).get("ok") is True
+    except (urllib.error.URLError, OSError, ValueError):
+        return False       # acik degil (ya da baska bir program o portta)
+
+
 def build_tray(window, manager: Manager) -> None:
     """Sistem tepsisi simgesi. pystray yoksa sessizce atlanir."""
     try:
@@ -398,10 +466,14 @@ def build_tray(window, manager: Manager) -> None:
     draw.rectangle([14, 52, 50, 56], fill=(167, 139, 250, 255))
 
     def show(_icon=None, _item=None) -> None:
+        # Gizli VE simge durumunda olabilir: one_getir ikisini de duzeltir.
         try:
-            window.show()
+            pencere.one_getir(window)
         except Exception:
-            pass
+            try:
+                window.show()
+            except Exception:
+                pass
 
     def hide(_icon=None, _item=None) -> None:
         try:
@@ -436,6 +508,9 @@ def build_tray(window, manager: Manager) -> None:
 
 def main() -> int:
     paths.ensure_dirs()
+    link = argvden_link(sys.argv)
+    if link and calisan_ornege_yolla(link):
+        return 0                      # acik ornege verildi, ikinci pencere yok
     if not paths.ARIA2C.exists():
         print(f"HATA: motor bulunamadi -> {paths.ARIA2C}")
         return 2
@@ -477,6 +552,12 @@ def main() -> int:
 
     def baslik_hazir() -> None:
         try:
+            pencere.kucultunce_gizle(
+                window, lambda: bool(manager.store.get("tepsiye_kucult"))
+            )
+        except Exception as exc:
+            print(f"UYARI: tepsiye kucultme kurulamadi: {exc}")
+        try:
             ozel = pencere.basligi_kaldir(window)
         except Exception as exc:  # kaldirilamazsa Windows basligi kalir, uygulama calisir
             print(f"UYARI: ozel baslik kurulamadi: {exc}")
@@ -490,6 +571,9 @@ def main() -> int:
             window.evaluate_js("window.afudmPencere && window.afudmPencere()")
         except Exception:
             pass
+        # Cift tiklanan .torrent / magnet: kaydetme penceresinde acilsin
+        if link:
+            api.tarayicidan_sor({"url": link})
 
     window.events.shown += baslik_hazir
     window.events.loaded += sayfa_hazir
