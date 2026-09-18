@@ -1,5 +1,5 @@
 # AfuDM — Durum & Devam Notu
-Son guncelleme: 2026-09-16 (uzanti canli testi)
+Son guncelleme: 2026-09-18 (kaydetme penceresi + kuyruk kimligi)
 
 ## Ne yapiyoruz
 IDM yerine gecen, PORTABLE (tek klasor, kopyala-calistir) Windows masaustu
@@ -304,6 +304,63 @@ Testler: `tests/mux_ayristirma_test.py` (ornek okuma, 17 kontrol),
 `tests/mux_test.py` (birlestirme + ffprobe + tam kod cozme, 16 kontrol).
 Ikisi de yerel izlerle calisir; izler yoksa ATLANIR.
 
+## KAYDETME PENCERESI — BITTI (2026-09-18), tests/kaydet_test.py + kuyruk_test.py
+IDM'in "indirme bilgisi" penceresi: link nereden gelirse gelsin (uzanti, pano)
+indirme HEMEN baslamaz, once pencere acilir — dosya adi, KATEGORI, klasor agaci
+ve simdi/sonra secimi. Onaylanmadan motora hicbir sey gitmez.
+
+Parcalar:
+- `core/kaydet.py` — kategori tahmini (uzanti/magnet/tur), kategori klasoru
+  (downloads/Video, downloads/Muzik...), dosya adi temizligi, klasor agaci
+  (kisayollar + diskler, alt klasorler ISTENDIKCE), `Bekleyenler` (onay bekleyen
+  istekler; cerez/baslik bellekte, yarim saatte dusuyor).
+- `api/server.py` — uzanti `interactive: true` yollar; `_Handler.on_ask` istegi
+  bekletir ve `{"ok": true, "pending": true}` doner.
+- `app.py` — `kaydet_bilgi`, `klasor_kisayollar/alt/yeni/gozat`,
+  `bekleyen_listesi/onayla/iptal`; `core/pencere.one_getir` pencereyi one alir.
+- `ui/` — `kaydetVeil` (indirme bilgisi) + `klasorVeil` (klasor agaci); "Link
+  ekle" penceresindeki hedef klasor de ayni agaci kullaniyor. Ayar:
+  `kaydetme_penceresi`, `kategori_klasorleri` (ikisi de varsayilan ACIK).
+
+CANLI DOGRULAMA (2026-09-18, gercek pencere + gercek indirme):
+  /add interactive -> pencere kendiliginden acildi (ad "100MB.zip", kategori
+  "Arsiv", hedef downloads\Arsiv) -> klasor agacindan baska klasor secildi ->
+  Indir -> 4.7 MB/s, 16 baglanti, SECILEN klasore indi. Kategori klasoru
+  (downloads\Arsiv) kendiliginden olusturuldu. Arka arkaya 3 istek: pencere
+  ilkini gosterdi, "Sirada 2 istek daha var" yazdi.
+
+TUZAKLAR:
+- Bekleyen sayaci yalniz pencere ACILIRKEN yazilirsa arkadan gelen istekler
+  gorunmez (pencere acikken `bekleyenYokla` erken donuyordu). Artik pencere
+  acikken de sayac isliyor; gosterilen istek listeden dusmedigi icin sayarken
+  bir eksigi alinir.
+- `klasorSec()` bir SOZ dondurur: ortulunun disina tiklamak ve ESC de sozu
+  cozmeli, yoksa kaydetme penceresi bir daha yanit vermez.
+
+## KUYRUK KIMLIGI — 2 GERCEK KUSUR DUZELTILDI (2026-09-18), tests/kuyruk_test.py
+1. **"Bu torrent zaten kuyrukta" ama listede YOK.** Uygulama beklenmedik
+   kapaninca (ya da aria2 oturumu silinince) veritabaninda "active" kalan kayit
+   motorda olmadigi halde mukerrer sayiliyordu. `find_duplicate` artik motordaki
+   GID'lerle karsilastirir; karsiligi olmayan kaydi "olu" isaretler ve yol acar.
+   **Motor CEVAP VERMEZKEN hicbir kayit olu SAYILMAZ** (bos liste ile
+   "bilinmiyor" ayri tutulur: `_live_statuses()` None doner) — gecici bir RPC
+   hatasi calisan indirmenin kaydini bozmasin. Video isleri bellekte durdugu
+   icin `video_jobs` de canli sayilir.
+2. **Yeniden baslatmada magnet kaydi sahipsiz kaliyordu.** aria2 magneti
+   oturumdan yeniden okurken YENI GID uretir; kayit hicbirine uymaz (bitince
+   "tamamlandi" yazilmaz). `_reattach_torrent` info hash ile kaydi bulup yeni
+   GID'e baglar.
+
+## IS SIRASI (kullanici, Telegram 2026-09-17)
+1. ~~Kaydetme penceresi~~ — BITTI (2026-09-18, yukari bak).
+2. SIRADA (bilgisayar sistemi bitince): **Android uygulamasi** — telefon + PC birlikte
+   calisan AfuDM ("Android'e uygun olmasi yeterli simdilik").
+
+BEKLEYEN DOGRULAMA (kullanici oyundayken calistirilamaz — pencere one gelir):
+`tests/port_test.py` ve `tests/extension_test.py` GORUNUR Chromium acar; kaydetme
+penceresi uzantiyla ucdan uca (gercek Chrome indirmesi) HENUZ denenmedi. Yerel
+API uzerinden (uzantinin yolladigi bicimin AYNISI) dogrulandi.
+
 ## SIRADAKI IS
 1. **MP4 BIRLESTIRICI (karar bekliyor).** Kullanici "IDM gibi kendi birlestiricimiz
    olsun, paket 23 MB'a insin" dedi. YouTube'un iki izi de MP4 ailesinden:
@@ -513,6 +570,8 @@ Anahtar kaynagi: `antygravitiy/.env` -> MCP_TELEGRAM_TOKEN, chat 1483248658.
     python tests/manager_test.py         (ag gerektirmez)
     python tests/extension_test.py       (AfuDM acikken; uzanti Chromium'da, 19 test)
     python tests/cerez_test.py           (ag gerektirmez)
+    python tests/kaydet_test.py          (ag gerektirmez; kaydetme penceresi)
+    python tests/kuyruk_test.py          (ag gerektirmez; mukerrer/GID kimligi)
     python tests/daemon_test.py          (AfuDM KAPALIYKEN)
     python tests/baslik_test.py          (AfuDM acikken; fare kullanmaz)
     python tests/video_panel_test.py     (AfuDM acikken; ffmpeg+ffprobe gerekir, 12 test)

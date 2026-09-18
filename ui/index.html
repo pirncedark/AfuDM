@@ -114,7 +114,10 @@
       </div>
       <div>
         <label for="dest" data-i18n="add.dest">Hedef klasör (boş = varsayılan)</label>
-        <input id="dest" type="text" spellcheck="false" placeholder="">
+        <div class="yol-satir">
+          <input id="dest" type="text" spellcheck="false" placeholder="">
+          <button class="btn" id="destPick" data-i18n="add.pick">Değiştir</button>
+        </div>
       </div>
       <div class="err-note" id="addErr"></div>
     </div>
@@ -230,6 +233,83 @@
     </div>
     <div class="foot">
       <button class="btn ghost" data-close="chromeVeil" data-i18n="chr.close">Kapat</button>
+    </div>
+  </div>
+</div>
+
+<!-- Kaydetme penceresi: tarayici/pano/elle gelen link once buradan gecer (core/kaydet.py) -->
+<div class="veil" id="kaydetVeil">
+  <div class="sheet">
+    <h2 data-i18n="kay.title">İndirme bilgisi</h2>
+    <div class="body">
+      <div>
+        <label data-i18n="kay.url">Adres</label>
+        <div class="kay-url" id="kayUrl"></div>
+      </div>
+      <div>
+        <label for="kayName" data-i18n="kay.name">Dosya adı</label>
+        <input id="kayName" type="text" spellcheck="false">
+      </div>
+      <div class="grid2">
+        <div>
+          <label for="kayCat" data-i18n="kay.cat">Kategori</label>
+          <select id="kayCat"></select>
+        </div>
+        <div id="kayQualityWrap">
+          <label for="kayQuality" data-i18n="kay.quality">Kalite</label>
+          <select id="kayQuality">
+            <option value="best" data-i18n="add.q.best">En iyi</option>
+            <option value="2160" data-i18n="add.q.2160">4K'ya kadar</option>
+            <option value="1080" data-i18n="add.q.1080">1080p'ye kadar</option>
+            <option value="720" data-i18n="add.q.720">720p'ye kadar</option>
+            <option value="480" data-i18n="add.q.480">480p'ye kadar</option>
+            <option value="audio" data-i18n="add.q.audio">Sadece ses (mp3)</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label for="kayDest" data-i18n="kay.dest">Kaydedilecek klasör</label>
+        <div class="yol-satir">
+          <input id="kayDest" type="text" spellcheck="false">
+          <button class="btn" id="kayPick" data-i18n="kay.pick">Klasör seç</button>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="opts">
+          <label class="opt"><input type="radio" name="kayNe" id="kayNow" checked> <span data-i18n="kay.now">Şimdi indir</span></label>
+          <label class="opt"><input type="radio" name="kayNe" id="kayLater"> <span data-i18n="kay.later">Sonra indir (saat)</span></label>
+        </div>
+        <div>
+          <label for="kayAt" data-i18n="add.startAt">Saatinde başlat (boş = hemen)</label>
+          <input id="kayAt" type="text" placeholder="23:30" spellcheck="false">
+        </div>
+      </div>
+      <div class="hint" id="kayQueue"></div>
+      <div class="err-note" id="kayErr"></div>
+    </div>
+    <div class="foot">
+      <button class="btn ghost" id="kayCancel" data-i18n="kay.cancel">Vazgeç</button>
+      <button class="btn primary" id="kayGo" data-i18n="kay.go">İndir</button>
+    </div>
+  </div>
+</div>
+
+<!-- Klasor agaci (kaydetme penceresi ve link ekleme kullanir) -->
+<div class="veil" id="klasorVeil">
+  <div class="sheet sheet-dar">
+    <h2 data-i18n="klas.title">Klasör seç</h2>
+    <div class="body">
+      <div class="agac" id="agac"></div>
+      <div class="yol-satir">
+        <input id="klasYol" type="text" spellcheck="false">
+        <button class="btn" id="klasYeni" data-i18n="klas.new">Yeni klasör</button>
+        <button class="btn" id="klasSistem" data-i18n="klas.system">Windows'tan seç</button>
+      </div>
+      <div class="err-note" id="klasErr"></div>
+    </div>
+    <div class="foot">
+      <button class="btn ghost" id="klasCancel" data-i18n="klas.cancel">Vazgeç</button>
+      <button class="btn primary" id="klasOk" data-i18n="klas.ok">Bu klasörü kullan</button>
     </div>
   </div>
 </div>

@@ -66,6 +66,10 @@ DEFAULTS: dict[str, Any] = {
     "auto_update_trackers": True,
     "video_quality": "best",
     "api_port": 6811,
+    # Tarayicidan gelen indirmede once kaydetme penceresi (IDM gibi)
+    "kaydetme_penceresi": True,
+    # Bos hedefte indirmeler downloads/Video, downloads/Muzik... altina
+    "kategori_klasorleri": True,
 }
 
 

@@ -38,6 +38,9 @@ class _Handler(BaseHTTPRequestHandler):
     # Anahtar en son ne zaman verildi: "Chrome'a ekle" penceresi bununla
     # uzantinin gercekten baglandigini gosterir.
     son_eslesme = 0.0
+    # Uzanti "interactive" isterse istek hemen baslamaz: uygulama kaydetme
+    # penceresini acar. Uygulama ayarlar; None ise dogrudan eklenir.
+    on_ask = None
 
     # --- yardimcilar ------------------------------------------------------
     def log_message(self, fmt: str, *args) -> None:  # konsolu kirletmesin
@@ -123,6 +126,11 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             if parsed.path == "/add":
                 url = data.get("url") or data.get("source") or ""
+                if (data.get("interactive") and _Handler.on_ask and url.strip()
+                        and self.manager.store.get("kaydetme_penceresi")):
+                    kimlik = _Handler.on_ask(data)
+                    self._send(200, {"ok": True, "pending": True, "id": kimlik})
+                    return
                 result = self.manager.add(
                     url,
                     kind=data.get("kind"),

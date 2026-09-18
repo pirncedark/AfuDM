@@ -304,6 +304,7 @@ async function tick() {
     renderCounts();
     renderList();
     await renderDrawer();
+    await bekleyenYokla();
   } catch (err) {
     $("engineDot").className = "dot";
     $("engineText").textContent = t("engine.offline");
@@ -591,11 +592,249 @@ $("setGo").onclick = async () => {
   } catch (err) { toast(err.message, true); }
 };
 
+/* ---------- klasor agaci (core/kaydet.py) ----------
+   Tek bir pencere; klasorSec() cagrilinca acilir ve secilen yolu dondurur.
+   Alt klasorler ISTENDIKCE okunur: tum disk hicbir zaman taranmaz. */
+let klasorSoz = null;   // acik secimin cozucusu
+
+function agacSatiri(oge, derinlik) {
+  const satir = document.createElement("div");
+  satir.className = "dugum";
+  satir.style.paddingLeft = 6 + derinlik * 14 + "px";
+  satir.dataset.yol = oge.yol;
+  satir.dataset.derinlik = String(derinlik);
+  const ok = document.createElement("span");
+  ok.className = "ok" + (oge.alt ? "" : " bos");
+  ok.textContent = oge.alt ? "▸" : "";
+  const ad = document.createElement("span");
+  ad.className = "ad";
+  // Kisayolun adi dile gore yazilir; disk ve alt klasorler kendi adiyla kalir.
+  const anahtar = oge.anahtar && oge.anahtar !== "disk" ? "klas." + oge.anahtar : "";
+  ad.textContent = anahtar ? t(anahtar) : oge.ad;
+  ad.title = oge.yol;
+  satir.append(ok, ad);
+  return satir;
+}
+
+function agacSec(satir) {
+  document.querySelectorAll("#agac .dugum.on").forEach((d) => d.classList.remove("on"));
+  satir.classList.add("on");
+  $("klasYol").value = satir.dataset.yol;
+}
+
+async function agacAc(satir) {
+  const derinlik = Number(satir.dataset.derinlik) + 1;
+  if (satir.classList.contains("acik")) {          // kapat: alt satirlari sil
+    satir.classList.remove("acik");
+    satir.querySelector(".ok").textContent = "▸";
+    let sonraki = satir.nextSibling;
+    while (sonraki && Number(sonraki.dataset.derinlik) >= derinlik) {
+      const silinecek = sonraki;
+      sonraki = sonraki.nextSibling;
+      silinecek.remove();
+    }
+    return;
+  }
+  const out = await call("klasor_alt", satir.dataset.yol);
+  satir.classList.add("acik");
+  satir.querySelector(".ok").textContent = "▾";
+  let imlec = satir;
+  (out.ogeler || []).forEach((alt) => {
+    const yeni = agacSatiri(alt, derinlik);
+    imlec.after(yeni);
+    imlec = yeni;
+  });
+}
+
+$("agac").addEventListener("click", async (event) => {
+  const satir = event.target.closest(".dugum");
+  if (!satir) return;
+  agacSec(satir);
+  if (event.target.classList.contains("ok") && !event.target.classList.contains("bos")) {
+    try { await agacAc(satir); } catch (err) { $("klasErr").textContent = err.message; }
+  }
+});
+$("agac").addEventListener("dblclick", async (event) => {
+  const satir = event.target.closest(".dugum");
+  if (satir && satir.querySelector(".ok").textContent) {
+    try { await agacAc(satir); } catch (err) { $("klasErr").textContent = err.message; }
+  }
+});
+
+async function klasorSec(baslangic) {
+  $("klasErr").textContent = "";
+  $("klasYol").value = baslangic || "";
+  const govde = $("agac");
+  govde.innerHTML = "";
+  const out = await call("klasor_kisayollar");
+  (out.ogeler || []).forEach((oge) => govde.append(agacSatiri(oge, 0)));
+  openVeil("klasorVeil");
+  return new Promise((coz) => { klasorSoz = coz; });
+}
+
+function klasorKapat(yol) {
+  closeVeil("klasorVeil");
+  const coz = klasorSoz;
+  klasorSoz = null;
+  if (coz) coz(yol);
+}
+
+$("klasCancel").onclick = () => klasorKapat("");
+$("klasOk").onclick = () => {
+  const yol = $("klasYol").value.trim();
+  if (!yol) { $("klasErr").textContent = t("err.noFolder"); return; }
+  klasorKapat(yol);
+};
+$("klasYeni").onclick = async () => {
+  const ust = $("klasYol").value.trim();
+  if (!ust) { $("klasErr").textContent = t("err.noFolder"); return; }
+  const ad = prompt(t("klas.newAsk"), "");
+  if (!ad) return;
+  try {
+    const out = await call("klasor_yeni", ust, ad);
+    $("klasYol").value = out.yol;
+    $("klasErr").textContent = "";
+  } catch (err) { $("klasErr").textContent = err.message; }
+};
+$("klasSistem").onclick = async () => {
+  // Windows'un kendi klasor secicisi: agactan bulunamayan yerler icin kacis yolu
+  try {
+    const out = await call("klasor_gozat", $("klasYol").value.trim());
+    if (out.yol) klasorKapat(out.yol);
+  } catch (err) { $("klasErr").textContent = err.message; }
+};
+/* Ortulunun disina tiklamak ve ESC de secimi BITIRMELI: yoksa klasorSec()'in
+   sozu asili kalir ve kaydetme penceresi bir daha yanit vermez. */
+$("klasorVeil").addEventListener("click", (event) => {
+  if (event.target === $("klasorVeil") && klasorSoz) klasorKapat("");
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && klasorSoz) klasorKapat("");
+});
+
+$("destPick").onclick = async () => {
+  const yol = await klasorSec($("dest").value.trim() || state.settings.download_dir || "");
+  if (yol) $("dest").value = yol;
+};
+
+/* ---------- kaydetme penceresi (IDM'in "indirme bilgisi" penceresi) ----------
+   Link nereden gelirse gelsin (pano, uzanti) once burada durur: dosya adi,
+   klasor, kategori ve ne zaman baslayacagi secilir. */
+const kayit = { kimlik: null, url: "", kind: "", klasorler: {}, ana: "" };
+
+function kategoriDoldur(bilgi) {
+  const secici = $("kayCat");
+  secici.innerHTML = "";
+  Object.keys(bilgi.klasorler || {}).forEach((anahtar) => {
+    const secenek = document.createElement("option");
+    secenek.value = anahtar;
+    secenek.textContent = t("kay.c." + anahtar);
+    secici.append(secenek);
+  });
+  secici.value = bilgi.kategori;
+}
+
+function kayHedefYaz() {
+  // Kategori klasorleri kapaliysa hepsi ana klasore iner.
+  $("kayDest").value = kayit.klasorler[$("kayCat").value] || kayit.ana;
+}
+
+async function kaydetAc(istek) {
+  const bilgi = await call("kaydet_bilgi", istek.url || "");
+  kayit.kimlik = istek.id === undefined ? null : istek.id;
+  kayit.url = istek.url || "";
+  kayit.kind = istek.kind || bilgi.kind;
+  kayit.klasorler = bilgi.kategori_klasorleri ? bilgi.klasorler : {};
+  kayit.ana = bilgi.ana;
+  $("kayUrl").textContent = kayit.url;
+  $("kayUrl").title = kayit.url;
+  $("kayName").value = istek.filename || istek.title || bilgi.dosya_adi || "";
+  kategoriDoldur(bilgi);
+  kayHedefYaz();
+  $("kayQualityWrap").style.display = kayit.kind === "video" ? "" : "none";
+  $("kayQuality").value = istek.quality || state.settings.video_quality || "best";
+  $("kayNow").checked = true;
+  $("kayAt").value = "";
+  $("kayErr").textContent = "";
+  $("kayQueue").textContent = "";
+  openVeil("kaydetVeil");
+  $("kayName").focus();
+}
+
+$("kayCat").onchange = kayHedefYaz;
+$("kayPick").onclick = async () => {
+  const yol = await klasorSec($("kayDest").value.trim() || kayit.ana);
+  if (yol) $("kayDest").value = yol;
+};
+$("kayAt").onfocus = () => { $("kayLater").checked = true; };
+
+$("kayCancel").onclick = async () => {
+  closeVeil("kaydetVeil");
+  const kimlik = kayit.kimlik;
+  kayit.kimlik = null;
+  if (kimlik !== null) {
+    try { await call("bekleyen_iptal", kimlik); } catch (_) { /* zaten dusmus */ }
+  }
+  bekleyenYokla();
+};
+
+$("kayGo").onclick = async () => {
+  const secim = {
+    filename: $("kayName").value.trim(),
+    dest_dir: $("kayDest").value.trim(),
+    kategori: $("kayCat").value,
+    quality: kayit.kind === "video" ? $("kayQuality").value : "",
+    audio_only: kayit.kind === "video" && $("kayQuality").value === "audio",
+    start_at: $("kayLater").checked ? $("kayAt").value.trim() : "",
+  };
+  try {
+    if (kayit.kimlik !== null) {
+      await call("bekleyen_onayla", kayit.kimlik, secim);
+    } else {
+      await call("add_links", { urls: [kayit.url], ...secim });
+    }
+    closeVeil("kaydetVeil");
+    kayit.kimlik = null;
+    toast(secim.start_at ? t("toast.scheduled", { n: 1 }) : t("toast.started", { n: 1 }));
+    bekleyenYokla();
+  } catch (err) { $("kayErr").textContent = err.message; }
+};
+
+/* Tarayicidan gelen istek: Python pencereyi one getirip afudmBekleyen() cagirir.
+   Cagri kaybolursa (sayfa henuz hazir degildi) tick yine de bulur. */
+async function bekleyenYokla() {
+  let ogeler = [];
+  try {
+    ogeler = (await call("bekleyen_listesi")).ogeler || [];
+  } catch (_) { return; }
+  // Gosterilen istek listeden DUSMEZ (onay/iptalde duser): sayarken cikarilir.
+  const kalan = ogeler.length - (kayit.kimlik === null ? 0 : 1);
+  if ($("kaydetVeil").classList.contains("open")) {
+    // Pencere acikken de sayac islesin: arkada biriken istekler gorulsun.
+    $("kayQueue").textContent = kalan > 0 ? t("kay.queue", { n: kalan }) : "";
+    return;
+  }
+  if (!ogeler.length) return;
+  try {
+    await kaydetAc(ogeler[0]);
+    $("kayQueue").textContent = ogeler.length > 1 ? t("kay.queue", { n: ogeler.length - 1 }) : "";
+  } catch (err) { toast(err.message, true); }
+}
+
+window.afudmBekleyen = () => { bekleyenYokla(); };
+
 /* ---------- pano yakalama teklifi (Python cagirir) ---------- */
-window.afudmClipboard = (url) => {
-  $("urls").value = url;
-  $("addErr").textContent = t("toast.clipboard");
-  openVeil("addVeil");
+window.afudmClipboard = async (url) => {
+  // Kaydetme penceresi kapaliysa (ayar) eski davranis: link ekleme penceresi.
+  if (state.settings.kaydetme_penceresi === false) {
+    $("urls").value = url;
+    $("addErr").textContent = t("toast.clipboard");
+    openVeil("addVeil");
+    return;
+  }
+  try {
+    await kaydetAc({ url });
+  } catch (err) { toast(err.message, true); }
 };
 
 /* ---------- ozel baslik cubugu (core/pencere.py) ---------- */

@@ -18,7 +18,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import webview  # noqa: E402
 
 from api.server import LocalAPI  # noqa: E402
-from core import chrome_kurulum, clipboard, engines, lang, paths, pencere  # noqa: E402
+
+VARSAYILAN_API_PORT = 6811   # uzantinin da ilk denedigi port
+from core import chrome_kurulum, clipboard, engines, kaydet, lang, paths, pencere  # noqa: E402
 from core.manager import Manager  # noqa: E402
 
 # Pencere basligi dile gore secilir (bkz. core/lang.py); ayar okunana kadar bu durur.
@@ -72,6 +74,7 @@ class Api:
         self._motor_ilerleme: dict[str, dict] = {}
         self._ozel_baslik = False  # Windows basligi kaldirildi mi (core/pencere.py)
         self._chrome = chrome_kurulum.OtomatikEkleme()
+        self._bekleyenler = kaydet.Bekleyenler()
         self._chrome_baslangic = 0.0
 
     # --- durum ------------------------------------------------------------
@@ -136,6 +139,96 @@ class Api:
         return {"ok": True, "seconds": int(seconds), "port": self.local_api.port}
 
     # --- ekleme -----------------------------------------------------------
+    # --- kaydetme penceresi (bkz. core/kaydet.py) ------------------------
+    def _hedef_klasor(self, secilen: str, url: str, kind: str, kategori: str) -> str | None:
+        if secilen:
+            return secilen
+        if not self.manager.store.get("kategori_klasorleri"):
+            return None
+        kategori = kategori or kaydet.kategori_tahmin(url, kind)
+        return kaydet.kategori_klasoru(self.manager.current_download_dir(), kategori)
+
+    def kaydet_bilgi(self, url: str) -> dict:
+        url = (url or "").strip()
+        kind = self.manager.detect_kind(url) if url else ""
+        kategori = kaydet.kategori_tahmin(url, kind) if url else "genel"
+        ana = self.manager.current_download_dir()
+        return {
+            "ok": True,
+            "kind": kind,
+            "kategori": kategori,
+            "dosya_adi": self.manager.guess_name(url) if url and kind == "http" else "",
+            "ana": ana,
+            "kategori_klasorleri": bool(self.manager.store.get("kategori_klasorleri")),
+            "klasorler": {k: kaydet.kategori_klasoru(ana, k) for k in kaydet.KATEGORI_KLASORU},
+        }
+
+    def klasor_kisayollar(self) -> dict:
+        return {"ok": True, "ogeler": kaydet.kisayollar(self.manager.current_download_dir())}
+
+    def klasor_alt(self, yol: str) -> dict:
+        try:
+            return {"ok": True, "ogeler": kaydet.alt_klasorler(yol)}
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def klasor_yeni(self, ust: str, ad: str) -> dict:
+        try:
+            return {"ok": True, "yol": kaydet.klasor_olustur(ust, ad)}
+        except (OSError, ValueError) as exc:
+            return {"ok": False, "error": str(exc)[:200]}
+
+    def klasor_gozat(self, baslangic: str = "") -> dict:
+        if not self._window:
+            return {"ok": False}
+        secim = self._window.create_file_dialog(
+            webview.FOLDER_DIALOG, directory=baslangic or self.manager.current_download_dir())
+        return {"ok": True, "yol": secim[0] if secim else ""}
+
+    def tarayicidan_sor(self, istek: dict) -> int:
+        """Yerel API (uzanti) cagirir: istegi beklet, pencereyi ac ve one getir."""
+        kimlik = self._bekleyenler.ekle(istek)
+        if self._window:
+            pencere.one_getir(self._window)
+            try:
+                self._window.evaluate_js("window.afudmBekleyen && window.afudmBekleyen()")
+            except Exception:
+                pass  # sayfa hazir degil: arayuz tick'te kendisi sorar
+        return kimlik
+
+    def bekleyen_listesi(self) -> dict:
+        return {"ok": True, "ogeler": self._bekleyenler.ozet()}
+
+    def bekleyen_iptal(self, kimlik: int) -> dict:
+        self._bekleyenler.al(kimlik)
+        return {"ok": True}
+
+    def bekleyen_onayla(self, kimlik: int, secim: dict) -> dict:
+        istek = self._bekleyenler.al(kimlik)
+        if not istek:
+            return {"ok": False, "error": lang.t("err.notFound", str(self.manager.store.get("language", "auto")))}
+        url = istek.get("url") or ""
+        kind = istek.get("kind") or self.manager.detect_kind(url)
+        try:
+            start_after = parse_start_at(secim.get("start_at", ""))
+            ad = kaydet.guvenli_dosya_adi(secim.get("filename") or "")
+            sonuc = self.manager.add(
+                url,
+                kind=kind,
+                dest_dir=self._hedef_klasor(secim.get("dest_dir") or "", url, kind, secim.get("kategori") or ""),
+                quality=secim.get("quality") or istek.get("quality"),
+                audio_only=bool(secim.get("audio_only", istek.get("audio_only"))),
+                start_after=start_after,
+                headers=istek.get("headers") or {},
+                filename=(ad or istek.get("filename")) if kind == "http" else None,
+                cookies=istek.get("cookies"),
+                user_agent=istek.get("user_agent"),
+                title=(ad or istek.get("title")) if kind == "video" else istek.get("title"),
+            )
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+        return {"ok": True, **sonuc}
+
     def add_links(self, payload: dict) -> dict:
         urls = payload.get("urls") or []
         try:
@@ -143,11 +236,16 @@ class Api:
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
         added, scheduled, failed = 0, 0, []
+        tek_ad = kaydet.guvenli_dosya_adi(payload.get("filename") or "") if len(urls) == 1 else ""
         for url in urls:
             try:
+                kind = self.manager.detect_kind(url)
                 self.manager.add(
                     url,
-                    dest_dir=payload.get("dest_dir") or None,
+                    dest_dir=self._hedef_klasor(payload.get("dest_dir") or "", url, kind,
+                                                payload.get("kategori") or ""),
+                    filename=tek_ad if tek_ad and kind == "http" else None,
+                    title=tek_ad if tek_ad and kind == "video" else None,
                     quality=payload.get("quality") or None,
                     audio_only=bool(payload.get("audio_only")),
                     playlist=bool(payload.get("playlist")),
@@ -349,7 +447,11 @@ def main() -> int:
         print(f"HATA: aria2 baslatilamadi: {exc}")
         return 3
 
-    local_api = LocalAPI(manager, port=int(manager.store.get("api_port", 6811)))
+    # HER ACILISTA 6811'den basla. Onceki calismada port dolu oldugu icin
+    # 6812'ye dusulmusse bu DEGER KAYDEDILIP kalici olurdu: uygulama hep
+    # 6812'de acilir, uzanti ise 6811'i denerdi ve "AfuDM kapali" derdi.
+    # Kayit artik yalnizca "su an hangi port" bilgisi; baslangic noktasi degil.
+    local_api = LocalAPI(manager, port=VARSAYILAN_API_PORT)
     try:
         port = local_api.start()
         manager.store.set("api_port", port)
@@ -369,6 +471,9 @@ def main() -> int:
         text_select=False,
     )
     api._window = window
+    local_api_handler_ask = api.tarayicidan_sor
+    from api.server import _Handler as _ApiHandler  # noqa: E402
+    _ApiHandler.on_ask = local_api_handler_ask
 
     def baslik_hazir() -> None:
         try:

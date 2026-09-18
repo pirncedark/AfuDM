@@ -32,13 +32,45 @@ function endpoint(cfg, path) {
   return `http://127.0.0.1:${cfg.port}${path}`;
 }
 
-async function afudmAlive(cfg) {
+/* AfuDM'in API portu SABIT DEGIL: 6811 doluysa (onceki calismanin TIME_WAIT
+   artigi, ikinci kopya, baska bir program) LocalAPI bir sonraki porta gecer.
+   Uzanti kayitli portu kullandigi icin uygulama ACIKKEN "AfuDM kapali" derdi.
+   Cozum: kayitli port cevap vermezse araligi tara, bulunani KAYDET. */
+const PORT_ILK = 6811;
+const PORT_SON = 6820;
+// Kapali bir porta baglanti Windows'ta ~2 sn surer: sure sinirlanmazsa ve
+// portlar SIRAYLA denense tarama 20 sn'yi bulur ve arayuz "AfuDM kapali" der.
+const PING_MS = 1200;
+
+async function ping(port) {
   try {
-    const response = await fetch(endpoint(cfg, "/ping"), { method: "GET" });
+    const response = await fetch(`http://127.0.0.1:${port}/ping`,
+      { method: "GET", signal: AbortSignal.timeout(PING_MS) });
     return response.ok;
   } catch (_) {
     return false;
   }
+}
+
+/* Butun araligi AYNI ANDA dener, cevap verenlerin en kucugunu secer.
+
+   Yalniz kayitli port AfuDM'in KENDI araligindaysa taranir: kullanici bilerek
+   baska bir port yazdiysa (ornegin baska makineye tunel) onun secimi ezilmez. */
+async function portTara(cfg) {
+  if (cfg.port < PORT_ILK || cfg.port > PORT_SON) return false;
+  const portlar = [];
+  for (let port = PORT_ILK; port <= PORT_SON; port++) portlar.push(port);
+  const sonuc = await Promise.all(portlar.map(ping));
+  const bulunan = portlar.find((_, i) => sonuc[i]);
+  if (bulunan === undefined) return false;
+  cfg.port = bulunan;                                // cagiran hemen kullansin
+  await chrome.storage.local.set({ port: bulunan });
+  return true;
+}
+
+async function afudmAlive(cfg) {
+  if (await ping(cfg.port)) return true;
+  return portTara(cfg);
 }
 
 /* Tarayicinin BU adrese gonderecegi cerezler. getAll({url}) alan adi, yol ve
@@ -55,8 +87,13 @@ async function cookiesFor(cfg, url) {
 }
 
 async function sendToAfudm(cfg, body) {
-  const payload = { user_agent: navigator.userAgent, ...body };
+  /* interactive: AfuDM indirmeyi HEMEN baslatmaz, once kaydetme penceresini
+     acar (klasor/ad/kategori secimi). Ayar kapaliysa uygulama yok sayar ve
+     dogrudan baslatir; karar AfuDM'in, uzantinin degil. */
+  const payload = { user_agent: navigator.userAgent, interactive: true, ...body };
   if (!payload.cookies) payload.cookies = await cookiesFor(cfg, payload.url);
+  // Port kaymis olabilir: gondermeden once dogrula (tarama gerekirse cfg.port guncellenir)
+  if (!(await ping(cfg.port))) await portTara(cfg);
   const response = await fetch(endpoint(cfg, "/add"), {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-AfuDM-Token": cfg.token },
@@ -103,14 +140,14 @@ chrome.downloads.onCreated.addListener(async (item) => {
   if (!(await afudmAlive(cfg))) return; // AfuDM kapali: tarayici devam etsin
 
   try {
-    await sendToAfudm(cfg, {
+    const sonuc = await sendToAfudm(cfg, {
       url,
       kind: "http",
       filename: item.filename ? item.filename.split(/[\\/]/).pop() : undefined,
       headers: item.referrer ? { Referer: item.referrer } : {},
     });
     chrome.downloads.cancel(item.id, () => chrome.downloads.erase({ id: item.id }));
-    notify(chrome.i18n.getMessage("notifyResumed"));
+    notify(chrome.i18n.getMessage(sonuc.pending ? "msgPending" : "notifyResumed"));
   } catch (error) {
     notify(chrome.i18n.getMessage("notifyHandoffFailed") + error.message);
   }
@@ -262,8 +299,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     return;
   }
   try {
-    await sendToAfudm(cfg, { url: target, kind, headers: tab?.url ? { Referer: tab.url } : {} });
-    notify(chrome.i18n.getMessage("msgQueued"));
+    const sonuc = await sendToAfudm(cfg, { url: target, kind, headers: tab?.url ? { Referer: tab.url } : {} });
+    notify(chrome.i18n.getMessage(sonuc.pending ? "msgPending" : "msgQueued"));
   } catch (error) {
     notify(chrome.i18n.getMessage("notifyAddFailed") + error.message);
   }
@@ -305,14 +342,58 @@ function dashKaliteleri(metin) {
   return kaliteler;
 }
 
+/* Yuksekligin yaninda ne oldugu da yazilsin: 2160p/1440p/1080p60 gibi bir ad
+   ve yanina bicim + boyut (ya da bant genisligi). Kullanici hangi cozunurlugun
+   inecegini SECMEDEN once gormeli. */
+const VIDEO_UZANTI = /\.(mp4|webm|mkv|mov|flv|avi|m4v)(\?|$)/i;
+
+function dosyaAdi(url) {
+  try {
+    return decodeURIComponent(new URL(url).pathname.split("/").pop() || "").slice(0, 40);
+  } catch (_) {
+    return "";
+  }
+}
+
+function kaliteAdi(boy, fps) {
+  const ad = boy + "p";
+  return fps && fps >= 50 ? ad + Math.round(fps) : ad;
+}
+
 function kaliteSecenekleri(kaynak, kaliteler, referer) {
   const secenekler = [...kaliteler.entries()]
     .sort((a, b) => b[0] - a[0])
-    .map(([boy, bant]) => ({ label: boy + "p", detail: mbps(bant), url: kaynak, kind: "video",
-                             quality: String(boy), referer }));
+    .map(([boy, bilgi]) => {
+      // bilgi: sayi (bant genisligi, HLS/DASH) ya da {fps, ext, filesize} (yt-dlp)
+      const sayi = typeof bilgi === "number";
+      const ayrinti = sayi
+        ? mbps(bilgi)
+        : [bilgi.ext, insanBoyut(bilgi.filesize)].filter(Boolean).join(" · ");
+      return { label: kaliteAdi(boy, sayi ? 0 : bilgi.fps), detail: ayrinti, url: kaynak,
+               kind: "video", quality: String(boy), referer };
+    });
   secenekler.push({ label: chrome.i18n.getMessage("vpAudio"), detail: "mp3", url: kaynak, kind: "video",
                     quality: "audio", audio_only: true, referer });
   return secenekler;
+}
+
+/* yt-dlp format listesini "1080p60 · mp4 · 248 MB" satirlarina indirger:
+   her yukseklikten TEK satir, buyukten kucuge. */
+function kaliteListesi(info) {
+  const enIyi = new Map();
+  for (const bicim of info.formats || []) {
+    if (!bicim.height || !bicim.vcodec || bicim.vcodec === "none") continue;
+    const onceki = enIyi.get(bicim.height);
+    if (onceki && onceki.filesize && !bicim.filesize) continue;
+    enIyi.set(bicim.height, bicim);
+  }
+  return [...enIyi.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([boy, bicim]) => ({
+      height: boy,
+      label: kaliteAdi(boy, bicim.fps),
+      detail: [bicim.ext, insanBoyut(bicim.filesize)].filter(Boolean).join(" · "),
+    }));
 }
 
 async function afudmGet(cfg, yol) {
@@ -365,28 +446,43 @@ async function videoSecenekleri(cfg, sender, frameUrl, metinler) {
       }
     } catch (_) { /* erisilemeyen liste: siradakine gec */ }
   }
+  const dosyaSecenekleri = [];
   const dosyalar = new Set();
+  let videoDosyasiVar = false;
   for (const kayit of medya.filter((m) => m.kind === "file").slice(0, 8)) {
     if (dosyalar.has(kayit.url) || dosyalar.size >= 4) continue;
     dosyalar.add(kayit.url);
-    const uzanti = (new URL(kayit.url).pathname.split(".").pop() || "").slice(0, 4).toUpperCase();
-    secenekler.push({ label: chrome.i18n.getMessage("vpFile") + (uzanti.length <= 4 && uzanti ? " · " + uzanti : ""),
-                      detail: insanBoyut(kayit.size), url: kayit.url, kind: "http", referer });
+    if (VIDEO_UZANTI.test(kayit.url)) videoDosyasiVar = true;
+    // Dosya ADI yazilsin: YouTube'da yakalananlarin hepsi ".mp3" oldugu icin
+    // eski etiket ("Dosya · MP3") DORT KEZ AYNI gorunuyordu.
+    const ad = dosyaAdi(kayit.url);
+    dosyaSecenekleri.push({
+      label: ad || chrome.i18n.getMessage("vpFile"),
+      detail: insanBoyut(kayit.size), url: kayit.url, kind: "http", referer,
+    });
   }
-  if (secenekler.length) return { ok: true, options: secenekler };
 
-  // Adres vermeyen siteler (YouTube vb.): sayfayi yt-dlp'ye sor.
-  const sayfa = sender.tab?.url || referer;
-  try {
-    const { info } = await afudmGet(cfg, "/probe?url=" + encodeURIComponent(sayfa));
-    const kaliteler = new Map();
-    for (const bicim of info.formats || []) {
-      if (bicim.height && bicim.vcodec && bicim.vcodec !== "none") kaliteler.set(bicim.height, 0);
-    }
-    return { ok: true, options: kaliteler.size ? kaliteSecenekleri(sayfa, kaliteler, referer) : [] };
-  } catch (_) {
-    return { ok: true, options: [] };
+  /* Ham sayfa istekleri COZUNURLUGU SOYLEMEZ. YouTube'da yakalananlar
+     arayuzun uyari sesleridir (success.mp3, open.mp3, no_input.mp3...):
+     kullanici kalite listesi yerine dort tane ayni "Dosya · MP3" goruyordu.
+     Gercek cozunurluk listesi yt-dlp'den gelir — HLS/DASH ana listesi de
+     indirilebilir bir VIDEO dosyasi da yoksa sayfayi AfuDM'e sor. */
+  if (!secenekler.length && !videoDosyasiVar) {
+    const sayfa = sender.tab?.url || referer;
+    try {
+      const { info } = await afudmGet(cfg, "/probe?url=" + encodeURIComponent(sayfa));
+      const kaliteler = new Map();
+      for (const bicim of info.formats || []) {
+        if (!bicim.height || !bicim.vcodec || bicim.vcodec === "none") continue;
+        // Ayni yukseklikten birden cok bicim gelir; boyutu BILINENI yegle.
+        const onceki = kaliteler.get(bicim.height);
+        if (onceki && onceki.filesize && !bicim.filesize) continue;
+        kaliteler.set(bicim.height, { fps: bicim.fps, ext: bicim.ext, filesize: bicim.filesize });
+      }
+      if (kaliteler.size) secenekler.push(...kaliteSecenekleri(sayfa, kaliteler, referer));
+    } catch (_) { /* yt-dlp bu sayfayi bilmiyor: yalniz ham dosyalar kalir */ }
   }
+  return { ok: true, options: [...secenekler, ...dosyaSecenekleri] };
 }
 
 async function videoIndir(cfg, sender, secenek, frameUrl) {
@@ -424,6 +520,18 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
         reply({ ok: true, result: await sendToAfudm(cfg, message.payload) });
       } catch (error) {
         reply({ ok: false, error: error.message });
+      }
+    } else if (message.type === "probe") {
+      // Acilir pencere: bu adreste GERCEKTEN hangi cozunurlukler var?
+      if (!(await afudmAlive(cfg))) {
+        reply({ ok: false, error: chrome.i18n.getMessage("notifyNotRunning") });
+      } else {
+        try {
+          const { info } = await afudmGet(cfg, "/probe?url=" + encodeURIComponent(message.url));
+          reply({ ok: true, qualities: kaliteListesi(info), title: info.title || "" });
+        } catch (error) {
+          reply({ ok: false, error: error.message });
+        }
       }
     } else if (message.type === "videoPlaylists") {
       reply({ playlists: (await siraliMedya(sender))

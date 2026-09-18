@@ -59,13 +59,16 @@
 
 <label for="url" data-i18n="labelUrl">Bağlantı</label>
 <input id="url" type="text" spellcheck="false" placeholder="https:// veya magnet:">
+<!-- Kalite listesi TEK BASINA bir satirda: "2160p60 · mp4 · 679 MB" gibi
+     gercek cozunurluk satirlari uc sutuna sigmaz, kirpilir. -->
+<select id="quality" style="margin-top:8px">
+  <option value="best" data-i18n="qBest">En iyi kalite</option>
+  <option value="1080" data-i18n="q1080">1080p</option>
+  <option value="720" data-i18n="q720">720p</option>
+  <option value="audio" data-i18n="qAudio">Sadece ses (mp3)</option>
+</select>
 <div class="row" style="margin-top:8px">
-  <select id="quality">
-    <option value="best" data-i18n="qBest">En iyi kalite</option>
-    <option value="1080" data-i18n="q1080">1080p</option>
-    <option value="720" data-i18n="q720">720p</option>
-    <option value="audio" data-i18n="qAudio">Sadece ses (mp3)</option>
-  </select>
+  <button class="ghost" id="probe" data-i18n="btnQualities">Kaliteler</button>
   <button id="add" data-i18n="btnDownload">İndir</button>
 </div>
 

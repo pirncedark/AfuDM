@@ -515,6 +515,54 @@ textarea { min-height: 84px; user-select: text; }
 .chr-kopya .btn { padding: 4px 10px; font-size: 12px; }
 .err-note { color: var(--err); font-size: 12px; min-height: 16px; }
 
+/* ---------- kaydetme penceresi + klasor agaci (core/kaydet.py) ---------- */
+.sheet-dar { width: 460px; }
+.yol-satir { display: flex; gap: 8px; align-items: center; }
+.yol-satir input[type="text"] { flex: 1; min-width: 0; }
+.kay-url {
+  background: var(--bg-deep);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 7px 10px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  /* Uzun adres pencereyi genisletmesin, tek satirda kirpilsin (tamami title'da) */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agac {
+  height: 260px;
+  overflow: auto;
+  background: var(--bg-deep);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 4px 0;
+}
+.dugum {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 6px;
+  font-size: 12.5px;
+  cursor: default;
+  user-select: none;
+  white-space: nowrap;
+}
+.dugum:hover { background: var(--surface-2); }
+.dugum.on { background: var(--dl-soft); color: var(--text); }
+.dugum .ok {
+  width: 12px;
+  text-align: center;
+  color: var(--dim);
+  font-size: 10px;
+  cursor: pointer;
+}
+.dugum .ok.bos { cursor: default; }
+.dugum .ad { overflow: hidden; text-overflow: ellipsis; }
+
+
 .toast {
   position: fixed;
   right: 16px;

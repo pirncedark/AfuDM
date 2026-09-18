@@ -143,5 +143,25 @@
   },
   "optVideoPanel": {
     "message": "Show a download button on playing videos"
+  },
+  "btnQualities": {
+    "message": "Qualities"
+  },
+  "msgProbing": {
+    "message": "Fetching qualities…"
+  },
+  "msgNoQualities": {
+    "message": "No video quality found at this address."
+  },
+  "msgQualities": {
+    "message": "Found $COUNT$ resolutions.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "msgPending": {
+    "message": "Pick the folder in the AfuDM window."
   }
 }

@@ -58,6 +58,16 @@ check("dosya adi gelince gercek baslik kullanilir",
 bos = VideoJob(job_id="yt:2", url="https://ornek.com/video", dest_dir=".")
 check("baslik da dosya adi da yoksa URL'e duser", bos.display_title() == "https://ornek.com/video")
 
+print("3) Desteklenen kaynak")
+for iyi in ("https://a.com/f.zip", "http://a.com/f.zip", "ftp://a.com/f.zip",
+            "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10"):
+    check(f"kabul: {iyi[:28]}", Manager.is_supported_source(iyi) is True)
+# Panodan/elle gelen duz metin aria2'ye gidince "Unrecognized URI or unsupported
+# protocol" diye kaybolurdu; artik ekleme aninda anlasilir hata veriyor.
+for kotu in ("Ternet Ninja 3 2025 WEB DL 1080p DUAL.mp4", "merhaba dunya",
+             "C:/yok/olmayan.torrent", "www.ornek.com/f.zip"):
+    check(f"red: {kotu[:28]}", Manager.is_supported_source(kotu) is False)
+
 print()
 if fails:
     print("BASARISIZ:", ", ".join(fails))

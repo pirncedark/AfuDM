@@ -129,6 +129,18 @@ class Manager:
         return "http"
 
     @staticmethod
+    def is_supported_source(source: str) -> bool:
+        """Motorlarin GERCEKTEN acabilecegi bir kaynak mi?"""
+        lowered = source.lower()
+        if lowered.startswith(("http://", "https://", "ftp://", "sftp://", "magnet:")):
+            return True
+        try:
+            yerel = Path(source)
+            return yerel.suffix.lower() == ".torrent" and yerel.exists()
+        except OSError:
+            return False
+
+    @staticmethod
     def magnet_infohash(source: str) -> str:
         """magnet linkinden info hash'i (hex, kucuk harf) cikar; yoksa bos string.
 
@@ -154,21 +166,57 @@ class Manager:
 
     ACTIVE_STATES = ("queued", "active", "waiting", "paused", "scheduled")
 
+    def _live_statuses(self) -> list[dict] | None:
+        """Motorun su an tuttugu isler; motor cevap vermiyorsa None (BILINMIYOR).
+        Bos liste ile None'i ayirmak sart: bos liste "motorda is yok" demek."""
+        try:
+            return (
+                self.rpc.tell_active()
+                + self.rpc.tell_waiting(0, 200)
+                + self.rpc.tell_stopped(0, 200)
+            )
+        except Aria2Error as exc:
+            self.last_error = str(exc)
+            return None
+
     def find_duplicate(self, source: str) -> dict | None:
         """Ayni is kuyrukta duruyor mu? Magnet icin info hash, digerleri icin
-        adres karsilastirilir."""
+        adres karsilastirilir.
+
+        Veritabaninda "active" gorunup motorda KARSILIGI OLMAYAN kayit kuyrukta
+        DEGILDIR. (Uygulama beklenmedik kapandiginda ya da aria2 oturumu
+        silindiginde kayit oylece kalirdi; sonra ayni magnet "bu torrent zaten
+        kuyrukta" diye reddedilir, listede de gorunmedigi icin kullanici
+        torrentin hic calismadigini sanirdi.) Boyle kayitlar burada olu olarak
+        isaretlenir ve yol acilir.
+        """
         infohash = self.magnet_infohash(source)
-        if infohash:
-            for item in self.snapshot()["items"]:
-                if (item.get("infoHash") or "").lower() == infohash:
-                    return item
+        live = self._live_statuses()
+        if infohash and live:
+            for status in live:
+                if (status.get("infoHash") or "").lower() == infohash:
+                    return self._shape_aria2(status)
+        # Motor cevap vermiyorsa (canli None) hicbir kayit olu SAYILMAZ: gecici
+        # bir RPC hatasi yuzunden calisan indirmenin kaydini bozmayalim.
+        canli = None
+        if live is not None:
+            canli = {status.get("gid", "") for status in live} | set(self.video_jobs)
         for row in self.store.list(limit=300):
             if row["status"] not in self.ACTIVE_STATES:
                 continue
-            if row["source"] == source:
+            ayni = row["source"] == source or (
+                infohash and self.magnet_infohash(row["source"]) == infohash
+            )
+            if not ayni:
+                continue
+            # Zamanlanmis is henuz motorda olmaz; o gercekten kuyruktadir.
+            if row["status"] == "scheduled" or canli is None or row["gid"] in canli:
                 return row
-            if infohash and self.magnet_infohash(row["source"]) == infohash:
-                return row
+            self.store.update_by_id(
+                row["id"], status="error", finished_at=time.time(),
+                error="motorda karsiligi kalmadi (uygulama kapanmis olabilir)",
+            )
+            self.store.log("warn", f"olu kayit temizlendi: {row['title']}")
         return None
 
     @staticmethod
@@ -211,6 +259,12 @@ class Manager:
         source = source.strip()
         if not source:
             raise ValueError("bos link")
+        if not self.is_supported_source(source):
+            # Panodan/elle gelen duz metin (ornegin bir dosya adi) aria2'ye
+            # gidince "Unrecognized URI or unsupported protocol" diye kaybolurdu.
+            raise ValueError(
+                "gecersiz baglanti: http(s), ftp, magnet ya da .torrent dosyasi olmali"
+            )
         kind = kind or self.detect_kind(source)
         duplicate = self.find_duplicate(source)
         if duplicate:
@@ -634,6 +688,8 @@ class Manager:
         for status in statuses:
             gid = status.get("gid", "")
             row = self.store.by_gid(gid)
+            if row is None:
+                row = self._reattach_torrent(status)
             total = int(status.get("totalLength", 0) or 0)
             done = int(status.get("completedLength", 0) or 0)
             state = status.get("status", "")
@@ -664,6 +720,28 @@ class Manager:
                 self._known_complete.add(gid)
                 title = name or (row["title"] if row else gid)
                 self._on_complete(title, total)
+
+    def _reattach_torrent(self, status: dict) -> dict | None:
+        """Yeniden baslatmada magnet'in GID'i DEGISIR ve kayit sahipsiz kalir.
+
+        aria2 oturumdan magneti yeniden okur: once YENI bir ustveri GID'i, sonra
+        YENI bir torrent GID'i uretir. Veritabanindaki gid ikisine de uymaz, bu
+        yuzden indirme calissa bile kayit guncellenmez (listede kimliksiz gorunur,
+        bitince "tamamlandi" yazilmaz, ayni magnet "zaten kuyrukta" der).
+        Cozum: info hash DEGISMEZ — kaydi onunla bul ve yeni GID'e bagla.
+        """
+        infohash = (status.get("infoHash") or "").lower()
+        if not infohash:
+            return None
+        for row in self.store.list(limit=300):
+            if row["kind"] != "torrent" or row["status"] not in self.ACTIVE_STATES:
+                continue
+            if self.magnet_infohash(row["source"]) != infohash:
+                continue
+            self.store.update_by_id(row["id"], gid=status.get("gid", ""))
+            self.store.log("info", f"torrent kaydi yeniden baglandi: {row['title']}")
+            return self.store.by_id(row["id"])
+        return None
 
     def _start_due(self) -> None:
         for row in self.store.due_scheduled():

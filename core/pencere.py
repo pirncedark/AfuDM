@@ -125,6 +125,30 @@ def basligi_kaldir(window) -> bool:
     return bool(_ui_is_parcaciginda(form, kur))
 
 
+def one_getir(window) -> None:
+    """Tarayicidan indirme geldi: pencere gizli/simge durumundaysa goster ve one al.
+    Windows arka plandaki surecin odak calmasini kisitlar; TopMost ac/kapa en
+    guvenilir yol (en kotu durumda gorev cubugu yanip soner)."""
+    if not _ETKIN or window.native is None:
+        return
+    form = window.native
+
+    def getir():
+        from System.Windows.Forms import FormWindowState
+        form.Show()
+        if form.WindowState == FormWindowState.Minimized:
+            form.WindowState = FormWindowState.Normal
+        form.TopMost = True
+        form.TopMost = False
+        form.Activate()
+        return True
+
+    try:
+        _ui_is_parcaciginda(form, getir)
+    except Exception:
+        pass
+
+
 def buyutulmus_mu(window) -> bool:
     if not _ETKIN or window.native is None:
         return False

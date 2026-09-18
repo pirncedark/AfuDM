@@ -143,5 +143,25 @@
   },
   "optVideoPanel": {
     "message": "Oynayan videonun üstünde indirme düğmesi göster"
+  },
+  "btnQualities": {
+    "message": "Kaliteler"
+  },
+  "msgProbing": {
+    "message": "Kaliteler alınıyor…"
+  },
+  "msgNoQualities": {
+    "message": "Bu adreste video kalitesi bulunamadı."
+  },
+  "msgQualities": {
+    "message": "$COUNT$ çözünürlük bulundu.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "msgPending": {
+    "message": "AfuDM penceresinde klasörü seç."
   }
 }

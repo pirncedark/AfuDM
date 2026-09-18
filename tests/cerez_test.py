@@ -105,6 +105,16 @@ class SahteRPC:
     def remove(self, *a, **k):
         return "ok"
 
+    # find_duplicate motordaki isleri sorar (olu kayit temizligi icin)
+    def tell_active(self, *a, **k):
+        return []
+
+    def tell_waiting(self, *a, **k):
+        return []
+
+    def tell_stopped(self, *a, **k):
+        return []
+
     remove_result = remove
 
 
