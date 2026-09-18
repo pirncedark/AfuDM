@@ -144,6 +144,9 @@
   "vpNoneNotStarted": {
     "message": "Video isteği yakalanmadı. Videoyu başlatıp tekrar dene."
   },
+  "vpDrm": {
+    "message": "Bu video DRM korumalı (Widevine). Şifreli yayın hiçbir yöntemle indirilemez."
+  },
   "vpAudio": {
     "message": "Sadece ses"
   },

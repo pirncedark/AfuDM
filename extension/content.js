@@ -104,11 +104,14 @@
   async function menuyuAc() {
     menuAcik = true;
     gizlemeZamani = 0;
+    // Bu videoya MediaKeys kurulduysa akis sifreli: sormaya gerek yok.
+    if (hedefVideo && hedefVideo.mediaKeys) { bilgi(t("vpDrm"), "kotu"); return; }
     bilgi(t("vpSearching"));
     let yanit;
     try {
-      const metinler = await listeleriOku();
-      yanit = await chrome.runtime.sendMessage({ type: "videoOptions", frameUrl: location.href, texts: metinler });
+      const { metinler, basliklar } = await listeleriOku();
+      yanit = await chrome.runtime.sendMessage({ type: "videoOptions", frameUrl: location.href,
+                                                texts: metinler, headers: basliklar });
     } catch (_) {
       yanit = { ok: false, error: t("notifyNotRunning") };
     }
@@ -118,6 +121,8 @@
       return;
     }
     if (!yanit.options.length) {
+      // DRM'li akis hicbir yontemle inmez: sebep bu, "bulunamadi" degil.
+      if (drmVar()) { bilgi(t("vpDrm"), "kotu"); return; }
       // Sebep arka plandan gelir; gelmezse eski genel metne duser.
       bilgi(t(yanit.reason || "vpNone"), "kotu");
       return;
@@ -141,23 +146,74 @@
     }
   }
 
-  /* Oynatma listelerini BU cerceveden oku: istek oynaticinin kendi istegi gibi
-     gider (Referer, cerezler). Okunamayan (CORS vb.) arka plana birakilir. */
+  /* --- Maestro koprusu (content-maestro.js, MAIN world) --------------
+     Oynaticinin KENDI istegiyle gelen liste govdesi burada birikir. Yeniden
+     indirmeye (re-fetch) gore farki: CORS yok, Referer/cerez dogru, imzali
+     adres henuz gecerli. Sayfa bu mesajlari taklit edebilir; en kotu ihtimalle
+     kalite listesi yanlis cikar — hicbir yetki/veri disari verilmez. */
+  const MAESTRO = "afudm-maestro";
+  const yasayanListeler = new Map();   // adres -> metin
+  const listeBasliklari = new Map();   // adres -> oynaticinin gonderdigi basliklar
+  let drmSebebi = "";
+
+  addEventListener("message", (olay) => {
+    if (olay.source !== window) return;
+    const veri = olay.data;
+    if (!veri || veri.__afudm !== MAESTRO) return;
+    if (veri.tur === "drm") {
+      drmSebebi = String(veri.sebep || "drm");
+    } else if (veri.tur === "liste" && typeof veri.url === "string"
+               && typeof veri.metin === "string") {
+      yasayanListeler.set(veri.url, veri.metin.slice(0, 2_000_000));
+      if (veri.istek && typeof veri.istek === "object") {
+        listeBasliklari.set(veri.url, veri.istek);
+      }
+      if (yasayanListeler.size > 16) {
+        const ilk = yasayanListeler.keys().next().value;
+        yasayanListeler.delete(ilk);
+        listeBasliklari.delete(ilk);
+      }
+    }
+  });
+  // Maestro document_start'ta calisti: biz gelmeden once yakaladiklarini iste.
+  postMessage({ __afudm: MAESTRO, tur: "tazele" }, "*");
+
+  /* Sifreli akis (Widevine/PlayReady): video elemanina MediaKeys kurulduysa
+     parcalar inse bile oynatilamaz. "Bulunamadi" demek yaniltici olur. */
+  function drmVar() {
+    if (drmSebebi) return true;
+    for (const video of document.querySelectorAll("video")) {
+      if (video.mediaKeys) return true;
+    }
+    return false;
+  }
+
+  /* Oynatma listelerinin metni: ONCE maestro'nun sakladigi yasayan govde.
+     Yalniz o adreste hic kayit yoksa bu cerceveden yeniden indirmeyi deneriz
+     (maestro'dan once yuklenmis oynaticilar, <video src> ile gelen listeler). */
   async function listeleriOku() {
     const metinler = {};
     let adresler = [];
     try {
       ({ playlists: adresler = [] } = await chrome.runtime.sendMessage({ type: "videoPlaylists" }));
     } catch (_) {
-      return metinler;
+      return { metinler, basliklar: {} };
     }
+    const basliklar = {};
     await Promise.all(adresler.map(async (adres) => {
+      const yasayan = yasayanListeler.get(adres);
+      if (typeof yasayan === "string") {
+        metinler[adres] = yasayan;
+        const bas = listeBasliklari.get(adres);
+        if (bas && Object.keys(bas).length) basliklar[adres] = bas;
+        return;
+      }
       try {
         const yanit = await fetch(adres, { credentials: "include" });
         if (yanit.ok) metinler[adres] = (await yanit.text()).slice(0, 2_000_000);
       } catch (_) { /* arka plan yeniden dener */ }
     }));
-    return metinler;
+    return { metinler, basliklar };
   }
 
   async function indir(secenek) {

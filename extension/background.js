@@ -377,7 +377,7 @@ function kaliteAdi(boy, fps, en) {
   return fps && fps >= 50 ? ad + " " + Math.round(fps) : ad;
 }
 
-function kaliteSecenekleri(kaynak, kaliteler, referer) {
+function kaliteSecenekleri(kaynak, kaliteler, referer, ekBaslik) {
   const secenekler = [...kaliteler.entries()]
     .sort((a, b) => b[0] - a[0])
     .map(([boy, bilgi]) => {
@@ -388,10 +388,10 @@ function kaliteSecenekleri(kaynak, kaliteler, referer) {
         : [bilgi.ext, insanBoyut(bilgi.filesize)].filter(Boolean).join(" · ");
       return { label: kaliteAdi(boy, sayi ? 0 : bilgi.fps, sayi ? 0 : bilgi.width),
                detail: ayrinti, url: kaynak,
-               kind: "video", quality: String(boy), referer };
+               kind: "video", quality: String(boy), referer, ekBaslik };
     });
   secenekler.push({ label: chrome.i18n.getMessage("vpAudio"), detail: "mp3", url: kaynak, kind: "video",
-                    quality: "audio", audio_only: true, referer });
+                    quality: "audio", audio_only: true, referer, ekBaslik });
   return secenekler;
 }
 
@@ -443,7 +443,7 @@ async function listeMetni(kayit, metinler) {
   return yanit.text();
 }
 
-async function videoSecenekleri(cfg, sender, frameUrl, metinler) {
+async function videoSecenekleri(cfg, sender, frameUrl, metinler, oynaticiBasliklari) {
   if (!(await afudmAlive(cfg))) {
     return { ok: false, error: chrome.i18n.getMessage("notifyNotRunning") };
   }
@@ -471,7 +471,8 @@ async function videoSecenekleri(cfg, sender, frameUrl, metinler) {
       if (kayit.kind === "hls" && /#EXTINF/.test(metin) && !tekKaliteEklendi) {
         tekKaliteEklendi = true;
         secenekler.push({ label: "HLS", detail: chrome.i18n.getMessage("vpStream"), url: kayit.url,
-                          kind: "video", quality: "best", referer });
+                          kind: "video", quality: "best", referer,
+                          ekBaslik: (oynaticiBasliklari || {})[kayit.url] });
       }
     } catch (_) {
       listeOkunamadi = true;     /* erisilemeyen liste: siradakine gec */
@@ -555,6 +556,25 @@ async function videoSecenekleri(cfg, sender, frameUrl, metinler) {
   }
 }
 
+/* Icerik betiginden gelen baslik torbasi guvenilmez: sayfa da yazabilir.
+   Cerez/kimlik tasiyanlar ve satir sonu iceren degerler ELENIR. */
+const BASLIK_YASAK = /^(cookie|authorization|user-agent|host|content-length|referer)$/i;
+
+function temizBaslik(torba) {
+  const temiz = {};
+  if (!torba || typeof torba !== "object") return temiz;
+  let sayi = 0;
+  for (const ad of Object.keys(torba)) {
+    if (sayi >= 8) break;
+    const deger = torba[ad];
+    if (typeof deger !== "string" || /[\r\n]/.test(deger)) continue;
+    if (BASLIK_YASAK.test(ad) || /[^\w-]/.test(ad)) continue;
+    temiz[ad] = deger.slice(0, 1024);
+    sayi++;
+  }
+  return temiz;
+}
+
 async function videoIndir(cfg, sender, secenek, frameUrl) {
   if (!secenek || !/^https?:/i.test(secenek.url || "")) {
     return { ok: false, error: chrome.i18n.getMessage("notifyNoAddress") };
@@ -568,7 +588,10 @@ async function videoIndir(cfg, sender, secenek, frameUrl) {
       audio_only: !!secenek.audio_only,
       // HLS adresinde yt-dlp anlamli baslik bulamaz ("master"): sekme basligi kullanilir.
       title: secenek.kind === "video" ? (sender.tab?.title || "") : undefined,
-      headers: referer ? { Referer: referer } : {},
+      /* Oynaticinin listeye gonderdigi ek basliklar (imza, Origin, X-*):
+         parcalar da AYNI basliklarla istenmezse 403 doner. Cerez ve kimlik
+         basliklari maestro tarafinda zaten ayiklanir. */
+      headers: { ...(referer ? { Referer: referer } : {}), ...temizBaslik(secenek.ekBaslik) },
     });
     return { ok: true };
   } catch (error) {
@@ -607,7 +630,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
       reply({ playlists: (await siraliMedya(sender))
         .filter((m) => m.kind === "hls" || m.kind === "dash").slice(0, 6).map((m) => m.url) });
     } else if (message.type === "videoOptions") {
-      reply(await videoSecenekleri(cfg, sender, message.frameUrl, message.texts));
+      reply(await videoSecenekleri(cfg, sender, message.frameUrl, message.texts, message.headers));
     } else if (message.type === "videoGrab") {
       reply(await videoIndir(cfg, sender, message.option, message.frameUrl));
     } else if (message.type === "save") {

@@ -144,6 +144,9 @@
   "vpNoneNotStarted": {
     "message": "No video request seen yet. Start the video and try again."
   },
+  "vpDrm": {
+    "message": "This video is DRM protected (Widevine). An encrypted stream cannot be downloaded by any means."
+  },
   "vpAudio": {
     "message": "Audio only"
   },
