@@ -74,6 +74,22 @@ with tempfile.TemporaryDirectory() as gecici:
     except Exception as exc:  # noqa: BLE001
         check("bos klasorde kapat() sessiz gecer", False, repr(exc))
 
+print("7) Acilis bayragi (--tepside)")
+# Kullanici "bilgisayar acilinca tepside baslasin" dedi: kisayol bu bayrakla
+# yazilir ve AYAR DEGISINCE kisayol yeniden yazilmali (eskisi kalmamali).
+baslangic.kapat()
+baslangic.ac("--tepside")
+check("bayrakli kisayol olustu", baslangic.acik_mi())
+check("kisayolun argumani --tepside", baslangic._kisayol_argumani() == "--tepside",
+      repr(baslangic._kisayol_argumani()))
+baslangic.ac("")                       # ayar kapatildi: pencereli acilis
+check("arguman temizlendi", baslangic._kisayol_argumani() == "",
+      repr(baslangic._kisayol_argumani()))
+baslangic.ac("--tepside")
+check("tekrar bayraga donuyor", baslangic._kisayol_argumani() == "--tepside")
+baslangic.kapat()
+check("temizlik: kisayol silindi", not baslangic.acik_mi())
+
 print()
 if fails:
     print("BASARISIZ:", ", ".join(fails))

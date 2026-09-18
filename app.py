@@ -247,12 +247,28 @@ class Api:
         except OSError as exc:
             return {"ok": False, "error": str(exc)[:200]}
 
-    def baslangic_ayarla(self, acik: bool) -> dict:
+    def baslangic_ayarla(self, acik: bool, tepside: bool = True) -> dict:
         try:
-            baslangic.ac() if acik else baslangic.kapat()
+            if acik:
+                # Kisayol argumani ayarla birlikte degisir (bkz. baslangic.ac)
+                baslangic.ac("--tepside" if tepside else "")
+            else:
+                baslangic.kapat()
         except (OSError, RuntimeError) as exc:
             return {"ok": False, "error": str(exc)[:300]}
         return {"ok": True, "acik": baslangic.acik_mi()}
+
+    def varsayilan_uygulama_ekrani(self) -> dict:
+        """Windows'un "Varsayilan uygulamalar" ekranini ac.
+
+        .torrent'in hangi programla acilacagini SADECE kullanici secebilir
+        (UserChoice hash korumali); yapabilecegimiz en iyi sey dogru ekrani
+        onune getirmek."""
+        try:
+            os.startfile("ms-settings:defaultapps")      # noqa: S606
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:200]}
+        return {"ok": True}
 
     def torrent_iliskilendir(self, acik: bool) -> dict:
         try:
@@ -429,23 +445,30 @@ def argvden_link(argv: list[str]) -> str:
     return ""
 
 
-def calisan_ornege_yolla(link: str) -> bool:
-    """AfuDM zaten aciksa linki ONA ver ve ikinci pencere ACMA.
+def calisan_ornege_yolla(link: str = "") -> bool:
+    """AfuDM zaten aciksa isi ONA ver ve IKINCI PENCERE ACMA.
 
-    Bir .torrent'e cift tiklayinca her seferinde yeni bir AfuDM acilsaydi iki
-    ornek ayni veritabanina ve ayni motora asilirdi.
+    Link varsa eklenir; link yoksa (kullanici kisayola tekrar tikladi) acik
+    pencere one getirilir. Iki ornek ayni veritabanina ve ayni motora
+    asilmasin diye: her ikinci acilis buradan doner.
     """
     try:
         bilgi = json.loads((paths.DATA / "api_endpoint.json").read_text("utf-8"))
         port, token = int(bilgi["port"]), str(bilgi["token"])
     except (OSError, ValueError, KeyError):
         return False
-    govde = json.dumps({"url": link, "interactive": True}).encode("utf-8")
-    istek = urllib.request.Request(
-        f"http://127.0.0.1:{port}/add", data=govde,
-        headers={"Content-Type": "application/json", "X-AfuDM-Token": token},
-    )
+    basliklar = {"Content-Type": "application/json", "X-AfuDM-Token": token}
     try:
+        if link:
+            govde = json.dumps({"url": link, "interactive": True}).encode("utf-8")
+            istek = urllib.request.Request(
+                f"http://127.0.0.1:{port}/add", data=govde, headers=basliklar)
+            with urllib.request.urlopen(istek, timeout=3) as yanit:
+                if json.loads(yanit.read().decode("utf-8")).get("ok") is not True:
+                    return False
+        # Pencereyi one getir: linksiz acilista tek is budur.
+        istek = urllib.request.Request(
+            f"http://127.0.0.1:{port}/show", headers={"X-AfuDM-Token": token})
         with urllib.request.urlopen(istek, timeout=3) as yanit:
             return json.loads(yanit.read().decode("utf-8")).get("ok") is True
     except (urllib.error.URLError, OSError, ValueError):
@@ -524,8 +547,10 @@ def build_tray(window, manager: Manager):
 def main() -> int:
     paths.ensure_dirs()
     link = argvden_link(sys.argv)
-    if link and calisan_ornege_yolla(link):
-        return 0                      # acik ornege verildi, ikinci pencere yok
+    # Tepside basla: Baslangic kisayolu bu bayrakla cagirir (bkz. core/baslangic.py)
+    tepside_basla = "--tepside" in sys.argv
+    if calisan_ornege_yolla(link):
+        return 0                      # zaten acik: is ona verildi, ikinci pencere yok
     if not paths.ARIA2C.exists():
         print(f"HATA: motor bulunamadi -> {paths.ARIA2C}")
         return 2
@@ -559,11 +584,12 @@ def main() -> int:
         min_size=(880, 560),
         background_color="#14181F",
         text_select=False,
+        hidden=tepside_basla,
     )
     api._window = window
-    local_api_handler_ask = api.tarayicidan_sor
     from api.server import _Handler as _ApiHandler  # noqa: E402
-    _ApiHandler.on_ask = local_api_handler_ask
+    _ApiHandler.on_ask = api.tarayicidan_sor
+    _ApiHandler.on_show = lambda: pencere.one_getir(window)
 
     def tepsi_bildirimi() -> None:
         # Windows 11 YENI bir uygulamanin tepsi simgesini varsayilan olarak
@@ -625,6 +651,10 @@ def main() -> int:
     def on_start() -> None:
         # ONCE tepsi: pano izleyicisi patlarsa simge de kurulmadan kalirdi.
         api._tepsi = build_tray(window, manager)
+        if tepside_basla and api._tepsi is None:
+            # Simge yoksa gizli baslamak uygulamayi erisilmez yapardi.
+            manager.store.log("warn", "tepsi simgesi yok: pencere gosteriliyor")
+            window.show()
         try:
             watcher.prime()
             watcher.start()

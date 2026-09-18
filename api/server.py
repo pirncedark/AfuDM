@@ -41,6 +41,8 @@ class _Handler(BaseHTTPRequestHandler):
     # Uzanti "interactive" isterse istek hemen baslamaz: uygulama kaydetme
     # penceresini acar. Uygulama ayarlar; None ise dogrudan eklenir.
     on_ask = None
+    # Ikinci kez acilan AfuDM, acik olan pencereyi one getirsin diye cagirir.
+    on_show = None
 
     # --- yardimcilar ------------------------------------------------------
     def log_message(self, fmt: str, *args) -> None:  # konsolu kirletmesin
@@ -86,6 +88,12 @@ class _Handler(BaseHTTPRequestHandler):
         query = parse_qs(parsed.query)
         if parsed.path == "/ping":
             self._send(200, {"ok": True, "app": "AfuDM"})
+            return
+        if parsed.path == "/show":
+            # Ikinci kopya: kendi penceresini acmak yerine bunu cagirir.
+            if _Handler.on_show:
+                _Handler.on_show()
+            self._send(200, {"ok": True})
             return
         if parsed.path == "/pair":
             # Anahtari SADECE eslestirme penceresi acikken ver.

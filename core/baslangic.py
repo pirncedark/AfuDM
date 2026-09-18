@@ -74,19 +74,21 @@ def kisayol_yolu() -> Path:
     return KLASOR / _KISAYOL_ADI
 
 
-def hedef() -> tuple[str, str]:
+def hedef(ek_arguman: str = "") -> tuple[str, str]:
     """Kisayolun hedefi: (calistirilabilir, argumanlar).
 
     paths.BASE altinda AfuDM.exe varsa dogrudan o; yoksa kaynaktan calisirken
     pythonw.exe + app.py (konsol penceresi acilmasin diye pythonw).
+    `ek_arguman` acilis bayragi icindir (ornegin --tepside).
     """
     exe = paths.BASE / "AfuDM.exe"
     if exe.exists():
-        return str(exe), ""
+        return str(exe), ek_arguman
     pythonw = Path(sys.executable).with_name("pythonw.exe")
     if not pythonw.exists():
         pythonw = Path(sys.executable)  # yedek: sadece python.exe var
-    return str(pythonw), f'"{paths.BASE / "app.py"}"'
+    arg = f'"{paths.BASE / "app.py"}"'
+    return str(pythonw), (arg + " " + ek_arguman).strip()
 
 
 def _simge() -> str:
@@ -102,12 +104,16 @@ def acik_mi() -> bool:
     return kisayol_yolu().is_file()
 
 
-def ac() -> None:
-    """Baslangic kisayolunu olustur. Zaten aciksa hicbir sey yapma."""
-    if acik_mi():
-        return
+def ac(ek_arguman: str = "") -> None:
+    """Baslangic kisayolunu olustur.
 
-    hedef_exe, hedef_arg = hedef()
+    Kisayol VARSA ve argumani degistiyse yeniden yazilir: "acilista tepside
+    basla" ayari degisince eski kisayol kalmasin.
+    """
+    hedef_exe, hedef_arg = hedef(ek_arguman)
+    if acik_mi() and _kisayol_argumani() == hedef_arg:
+        return
+    kisayol_yolu().unlink(missing_ok=True)
     if not Path(hedef_exe).exists():
         raise RuntimeError(f"baslangic hedefi bulunamadi: {hedef_exe}")
 
@@ -148,6 +154,30 @@ def ac() -> None:
         hata = (sonuc.stderr or sonuc.stdout or "bilinmeyen hata").strip()
         raise OSError(f"kisayol olusturulamadi: {hata[:300]}")
 
+
+
+def _kisayol_argumani() -> str:
+    """Var olan kisayolun argumanini oku (PowerShell + WScript.Shell)."""
+    if not acik_mi():
+        return ""
+    # Yol BETIGIN ICINE gomulur: `-Command <betik> <arg>` bicimi PowerShell'de
+    # $args'i DOLDURMAZ, ikinci dizeyi ayri komut sanar (olculdu). Cikti da
+    # [Console]::Out.Write ile alinir; Write-Output uzun satiri SARAR.
+    yol = str(kisayol_yolu()).replace("'", "''")
+    betik = (
+        "$k = (New-Object -ComObject WScript.Shell).CreateShortcut('%s'); "
+        "[Console]::Out.Write($k.Arguments)" % yol
+    )
+    try:
+        sonuc = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+             "-Command", betik],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            creationflags=CREATE_NO_WINDOW, timeout=20,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return (sonuc.stdout or "").strip()
 
 def kapat() -> None:
     """Baslangic kisayolunu kaldir. Yoksa sessizce gec."""

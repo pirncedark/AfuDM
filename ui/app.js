@@ -495,6 +495,7 @@ $("openSettings").onclick = async () => {
   $("sKaydet").checked = s.kaydetme_penceresi !== false;
   $("sKategori").checked = s.kategori_klasorleri !== false;
   $("sTepsi").checked = s.tepsiye_kucult !== false;
+  $("sBasTepside").checked = s.baslangicta_tepside !== false;
   sistemDurumu();
   try {
     const info = await call("api_info");
@@ -526,13 +527,23 @@ async function sistemDurumu() {
 async function sistemAyarlariniUygula() {
   const hatalar = [];
   try {
-    await call("baslangic_ayarla", $("sBaslangic").checked);
+    // Kisayolun argumani da burada guncellenir (--tepside)
+    await call("baslangic_ayarla", $("sBaslangic").checked, $("sBasTepside").checked);
   } catch (err) { hatalar.push(err.message); }
   try {
     await call("torrent_iliskilendir", $("sTorrent").checked);
   } catch (err) { hatalar.push(err.message); }
   if (hatalar.length) toast(hatalar[0], true);
 }
+
+/* Windows'un varsayilan uygulama ekrani: .torrent secimini YALNIZ kullanici
+   yapabilir (UserChoice hash korumali), en fazla dogru ekrani acabiliriz. */
+$("sVarsayilan").onclick = async () => {
+  try {
+    await call("varsayilan_uygulama_ekrani");
+    toast(t("hint.varsayilan"));
+  } catch (err) { toast(err.message, true); }
+};
 
 /* ---------- motorlar (Ayarlar icinde) ---------- */
 async function renderEngines() {
@@ -618,6 +629,7 @@ $("setGo").onclick = async () => {
     kaydetme_penceresi: $("sKaydet").checked,
     kategori_klasorleri: $("sKategori").checked,
     tepsiye_kucult: $("sTepsi").checked,
+    baslangicta_tepside: $("sBasTepside").checked,
   };
   try {
     await call("settings_save", payload);

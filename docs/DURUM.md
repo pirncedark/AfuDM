@@ -1,5 +1,5 @@
 # AfuDM — Durum & Devam Notu
-Son guncelleme: 2026-09-18 (tepsi simgesi kok nedeni + gorsel dogrulama)
+Son guncelleme: 2026-09-18 (tek kopya + acilista tepside basla)
 
 ## Ne yapiyoruz
 IDM yerine gecen, PORTABLE (tek klasor, kopyala-calistir) Windows masaustu
@@ -446,6 +446,36 @@ Gercek pencerede, gercek exe ile, ekran goruntusuyle dogrulandi:
   Indir -> 4.1 MB/s, 16 seed.
 - Cikan kusur: ayni anda BIRDEN COK AfuDM ornegi acilabiliyor (test sirasinda
   6 surec vardi). Linksiz ikinci acilista da tek ornek kisiti YOK — siradaki is.
+
+## TEK KOPYA + ACILISTA TEPSIDE BASLAMA (2026-09-18, Telegram istegi)
+Kullanici: "1 yap. Bilgisayar acildiginda kucuk simge olarak acilsin ve orada
+gozuksun, tekrar buyutebilirsin; kucultunce de simge olsun; torrent acildiginda
+AfuDM calissin, qBittorrent calismasin."
+
+1. **Tek kopya.** `main()` artik LINK OLMASA DA acik ornege sorar: yeni
+   `GET /show` ucu (`_Handler.on_show` -> `pencere.one_getir`). Ikinci acilis
+   0.2 saniyede doner, pencere ACMAZ. Onceden 6 kopya birikebiliyordu ve hepsi
+   ayni veritabanina/motora asiliyordu.
+2. **`--tepside` bayragi.** `create_window(hidden=True)`: pencere hic acilmadan
+   tepside baslar. Tepsi simgesi kurulamazsa (bkz. PIL.ImageFont notu) pencere
+   GOSTERILIR — yoksa uygulama erisilemez kalirdi.
+3. **Baslangic kisayolu bu bayragi tasir.** `baslangic.ac("--tepside")`; ayar
+   degisince kisayol YENIDEN YAZILIR (`_kisayol_argumani()` ile karsilastirilir).
+   Ayar: `baslangicta_tepside` (varsayilan ACIK).
+4. **Windows varsayilan uygulama ekrani dugmesi.** `.torrent` secimini yalniz
+   kullanici yapabilir (UserChoice hash korumali) — Ayarlar'daki dugme
+   `ms-settings:defaultapps` ekranini aciyor, ipucu da ne yapacagini yaziyor.
+
+TUZAK (olculdu): PowerShell'de `-Command <betik> <arg>` bicimi `$args`'i
+DOLDURMAZ, ikinci dizeyi ayri komut sanar; kisayolun argumani yerine yolu
+donuyordu. Yol betige gomuldu. Ayrica `Write-Output` uzun satiri SARIYOR —
+cikti `[Console]::Out.Write` ile aliniyor.
+
+DOGRULANDI (gercek exe): `AfuDM.exe --tepside` -> pencere gorunmez, tepside
+calisir; kisayola tekrar tiklama -> pencere acilir ve TEK pencere kalir;
+Ayarlar'da iki yeni ogenin (kutu + dugme) gorseli alindi; kisayolun argumani
+`--tepside` olarak okundu; `ms-settings:defaultapps` acildi.
+Test: `tests/baslangic_test.py` 7. bolum (bayrak yazilir/temizlenir/geri gelir).
 
 ## IS SIRASI (kullanici, Telegram 2026-09-17)
 1. ~~Kaydetme penceresi~~ — BITTI (2026-09-18, yukari bak).

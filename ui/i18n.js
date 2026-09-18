@@ -225,6 +225,9 @@ const DICT = {
     "hint.tepsi": "Küçültünce pencere görev çubuğundan kalkar; simge sağ alttaki ^ okunun altındadır (Windows 11 yeni simgeleri orada saklar).",
     "set.baslangic": "Bilgisayar açılınca AfuDM'i başlat",
     "set.torrent": ".torrent ve magnet linklerini AfuDM açsın",
+    "set.basTepside": "Açılışta pencere açılmasın, tepside başlasın",
+    "set.varsayilan": "Windows varsayılan uygulama ekranını aç",
+    "hint.varsayilan": "Açılan ekranda: Varsayılan uygulamalar → arama kutusuna .torrent yaz → AfuDM'i seç.",
     "hint.torrentDefault": "Kayıt tamam. Windows'un varsayılanı hâlâ başka bir program: bir .torrent dosyasına sağ tık > Birlikte aç > Başka uygulama seç > AfuDM > \"Her zaman bunu kullan\".",
     "hint.torrentOk": ".torrent ve magnet artık AfuDM'e bağlı.",
 
@@ -445,6 +448,9 @@ const DICT = {
     "hint.tepsi": "Minimizing hides the window from the taskbar; the icon lives under the ^ arrow at the bottom right (Windows 11 hides new icons there).",
     "set.baslangic": "Start AfuDM when the computer starts",
     "set.torrent": "Open .torrent files and magnet links with AfuDM",
+    "set.basTepside": "Start in the tray without opening the window",
+    "set.varsayilan": "Open Windows default apps settings",
+    "hint.varsayilan": "In that screen: Default apps -> type .torrent in the search box -> pick AfuDM.",
     "hint.torrentDefault": "Registered. Windows still opens these with another program: right-click a .torrent > Open with > Choose another app > AfuDM > \"Always use this app\".",
     "hint.torrentOk": ".torrent and magnet are now handled by AfuDM.",
 

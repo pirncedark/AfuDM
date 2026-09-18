@@ -72,6 +72,8 @@ DEFAULTS: dict[str, Any] = {
     "kategori_klasorleri": True,
     # Kucultme dugmesi pencereyi tepsiye indirsin (gorev cubugundan kalksin)
     "tepsiye_kucult": True,
+    # Bilgisayar acilinca pencere ACILMADAN tepside basla
+    "baslangicta_tepside": True,
 }
 
 
