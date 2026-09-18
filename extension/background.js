@@ -389,7 +389,10 @@ function kaliteSecenekleri(kaynak, kaliteler, referer) {
 function kaliteListesi(info) {
   const enIyi = new Map();
   for (const bicim of info.formats || []) {
-    if (!bicim.height || !bicim.vcodec || bicim.vcodec === "none") continue;
+    // vcodec BILINMIYOR olabilir (archive.org gibi kaynaklar bildirmiyor):
+    // o zaman atmak kalite listesini komple bosaltiyordu. Yalniz ACIKCA
+    // "none" diyen (ses-only) bicim atlanir. OLCULDU 2026-09-18.
+    if (!bicim.height || bicim.vcodec === "none") continue;
     const onceki = enIyi.get(bicim.height);
     if (onceki && onceki.filesize && !bicim.filesize) continue;
     enIyi.set(bicim.height, bicim);
@@ -481,7 +484,8 @@ async function videoSecenekleri(cfg, sender, frameUrl, metinler) {
       const { info } = await afudmGet(cfg, "/probe?url=" + encodeURIComponent(sayfa));
       const kaliteler = new Map();
       for (const bicim of info.formats || []) {
-        if (!bicim.height || !bicim.vcodec || bicim.vcodec === "none") continue;
+        // vcodec bildirmeyen kaynaklar da listelensin (bkz. kaliteListesi)
+        if (!bicim.height || bicim.vcodec === "none") continue;
         // Ayni yukseklikten birden cok bicim gelir; boyutu BILINENI yegle.
         const onceki = kaliteler.get(bicim.height);
         if (onceki && onceki.filesize && !bicim.filesize) continue;
