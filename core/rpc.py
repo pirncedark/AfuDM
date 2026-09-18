@@ -12,8 +12,25 @@ class Aria2Error(RuntimeError):
     """aria2 tarafindan donen hata veya baglanti hatasi."""
 
 
+def _hata_metni(govde) -> str:
+    """JSON-RPC govdesinden hata mesajini GUVENLE cikar.
+
+    KUSUR (2026-09-19, port testi ortaya cikardi): `govde["error"].get(...)`
+    yaziliyordu. `error` bir METIN olarak gelirse (ya da govde sozluk degilse)
+    AttributeError atiyordu — bu bir Aria2Error DEGIL, dolayisiyla
+    `except Aria2Error` bekleyen `alive()` ve yoklama dongusu COKUYORDU.
+    """
+    if not isinstance(govde, dict):
+        return ""
+    hata = govde.get("error")
+    if isinstance(hata, dict):
+        return str(hata.get("message") or "")
+    return str(hata) if hata else ""
+
+
 class Aria2RPC:
     def __init__(self, host: str = "127.0.0.1", port: int = 6810, secret: str = "") -> None:
+        self.port = port          # hangi porta bagliyiz (tanilama + testler)
         self.url = f"http://{host}:{port}/jsonrpc"
         self.token = f"token:{secret}"
         self._ids = itertools.count(1)
@@ -40,7 +57,7 @@ class Aria2RPC:
             raw = exc.read().decode("utf-8", "replace")
             try:
                 parsed = json.loads(raw)
-                message = parsed.get("error", {}).get("message") or raw
+                message = _hata_metni(parsed) or raw
             except json.JSONDecodeError:
                 message = raw or str(exc)
             raise Aria2Error(f"{method}: {message}") from exc
@@ -52,13 +69,19 @@ class Aria2RPC:
             # Bunlar URLError DEGIL; cevrilmezse "except Aria2Error" bekleyen
             # yoklama dongusu coker.
             raise Aria2Error(f"aria2 RPC baglantisi koptu: {exc!r}") from exc
+        if not isinstance(body, dict):
+            # Govde JSON ama SOZLUK degil (ara sunucu/yanlis port): asagidaki
+            # body["error"] / body["result"] TypeError atardi.
+            raise Aria2Error(f"beklenmeyen RPC yaniti: {str(body)[:120]}")
         if "error" in body:
-            raise Aria2Error(body["error"].get("message", "bilinmeyen aria2 hatasi"))
+            raise Aria2Error(_hata_metni(body) or "bilinmeyen aria2 hatasi")
+        if "result" not in body:
+            raise Aria2Error(f"RPC yanitinda sonuc yok: {str(body)[:120]}")
         return body["result"]
 
-    def alive(self) -> bool:
+    def alive(self, timeout: float = 3.0) -> bool:
         try:
-            self.call("aria2.getVersion", timeout=3)
+            self.call("aria2.getVersion", timeout=timeout)
             return True
         except Aria2Error:
             return False
