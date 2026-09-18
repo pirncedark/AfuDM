@@ -59,7 +59,39 @@ even tired torrents find peers.
 **Queue and scheduling.** How many downloads at once, speed limit, "start at
 23:30", notify Telegram when finished or shut the computer down.
 
-**Clipboard watch.** Copy a downloadable link and the add dialog opens.
+**Download dialog.** Every link — from the extension, the clipboard or a
+double-clicked `.torrent` — stops here first: file name, category, a folder tree
+(shortcuts, drives, "new folder") and start now / start at a time. Nothing
+reaches the engine before you confirm. Turn it off in Settings if you want links
+to start instantly.
+
+**Category folders.** With no target picked, files land in `downloads/Video`,
+`downloads/Müzik`, `downloads/Belgeler`… by type. Optional.
+
+**Seed refresh for torrents.** A **Seeds** button on every torrent row opens a
+live window: seeds, connections, the torrent's tracker count, the applied list,
+its age and DHT state. *Refresh now* pulls today's tracker list and re-announces
+the torrent. You can paste **your own trackers** there too — they go to the front
+of the list. Measured on a real 19 GB torrent: connections 6 → 11, progress kept
+(aria2 cannot add trackers to a running torrent, so AfuDM removes and re-adds it
+in place; the `.aria2` control file keeps every downloaded piece).
+
+**One copy only.** Opening AfuDM again — or double-clicking a second `.torrent` —
+does not start a second window; the running one comes to the front and takes the
+link.
+
+**Tray.** Minimizing hides the window from the taskbar; the tray icon brings it
+back. It can also start with Windows straight into the tray (Settings), so
+downloads resume without a window popping up. Windows 11 hides new tray icons
+under the `^` arrow — drag it onto the taskbar once to keep it visible.
+
+**Opens .torrent and magnet links.** Settings registers AfuDM for `.torrent`
+files and `magnet:` links (your previous program's registration is backed up and
+restored if you turn it off). Windows will not let a program set itself as the
+default for a file type, so Settings has a button that opens the Windows screen
+where you pick it.
+
+**Clipboard watch.** Copy a downloadable link and the download dialog opens.
 
 **Two languages.** Settings → Dil / Language: Automatic (follows Windows),
 Türkçe or English. The change applies without a restart — window title and tray
@@ -103,10 +135,18 @@ python tests/format_test.py            # video format selection
 python tests/engines_test.py           # engine downloads
 python tests/mux_ayristirma_test.py    # MP4 sample parsing
 python tests/mux_test.py               # muxing + ffprobe + full decode
+python tests/kaydet_test.py            # download dialog (categories, folder tree)
+python tests/kuyruk_test.py            # duplicate detection, magnet GID re-attach
+python tests/seed_test.py              # seed refresh + your own trackers
+python tests/cerez_test.py             # session cookies
+python tests/baslangic_test.py         # startup shortcut
+python tests/iliskilendir_test.py      # .torrent / magnet registration
 ```
 
 `smoke.py` performs real downloads: multi-connection HTTP, pause/resume, magnet
-seed tracking, video → mp3. Current state: **17/17**.
+seed tracking, video → mp3. Current state: **17/17**. The offline suites above
+touch neither the real Startup folder nor the real registry — they redirect
+themselves to a temporary location.
 
 ## Security
 
@@ -125,6 +165,8 @@ AfuDM/
   paketle.py     builds the shippable package
   app.py         window + tray + clipboard watch
   core/          aria2 engine, RPC, queue, SQLite, trackers, engine downloads
+                 kaydet.py (download dialog), baslangic.py (start with Windows),
+                 iliskilendir.py (.torrent / magnet), pencere.py (window + tray)
   video/         yt-dlp layer + MP4 muxer
   api/           local HTTP API (127.0.0.1 + token)
   ui/            interface (HTML/CSS/JS)
@@ -193,7 +235,37 @@ torrentlerde de peer bulur.
 **Kuyruk ve zamanlama.** Aynı anda kaç indirme, hız sınırı, "23:30'da başlat",
 hepsi bitince Telegram'a haber ver veya bilgisayarı kapat.
 
-**Pano yakalama.** İndirilebilir bir link kopyaladığında ekleme penceresi açılır.
+**Kaydetme penceresi.** Link nereden gelirse gelsin — uzantı, pano ya da çift
+tıklanan bir `.torrent` — önce burada durur: dosya adı, kategori, klasör ağacı
+(kısayollar, diskler, "yeni klasör") ve şimdi başlat / saatinde başlat. Sen
+onaylamadan motora hiçbir şey gitmez. İstersen Ayarlar'dan kapatıp linkleri
+doğrudan başlatabilirsin.
+
+**Kategori klasörleri.** Hedef seçmezsen dosyalar türüne göre `downloads/Video`,
+`downloads/Müzik`, `downloads/Belgeler`… altına iner. İsteğe bağlı.
+
+**Torrentte seed güncelleme.** Her torrent satırında **Seed** düğmesi canlı bir
+pencere açar: seed, bağlantı, torrentin tracker sayısı, uygulanan liste, listenin
+yaşı ve DHT durumu. *Şimdi güncelle* günün tracker listesini çekip torrenti
+yeniden duyurur. **Kendi tracker'larını** da oraya yapıştırabilirsin — listenin
+başına eklenir. Gerçek bir 19 GB torrentte ölçüldü: bağlantı 6 → 11, ilerleme
+korundu (aria2 çalışan torrente tracker ekleyemediği için AfuDM işi yerinde
+kaldırıp yeniden ekler; `.aria2` kontrol dosyası inen her parçayı korur).
+
+**Tek kopya.** AfuDM'i tekrar açmak — ya da ikinci bir `.torrent`e çift tıklamak —
+yeni pencere açmaz; çalışan pencere öne gelir ve linki alır.
+
+**Tepsi.** Küçültünce pencere görev çubuğundan kalkar, tepsi simgesinden geri
+gelir. Bilgisayar açılınca doğrudan tepside de başlayabilir (Ayarlar), böylece
+indirmeler pencere açılmadan sürer. Windows 11 yeni simgeleri `^` okunun altında
+saklar — bir kez görev çubuğuna sürüklersen sabit kalır.
+
+**.torrent ve magnet açar.** Ayarlar'dan AfuDM `.torrent` dosyaları ve `magnet:`
+linkleri için kaydedilir (önceki programın kaydı yedeklenir, kapatınca geri
+gelir). Windows bir programın kendini varsayılan yapmasına izin vermediği için
+Ayarlar'da o ekranı açan bir düğme var.
+
+**Pano yakalama.** İndirilebilir bir link kopyaladığında kaydetme penceresi açılır.
 
 **İki dil.** Ayarlar → Dil / Language: Otomatik (Windows dilinden seçer), Türkçe
 veya English. Değişiklik yeniden başlatmadan uygulanır; pencere başlığı ve tepsi
@@ -236,10 +308,18 @@ python tests/format_test.py            # video format seçimi
 python tests/engines_test.py           # motor indirme
 python tests/mux_ayristirma_test.py    # MP4 örnek okuma
 python tests/mux_test.py               # birleştirme + ffprobe + tam kod çözme
+python tests/kaydet_test.py            # kaydetme penceresi (kategori, klasör ağacı)
+python tests/kuyruk_test.py            # mükerrer iş, magnet GID yeniden bağlama
+python tests/seed_test.py              # seed tazeleme + kendi tracker'ların
+python tests/cerez_test.py             # oturum çerezleri
+python tests/baslangic_test.py         # başlangıç kısayolu
+python tests/iliskilendir_test.py      # .torrent / magnet kaydı
 ```
 
 `smoke.py` gerçekten indirir: çok bağlantılı HTTP, duraklat/sürdür, magnet seed
-takibi, video → mp3. Son durum: **17/17**.
+takibi, video → mp3. Son durum: **17/17**. Yukarıdaki çevrimdışı testler ne
+gerçek Başlangıç klasörüne ne de gerçek kayıt defterine dokunur — kendilerini
+geçici bir yere yönlendirirler.
 
 ## Güvenlik
 
