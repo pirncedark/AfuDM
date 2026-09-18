@@ -574,6 +574,7 @@ $("openSettings").onclick = async () => {
   $("sTepsi").checked = s.tepsiye_kucult !== false;
   $("sBasTepside").checked = s.baslangicta_tepside !== false;
   sistemDurumu();
+  telefonDurumu();
   try {
     const info = await call("api_info");
     $("apiHint").textContent =
@@ -620,6 +621,41 @@ $("sVarsayilan").onclick = async () => {
     await call("varsayilan_uygulama_ekrani");
     toast(t("hint.varsayilan"));
   } catch (err) { toast(err.message, true); }
+};
+
+/* ---------- telefon arayuzu (ui/mobil.html) ----------
+   Kutu acilinca yerel API 0.0.0.0'a gecer ve adres burada gorunur. Ayar
+   ANINDA uygulanir (sunucu yeniden kurulur), yeniden baslatma gerekmez. */
+async function telefonDurumu() {
+  try {
+    const bilgi = await call("telefon_durumu");
+    $("sTelefon").checked = !!bilgi.acik;
+    $("telefonKutu").style.display = bilgi.acik ? "" : "none";
+    $("sTelefonAdres").value = bilgi.adres || "";
+    if (bilgi.acik && !bilgi.adres) toast(t("err.agYok"), true);
+  } catch (_) { /* kopru hazir degil */ }
+}
+
+$("sTelefon").onchange = async () => {
+  try {
+    const bilgi = await call("telefon_ayarla", $("sTelefon").checked);
+    $("telefonKutu").style.display = bilgi.acik ? "" : "none";
+    $("sTelefonAdres").value = bilgi.adres || "";
+    if (bilgi.acik && !bilgi.adres) toast(t("err.agYok"), true);
+  } catch (err) { toast(err.message, true); }
+};
+
+$("sTelefonKopya").onclick = async () => {
+  const adres = $("sTelefonAdres").value;
+  if (!adres) return;
+  try {
+    await navigator.clipboard.writeText(adres);
+    toast(t("toast.kopyalandi"));
+  } catch (_) {
+    $("sTelefonAdres").select();       // pano kapaliysa: secili birak, elle kopyalasin
+    document.execCommand("copy");
+    toast(t("toast.kopyalandi"));
+  }
 };
 
 /* ---------- motorlar (Ayarlar icinde) ---------- */

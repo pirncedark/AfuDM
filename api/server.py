@@ -1,8 +1,12 @@
-"""Yerel HTTP API — SADECE 127.0.0.1, token zorunlu.
+"""Yerel HTTP API — varsayilan 127.0.0.1, token zorunlu.
 
 Tarayici uzantisi, Telegram kopru scripti veya baska bir araci buradan
-AfuDM'e is verir. Dis dunyaya kapali: adres 127.0.0.1'e bagli ve her istek
-X-AfuDM-Token (veya ?token=) ile dogrulanir.
+AfuDM'e is verir. Her istek X-AfuDM-Token (veya ?token=) ile dogrulanir.
+
+Kullanici Ayarlar'dan "Telefondan baglan" derse sunucu YEREL AGA acilir
+(0.0.0.0) ve `/m` adresinde telefon arayuzu (ui/mobil.html) servis edilir.
+Internete acilma YOKTUR: yalniz ayni Wi-Fi'deki cihazlar erisebilir ve
+anahtarsiz hicbir sey yapilamaz.
 """
 from __future__ import annotations
 
@@ -67,6 +71,20 @@ class _Handler(BaseHTTPRequestHandler):
         supplied = header or (query.get("token", [""])[0])
         return bool(self.token) and secrets.compare_digest(supplied, self.token)
 
+    def _sayfa_gonder(self, yol) -> None:
+        """Tek dosyalik arayuzu gonder (telefon icin; CSS/JS iceride gomulu)."""
+        try:
+            govde = yol.read_bytes()
+        except OSError:
+            self._send(404, {"ok": False, "error": "sayfa bulunamadi"})
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(govde)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(govde)
+
     def _body(self) -> dict:
         length = int(self.headers.get("Content-Length") or 0)
         if not length:
@@ -88,6 +106,12 @@ class _Handler(BaseHTTPRequestHandler):
         query = parse_qs(parsed.query)
         if parsed.path == "/ping":
             self._send(200, {"ok": True, "app": "AfuDM"})
+            return
+        if parsed.path in ("/m", "/m/"):
+            # Telefon arayuzu. Sayfanin KENDISI anahtarsiz gelir (bos kabuk);
+            # icindeki her API cagrisi anahtari basliga koyar. Anahtar adres
+            # cubugundan (?k=) gelir ve telefonda saklanir.
+            self._sayfa_gonder(paths.UI / "mobil.html")
             return
         if parsed.path == "/show":
             # Ikinci kopya: kendi penceresini acmak yerine bunu cagirir.
@@ -196,19 +220,22 @@ class _ExclusiveServer(ThreadingHTTPServer):
 
 
 class LocalAPI:
-    def __init__(self, manager, port: int = 6811) -> None:
+    def __init__(self, manager, port: int = 6811, lan: bool = False) -> None:
         self.token = load_or_create_token()
         _Handler.manager = manager
         _Handler.token = self.token
         self.port = port
+        # lan=True: telefon baglanabilsin diye yerel aga ac (bkz. modul basligi)
+        self.lan = lan
         self.httpd: ThreadingHTTPServer | None = None
         self.thread: threading.Thread | None = None
 
     def start(self) -> int:
         last_error: Exception | None = None
+        adres = "0.0.0.0" if self.lan else "127.0.0.1"
         for port in range(self.port, self.port + 10):
             try:
-                self.httpd = _ExclusiveServer(("127.0.0.1", port), _Handler)
+                self.httpd = _ExclusiveServer((adres, port), _Handler)
                 self.port = port
                 break
             except OSError as exc:
@@ -223,6 +250,23 @@ class LocalAPI:
             encoding="utf-8",
         )
         return self.port
+
+    def lan_adresi(self) -> str:
+        """Telefonun yazacagi adres. Makinenin LAN IP'si UDP rota secimiyle
+        bulunur (paket GITMEZ); birden cok ag varsa dogru olani secer."""
+        ip = ""
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                s.connect(("10.255.255.255", 1))
+                ip = s.getsockname()[0]
+            finally:
+                s.close()
+        except OSError:
+            ip = ""
+        if not ip or ip.startswith("127."):
+            return ""
+        return f"http://{ip}:{self.port}/m?k={self.token}"
 
     def open_pairing(self, seconds: float = 120.0) -> float:
         """Uzantinin anahtari otomatik alabilecegi pencereyi ac."""

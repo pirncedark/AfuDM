@@ -76,6 +76,8 @@ DEFAULTS: dict[str, Any] = {
     "baslangicta_tepside": True,
     # Kullanicinin elle ekledigi tracker'lar (her satirda bir adres)
     "ek_trackerlar": "",
+    # Telefondan baglan: yerel API 0.0.0.0'a acilir (VARSAYILAN KAPALI)
+    "lan_erisimi": False,
 }
 
 

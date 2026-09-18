@@ -291,6 +291,33 @@ class Api:
         self.manager.store.set("ek_trackerlar", "\n".join(temiz))
         return {"ok": True, "sayi": len(temiz), "liste": "\n".join(temiz)}
 
+    # --- telefon arayuzu (ui/mobil.html + LocalAPI) ----------------------
+    def telefon_durumu(self) -> dict:
+        """Ayarlar penceresi icin: acik mi, telefonun yazacagi adres ne."""
+        acik = bool(self.manager.store.get("lan_erisimi"))
+        return {
+            "ok": True,
+            "acik": acik,
+            "adres": self.local_api.lan_adresi() if acik else "",
+            "port": self.local_api.port,
+        }
+
+    def telefon_ayarla(self, acik: bool) -> dict:
+        """Yerel agi ac/kapat ve sunucuyu YENIDEN baslat.
+
+        Baglanacak adres soket acilirken seciliyor; ayarin hemen gecerli olmasi
+        icin sunucu yeniden kuruluyor (yeniden baslatma beklenmesin).
+        """
+        self.manager.store.set("lan_erisimi", bool(acik))
+        try:
+            self.local_api.stop()
+            self.local_api.lan = bool(acik)
+            port = self.local_api.start()
+            self.manager.store.set("api_port", port)
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:200]}
+        return self.telefon_durumu()
+
     def add_links(self, payload: dict) -> dict:
         urls = payload.get("urls") or []
         try:
@@ -580,7 +607,8 @@ def main() -> int:
     # 6812'ye dusulmusse bu DEGER KAYDEDILIP kalici olurdu: uygulama hep
     # 6812'de acilir, uzanti ise 6811'i denerdi ve "AfuDM kapali" derdi.
     # Kayit artik yalnizca "su an hangi port" bilgisi; baslangic noktasi degil.
-    local_api = LocalAPI(manager, port=VARSAYILAN_API_PORT)
+    local_api = LocalAPI(manager, port=VARSAYILAN_API_PORT,
+                         lan=bool(manager.store.get("lan_erisimi")))
     try:
         port = local_api.start()
         manager.store.set("api_port", port)

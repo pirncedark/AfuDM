@@ -540,10 +540,36 @@ Turkce karakter, kuyruk kimligi, uzanti kalite listesi temizligi.
 TUZAK: `Path("AfuDM-v1.2.0-win64").with_suffix(".zip")` ".0-win64" kismini
 UZANTI sanip "AfuDM-v1.2.zip" uretiyor — zip adini metin olarak birlestir.
 
+## TELEFON ARAYUZU — BITTI (2026-09-18), ui/mobil.html
+Kullanici Android icin "2" dedi: APK degil, PC'deki AfuDM'i telefondan yoneten
+arayuz. Kurulum yok, tek dosya, mevcut LocalAPI uzerinden calisir.
+
+- `api/server.py`: `LocalAPI(..., lan=True)` sunucuyu 0.0.0.0'a baglar
+  (VARSAYILAN KAPALI), `/m` ucu `ui/mobil.html`'i servis eder, `lan_adresi()`
+  telefonun yazacagi adresi uretir (UDP rota secimiyle LAN IP; paket gitmez).
+- `ui/mobil.html`: tek dosya (CSS+JS gomulu), telefon olculeri, canli kuyruk
+  (1.5 sn), duraklat/surdur/kaldir, altta sabit link ekleme cubugu.
+- Anahtar adresten gelir (`?k=`), telefonda saklanir ve ADRES CUBUGUNDAN SILINIR
+  (omuz ustu okunmasin); her API cagrisinda basliga konur.
+- `app.py`: `telefon_durumu` / `telefon_ayarla` — kutu acilinca sunucu YENIDEN
+  KURULUR, yeniden baslatma gerekmez. Ayar: `lan_erisimi`.
+
+GERCEK TEST (headless Chromium, Pixel 7 profili, kullanicinin ekranina
+dokunmadan): sayfa acildi, anahtar adresten silinip saklandi, "bagli" oldu,
+kuyruk listelendi, TELEFONDAN link eklendi (5MB.zip listeye dustu),
+duraklat isledi, ANAHTARSIZ acilista veri GELMEDI ("anahtar gerekli").
+17 kontrol, hepsi gecti.
+
+TUZAK: test kullanicinin 19 GB torrentini duraklatti — test sonunda durum
+kontrol edilip SURDURULDU. Gercek isler uzerinde test yaparken kontrol
+eylemlerini geri almayi unutma.
+
 ## IS SIRASI (kullanici, Telegram 2026-09-17)
 1. ~~Kaydetme penceresi~~ — BITTI (2026-09-18, yukari bak).
-2. SIRADA (bilgisayar sistemi bitince): **Android uygulamasi** — telefon + PC birlikte
-   calisan AfuDM ("Android'e uygun olmasi yeterli simdilik").
+2. ~~Telefon arayuzu~~ — BITTI (2026-09-18, yukari bak). Kullanici "2 yap" dedi.
+3. SIRADA (istenirse): **gercek APK** (Kotlin) — telefonda KENDI basina indiren
+   uygulama (ADM gibi cok parcali + Snaptube gibi video + torrent). Bu makinede
+   JDK/Android SDK/Gradle/adb YOK: once ~8-10 GB arac kurulumu gerekiyor.
 
 BEKLEYEN DOGRULAMA (kullanici oyundayken calistirilamaz — pencere one gelir):
 `tests/port_test.py` ve `tests/extension_test.py` GORUNUR Chromium acar; kaydetme

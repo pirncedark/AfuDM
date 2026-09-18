@@ -192,6 +192,15 @@
         <label class="opt"><input type="checkbox" id="sBaslangic"> <span data-i18n="set.baslangic">Bilgisayar açılınca AfuDM'i başlat</span></label>
         <label class="opt"><input type="checkbox" id="sTorrent"> <span data-i18n="set.torrent">.torrent ve magnet linklerini AfuDM açsın</span></label>
         <label class="opt"><input type="checkbox" id="sBasTepside"> <span data-i18n="set.basTepside">Açılışta pencere açılmasın, tepside başlasın</span></label>
+        <label class="opt"><input type="checkbox" id="sTelefon"> <span data-i18n="set.telefon">Telefondan bağlan (aynı Wi-Fi)</span></label>
+      </div>
+      <div id="telefonKutu" style="display:none">
+        <label data-i18n="set.telefonAdres">Telefonun tarayıcısına bu adresi yaz</label>
+        <div class="yol-satir">
+          <input id="sTelefonAdres" type="text" spellcheck="false" readonly>
+          <button class="btn" id="sTelefonKopya" data-i18n="set.kopyala">Kopyala</button>
+        </div>
+        <div class="hint" data-i18n="set.telefonHint">Adresin sonundaki anahtar olmadan hiçbir şey yapılamaz. Kutu kapalıyken AfuDM yerel ağa hiç açılmaz; internete zaten hiç açılmaz. İndirme bilgisayarda olur.</div>
       </div>
       <div class="yol-satir">
         <button class="btn" id="sVarsayilan" data-i18n="set.varsayilan">Windows varsayılan uygulama ekranını aç</button>

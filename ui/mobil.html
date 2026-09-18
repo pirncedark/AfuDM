@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14181f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>AfuDM</title>
+<style>
+/* Telefon arayuzu: tek dosya (API sadece bunu servis eder, ek istek yok).
+   Renkler masaustu arayuzle ayni; olculer parmak icin buyutuldu. */
+:root {
+  --bg: #14181f; --bg-deep: #0f131a; --surface: #1c222c; --surface-2: #232b37;
+  --line: #2a3340; --text: #e6eaf0; --muted: #8a97a8; --dim: #616e80;
+  --dl: #5b9dff; --seed: #a78bfa; --hold: #f6c445; --err: #f2678a; --done: #46c98b;
+  --mono: "Cascadia Mono", Consolas, monospace;
+  --ui: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body {
+  margin: 0; background: var(--bg); color: var(--text); font-family: var(--ui);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+header {
+  position: sticky; top: 0; z-index: 5; background: var(--bg-deep);
+  border-bottom: 1px solid var(--line); padding: 12px 16px;
+  padding-top: calc(12px + env(safe-area-inset-top));
+}
+.ust { display: flex; align-items: baseline; gap: 10px; }
+.marka { font-weight: 700; font-size: 17px; letter-spacing: -.01em; }
+.marka span { color: var(--dl); }
+.hiz { margin-left: auto; font-family: var(--mono); font-size: 20px; }
+.hiz small { font-size: 11px; color: var(--muted); margin-left: 4px; }
+.durum { margin-top: 6px; font-size: 11.5px; color: var(--dim); font-family: var(--mono); }
+.durum b { color: var(--muted); font-weight: 600; }
+.nokta { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+         background: var(--err); margin-right: 5px; vertical-align: middle; }
+.nokta.ok { background: var(--done); }
+
+main { padding: 12px 12px 108px; }
+.is {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px 14px; margin-bottom: 10px;
+}
+.ad { font-size: 14px; line-height: 1.35; word-break: break-word; margin-bottom: 8px; }
+.tur {
+  display: inline-block; font-size: 10px; font-family: var(--mono); padding: 2px 6px;
+  border-radius: 4px; margin-right: 6px; vertical-align: 1px;
+  background: #5b9dff22; color: var(--dl);
+}
+.tur.torrent { background: #a78bfa22; color: var(--seed); }
+.tur.video { background: #f6c44522; color: var(--hold); }
+.cubuk { height: 6px; border-radius: 3px; background: var(--bg-deep); overflow: hidden; }
+.cubuk i { display: block; height: 100%; background: var(--dl); transition: width .4s; }
+.is.bitti .cubuk i { background: var(--done); }
+.is.hata .cubuk i { background: var(--err); }
+.alt {
+  display: flex; align-items: center; gap: 10px; margin-top: 8px;
+  font-family: var(--mono); font-size: 12px; color: var(--muted);
+}
+.alt .yuzde { color: var(--text); }
+.alt .sag { margin-left: auto; display: flex; gap: 8px; }
+button {
+  font-family: var(--ui); font-size: 13px; color: var(--text); background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px 13px; min-height: 40px;
+}
+button:active { background: #2c3644; }
+button.ana { background: var(--dl); border-color: var(--dl); color: #08121f; font-weight: 600; }
+button.sessiz { background: transparent; border-color: transparent; color: var(--muted); padding: 9px 8px; }
+.bos { text-align: center; color: var(--dim); padding: 48px 16px; line-height: 1.6; }
+
+/* Alt cubuk: link ekleme her zaman elin altinda */
+.ekle {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+  background: var(--bg-deep); border-top: 1px solid var(--line);
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  display: flex; gap: 8px;
+}
+input[type="text"], select {
+  flex: 1; min-width: 0; background: var(--surface); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px; padding: 11px 12px;
+  font-size: 15px; font-family: var(--ui);
+}
+.satir { display: flex; gap: 8px; margin-top: 8px; }
+.uyari {
+  margin: 10px 12px; padding: 12px 14px; border-radius: 10px; font-size: 13px;
+  line-height: 1.5; background: #f2678a1a; border: 1px solid #f2678a44; color: #ffc9d6;
+}
+.uyari code { font-family: var(--mono); font-size: 12px; }
+.bildirim {
+  position: fixed; left: 12px; right: 12px; bottom: 96px; z-index: 7;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px 14px; font-size: 13.5px; opacity: 0; transform: translateY(8px);
+  transition: opacity .2s, transform .2s; pointer-events: none;
+}
+.bildirim.goster { opacity: 1; transform: none; }
+.bildirim.kotu { border-color: #f2678a66; color: #ffc9d6; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="ust">
+    <div class="marka">Afu<span>DM</span></div>
+    <div class="hiz"><span id="hiz">0.0</span><small>MB/s</small></div>
+  </div>
+  <div class="durum">
+    <span class="nokta" id="nokta"></span><span id="baglanti">bağlanıyor</span>
+    &nbsp; aktif <b id="aktif">0</b> &nbsp; bugün <b id="toplam">0 B</b>
+  </div>
+</header>
+
+<div id="anahtarUyari" class="uyari" style="display:none">
+  Anahtar yok. AfuDM'de <b>Ayarlar → Telefondan bağlan</b> kısmındaki adresin tamamını
+  (sonundaki <code>?k=…</code> dahil) telefona yaz.
+</div>
+
+<main>
+  <div id="liste"></div>
+  <div class="bos" id="bos" style="display:none">Kuyruk boş.<br>Aşağıdan link ekleyebilirsin.</div>
+</main>
+
+<div class="bildirim" id="bildirim"></div>
+
+<div class="ekle">
+  <input id="link" type="text" inputmode="url" autocomplete="off" autocapitalize="off"
+         spellcheck="false" placeholder="Link yapıştır — dosya, video veya magnet">
+  <button class="ana" id="gonder">İndir</button>
+</div>
+
+<script>
+/* ---- anahtar: adresten gelir, telefonda kalir ---- */
+const ANAHTAR_AD = "afudm_anahtar";
+function anahtarAl() {
+  const u = new URL(location.href);
+  const gelen = u.searchParams.get("k");
+  if (gelen) {
+    try { localStorage.setItem(ANAHTAR_AD, gelen); } catch (_) {}
+    // Anahtar adres cubugunda durmasin (baskasi omzundan okumasin)
+    u.searchParams.delete("k");
+    history.replaceState(null, "", u.pathname + (u.search || "") );
+    return gelen;
+  }
+  try { return localStorage.getItem(ANAHTAR_AD) || ""; } catch (_) { return ""; }
+}
+let anahtar = anahtarAl();
+if (!anahtar) document.getElementById("anahtarUyari").style.display = "";
+
+const $ = (id) => document.getElementById(id);
+
+async function api(yol, secenek = {}) {
+  const yanit = await fetch(yol, {
+    ...secenek,
+    headers: { "Content-Type": "application/json", "X-AfuDM-Token": anahtar,
+               ...(secenek.headers || {}) },
+  });
+  const veri = await yanit.json().catch(() => ({}));
+  if (!yanit.ok || veri.ok === false) throw new Error(veri.error || ("hata " + yanit.status));
+  return veri;
+}
+
+function boyut(bayt) {
+  const n = Number(bayt) || 0;
+  if (n < 1024) return n + " B";
+  const birim = ["KB", "MB", "GB", "TB"];
+  let v = n / 1024, i = 0;
+  while (v >= 1024 && i < birim.length - 1) { v /= 1024; i++; }
+  return v.toFixed(v < 10 ? 1 : 0) + " " + birim[i];
+}
+function sure(saniye) {
+  const s = Number(saniye) || 0;
+  if (s <= 0) return "—";
+  if (s < 60) return s + " sn";
+  if (s < 3600) return Math.floor(s / 60) + " dk";
+  return Math.floor(s / 3600) + " sa " + Math.floor((s % 3600) / 60) + " dk";
+}
+function kacir(metin) {
+  return String(metin).replace(/[&<>"]/g, (k) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[k]));
+}
+
+function bildir(metin, kotu = false) {
+  const el = $("bildirim");
+  el.textContent = metin;
+  el.className = "bildirim goster" + (kotu ? " kotu" : "");
+  clearTimeout(bildir._t);
+  bildir._t = setTimeout(() => { el.className = "bildirim"; }, 3200);
+}
+
+/* ---- liste ---- */
+let oturumBayt = 0;
+const sonInen = new Map();
+
+function satir(is) {
+  const yuzde = Number(is.progress || 0);
+  const sinif = is.status === "complete" ? "bitti" : (is.status === "error" ? "hata" : "");
+  const durakla = is.status === "paused"
+    ? '<button data-eylem="resume" data-gid="' + kacir(is.gid) + '">Sürdür</button>'
+    : (is.status === "active" || is.status === "waiting"
+        ? '<button data-eylem="pause" data-gid="' + kacir(is.gid) + '">Duraklat</button>' : "");
+  const durumYazi = is.status === "complete" ? "bitti"
+    : is.status === "error" ? (is.errorMessage ? "hata" : "hata")
+    : is.status === "paused" ? "duraklatıldı" : "";
+  return '<div class="is ' + sinif + '">' +
+    '<div class="ad"><span class="tur ' + kacir(is.kind || "http") + '">' +
+      kacir(is.kind || "http") + "</span>" + kacir(is.title || is.gid) + "</div>" +
+    '<div class="cubuk"><i style="width:' + Math.max(0, Math.min(100, yuzde)) + '%"></i></div>' +
+    '<div class="alt">' +
+      '<span class="yuzde">' + yuzde.toFixed(1) + "%</span>" +
+      "<span>" + boyut(is.completedLength) + " / " + boyut(is.totalLength) + "</span>" +
+      (is.downloadSpeed > 0 ? "<span>" + boyut(is.downloadSpeed) + "/s</span>" : "") +
+      (is.downloadSpeed > 0 ? "<span>" + sure(is.eta) + "</span>" : "") +
+      (durumYazi ? "<span>" + durumYazi + "</span>" : "") +
+      '<span class="sag">' + durakla +
+        '<button class="sessiz" data-eylem="remove" data-gid="' + kacir(is.gid) + '">Kaldır</button>' +
+      "</span>" +
+    "</div></div>";
+}
+
+async function yenile() {
+  try {
+    const veri = await api("/snapshot");
+    const isler = veri.items || [];
+    const stat = veri.stat || {};
+    isler.forEach((is) => {
+      const onceki = sonInen.get(is.gid) || 0;
+      if (is.completedLength > onceki) oturumBayt += is.completedLength - onceki;
+      sonInen.set(is.gid, is.completedLength);
+    });
+    $("hiz").textContent = ((stat.downloadSpeed || 0) / 1048576).toFixed(1);
+    $("aktif").textContent = stat.numActive || 0;
+    $("toplam").textContent = boyut(oturumBayt);
+    $("nokta").className = "nokta ok";
+    $("baglanti").textContent = "bağlı";
+    $("liste").innerHTML = isler.map(satir).join("");
+    $("bos").style.display = isler.length ? "none" : "";
+  } catch (err) {
+    $("nokta").className = "nokta";
+    $("baglanti").textContent = anahtar ? "bağlantı yok" : "anahtar gerekli";
+    $("bos").style.display = "";
+  }
+  setTimeout(yenile, 1500);
+}
+
+$("liste").addEventListener("click", async (olay) => {
+  const dugme = olay.target.closest("button[data-eylem]");
+  if (!dugme) return;
+  try {
+    await api("/control", { method: "POST",
+      body: JSON.stringify({ action: dugme.dataset.eylem, gid: dugme.dataset.gid }) });
+    yenile();
+  } catch (err) { bildir(err.message, true); }
+});
+
+$("gonder").onclick = async () => {
+  const url = $("link").value.trim();
+  if (!url) { bildir("Önce bir link yapıştır.", true); return; }
+  $("gonder").disabled = true;
+  try {
+    await api("/add", { method: "POST", body: JSON.stringify({ url }) });
+    $("link").value = "";
+    bildir("Eklendi. Bilgisayarda iniyor.");
+  } catch (err) { bildir(err.message, true); }
+  $("gonder").disabled = false;
+};
+$("link").addEventListener("keydown", (olay) => {
+  if (olay.key === "Enter") $("gonder").click();
+});
+
+yenile();
+</script>
+</body>
+</html>
