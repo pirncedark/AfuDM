@@ -206,11 +206,18 @@ chrome.webRequest.onHeadersReceived.addListener(
     if (details.tabId < 0 || PARCA.test(details.url)) return;
     const baslik = (ad) => (details.responseHeaders || [])
       .find((h) => h.name.toLowerCase() === ad)?.value || "";
-    const tur = medyaTuru(details.url, baslik("content-type"));
-    if (!tur) return;
     // Aralik istegi (206) toplam boyutu Content-Range'de tasir.
     const aralik = baslik("content-range").match(/\/(\d+)$/);
     const boyut = Number(aralik ? aralik[1] : baslik("content-length")) || 0;
+    /* Kullanici (2026-09-19): "400 MB ustunde olanlari da film olarak
+       algilayabilir". medyaTuru() yalnizca TANIDIGI icerik turunu ya da
+       uzantiyi kabul ediyor; uzantisiz bir adres application/octet-stream ile
+       gelirse kayda HIC girmiyordu, dolayisiyla asagidaki boyut suzgeci onu
+       zaten goremiyordu. Boyut tek basina yeterli bir ipucu: sayfa varliklari
+       bu esigin yanindan bile gecmez. */
+    const tur = medyaTuru(details.url, baslik("content-type"))
+      || (boyut >= BUYUK_DOSYA ? "file" : "");
+    if (!tur) return;
     if (tur === "file" && boyut && boyut < 256 * 1024) return; // simge / ses efekti
     medyaKaydet(details, tur, boyut);
   },
@@ -348,6 +355,10 @@ function dashKaliteleri(metin) {
 const VIDEO_UZANTI = /\.(mp4|webm|mkv|mov|flv|avi|m4v)(\?|$)/i;
 // Ses dosyasi: yalniz BUYUK olanlar listelenir (arayuz sesleri elenir)
 const SES_UZANTI = /\.(mp3|m4a|aac|flac|wav|ogg|opus|wma)(\?|$)/i;
+// Bu boyutun ustundeki her dosya, turu/uzantisi ne olursa olsun indirilmeye
+// deger sayilir (film, arsiv, kalip). Tek yerde dursun: yakalama ve suzgec
+// ayni esigi kullanir, yoksa "kaydedildi ama gosterilmedi" durumu olusur.
+const BUYUK_DOSYA = 400 * 1024 * 1024;
 
 function dosyaAdi(url) {
   try {
@@ -516,11 +527,19 @@ async function videoSecenekleri(cfg, sender, frameUrl, metinler) {
        - gercek KALITE listesi varsa ham dosyalar HIC gosterilmez
        - yoksa yalniz video dosyalari ve 1 MB ustu ses dosyalari kalir
          (arayuz sesleri birkac yuz KB'dir) */
+  /* Kullanici (2026-09-19): "400 MB ustunde olanlari da film olarak algilayabilir".
+     Uzantiya bakan suzgec, adresinde uzanti OLMAYAN buyuk dosyalari (indirme
+     betikleri, /download/<kimlik> bicimli adresler, uzantisiz CDN yollari)
+     boyutu ne olursa olsun gizliyordu. Boyut tek basina yeterli bir ipucu:
+     arayuz sesleri ve onizlemeler birkac yuz KB'dir, bu esigin yanindan bile
+     gecmez. Uzantiyi DEGISTIRMIYORUZ, yalnizca bir yol daha aciyoruz. */
   const KUCUK = 1024 * 1024;
   const temiz = secenekler.length
     ? []
     : dosyaSecenekleri.filter(
-        (s) => VIDEO_UZANTI.test(s.url) || (SES_UZANTI.test(s.url) && (s.boyut || 0) >= KUCUK));
+        (s) => VIDEO_UZANTI.test(s.url)
+            || (SES_UZANTI.test(s.url) && (s.boyut || 0) >= KUCUK)
+            || (s.boyut || 0) >= BUYUK_DOSYA);
   const sonuc = [...secenekler, ...temiz];
   return { ok: true, options: sonuc, reason: sonuc.length ? "" : bosSebep() };
 
