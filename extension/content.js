@@ -118,7 +118,8 @@
       return;
     }
     if (!yanit.options.length) {
-      bilgi(t("vpNone"), "kotu");
+      // Sebep arka plandan gelir; gelmezse eski genel metne duser.
+      bilgi(t(yanit.reason || "vpNone"), "kotu");
       return;
     }
     menu().innerHTML = "";

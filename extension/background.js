@@ -441,7 +441,15 @@ async function videoSecenekleri(cfg, sender, frameUrl, metinler) {
 
   const secenekler = [];
   let tekKaliteEklendi = false;
+  /* Bos sonucun SEBEBINI tasiyalim: "video bulunamadi" demek kullaniciyi
+     bosuna ugrastiriyordu (oynatici baska cercevede mi, liste korumali mi,
+     yoksa sayfa hic video istegi yapmadi mi -- hepsi ayni metni veriyordu). */
+  let listeVar = false;          // sekmede HLS/DASH ana listesi yakalandi mi
+  let listeOkunamadi = false;    // yakalandi ama metni alinamadi (403/CORS)
+  let probeDenendi = false;      // AfuDM'e (yt-dlp) soruldu mu
+  let probeBilmiyor = false;     // soruldu, tanimadi
   for (const kayit of medya.filter((m) => m.kind === "hls" || m.kind === "dash").slice(0, 6)) {
+    listeVar = true;
     try {
       const metin = await listeMetni(kayit, metinler);
       const kaliteler = kayit.kind === "hls" ? hlsKaliteleri(metin) : dashKaliteleri(metin);
@@ -454,7 +462,9 @@ async function videoSecenekleri(cfg, sender, frameUrl, metinler) {
         secenekler.push({ label: "HLS", detail: chrome.i18n.getMessage("vpStream"), url: kayit.url,
                           kind: "video", quality: "best", referer });
       }
-    } catch (_) { /* erisilemeyen liste: siradakine gec */ }
+    } catch (_) {
+      listeOkunamadi = true;     /* erisilemeyen liste: siradakine gec */
+    }
   }
   const dosyaSecenekleri = [];
   const dosyalar = new Set();
@@ -480,6 +490,7 @@ async function videoSecenekleri(cfg, sender, frameUrl, metinler) {
      indirilebilir bir VIDEO dosyasi da yoksa sayfayi AfuDM'e sor. */
   if (!secenekler.length && !videoDosyasiVar) {
     const sayfa = sender.tab?.url || referer;
+    probeDenendi = true;
     try {
       const { info } = await afudmGet(cfg, "/probe?url=" + encodeURIComponent(sayfa));
       const kaliteler = new Map();
@@ -493,7 +504,10 @@ async function videoSecenekleri(cfg, sender, frameUrl, metinler) {
           { fps: bicim.fps, ext: bicim.ext, filesize: bicim.filesize, width: bicim.width });
       }
       if (kaliteler.size) secenekler.push(...kaliteSecenekleri(sayfa, kaliteler, referer));
-    } catch (_) { /* yt-dlp bu sayfayi bilmiyor: yalniz ham dosyalar kalir */ }
+      else probeBilmiyor = true;
+    } catch (_) {
+      probeBilmiyor = true;      /* yt-dlp bu sayfayi bilmiyor: yalniz ham dosyalar kalir */
+    }
   }
   /* Kullanici (2026-09-18): "mp3 ve video formati disindaki seyler indirme
      cubugunda gozukmesin". Sayfalar kendi arayuz seslerini (success.mp3,
@@ -507,7 +521,19 @@ async function videoSecenekleri(cfg, sender, frameUrl, metinler) {
     ? []
     : dosyaSecenekleri.filter(
         (s) => VIDEO_UZANTI.test(s.url) || (SES_UZANTI.test(s.url) && (s.boyut || 0) >= KUCUK));
-  return { ok: true, options: [...secenekler, ...temiz] };
+  const sonuc = [...secenekler, ...temiz];
+  return { ok: true, options: sonuc, reason: sonuc.length ? "" : bosSebep() };
+
+  /* Sirala: EN BELIRLEYICI sebep once. Liste yakalandigi halde okunamadiysa
+     sorun sayfada degil erisimde; hic medya yakalanmadiysa cogu zaman video
+     henuz baslatilmamistir ya da oynatici erisemedigimiz bir cercevededir. */
+  function bosSebep() {
+    if (listeOkunamadi) return "vpNoneProtected";
+    if (listeVar) return "vpNoneNoQuality";
+    if (dosyaSecenekleri.length) return "vpNoneFiltered";
+    if (probeDenendi && probeBilmiyor) return "vpNoneUnknownSite";
+    return "vpNoneNotStarted";
+  }
 }
 
 async function videoIndir(cfg, sender, secenek, frameUrl) {

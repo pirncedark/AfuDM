@@ -129,6 +129,21 @@
   "vpNone": {
     "message": "No downloadable video found on this page."
   },
+  "vpNoneProtected": {
+    "message": "The player's quality list is protected — couldn't read it."
+  },
+  "vpNoneNoQuality": {
+    "message": "Found a video stream, but its quality list came back empty."
+  },
+  "vpNoneFiltered": {
+    "message": "Only small files/interface sounds here — no video."
+  },
+  "vpNoneUnknownSite": {
+    "message": "AfuDM doesn't recognise this site."
+  },
+  "vpNoneNotStarted": {
+    "message": "No video request seen yet. Start the video and try again."
+  },
   "vpAudio": {
     "message": "Audio only"
   },

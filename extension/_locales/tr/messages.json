@@ -129,6 +129,21 @@
   "vpNone": {
     "message": "Bu sayfada indirilebilir video bulunamadı."
   },
+  "vpNoneProtected": {
+    "message": "Oynatıcının kalite listesi korumalı, okuyamadım."
+  },
+  "vpNoneNoQuality": {
+    "message": "Video akışı bulundu ama kalite listesi boş geldi."
+  },
+  "vpNoneFiltered": {
+    "message": "Yalnızca küçük dosyalar/arayüz sesleri var, video yok."
+  },
+  "vpNoneUnknownSite": {
+    "message": "AfuDM bu siteyi tanımıyor."
+  },
+  "vpNoneNotStarted": {
+    "message": "Video isteği yakalanmadı. Videoyu başlatıp tekrar dene."
+  },
   "vpAudio": {
     "message": "Sadece ses"
   },

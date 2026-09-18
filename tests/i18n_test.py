@@ -128,9 +128,23 @@ js_anahtar = set()
 for ad in ("extension/popup.js", "extension/background.js"):
     js_anahtar |= set(re.findall(r'chrome\.i18n\.getMessage\(\s*"([A-Za-z0-9_]+)"',
                                  (KOK / ad).read_text(encoding="utf-8")))
+# content.js getMessage'i t() ardina gizler; taranmadigi icin eksik anahtar
+# kullanicinin ekraninda HAM ANAHTAR ADI olarak gorunurdu (t() oyle duser).
+js_anahtar |= set(re.findall(r't\(\s*"([A-Za-z0-9_]+)"',
+                             (KOK / "extension/content.js").read_text(encoding="utf-8")))
 kontrol("uzanti JS'i getMessage kullaniyor", len(js_anahtar) > 5, f"{len(js_anahtar)} anahtar")
 yok = sorted(k for k in js_anahtar if k not in loc_tr)
 kontrol("uzanti JS'indeki her anahtar sozlukte var", not yok, ", ".join(yok[:5]))
+
+# Bos sonucun sebebi anahtar ADI olarak dondurulur (background.js -> content.js
+# t(yanit.reason)). getMessage("...") taramasi bunlari GORMEZ; ayrica yoklanir.
+bg = (KOK / "extension/background.js").read_text(encoding="utf-8")
+sebep = set(re.findall(r'return "(vpNone[A-Za-z0-9_]*)"', bg))
+kontrol("bos sonuc sebepleri uretiliyor", len(sebep) >= 4, f"{len(sebep)} sebep")
+yok = sorted(k for k in sebep if k not in loc_tr)
+kontrol("her sebep anahtari sozlukte var", not yok, ", ".join(yok))
+kontrol("content.js sebebi kullaniyor",
+        "yanit.reason" in (KOK / "extension/content.js").read_text(encoding="utf-8"))
 
 print()
 if hatalar:
