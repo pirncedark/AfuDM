@@ -564,6 +564,22 @@ TUZAK: test kullanicinin 19 GB torrentini duraklatti — test sonunda durum
 kontrol edilip SURDURULDU. Gercek isler uzerinde test yaparken kontrol
 eylemlerini geri almayi unutma.
 
+## TELEFON ARAYUZU 2. TUR (2026-09-18): QR + kalite + klasor
+Kullanici "2" dedi (arayuzu gelistir):
+- **QR kod:** Ayarlar > Telefondan baglan'da adresin QR'i gorunuyor; telefonun
+  kamerasiyla okutunca adres yazmaya gerek kalmiyor. `Api._qr_uret` data URI
+  uretir; `qrcode` paketi yoksa SESSIZCE bos doner (adres yine gorunur).
+  YENI BAGIMLILIK: `qrcode` (kur.bat'a eklendi; PIL zaten vardi).
+- **Telefonda kalite secimi:** en iyi / 4K / 1080 / 720 / 480 / sadece ses.
+- **Telefonda klasor secimi:** yeni `GET /klasorler` ucu kategori listesini
+  verir; `/add` artik `kategori` alanini kabul eder ve tam yolu sunucu kurar
+  (uzanti da kullanabilir).
+
+TEST (headless, Pixel 7): 20 kontrol gecti — kalite secenekleri, klasor listesi
+AfuDM'den dolmasi, telefondan ekleme, duraklatma, anahtarsiz erisimde veri yok.
+TUZAK: ilk turda test KULLANICININ torrentini duraklatmisti; test artik yalniz
+KENDI ekledigi isi duraklatiyor (ad filtresi).
+
 ## IS SIRASI (kullanici, Telegram 2026-09-17)
 1. ~~Kaydetme penceresi~~ — BITTI (2026-09-18, yukari bak).
 2. ~~Telefon arayuzu~~ — BITTI (2026-09-18, yukari bak). Kullanici "2 yap" dedi.

@@ -632,6 +632,7 @@ async function telefonDurumu() {
     $("sTelefon").checked = !!bilgi.acik;
     $("telefonKutu").style.display = bilgi.acik ? "" : "none";
     $("sTelefonAdres").value = bilgi.adres || "";
+    $("sTelefonQr").src = bilgi.qr || "";
     if (bilgi.acik && !bilgi.adres) toast(t("err.agYok"), true);
   } catch (_) { /* kopru hazir degil */ }
 }
@@ -641,6 +642,7 @@ $("sTelefon").onchange = async () => {
     const bilgi = await call("telefon_ayarla", $("sTelefon").checked);
     $("telefonKutu").style.display = bilgi.acik ? "" : "none";
     $("sTelefonAdres").value = bilgi.adres || "";
+    $("sTelefonQr").src = bilgi.qr || "";
     if (bilgi.acik && !bilgi.adres) toast(t("err.agYok"), true);
   } catch (err) { toast(err.message, true); }
 };

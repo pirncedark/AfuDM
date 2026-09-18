@@ -107,6 +107,20 @@ class _Handler(BaseHTTPRequestHandler):
         if parsed.path == "/ping":
             self._send(200, {"ok": True, "app": "AfuDM"})
             return
+        if parsed.path == "/klasorler":
+            # Telefon arayuzu kategori listesini buradan doldurur.
+            if not self._authorized(query):
+                self._send(401, {"ok": False, "error": "anahtar gerekli"})
+                return
+            from core import kaydet
+            ana = self.manager.current_download_dir()
+            self._send(200, {
+                "ok": True,
+                "ana": ana,
+                "kategoriler": [{"anahtar": k, "ad": ad} for k, ad in kaydet.KATEGORI_KLASORU.items()],
+                "acik": bool(self.manager.store.get("kategori_klasorleri")),
+            })
+            return
         if parsed.path in ("/m", "/m/"):
             # Telefon arayuzu. Sayfanin KENDISI anahtarsiz gelir (bos kabuk);
             # icindeki her API cagrisi anahtari basliga koyar. Anahtar adres
@@ -163,10 +177,16 @@ class _Handler(BaseHTTPRequestHandler):
                     kimlik = _Handler.on_ask(data)
                     self._send(200, {"ok": True, "pending": True, "id": kimlik})
                     return
+                hedef = data.get("dest_dir")
+                if not hedef and data.get("kategori"):
+                    # Telefon/uzanti kategori yollayabilir; tam yolu burada kurariz
+                    from core import kaydet
+                    hedef = kaydet.kategori_klasoru(
+                        self.manager.current_download_dir(), str(data["kategori"]))
                 result = self.manager.add(
                     url,
                     kind=data.get("kind"),
-                    dest_dir=data.get("dest_dir"),
+                    dest_dir=hedef,
                     quality=data.get("quality"),
                     audio_only=bool(data.get("audio_only")),
                     playlist=bool(data.get("playlist")),

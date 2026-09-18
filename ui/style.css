@@ -515,6 +515,12 @@ textarea { min-height: 84px; user-select: text; }
 .chr-kopya .btn { padding: 4px 10px; font-size: 12px; }
 .err-note { color: var(--err); font-size: 12px; min-height: 16px; }
 
+/* Telefondan baglan: QR + aciklama yan yana */
+.telefon-qr { display: flex; align-items: center; gap: 14px; margin-top: 10px; }
+.telefon-qr img { width: 132px; height: 132px; border-radius: 6px; background: #e6eaf0; }
+.telefon-qr img[src=""] { display: none; }
+.telefon-qr .hint { flex: 1; }
+
 /* ---------- kaydetme penceresi + klasor agaci (core/kaydet.py) ---------- */
 .sheet-dar { width: 460px; }
 .yol-satir { display: flex; gap: 8px; align-items: center; }

@@ -293,14 +293,38 @@ class Api:
 
     # --- telefon arayuzu (ui/mobil.html + LocalAPI) ----------------------
     def telefon_durumu(self) -> dict:
-        """Ayarlar penceresi icin: acik mi, telefonun yazacagi adres ne."""
+        """Ayarlar penceresi icin: acik mi, adres ne, QR nerede."""
         acik = bool(self.manager.store.get("lan_erisimi"))
+        adres = self.local_api.lan_adresi() if acik else ""
         return {
             "ok": True,
             "acik": acik,
-            "adres": self.local_api.lan_adresi() if acik else "",
+            "adres": adres,
+            "qr": self._qr_uret(adres) if adres else "",
             "port": self.local_api.port,
         }
+
+    @staticmethod
+    def _qr_uret(metin: str) -> str:
+        """Adresi QR olarak dondur (data URI). qrcode yoksa sessizce bos doner:
+        arayuz o zaman yalniz adresi gosterir, ozellik kaybolmaz."""
+        try:
+            import base64
+            from io import BytesIO
+
+            import qrcode
+        except ImportError:
+            return ""
+        try:
+            kod = qrcode.QRCode(box_size=6, border=2)
+            kod.add_data(metin)
+            kod.make(fit=True)
+            resim = kod.make_image(fill_color="#0f131a", back_color="#e6eaf0")
+            tampon = BytesIO()
+            resim.save(tampon, format="PNG")
+            return "data:image/png;base64," + base64.b64encode(tampon.getvalue()).decode()
+        except Exception:
+            return ""
 
     def telefon_ayarla(self, acik: bool) -> dict:
         """Yerel agi ac/kapat ve sunucuyu YENIDEN baslat.
