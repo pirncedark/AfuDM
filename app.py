@@ -277,6 +277,20 @@ class Api:
             return {"ok": False, "error": str(exc)[:300]}
         return {"ok": True, "durum": iliskilendir.durum()}
 
+    # --- seed penceresi (torrent) ----------------------------------------
+    def seed_bilgi(self, gid: str) -> dict:
+        return self.manager.seed_bilgi(gid)
+
+    def seed_tazele(self, gid: str) -> dict:
+        return self.manager.seed_tazele(gid)
+
+    def seed_tracker_kaydet(self, metin: str) -> dict:
+        """Elle eklenen tracker'lari sakla (uygulanmasi tazelemede olur)."""
+        from core import trackers as _tr
+        temiz = _tr.ayikla(metin)
+        self.manager.store.set("ek_trackerlar", "\n".join(temiz))
+        return {"ok": True, "sayi": len(temiz), "liste": "\n".join(temiz)}
+
     def add_links(self, payload: dict) -> dict:
         urls = payload.get("urls") or []
         try:

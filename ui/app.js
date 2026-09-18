@@ -7,6 +7,7 @@ const TRACE_POINTS = 180;
 const state = {
   filter: "all",
   motorTimer: null,
+  seedTimer: null,
   search: "",
   selected: null,
   items: [],
@@ -169,6 +170,10 @@ function renderList() {
     } else {
       right = '<button data-act="pause" data-gid="' + item.gid + '">' + t("row.pause") + "</button>" + kill;
     }
+    // Torrentte seed az olabilir: tracker listesini tazeleyen pencere (seedVeil)
+    if (item.kind === "torrent" && item.status !== "complete" && item.status !== "error") {
+      right = '<button data-act="seed" data-gid="' + item.gid + '">' + t("row.seed") + "</button>" + right;
+    }
     return (
       '<div class="row ' + rowClass(item) + (state.selected === item.gid ? " sel" : "") +
         '" data-gid="' + item.gid + '">' +
@@ -320,6 +325,7 @@ $("list").addEventListener("click", async (event) => {
     event.stopPropagation();
     const { act, gid } = button.dataset;
     try {
+      if (act === "seed") { await seedAc(gid); return; }
       if (act === "open") await call("open_item_folder", gid);
       else if (act === "retry") {
         const rowId = Number(button.dataset.id);
@@ -368,6 +374,10 @@ function closeVeil(id) {
     clearInterval(state.motorTimer);
     state.motorTimer = null;
   }
+  if (id === "seedVeil" && state.seedTimer) {
+    clearInterval(state.seedTimer);
+    state.seedTimer = null;
+  }
 }
 document.querySelectorAll("[data-close]").forEach((button) => {
   button.onclick = () => closeVeil(button.dataset.close);
@@ -409,6 +419,73 @@ $("addGo").onclick = async () => {
       toast(message);
     }
   } catch (err) { $("addErr").textContent = err.message; }
+};
+
+/* ---------- seed penceresi (core/manager.seed_tazele) ----------
+   aria2 CALISAN torrente tracker EKLEMEZ (olculdu); tazeleme, isi kaldirip
+   ayni dizine yeniden eklemekle olur — inen parcalar korunur. */
+let seedGid = "";
+
+function seedSatir(etiket, deger) {
+  return '<span class="k">' + escapeHtml(etiket) + '</span><span class="v">' +
+    escapeHtml(String(deger)) + "</span>";
+}
+
+async function seedCiz() {
+  const bilgi = await call("seed_bilgi", seedGid);
+  $("seedBaslik").textContent = bilgi.baslik || "";
+  $("seedKv").innerHTML = [
+    seedSatir(t("seed.seed"), bilgi.seed),
+    seedSatir(t("seed.conn"), bilgi.baglanti),
+    seedSatir(t("seed.tracker"), bilgi.tracker),
+    seedSatir(t("seed.havuz"), bilgi.havuz),
+    seedSatir(t("seed.yas"), bilgi.liste_yasi_saat === null
+      ? t("seed.hicyok") : t("seed.saat", { n: bilgi.liste_yasi_saat })),
+    seedSatir(t("seed.dht"), t(bilgi.dht ? "seed.on" : "seed.off")),
+    seedSatir(t("seed.ekSayi"), bilgi.ek_sayisi || 0),
+  ].join("");
+  // Kullanici yazarken ustune YAZMA: yalniz kutu bosken/degismemisken doldur.
+  if (document.activeElement !== $("seedEk") && !$("seedEk").dataset.kirli) {
+    $("seedEk").value = bilgi.ek_trackerlar || "";
+  }
+}
+
+async function seedAc(gid) {
+  seedGid = gid;
+  $("seedErr").textContent = "";
+  $("seedKv").innerHTML = "";
+  delete $("seedEk").dataset.kirli;
+  openVeil("seedVeil");
+  try {
+    await seedCiz();
+  } catch (err) { $("seedErr").textContent = err.message; }
+  // Canli tut: yeniden duyurudan sonra seed'in ARTTIGINI gormek gerekiyor.
+  if (state.seedTimer) clearInterval(state.seedTimer);
+  state.seedTimer = setInterval(() => seedCiz().catch(() => {}), 2000);
+}
+
+$("seedGo").onclick = async () => {
+  $("seedErr").textContent = "";
+  $("seedGo").disabled = true;
+  const eskiYazi = $("seedGo").textContent;
+  $("seedGo").textContent = t("seed.calisiyor");
+  try {
+    const out = await call("seed_tazele", seedGid);
+    seedGid = out.gid || seedGid;      // yeniden eklenince GID DEGISIR
+    toast(t("seed.bitti", { n: out.tracker || 0 }));
+  } catch (err) { $("seedErr").textContent = err.message; }
+  $("seedGo").disabled = false;
+  $("seedGo").textContent = eskiYazi;
+};
+
+$("seedEk").oninput = () => { $("seedEk").dataset.kirli = "1"; };
+$("seedKaydet").onclick = async () => {
+  try {
+    const out = await call("seed_tracker_kaydet", $("seedEk").value);
+    $("seedEk").value = out.liste || "";
+    delete $("seedEk").dataset.kirli;
+    toast(t("seed.eklendi", { n: out.sayi || 0 }));
+  } catch (err) { $("seedErr").textContent = err.message; }
 };
 
 /* ---------- Chrome'a ekle (core/chrome_kurulum.py) ---------- */

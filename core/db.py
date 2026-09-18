@@ -74,6 +74,8 @@ DEFAULTS: dict[str, Any] = {
     "tepsiye_kucult": True,
     # Bilgisayar acilinca pencere ACILMADAN tepside basla
     "baslangicta_tepside": True,
+    # Kullanicinin elle ekledigi tracker'lar (her satirda bir adres)
+    "ek_trackerlar": "",
 }
 
 

@@ -355,9 +355,13 @@ function dosyaAdi(url) {
   }
 }
 
-function kaliteAdi(boy, fps) {
-  const ad = boy + "p";
-  return fps && fps >= 50 ? ad + Math.round(fps) : ad;
+/* Standart yukseklikler "1080p" diye yazilir; genis ekran videoda yukseklik
+   606 gibi cikar ve "606p" hicbir sey anlatmaz — orada "1440x606" gosterilir. */
+const STANDART = [144, 240, 360, 480, 720, 1080, 1440, 2160, 4320];
+
+function kaliteAdi(boy, fps, en) {
+  const ad = STANDART.includes(boy) || !en ? boy + "p" : en + "×" + boy;
+  return fps && fps >= 50 ? ad + " " + Math.round(fps) : ad;
 }
 
 function kaliteSecenekleri(kaynak, kaliteler, referer) {
@@ -369,7 +373,8 @@ function kaliteSecenekleri(kaynak, kaliteler, referer) {
       const ayrinti = sayi
         ? mbps(bilgi)
         : [bilgi.ext, insanBoyut(bilgi.filesize)].filter(Boolean).join(" · ");
-      return { label: kaliteAdi(boy, sayi ? 0 : bilgi.fps), detail: ayrinti, url: kaynak,
+      return { label: kaliteAdi(boy, sayi ? 0 : bilgi.fps, sayi ? 0 : bilgi.width),
+               detail: ayrinti, url: kaynak,
                kind: "video", quality: String(boy), referer };
     });
   secenekler.push({ label: chrome.i18n.getMessage("vpAudio"), detail: "mp3", url: kaynak, kind: "video",
@@ -391,7 +396,7 @@ function kaliteListesi(info) {
     .sort((a, b) => b[0] - a[0])
     .map(([boy, bicim]) => ({
       height: boy,
-      label: kaliteAdi(boy, bicim.fps),
+      label: kaliteAdi(boy, bicim.fps, bicim.width),
       detail: [bicim.ext, insanBoyut(bicim.filesize)].filter(Boolean).join(" · "),
     }));
 }
@@ -478,7 +483,8 @@ async function videoSecenekleri(cfg, sender, frameUrl, metinler) {
         // Ayni yukseklikten birden cok bicim gelir; boyutu BILINENI yegle.
         const onceki = kaliteler.get(bicim.height);
         if (onceki && onceki.filesize && !bicim.filesize) continue;
-        kaliteler.set(bicim.height, { fps: bicim.fps, ext: bicim.ext, filesize: bicim.filesize });
+        kaliteler.set(bicim.height,
+          { fps: bicim.fps, ext: bicim.ext, filesize: bicim.filesize, width: bicim.width });
       }
       if (kaliteler.size) secenekler.push(...kaliteSecenekleri(sayfa, kaliteler, referer));
     } catch (_) { /* yt-dlp bu sayfayi bilmiyor: yalniz ham dosyalar kalir */ }

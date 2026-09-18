@@ -113,6 +113,34 @@ cikti = cmd6[cmd6.index("-o") + 1]
 kontrol("sayfa basligi dosya adi olur, yasak karakter ve % kacisi",
         cikti.endswith('Film_ _Adı_ _ %%100 _.%(ext)s'), cikti)
 
+print("7) Dusen kosudan sonra yedek plan (yedek_karari)")
+# Olculdu: uzantinin yolladigi tarayici cerezleriyle YouTube 403 veriyor,
+# cerezsiz ayni video iniyor. aria2c dis indirici de bazi CDN'lerde 22 ile dusuyor.
+karar = ytdlp.VideoJob.yedek_karari
+kontrol("aria2c dusunce kendi indiricisiyle tekrar",
+        karar("ERROR: aria2c exited with code 22", True, True, False, False) == "aria2c")
+kontrol("403 gelince cerezsiz tekrar",
+        karar("unable to download video data: HTTP Error 403: Forbidden",
+              True, True, True, False) == "cerezsiz")
+kontrol("cerez yoksa 403 icin tekrar YOK",
+        karar("HTTP Error 403: Forbidden", True, False, True, False) == "")
+kontrol("kalici hatada tekrar YOK (bosuna bekleme)",
+        karar("ERROR: Video unavailable", True, True, False, False) == "")
+kontrol("her iki yedek denenmisse pes edilir",
+        karar("HTTP Error 403", True, True, True, True) == "")
+
+is_cerez = ytdlp.VideoJob(job_id="yt:9", url="https://ornek.com/izle", dest_dir=".",
+                    cookie_file="C:/x/cerez.txt", user_agent="UA/1",
+                    headers={"Referer": "https://ornek.com/"})
+cerezli = is_cerez.build_cmd(None, False)
+cerezsiz = is_cerez.build_cmd(None, False, cerezsiz=True)
+kontrol("normal komutta cerez var", "--cookies" in cerezli)
+kontrol("cerezsiz komutta cerez YOK", "--cookies" not in cerezsiz)
+kontrol("cerezsiz komutta user-agent YOK", "--user-agent" not in cerezsiz)
+kontrol("cerezsiz komutta referer YOK", "--referer" not in cerezsiz)
+kontrol("cerezsiz komut yine de dogru adresi indiriyor",
+        cerezsiz[-1] == "https://ornek.com/izle")
+
 print()
 if hatalar:
     print("BASARISIZ:", ", ".join(hatalar))

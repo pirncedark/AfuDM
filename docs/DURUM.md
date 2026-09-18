@@ -1,5 +1,5 @@
 # AfuDM — Durum & Devam Notu
-Son guncelleme: 2026-09-18 (tek kopya + acilista tepside basla)
+Son guncelleme: 2026-09-18 (video 403 kok nedeni + seed penceresi)
 
 ## Ne yapiyoruz
 IDM yerine gecen, PORTABLE (tek klasor, kopyala-calistir) Windows masaustu
@@ -477,6 +477,56 @@ Ayarlar'da iki yeni ogenin (kutu + dugme) gorseli alindi; kisayolun argumani
 `--tepside` olarak okundu; `ms-settings:defaultapps` acildi.
 Test: `tests/baslangic_test.py` 7. bolum (bayrak yazilir/temizlenir/geri gelir).
 
+## VIDEO 403 — KOK NEDEN CEREZ (2026-09-18), tests/format_test.py 7. bolum
+Kullanicinin iki denemesi de "hata" oldu; veritabanindaki hata metni:
+`unable to download video data: HTTP Error 403: Forbidden`.
+
+OLCULDU (ayni video, dort kosu): Referer SUCSUZ — sayfa adresi, youtube.com/
+ve Referer'siz, hepsi indi. Fark, uzantinin yolladigi TARAYICI CEREZLERI:
+yt-dlp ayni oturum cerezleriyle isteyince YouTube 403 veriyor ("[jsc:node]
+Solving JS challenges" satiri da o kosuda cikiyor).
+
+Cozum: `VideoJob.yedek_karari` — dusen kosudan sonra NE denenecegine karar
+veren SAF fonksiyon (test edilebilir):
+  - "aria2c exited" -> dis indirici olmadan tekrar
+  - "403" + cerez varsa -> CEREZSIZ tekrar (cerez kaldirilmaz; giris isteyen
+    sitelerde sart, yalniz bu kosuda devre disi)
+  - kalici hata ("Video unavailable") -> tekrar YOK (bosuna bekleme)
+
+Ayrica: `--encoding utf-8` (Turkce basliklar), kalite etiketinde GENISLIK —
+genis ekran videoda yukseklik 606 cikiyordu ve liste "606p" diyordu; artik
+standart disi yuksekliklerde "1440x606" yaziliyor.
+
+## SEED PENCERESI (2026-09-18), tests/seed_test.py
+Kullanici: "torrent icin seed guncelleme penceresi ekleyelim" + "seedlere
+manuel ekleme yapabilecegimiz bir kisim olsun".
+
+Torrent satirinda **Seed** dugmesi -> pencere: su anki seed/baglanti, torrentin
+tracker sayisi, uygulanan liste, liste yasi, DHT, elle eklenen sayisi. Pencere
+2 saniyede bir KENDINI TAZELER (yeniden duyurudan sonra seed'in arttigi
+gorulsun). "Kendi tracker'larin" kutusu: yapistirilan adresler ayiklanip
+(`trackers.ayikla`) `ek_trackerlar` ayarinda saklanir ve her uygulamada
+listenin BASINA konur.
+
+OLCULEN GERCEKLER (ayri bir aria2 ornegiyle, kullanicinin isine dokunmadan):
+1. **`changeOption(gid, {"bt-tracker": ...})` "OK" der ama duyuru listesi
+   DEGISMEZ** — calisan torrente tracker EKLENEMIYOR (load-cookies ile ayni
+   tuzak).
+2. **Kaldir + AYNI dizine yeniden ekle ISE YARIYOR ve ilerleme KORUNUR:**
+   15.5 MB inmis is yeniden eklendikten sonra 26 MB'dan devam etti,
+   tracker 2 -> 3 oldu. `seed_tazele` bu yolu kullanir; hicbir dosya silinmez.
+3. **aria2'de tek tek PEER (IP:port) eklenemez** — API'sinde boyle bir cagri
+   yok; elle eklenebilen sey tracker'dir, arayuz de bunu yaziyor.
+
+CANLI DOGRULAMA (kullanicinin 19 GB'lik torrentinde): pencere acildi (seed 2,
+baglanti 6, tracker 22), "Simdi guncelle" -> ilerleme KORUNDU (454 MB -> 476 MB
+devam), **baglanti 6 -> 11**, seed 2 -> 3, liste yasi 0 saat. GID degisti,
+kayit yeni GID'e baglandi.
+
+NOT — UZANTI GUNCELLENMELI: kalite listesindeki duzeltmeler (sayfa ses
+efektlerinin elenmesi, genislikli etiket) Chrome'daki uzanti YENILENMEDEN
+gorunmez: chrome://extensions -> AfuDM kartindaki (yenile) simgesi.
+
 ## IS SIRASI (kullanici, Telegram 2026-09-17)
 1. ~~Kaydetme penceresi~~ — BITTI (2026-09-18, yukari bak).
 2. SIRADA (bilgisayar sistemi bitince): **Android uygulamasi** — telefon + PC birlikte
@@ -700,6 +750,7 @@ Anahtar kaynagi: `antygravitiy/.env` -> MCP_TELEGRAM_TOKEN, chat 1483248658.
     python tests/kuyruk_test.py          (ag gerektirmez; mukerrer/GID kimligi)
     python tests/baslangic_test.py       (ag gerektirmez; Baslangic kisayolu)
     python tests/iliskilendir_test.py    (ag gerektirmez; .torrent/magnet kaydi)
+    python tests/seed_test.py            (ag gerektirmez; seed/tracker tazeleme)
     python tests/daemon_test.py          (AfuDM KAPALIYKEN)
     python tests/baslik_test.py          (AfuDM acikken; fare kullanmaz)
     python tests/video_panel_test.py     (AfuDM acikken; ffmpeg+ffprobe gerekir, 12 test)

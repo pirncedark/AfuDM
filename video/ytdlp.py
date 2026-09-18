@@ -166,6 +166,9 @@ def probe(url: str, timeout: float = 90.0) -> dict:
                 "id": fmt.get("format_id"),
                 "ext": fmt.get("ext"),
                 "height": fmt.get("height"),
+                # Genislik de lazim: genis ekran videoda yukseklik 606 gibi
+                # cikiyor ve "606p" kullaniciya hicbir sey anlatmiyor.
+                "width": fmt.get("width"),
                 "fps": fmt.get("fps"),
                 "vcodec": fmt.get("vcodec"),
                 "acodec": fmt.get("acodec"),
@@ -216,11 +219,13 @@ class VideoJob:
     _stop: bool = False
     # aria2c dis indirici dusunce yt-dlp'nin KENDI indiricisiyle bir kez daha denenir
     _yedek_denendi: bool = False
+    # 403'te tarayici cerezleri olmadan bir kez daha denenir (bkz. _pump)
+    _cerezsiz_denendi: bool = False
     _aria2c: str | None = None
 
     # --- komut kurulumu ---------------------------------------------------
     def build_cmd(self, aria2c: str | None = None, ffmpeg_var: bool | None = None,
-                  dis_indirici: bool = True) -> list[str]:
+                  dis_indirici: bool = True, cerezsiz: bool = False) -> list[str]:
         aria2c = (aria2c or str(paths.ARIA2C)) if dis_indirici else ""
         # ffmpeg yoksa birlestirme de mp3'e cevirme de yapilamaz; format secimi buna gore.
         ffmpeg_var = ffmpeg_hazir() if ffmpeg_var is None else ffmpeg_var
@@ -263,11 +268,11 @@ class VideoJob:
         # ffmpeg yoksa hicbiri istenmez: video zaten birlesik iner, ses de
         # kaynaktaki bicimiyle (m4a/webm) kalir.
         cmd += ["--yes-playlist"] if self.playlist else ["--no-playlist"]
-        if self.cookie_file:
+        if self.cookie_file and not cerezsiz:
             cmd += ["--cookies", self.cookie_file]
-        if self.user_agent:
+        if self.user_agent and not cerezsiz:
             cmd += ["--user-agent", self.user_agent]
-        for anahtar, deger in (self.headers or {}).items():
+        for anahtar, deger in ({} if cerezsiz else (self.headers or {})).items():
             if anahtar.lower() == "referer":
                 cmd += ["--referer", str(deger)]
             elif anahtar.lower() not in ("cookie", "user-agent"):
@@ -290,6 +295,7 @@ class VideoJob:
         Path(self.dest_dir).mkdir(parents=True, exist_ok=True)
         self._aria2c = aria2c
         self._yedek_denendi = False
+        self._cerezsiz_denendi = False
         self.proc = subprocess.Popen(
             self.build_cmd(aria2c, ffmpeg_var),
             stdout=subprocess.PIPE,
@@ -368,17 +374,28 @@ class VideoJob:
                 if self.total:
                     self.downloaded = self.total
                 break
-            # Yalniz ARIA2C dustuyse tekrarla: "video yok/ozel" gibi kalici
+            # Yalniz BELLI hatalarda tekrarla: "video yok/ozel" gibi kalici
             # hatalarda ikinci kosu bosuna zaman kaybi olur.
-            if (not self._yedek_denendi and self._dis_indirici_vardi()
-                    and any("aria2c exited" in satir for satir in tail)):
-                self._yedek_denendi = True
+            karar = self.yedek_karari(
+                " ".join(tail[-6:]),
+                aria2c_var=self._dis_indirici_vardi(),
+                cerez_var=bool(self.cookie_file),
+                aria_denendi=self._yedek_denendi,
+                cerezsiz_denendi=self._cerezsiz_denendi,
+            )
+            if karar:
+                if karar == "aria2c":
+                    self._yedek_denendi = True
+                else:
+                    self._cerezsiz_denendi = True
                 self.downloaded = 0
                 self.speed = 0
                 self.parca_dosyalari.clear()
                 try:
                     self.proc = subprocess.Popen(
-                        self.build_cmd(self._aria2c, self.ffmpeg_vardi, dis_indirici=False),
+                        self.build_cmd(self._aria2c, self.ffmpeg_vardi,
+                                       dis_indirici=not self._yedek_denendi,
+                                       cerezsiz=self._cerezsiz_denendi),
                         stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT,
                         text=True,
@@ -400,6 +417,25 @@ class VideoJob:
         self.finished_at = time.time()
         if on_update:
             on_update(self)
+
+    @staticmethod
+    def yedek_karari(metin: str, aria2c_var: bool, cerez_var: bool,
+                     aria_denendi: bool, cerezsiz_denendi: bool) -> str:
+        """Dusen kosudan sonra NE denenecek: "aria2c" | "cerezsiz" | "" (pes et).
+
+        Yalniz BU IKI hatada tekrar denenir; "video yok/ozel/silinmis" gibi
+        kalici hatalarda ikinci kosu bosuna beklemedir (olculdu: 2 sn).
+          - aria2c dis indirici 403 alip "exited with code 22" diyor
+            -> yt-dlp'nin kendi indiricisiyle tekrar
+          - tarayici cerezleriyle YouTube 403 veriyor (olculdu; cerezsiz ayni
+            video iniyor) -> cerezsiz tekrar. Cerezi kaldirmiyoruz: giris
+            gerektiren sitelerde SART.
+        """
+        if aria2c_var and not aria_denendi and "aria2c exited" in metin:
+            return "aria2c"
+        if cerez_var and not cerezsiz_denendi and "403" in metin:
+            return "cerezsiz"
+        return ""
 
     def _dis_indirici_vardi(self) -> bool:
         """Dusen kosuda aria2c dis indirici kullanildi mi?"""

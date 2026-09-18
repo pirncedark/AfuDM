@@ -48,6 +48,13 @@ def is_fresh() -> bool:
     return (time.time() - paths.TRACKERS_CACHE.stat().st_mtime) < MAX_AGE
 
 
+
+def cache_yasi() -> float | None:
+    """Onbellek kac saniye once yazildi? Dosya yoksa None (hic indirilmemis)."""
+    if not paths.TRACKERS_CACHE.exists():
+        return None
+    return time.time() - paths.TRACKERS_CACHE.stat().st_mtime
+
 def refresh(force: bool = False) -> list[str]:
     """Gerekiyorsa indir, onbellege yaz ve listeyi don. Cevrimdisiysa onbellegi kullan."""
     paths.ensure_dirs()
@@ -62,10 +69,32 @@ def refresh(force: bool = False) -> list[str]:
     return trackers
 
 
-def apply_to_aria2(rpc, force: bool = False) -> int:
-    """Listeyi aria2'nin global bt-tracker ayarina yazar. Donen deger: tracker sayisi."""
-    trackers = refresh(force=force)
-    if not trackers:
+def ayikla(metin: str) -> list[str]:
+    """Kullanicinin yapistirdigi metinden tracker adreslerini cikar.
+
+    Satir, virgul ya da bosluk ile ayrilmis olabilir; yalniz gercek tracker
+    semalari kabul edilir (yanlis yapistirmalar sessizce dusurulur).
+    """
+    parcalar: list[str] = []
+    for satir in (metin or "").replace(",", "\n").split("\n"):
+        for parca in satir.split():
+            aday = parca.strip()
+            if aday.lower().startswith(("udp://", "http://", "https://", "ws://", "wss://")):
+                if aday not in parcalar:
+                    parcalar.append(aday)
+    return parcalar
+
+
+def apply_to_aria2(rpc, force: bool = False, ek: str = "") -> int:
+    """Guncel listeyi + KULLANICININ ekledigi tracker'lari aria2'ye yazar.
+
+    Donen deger: uygulanan toplam tracker sayisi. Kullanicinin eklediklerini
+    BASA koyar: aria2 listeyi sirayla duyurur, elle eklenen once denensin.
+    """
+    kendi = ayikla(ek)
+    liste = refresh(force=force)
+    tumu = kendi + [t for t in liste if t not in kendi]
+    if not tumu:
         return 0
-    rpc.change_global_option({"bt-tracker": ",".join(trackers)})
-    return len(trackers)
+    rpc.change_global_option({"bt-tracker": ",".join(tumu)})
+    return len(tumu)

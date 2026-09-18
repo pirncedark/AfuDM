@@ -78,7 +78,8 @@ class Manager:
 
     def _refresh_trackers(self, force: bool = False) -> None:
         try:
-            count = trackers.apply_to_aria2(self.rpc, force=force)
+            count = trackers.apply_to_aria2(
+                self.rpc, force=force, ek=str(self.store.get("ek_trackerlar", "")))
             if count:
                 self.store.log("info", f"{count} guncel tracker uygulandi")
         except Exception as exc:  # aglar kopabilir, uygulamayi dusurmesin
@@ -518,6 +519,98 @@ class Manager:
             raise ValueError("kayit bulunamadi")
         self.store.update_by_id(row_id, status="queued", gid=None, error=None)
         return self._launch(self.store.by_id(row_id))  # type: ignore[arg-type]
+
+    # --- seed / tracker tazeleme --------------------------------------------
+    def seed_bilgi(self, gid: str) -> dict:
+        """Seed penceresi icin: kac seed/baglanti, kac tracker, liste ne kadar taze."""
+        try:
+            status = self.rpc.tell_status(
+                gid, ["gid", "status", "infoHash", "numSeeders", "connections",
+                      "bittorrent", "dir", "completedLength", "totalLength"])
+        except Aria2Error as exc:
+            return {"ok": False, "error": str(exc)[:200]}
+        bittorrent = status.get("bittorrent") or {}
+        duyuru = bittorrent.get("announceList") or []
+        try:
+            global_ayar = self.rpc.get_global_option()
+        except Aria2Error:
+            global_ayar = {}
+        havuz = [t for t in (global_ayar.get("bt-tracker") or "").split(",") if t]
+        yas = trackers.cache_yasi()
+        return {
+            "ok": True,
+            "baslik": (self.store.by_gid(gid) or {}).get("title") or gid,
+            "seed": int(status.get("numSeeders", 0) or 0),
+            "baglanti": int(status.get("connections", 0) or 0),
+            "tracker": sum(len(grup) for grup in duyuru),
+            "havuz": len(havuz),
+            "liste_yasi_saat": None if yas is None else round(yas / 3600, 1),
+            "dht": (global_ayar.get("enable-dht") or "") == "true",
+            "ek_trackerlar": str(self.store.get("ek_trackerlar", "")),
+            "ek_sayisi": len(trackers.ayikla(str(self.store.get("ek_trackerlar", "")))),
+            "durum": status.get("status", ""),
+            "ilerleme": round(
+                int(status.get("completedLength", 0)) * 100
+                / max(int(status.get("totalLength", 1)), 1), 1),
+        }
+
+    def seed_tazele(self, gid: str) -> dict:
+        """Guncel tracker listesini cekip torrenti YENIDEN DUYURUR.
+
+        OLCULDU (2026-09-18): aria2 CALISAN torrente tracker EKLEMEZ —
+        `changeOption(bt-tracker)` "OK" der ama duyuru listesi degismez. Tek
+        uygulanabilir yol kaldirip AYNI dizine yeniden eklemektir; `.aria2`
+        kontrol dosyasi sayesinde ILERLEME KORUNUR (olculdu: 15.5 MB'lik is
+        yeniden eklendikten sonra 26 MB'dan devam etti, tracker 2 -> 3).
+
+        Dosyalara DOKUNULMAZ: silme yok, yalniz motordan cikarilip geri konur.
+        """
+        row = self.store.by_gid(gid)
+        try:
+            status = self.rpc.tell_status(gid, ["infoHash", "dir", "bittorrent", "status"])
+        except Aria2Error as exc:
+            return {"ok": False, "error": str(exc)[:200]}
+        infohash = (status.get("infoHash") or "").lower()
+        if not infohash:
+            return {"ok": False, "error": "bu is bir torrent degil"}
+        hedef = status.get("dir") or (row or {}).get("dest_dir") or self.current_download_dir()
+
+        sayi = trackers.apply_to_aria2(
+            self.rpc, force=True, ek=str(self.store.get("ek_trackerlar", "")))
+
+        # Kaynak: once kaydin kendi kaynagi (.torrent dosyasi hala duruyorsa),
+        # yoksa info hash'ten magnet — tracker'lar zaten global listeden gelir.
+        kaynak = (row or {}).get("source") or ""
+        if kaynak.lower().endswith(".torrent") and not Path(kaynak).exists():
+            kaynak = ""
+        if not kaynak.startswith("magnet:") and not kaynak.startswith("http"):
+            if not kaynak:
+                kaynak = f"magnet:?xt=urn:btih:{infohash}"
+        try:
+            self.rpc.pause(gid)
+        except Aria2Error:
+            pass
+        try:
+            self.rpc.remove(gid, force=True)
+        except Aria2Error:
+            pass
+        try:
+            self.rpc.remove_result(gid)
+        except Aria2Error:
+            pass
+        try:
+            if kaynak.lower().endswith(".torrent") and Path(kaynak).exists():
+                yeni_gid = self.rpc.add_torrent(
+                    base64.b64encode(Path(kaynak).read_bytes()).decode(), {"dir": hedef})
+            else:
+                yeni_gid = self.rpc.add_uri([kaynak], {"dir": hedef})
+        except Aria2Error as exc:
+            self.store.log("warn", f"seed tazeleme basarisiz: {exc}")
+            return {"ok": False, "error": str(exc)[:200]}
+        if row:
+            self.store.update_by_id(row["id"], gid=yeni_gid, status="active", error=None)
+        self.store.log("info", f"seed tazelendi: {sayi} tracker ile yeniden duyuruldu")
+        return {"ok": True, "tracker": sayi, "gid": yeni_gid}
 
     # --- durum goruntusu --------------------------------------------------
     def snapshot(self) -> dict:

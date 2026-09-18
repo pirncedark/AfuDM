@@ -325,6 +325,30 @@
   </div>
 </div>
 
+<!-- Seed / tracker tazeleme (core/manager.seed_tazele) -->
+<div class="veil" id="seedVeil">
+  <div class="sheet sheet-dar">
+    <h2 data-i18n="seed.title">Seed güncelleme</h2>
+    <div class="body">
+      <div class="kay-url" id="seedBaslik"></div>
+      <div class="kv" id="seedKv"></div>
+      <div>
+        <label for="seedEk" data-i18n="seed.ek">Kendi tracker'ların (her satıra bir adres)</label>
+        <textarea id="seedEk" spellcheck="false" placeholder="udp://tracker.ornek.org:1337/announce"></textarea>
+        <div class="hint" data-i18n="seed.ekHint">Bunlar listenin BAŞINA eklenir ve her güncellemede uygulanır. Tek tek peer (IP:port) eklemeyi aria2 desteklemiyor.</div>
+      </div>
+      <div class="hint" data-i18n="seed.hint">Güncel tracker listesi indirilir ve torrent yeniden duyurulur. İnen parçalar korunur, dosyalara dokunulmaz.</div>
+      <div class="err-note" id="seedErr"></div>
+    </div>
+    <div class="foot">
+      <button class="btn ghost" data-close="seedVeil" data-i18n="seed.close">Kapat</button>
+      <span style="flex:1"></span>
+      <button class="btn" id="seedKaydet" data-i18n="seed.kaydet">Tracker'ları kaydet</button>
+      <button class="btn primary" id="seedGo" data-i18n="seed.go">Şimdi güncelle</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <script src="i18n.js"></script>
 <script src="app.js"></script>
