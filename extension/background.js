@@ -346,6 +346,8 @@ function dashKaliteleri(metin) {
    ve yanina bicim + boyut (ya da bant genisligi). Kullanici hangi cozunurlugun
    inecegini SECMEDEN once gormeli. */
 const VIDEO_UZANTI = /\.(mp4|webm|mkv|mov|flv|avi|m4v)(\?|$)/i;
+// Ses dosyasi: yalniz BUYUK olanlar listelenir (arayuz sesleri elenir)
+const SES_UZANTI = /\.(mp3|m4a|aac|flac|wav|ogg|opus|wma)(\?|$)/i;
 
 function dosyaAdi(url) {
   try {
@@ -489,13 +491,18 @@ async function videoSecenekleri(cfg, sender, frameUrl, metinler) {
       if (kaliteler.size) secenekler.push(...kaliteSecenekleri(sayfa, kaliteler, referer));
     } catch (_) { /* yt-dlp bu sayfayi bilmiyor: yalniz ham dosyalar kalir */ }
   }
-  /* Gercek kalite listesi varken sayfanin kendi ses efektleri (success.mp3,
-     open.mp3...) listeyi kirletiyordu: kalite varsa yalniz VIDEO dosyalari ve
-     1 MB ustu dosyalar kalir, kucuk arayuz sesleri dusurulur. */
+  /* Kullanici (2026-09-18): "mp3 ve video formati disindaki seyler indirme
+     cubugunda gozukmesin". Sayfalar kendi arayuz seslerini (success.mp3,
+     open.mp3, no_input.mp3...) ve kucuk onizleme dosyalarini yayinliyor;
+     bunlar kalite listesinin altinda indirilebilir gibi duruyordu.
+       - gercek KALITE listesi varsa ham dosyalar HIC gosterilmez
+       - yoksa yalniz video dosyalari ve 1 MB ustu ses dosyalari kalir
+         (arayuz sesleri birkac yuz KB'dir) */
   const KUCUK = 1024 * 1024;
   const temiz = secenekler.length
-    ? dosyaSecenekleri.filter((s) => VIDEO_UZANTI.test(s.url) || (s.boyut || 0) >= KUCUK)
-    : dosyaSecenekleri;
+    ? []
+    : dosyaSecenekleri.filter(
+        (s) => VIDEO_UZANTI.test(s.url) || (SES_UZANTI.test(s.url) && (s.boyut || 0) >= KUCUK));
   return { ok: true, options: [...secenekler, ...temiz] };
 }
 
