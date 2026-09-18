@@ -1,5 +1,5 @@
 # AfuDM — Durum & Devam Notu
-Son guncelleme: 2026-09-18 (video 403 kok nedeni + seed penceresi)
+Son guncelleme: 2026-09-19 (tracker saglik taramasi + X ile tepsiye gizleme)
 
 ## Ne yapiyoruz
 IDM yerine gecen, PORTABLE (tek klasor, kopyala-calistir) Windows masaustu
@@ -632,6 +632,49 @@ arayuzu makineyi KENDISI uyandiramaz. Uyandirmayi telefondaki bir WoL
 uygulamasi yapar; AfuDM MAC'i ve kartin durumunu gosterir. (PC kapaliyken
 zaten AfuDM sunucusu da calismaz — sayfa acilmaz.)
 
+## TRACKER SAGLIK TARAMASI (2026-09-19), core/tracker_saglik.py + tests/tracker_saglik_test.py
+Kullanici istegi: "tracker listesi atabilecegim bir klasor olsun, olulari kendisi ayiklasin".
+
+- **Klasor:** `AfuDM/trackers/` — kullanici istedigi kadar `.txt` atar. `seed.txt`
+  ve `seed2.txt` oraya tasindi, yanina `BENI_OKU.txt` kondu. Klasor her acilista
+  `klasoru_hazirla()` ile garanti edilir (kullanici dosya atabilsin).
+- **Olcum GERCEK:** her adrese tek tek soruluyor — UDP scrape (BEP 15: connect
+  action=0, magic 0x41727101980 -> scrape action=2) ve HTTP scrape. 40 isci,
+  4 sn zaman asimi. Cevap veren KALIR, cevap vermeyen ELENIR ama SILINMEZ:
+  sonuc `canli_trackerlar` ayarinda tutulur, `TAZELIK` 24 saat dolunca yeniden
+  denenir (gunde bir arka planda, `tracker_otomatik_tara`).
+- **Torrente ozel oncelik:** `tracker_tara(gid)` o torrentin info hash'iyle scrape
+  yapar; torrenti TANIYAN tracker'lar listenin basina gecer (aria2 sirayla
+  duyurdugu icin once ise yarayanlar denenir).
+- **Arayuz:** seed penceresinde "Simdi tara" / "Klasoru ac" dugmeleri ve
+  "41 canli / 192 tracker · 151 olu elendi" ozeti.
+
+**OLCULEN GERCEK (kullanicinin listesi, 2026-09-18/19):** 192 tracker -> 41 canli,
+151 olu. Onceki dar olcumde 128 UDP adresinden 31'i cevap verdi.
+
+**DURUSTLUK NOTU — MODULUN BASINDA DA YAZILI:** Bu tarama duyuruyu HIZLANDIRIR,
+seed SAYISINI ARTIRMAZ. Cevap veren 31 tracker'dan yalnizca 3'u o torrenti
+taniyordu ve ucu de AYNI 3 kisiyi gosteriyordu. Temiz liste var olani daha cabuk
+bulur, yenisini yaratmaz. Kullaniciya da boyle soylendi (BENI_OKU.txt).
+
+Yeni ayarlar (core/db.py): `canli_trackerlar`, `tracker_tarama_zamani`,
+`tracker_tarama_ozeti`, `tracker_otomatik_tara`.
+
+## X ILE TEPSIYE GIZLEME — qBITTORRENT DAVRANISI (2026-09-19), tests/tepsi_test.py
+Onceden yalniz KUCULTME tepsiye iniyordu; X uygulamayi kapatiyordu ve indirmeler
+olurdu. Artik qBittorrent gibi:
+  `-` (kucult) -> normal Windows gorev cubugu (dokunulmadi)
+  `X` / Alt+F4  -> tepsiye gizlenir, indirmeler AKMAYA DEVAM EDER + tepsi bildirimi
+  tepsi > Cikis -> GERCEK kapatma
+
+`core/pencere.kapatinca_gizle` WinForms `FormClosing` olayini yakalayip
+`olay.Cancel = True` + `form.Hide()` yapar. Iki koruma kodda kilitli:
+1. **`_cikiliyor` bayragi** — tepsi > Cikis gercek kapatmadir; iptal edilmez,
+   yoksa uygulamadan CIKILAMAZ.
+2. **Tepsi simgesi kurulamadiysa gizleme YAPILMAZ**, gercek kapatma calisir —
+   yoksa pencere gizlenir ve geri getirecek hicbir yol kalmaz (erisilmez uygulama).
+Ayar: `tepsiye_kucult` (kapaliysa X yine kapatir).
+
 ## IS SIRASI (kullanici, Telegram 2026-09-17)
 1. ~~Kaydetme penceresi~~ — BITTI (2026-09-18, yukari bak).
 2. ~~Telefon arayuzu~~ — BITTI (2026-09-18, yukari bak). Kullanici "2 yap" dedi.
@@ -858,6 +901,8 @@ Anahtar kaynagi: `antygravitiy/.env` -> MCP_TELEGRAM_TOKEN, chat 1483248658.
     python tests/baslangic_test.py       (ag gerektirmez; Baslangic kisayolu)
     python tests/iliskilendir_test.py    (ag gerektirmez; .torrent/magnet kaydi)
     python tests/seed_test.py            (ag gerektirmez; seed/tracker tazeleme)
+    python tests/tracker_saglik_test.py  (ag gerektirmez; olu tracker ayiklama)
+    python tests/tepsi_test.py           (ag gerektirmez; X -> tepsiye gizleme)
     python tests/daemon_test.py          (AfuDM KAPALIYKEN)
     python tests/baslik_test.py          (AfuDM acikken; fare kullanmaz)
     python tests/video_panel_test.py     (AfuDM acikken; ffmpeg+ffprobe gerekir, 12 test)
