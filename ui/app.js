@@ -516,6 +516,89 @@ $("seedKlasor").onclick = () => {
   call("tracker_klasoru_ac").catch((err) => { $("seedErr").textContent = err.message; });
 };
 
+/* ---------- Ayarlar > Seed listeleri (core/tracker_saglik.py) ----------
+   Dosya eklemek icin trackers/ klasorune elle kopyalamak gerekiyordu; burasi
+   ayni klasoru arayuzden yonetir. Liste degisince Python tarafi taramayi
+   bayatlatip arka planda yeniden olcer — canli adresler torrentlere oradan
+   uygulanir. */
+async function seedListeCiz() {
+  let out;
+  try {
+    out = await call("seed_dosyalari");
+  } catch (err) {
+    $("sSeedOzet").textContent = err.message;
+    return;
+  }
+  const kutu = $("sSeedListe");
+  kutu.innerHTML = "";
+  const dosyalar = out.dosyalar || [];
+  if (!dosyalar.length) {
+    const bos = document.createElement("div");
+    bos.className = "hint";
+    bos.textContent = t("set.seedBos");
+    kutu.appendChild(bos);
+  }
+  for (const d of dosyalar) {
+    const satir = document.createElement("div");
+    satir.className = "seed-dosya";
+    const ad = document.createElement("span");
+    ad.className = "seed-ad";
+    ad.textContent = d.ad;                  // dosya adi kullanicidan gelir: metin olarak bas
+    ad.title = d.ad;
+    const sayi = document.createElement("span");
+    sayi.className = "seed-sayi";
+    sayi.textContent = t("set.seedAdres", { n: d.sayi });
+    const sil = document.createElement("button");
+    sil.className = "btn ghost seed-sil";
+    sil.textContent = t("set.seedSil");
+    sil.onclick = async () => {
+      if (!confirm(t("set.seedSilOnay") + "\n" + d.ad)) return;
+      try {
+        await call("seed_dosya_sil", d.ad);
+        toast(t("set.seedSilindi", { ad: d.ad }));
+        await seedListeCiz();
+      } catch (err) { toast(err.message, true); }
+    };
+    satir.append(ad, sayi, sil);
+    kutu.appendChild(satir);
+  }
+  const tarama = out.tarama || {};
+  $("sSeedOzet").textContent = tarama.toplam
+    ? t("set.seedOzet", {
+        adres: out.adres || 0, canli: tarama.canli || 0, olu: tarama.olu || 0,
+        saat: out.tarama_yasi_saat === null ? "?" : out.tarama_yasi_saat })
+    : t("set.seedOzetYok", { adres: out.adres || 0 });
+  $("sSeedOto").checked = !!out.otomatik;
+}
+
+$("sSeedEkle").onclick = async () => {
+  try {
+    const out = await call("seed_dosya_ekle", "");
+    if (out.iptal) return;                   // kullanici dosya secicisini kapatti
+    toast(out.zaten ? t("set.seedZaten", { ad: out.ad })
+                    : t("set.seedEklendi", { ad: out.ad, n: out.sayi || 0 }));
+    await seedListeCiz();
+  } catch (err) { toast(err.message, true); }
+};
+
+$("sSeedKlasor").onclick = () => {
+  call("tracker_klasoru_ac").catch((err) => toast(err.message, true));
+};
+
+$("sSeedTara").onclick = async () => {
+  const dugme = $("sSeedTara");
+  const eskiYazi = dugme.textContent;
+  dugme.disabled = true;
+  dugme.textContent = t("set.seedTariyor");
+  try {
+    const out = await call("tracker_tara", "");
+    toast(t("set.seedTaraBitti", { canli: out.canli || 0, olu: out.olu || 0 }));
+    await seedListeCiz();
+  } catch (err) { toast(err.message, true); }
+  dugme.disabled = false;
+  dugme.textContent = eskiYazi;
+};
+
 /* ---------- Chrome'a ekle (core/chrome_kurulum.py) ---------- */
 function chromeCiz(durum) {
   const adimlar = durum.adimlar || {};
@@ -605,6 +688,7 @@ $("openSettings").onclick = async () => {
   $("sBasTepside").checked = s.baslangicta_tepside !== false;
   sistemDurumu();
   telefonDurumu();
+  seedListeCiz();
   try {
     const info = await call("api_info");
     $("apiHint").textContent =
@@ -803,6 +887,7 @@ $("setGo").onclick = async () => {
     kategori_klasorleri: $("sKategori").checked,
     tepsiye_kucult: $("sTepsi").checked,
     baslangicta_tepside: $("sBasTepside").checked,
+    tracker_otomatik_tara: $("sSeedOto").checked,
   };
   try {
     await call("settings_save", payload);

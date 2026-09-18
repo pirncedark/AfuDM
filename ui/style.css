@@ -591,3 +591,28 @@ textarea { min-height: 84px; user-select: text; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* ---------- Ayarlar > Seed listeleri (core/tracker_saglik.py) ---------- */
+.seed-kutu { display: grid; gap: 8px; }
+.seed-dosyalar { display: grid; gap: 4px; }
+.seed-dosya {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-deep);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 5px 6px 5px 10px;
+}
+.seed-ad {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.seed-sayi { font-size: 11px; color: var(--dim); white-space: nowrap; }
+.seed-dosya .seed-sil { padding: 3px 9px; font-size: 11px; }

@@ -319,6 +319,26 @@ class Api:
             return {"ok": False, "error": str(exc)[:200]}
         return {"ok": True}
 
+    def seed_dosyalari(self) -> dict:
+        """Ayarlar > Seed listeleri: klasordeki .txt'ler + son tarama ozeti."""
+        return self.manager.seed_dosyalari()
+
+    def seed_dosya_ekle(self, yol: str = "") -> dict:
+        """Yol bossa dosya secici acilir; secilen .txt trackers/ icine kopyalanir."""
+        if not yol:
+            if not self._window:
+                return {"ok": False, "error": "pencere hazir degil"}
+            secim = self._window.create_file_dialog(
+                webview.OPEN_DIALOG, allow_multiple=False,
+                file_types=("Tracker listesi (*.txt)", "Tum dosyalar (*.*)"))
+            if not secim:
+                return {"ok": True, "iptal": True}
+            yol = secim[0]
+        return self.manager.seed_dosya_ekle(yol)
+
+    def seed_dosya_sil(self, ad: str) -> dict:
+        return self.manager.seed_dosya_sil(ad)
+
     def seed_tracker_kaydet(self, metin: str) -> dict:
         """Elle eklenen tracker'lari sakla (uygulanmasi tazelemede olur)."""
         from core import trackers as _tr

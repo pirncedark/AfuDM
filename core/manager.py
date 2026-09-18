@@ -581,6 +581,60 @@ class Manager:
             return {"ok": False, "error": str(exc)[:200]}
         return {"ok": True, **sonuc["sayilar"], "uygulanan": uygulanan}
 
+    # --- seed listeleri (Ayarlar > Seed listeleri) ---------------------------
+    def seed_dosyalari(self) -> dict:
+        """Ayarlar bolumu icin: hangi liste dosyalari var, son tarama ne durumda."""
+        from . import tracker_saglik
+        try:
+            dosyalar = tracker_saglik.dosyalar()
+            toplam = len(tracker_saglik.klasorden_oku())
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:200]}
+        try:
+            yas = time.time() - float(self.store.get("tracker_tarama_zamani", 0) or 0)
+        except (TypeError, ValueError):
+            yas = 0.0
+        return {
+            "ok": True,
+            "dosyalar": dosyalar,
+            "klasor": str(tracker_saglik.KLASOR),
+            "adres": toplam,
+            "canli": len(trackers.ayikla(str(self.store.get("canli_trackerlar", "")))),
+            "tarama": self.store.get("tracker_tarama_ozeti", {}) or {},
+            "tarama_yasi_saat": None if not yas or yas > 10 ** 9 else round(yas / 3600, 1),
+            "taze": tracker_saglik.taze_mi(self.store),
+            "otomatik": bool(self.store.get("tracker_otomatik_tara")),
+        }
+
+    def seed_dosya_ekle(self, yol: str) -> dict:
+        """Secilen .txt'yi trackers/ klasorune kopyala ve YENIDEN taramayi tetikle."""
+        from . import tracker_saglik
+        try:
+            sonuc = tracker_saglik.dosya_ekle(yol)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)[:200]}
+        if not sonuc.get("zaten"):
+            self._seed_taramasini_bayatlat()
+        return {"ok": True, **sonuc}
+
+    def seed_dosya_sil(self, ad: str) -> dict:
+        from . import tracker_saglik
+        try:
+            sonuc = tracker_saglik.dosya_sil(ad)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)[:200]}
+        self._seed_taramasini_bayatlat()
+        return {"ok": True, **sonuc}
+
+    def _seed_taramasini_bayatlat(self) -> None:
+        """Liste degisti: eldeki olcum artik gecersiz, arka planda yeniden tara.
+
+        Tarama agdan olcum yaptigi icin ARKA PLANDA kosar; bitince canli liste
+        aria2'ye uygulanir (bkz. tracker_tara).
+        """
+        self.store.set("tracker_tarama_zamani", 0)
+        threading.Thread(target=self._tracker_saglik_tara, daemon=True).start()
+
     def seed_tazele(self, gid: str) -> dict:
         """Guncel tracker listesini cekip torrenti YENIDEN DUYURUR.
 

@@ -195,6 +195,19 @@
         <label class="opt"><input type="checkbox" id="sBasTepside"> <span data-i18n="set.basTepside">Açılışta pencere açılmasın, tepside başlasın</span></label>
         <label class="opt"><input type="checkbox" id="sTelefon"> <span data-i18n="set.telefon">Telefondan bağlan (aynı Wi-Fi)</span></label>
       </div>
+      <!-- Seed listeleri (core/tracker_saglik.py) -->
+      <div class="seed-kutu">
+        <label data-i18n="set.seedListe">Seed listeleri (tracker .txt dosyaları)</label>
+        <div class="yol-satir">
+          <button class="btn primary" id="sSeedEkle" data-i18n="set.seedEkle">Seed dosyası ekle</button>
+          <button class="btn" id="sSeedKlasor" data-i18n="set.seedKlasor">Klasörü aç</button>
+          <button class="btn" id="sSeedTara" data-i18n="set.seedTara">Şimdi tara</button>
+        </div>
+        <div class="seed-dosyalar" id="sSeedListe"></div>
+        <div class="hint" id="sSeedOzet"></div>
+        <label class="opt"><input type="checkbox" id="sSeedOto"> <span data-i18n="set.seedOto">Seed listelerini günlük tara, ölüleri kullanma</span></label>
+        <div class="hint" data-i18n="set.seedHint">Eklediğin dosyalar trackers/ klasörüne kopyalanır; kaynak dosyaya dokunulmaz. AfuDM hepsini birleştirir, her adrese gerçekten sorar ve yalnızca cevap verenleri — en çok seed bildirenler başta olacak şekilde — torrentlere uygular. Ölüler silinmez, ertesi gün yeniden denenir. Not: tracker eklemek seed SAYISINI artırmaz, var olan seed'leri daha hızlı bulmanı sağlar.</div>
+      </div>
       <div>
         <label data-i18n="set.wol">Telefondan uyandırma (Wake-on-LAN)</label>
         <div class="yol-satir">

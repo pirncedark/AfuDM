@@ -28,6 +28,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 from . import paths, trackers
 
@@ -77,6 +78,99 @@ def klasorden_oku() -> list[str]:
             if adres not in toplam:
                 toplam.append(adres)
     return toplam
+
+
+def dosyalar() -> list[dict]:
+    """Klasordeki seed listelerini ve her birindeki gecerli adres sayisini don.
+
+    Ayarlar'daki "Seed listeleri" bolumu bunu gosterir. BENI_OKU.txt aciklama
+    dosyasidir, listede yer almaz.
+    """
+    klasoru_hazirla()
+    liste: list[dict] = []
+    for dosya in sorted(KLASOR.glob("*.txt")):
+        if dosya.name == "BENI_OKU.txt":
+            continue
+        try:
+            metin = dosya.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        liste.append({"ad": dosya.name, "sayi": len(trackers.ayikla(metin))})
+    return liste
+
+
+def _bos_ad(ad: str) -> Path:
+    """Cakisan adi seed.txt -> seed-2.txt -> seed-3.txt diye kaydir."""
+    hedef = KLASOR / ad
+    if not hedef.exists():
+        return hedef
+    govde, _, uzanti = ad.rpartition(".")
+    for sira in range(2, 1000):
+        aday = KLASOR / f"{govde}-{sira}.{uzanti}"
+        if not aday.exists():
+            return aday
+    raise ValueError("cok fazla ayni adli liste var")
+
+
+def dosya_ekle(yol: str) -> dict:
+    """Kullanicinin sectigi .txt'yi trackers/ klasorune KOPYALAR.
+
+    Kaynak dosyaya dokunulmaz. Icerik ayiklanarak yazilir: her satirda bir
+    adres, tekrarlar ve tracker olmayan satirlar dusurulur. Ayni adres kumesi
+    zaten varsa ikinci kopya olusturulmaz ({"zaten": True} doner).
+    """
+    kaynak = Path(yol)
+    if kaynak.suffix.lower() != ".txt":
+        raise ValueError("yalniz .txt liste dosyasi eklenebilir")
+    if not kaynak.is_file():
+        raise ValueError("dosya bulunamadi")
+    try:
+        metin = kaynak.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise ValueError(f"dosya okunamadi: {exc}") from exc
+    adresler = trackers.ayikla(metin)
+    if not adresler:
+        raise ValueError("dosyada tracker adresi yok")
+
+    klasoru_hazirla()
+    yeni = set(adresler)
+    for var_olan in KLASOR.glob("*.txt"):
+        if var_olan.name == "BENI_OKU.txt":
+            continue
+        try:
+            eski = var_olan.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if set(trackers.ayikla(eski)) == yeni:
+            return {"ad": var_olan.name, "sayi": len(adresler), "zaten": True}
+
+    hedef = _bos_ad(kaynak.name)
+    try:
+        hedef.write_text("\n".join(adresler) + "\n", encoding="utf-8")
+    except OSError as exc:
+        raise ValueError(f"dosya yazilamadi: {exc}") from exc
+    return {"ad": hedef.name, "sayi": len(adresler), "zaten": False}
+
+
+def dosya_sil(ad: str) -> dict:
+    """Klasordeki bir seed listesini sil. Yalniz klasorun ICINDEKI .txt'ler.
+
+    Ad arayuzden geldigi icin yol kacisina (`../`, mutlak yol) izin verilmez.
+    """
+    if not ad or ad != Path(ad).name or ad.lower().endswith(".exe"):
+        raise ValueError("gecersiz dosya adi")
+    if not ad.lower().endswith(".txt"):
+        raise ValueError("yalniz .txt liste dosyasi silinebilir")
+    if ad == "BENI_OKU.txt":
+        raise ValueError("aciklama dosyasi silinemez")
+    hedef = KLASOR / ad
+    if not hedef.is_file():
+        raise ValueError("dosya bulunamadi")
+    try:
+        hedef.unlink()
+    except OSError as exc:
+        raise ValueError(f"dosya silinemedi: {exc}") from exc
+    return {"ad": ad}
 
 
 def _udp_scrape(adres: str, info_hash: str) -> tuple[str, int, int]:

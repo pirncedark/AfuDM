@@ -131,6 +131,7 @@ python tests/smoke.py --skip-video     # HTTP + torrent
 python tests/netcheck_test.py          # IPv6 detection
 python tests/manager_test.py           # magnet / title rules
 python tests/i18n_test.py              # language keys
+python tests/seed_dosya_test.py        # seed lists in Settings
 python tests/format_test.py            # video format selection
 python tests/engines_test.py           # engine downloads
 python tests/mux_ayristirma_test.py    # MP4 sample parsing

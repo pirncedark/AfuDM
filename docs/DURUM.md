@@ -1,5 +1,5 @@
 # AfuDM — Durum & Devam Notu
-Son guncelleme: 2026-09-19 (tracker saglik taramasi + X ile tepsiye gizleme)
+Son guncelleme: 2026-09-19 (Ayarlar'da seed listeleri + tracker saglik taramasi)
 
 ## Ne yapiyoruz
 IDM yerine gecen, PORTABLE (tek klasor, kopyala-calistir) Windows masaustu
@@ -888,6 +888,34 @@ Gercek bot anahtariyla denendi, Turkce ve Ingilizce bildirim IKISI DE gitti
 bot anahtari kayitli DEGIL (kullanici isterse Ayarlar'dan girecek).
 Anahtar kaynagi: `antygravitiy/.env` -> MCP_TELEGRAM_TOKEN, chat 1483248658.
 
+## AYARLAR > SEED LISTELERI (2026-09-19, YENI)
+Kullanici seed (tracker) listesi eklemek icin `AfuDM/trackers/` klasorune ELLE
+.txt kopyalamak zorundaydi; arayuzde yeri yoktu ("sayfada bulamadim"). Artik
+Ayarlar penceresinde **Seed listeleri** bolumu var:
+  - **Seed dosyasi ekle** -> Windows dosya secici; secilen .txt trackers/ icine
+    KOPYALANIR (kaynak dosyaya dokunulmaz), icerik ayiklanarak yazilir
+    (her satirda bir adres, tekrarlar ve cop satirlar dusurulur).
+  - Dosya listesi: ad + kac adres + Sil. Ayni adres kumesi zaten varsa ikinci
+    kopya olusturulmaz; ad cakisirsa `seed-2.txt` olur.
+  - Klasoru ac / Simdi tara dugmeleri + son tarama ozeti.
+  - "Seed listelerini gunluk tara" onay kutusu (ayar: tracker_otomatik_tara).
+
+Dagitim mantigi (kullanici karari: TEK GENEL LISTE): butun .txt'ler birlestirilir,
+her adrese gercekten sorulur (`core/tracker_saglik.py`), yalniz CEVAP VERENLER —
+en cok seed bildiren basta — aria2'nin `bt-tracker` ayarina yazilir ve butun
+torrentler bunu kullanir. Liste degisince (ekleme/silme) tarama BAYATLATILIR ve
+arka planda hemen yeniden olculur (`Manager._seed_taramasini_bayatlat`).
+
+DURUSTLUK: tracker eklemek seed SAYISINI artirmaz, var olani daha cabuk bulur.
+Ayrica aria2 CALISAN torrente tracker EKLEMEZ (olculdu) — calisan bir torrentin
+yeni listeyi almasi icin "Seed guncelleme > Simdi guncelle" (kaldir + yeniden
+ekle) yolu gerekir; yeni eklenen torrentler listeyi zaten alir.
+
+Dokunulanlar: core/tracker_saglik.py (dosyalar/dosya_ekle/dosya_sil),
+core/manager.py (seed_dosyalari/seed_dosya_ekle/seed_dosya_sil), app.py (kopru +
+dosya secici), ui/index.html, ui/app.js, ui/i18n.js, ui/style.css,
+tests/seed_dosya_test.py (YENI, 27 kontrol, ag gerektirmez).
+
 ## CALISTIRMA
     C:\Users\afuuu\AfuDM\AfuDM.exe       (veya masaustu kisayolu)
     python app.py                        (kaynaktan)
@@ -902,6 +930,7 @@ Anahtar kaynagi: `antygravitiy/.env` -> MCP_TELEGRAM_TOKEN, chat 1483248658.
     python tests/iliskilendir_test.py    (ag gerektirmez; .torrent/magnet kaydi)
     python tests/seed_test.py            (ag gerektirmez; seed/tracker tazeleme)
     python tests/tracker_saglik_test.py  (ag gerektirmez; olu tracker ayiklama)
+    python tests/seed_dosya_test.py      (ag gerektirmez; Ayarlar'daki seed listeleri)
     python tests/tepsi_test.py           (ag gerektirmez; X -> tepsiye gizleme)
     python tests/daemon_test.py          (AfuDM KAPALIYKEN)
     python tests/baslik_test.py          (AfuDM acikken; fare kullanmaz)
