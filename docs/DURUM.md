@@ -580,6 +580,33 @@ AfuDM'den dolmasi, telefondan ekleme, duraklatma, anahtarsiz erisimde veri yok.
 TUZAK: ilk turda test KULLANICININ torrentini duraklatmisti; test artik yalniz
 KENDI ekledigi isi duraklatiyor (ad filtresi).
 
+## AG KONUMUNA INDIRME — BITTI (2026-09-18), tests/kaydet_test.py 6. bolum
+Kullanici: "PC kapandiginda modeme bagli bir HDD'ye indirsin" -> once bunun
+YAPILABILIR kismi: PC acikken dosya dogrudan ag diskine insin.
+
+OLCULDU: `aria2c -d \127.0.0.1\Gamesfudm_ag_testi` ile 5 MB'lik dosya
+CIKIS KODU 0 ile indi. Yani UNC yolu icin ek ayar/kod gerekmiyor; tek eksik
+kullanicinin ag konumunu klasor agacina ekleyebilmesiydi.
+
+- `core/kaydet.py`: `ag_yolu_mu`, `ag_konumlari` (ayardan ayikla, tekrarsiz),
+  `ag_konumu_dogrula` (bicim + ERISIM kontrolu, anlasilir hata).
+  `kisayollar(ana, ag)` ag konumlarini disklerden ONCE listeler.
+- `app.py`: `ag_konumu_ekle` / `ag_konumu_sil`. Ayar: `ag_konumlari`.
+- Klasor penceresinde **Ag konumu** dugmesi; ag kisayoluna SAG TIK listeden
+  cikarir (paylasimdaki dosyalara dokunmaz).
+
+OLCULEN AG DURUMU (kullanicinin evi): modem 192.168.0.1 (Sagemcom), SMB/FTP/
+NetBIOS KAPALI; 192.168.0.x ve 192.168.1.x taramasinda modem + PC disinda
+cihaz YOK (kullanicinin bahsettigi ikinci router su an bagli degil).
+Yani ozellik hazir ama kullanicinin once modem arayuzunden USB paylasimini
+acmasi gerekiyor.
+
+SIRADAKI (kullanici "sirali yap" dedi): uyku + telefondan Wake-on-LAN.
+NOT: PC KAPATILIRSA acilista Windows sifresi yuzunden AfuDM baslamaz
+(Baslangic programlari oturum acilinca calisir). Dogru kurulum: bitince
+KAPAT yerine UYUT; uyandiginda oturum zaten acik, ekran kilitli olsa bile
+indirme surer.
+
 ## IS SIRASI (kullanici, Telegram 2026-09-17)
 1. ~~Kaydetme penceresi~~ — BITTI (2026-09-18, yukari bak).
 2. ~~Telefon arayuzu~~ — BITTI (2026-09-18, yukari bak). Kullanici "2 yap" dedi.

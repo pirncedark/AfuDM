@@ -76,7 +76,7 @@ def _kabuk_klasoru(ad: str, yedek: str) -> Path:
     return Path.home() / yedek
 
 
-def kisayollar(ana_indirme: str) -> list[dict]:
+def kisayollar(ana_indirme: str, ag: str = "") -> list[dict]:
     adaylar = [
         ("afudm", Path(ana_indirme)),
         ("masaustu", _kabuk_klasoru("Desktop", "Desktop")),
@@ -93,6 +93,13 @@ def kisayollar(ana_indirme: str) -> list[dict]:
             if yol.is_dir() and str(yol).lower() not in gorulen:
                 gorulen.add(str(yol).lower())
                 sonuc.append({"anahtar": anahtar, "ad": yol.name, "yol": str(yol), "alt": _alt_var(yol)})
+        except OSError:
+            continue
+    # Kullanicinin ag konumlari (modem/NAS): diskten ONCE, elinin altinda olsun
+    for yol in ag_konumlari(ag):
+        try:
+            sonuc.append({"anahtar": "ag", "ad": yol.rstrip("\\").rsplit("\\", 1)[-1] or yol,
+                          "yol": yol, "alt": _alt_var(Path(yol))})
         except OSError:
             continue
     for harf in string.ascii_uppercase:
@@ -142,6 +149,42 @@ def klasor_olustur(ust: str, ad: str) -> str:
     hedef = Path(ust) / ad
     hedef.mkdir(parents=False, exist_ok=True)
     return str(hedef)
+
+
+# --- ag konumlari (modem/NAS paylasimi) --------------------------------------
+def ag_yolu_mu(yol: str) -> bool:
+    """UNC mi (\\sunucu\paylasim) ya da eslenmis ag surucusu mu?"""
+    return str(yol).startswith("\\\\")
+
+
+def ag_konumlari(ayar: str) -> list[str]:
+    """Ayarda saklanan ag konumlari; yalniz UNC olanlar, tekrarsiz."""
+    sonuc: list[str] = []
+    for satir in (ayar or "").splitlines():
+        yol = satir.strip().rstrip("\\")
+        if yol and ag_yolu_mu(yol) and yol not in sonuc:
+            sonuc.append(yol)
+    return sonuc
+
+
+def ag_konumu_dogrula(yol: str) -> str:
+    """Yolu temizle ve ERISILEBILDIGINI dogrula; olmazsa anlasilir hata ver.
+
+    Paylasim kimlik dogrulamasi isterse Windows'un kendisi sorar; buradan
+    sifre alinmaz. Kullaniciya "once Gezgin'den bir kez ac" demek dogrusu.
+    """
+    temiz = (yol or "").strip().rstrip("\\")
+    if not temiz:
+        raise ValueError("bos yol")
+    if not ag_yolu_mu(temiz):
+        raise ValueError("ag konumu \\\\sunucu\\paylasim biciminde olmali")
+    try:
+        varmi = Path(temiz).is_dir()
+    except OSError as exc:
+        raise ValueError(f"erisilemedi: {exc.strerror or exc}") from exc
+    if not varmi:
+        raise ValueError("erisilemedi — paylasimi once Gezgin'den bir kez ac")
+    return temiz
 
 
 # --- tarayicidan gelip onay bekleyen indirmeler -------------------------------

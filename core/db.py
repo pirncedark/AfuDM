@@ -78,6 +78,8 @@ DEFAULTS: dict[str, Any] = {
     "ek_trackerlar": "",
     # Telefondan baglan: yerel API 0.0.0.0'a acilir (VARSAYILAN KAPALI)
     "lan_erisimi": False,
+    # Kullanicinin ekledigi ag konumlari (her satirda bir UNC yolu)
+    "ag_konumlari": "",
 }
 
 

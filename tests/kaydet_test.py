@@ -128,6 +128,30 @@ kalanlar = [o["id"] for o in b.ozet()]
 check("suresi gecen istek atildi", kalanlar == [taze], str(kalanlar))
 check("suresi gecenin istegi de gitti", b.al(eski) is None)
 
+print("6) Ag konumlari (modem/NAS paylasimi)")
+# OLCULDU 2026-09-18: aria2c UNC yoluna sorunsuz iniyor (5 MB, cikis 0).
+# Burada yalniz yol ayiklama/dogrulama mantigi sinanir — ag GEREKMEZ.
+UNC = "\\\\sunucu\\paylasim"          # gercek deger: \\sunucu\paylasim
+check("UNC yolu taniniyor", kaydet.ag_yolu_mu(UNC) is True, UNC)
+check("yerel yol ag sayilmiyor", kaydet.ag_yolu_mu(r"C:\indir") is False)
+AYAR = "\\\\a\\pay\nC:/yerel\n\\\\a\\pay\n\n\\\\b\\disk"
+liste = kaydet.ag_konumlari(AYAR)
+check("yalniz UNC satirlari, tekrarsiz",
+      liste == ["\\\\a\\pay", "\\\\b\\disk"], str(liste))
+check("bos ayar bos liste", kaydet.ag_konumlari("") == [])
+for kotu, sebep in ((r"C:\indir", "bicim"), ("", "bos")):
+    try:
+        kaydet.ag_konumu_dogrula(kotu)
+        check(f"red: {sebep}", False)
+    except ValueError:
+        check(f"red: {sebep}", True)
+# Var olmayan paylasim: bicim dogru ama ERISILEMEZ -> anlasilir hata
+try:
+    kaydet.ag_konumu_dogrula("\\\\127.0.0.1\\AfuDMYokBoyleBirPaylasim")
+    check("erisilemeyen paylasim reddedilir", False)
+except ValueError as exc:
+    check("erisilemeyen paylasim reddedilir", "erisilemedi" in str(exc), str(exc)[:40])
+
 print()
 if fails:
     print("BASARISIZ:", ", ".join(fails))

@@ -818,6 +818,20 @@ $("agac").addEventListener("click", async (event) => {
     try { await agacAc(satir); } catch (err) { $("klasErr").textContent = err.message; }
   }
 });
+/* Ag konumunu listeden kaldirma: uzerine SAG TIK. Silme degil, yalniz
+   kisayolu listeden cikarir — paylasimdaki dosyalara DOKUNULMAZ. */
+$("agac").addEventListener("contextmenu", async (event) => {
+  const satir = event.target.closest(".dugum");
+  if (!satir || Number(satir.dataset.derinlik) !== 0) return;
+  if (!satir.dataset.yol.startsWith("\\\\")) return;
+  event.preventDefault();
+  if (!confirm(t("klas.agSil") + "\n" + satir.dataset.yol)) return;
+  try {
+    await call("ag_konumu_sil", satir.dataset.yol);
+    await agaciYenile();
+  } catch (err) { $("klasErr").textContent = err.message; }
+});
+
 $("agac").addEventListener("dblclick", async (event) => {
   const satir = event.target.closest(".dugum");
   if (satir && satir.querySelector(".ok").textContent) {
@@ -828,10 +842,7 @@ $("agac").addEventListener("dblclick", async (event) => {
 async function klasorSec(baslangic) {
   $("klasErr").textContent = "";
   $("klasYol").value = baslangic || "";
-  const govde = $("agac");
-  govde.innerHTML = "";
-  const out = await call("klasor_kisayollar");
-  (out.ogeler || []).forEach((oge) => govde.append(agacSatiri(oge, 0)));
+  await agaciYenile();
   openVeil("klasorVeil");
   return new Promise((coz) => { klasorSoz = coz; });
 }
@@ -875,6 +886,27 @@ $("klasorVeil").addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && klasorSoz) klasorKapat("");
 });
+
+/* Modem/NAS paylasimi: UNC yolu eklenir, dogrulanir ve agacta kisayol olur.
+   OLCULDU: aria2 UNC yoluna sorunsuz iniyor, ek ayar gerekmiyor. */
+$("klasAg").onclick = async () => {
+  const yol = prompt(t("klas.agSor"), "\\\\");
+  if (!yol) return;
+  try {
+    const out = await call("ag_konumu_ekle", yol);
+    $("klasErr").textContent = "";
+    $("klasYol").value = out.yol;
+    await agaciYenile();
+    toast(t("klas.agEklendi"));
+  } catch (err) { $("klasErr").textContent = err.message; }
+};
+
+async function agaciYenile() {
+  const govde = $("agac");
+  govde.innerHTML = "";
+  const out = await call("klasor_kisayollar");
+  (out.ogeler || []).forEach((oge) => govde.append(agacSatiri(oge, 0)));
+}
 
 $("destPick").onclick = async () => {
   const yol = await klasorSec($("dest").value.trim() || state.settings.download_dir || "");

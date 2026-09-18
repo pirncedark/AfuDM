@@ -169,7 +169,27 @@ class Api:
         }
 
     def klasor_kisayollar(self) -> dict:
-        return {"ok": True, "ogeler": kaydet.kisayollar(self.manager.current_download_dir())}
+        return {"ok": True, "ogeler": kaydet.kisayollar(
+            self.manager.current_download_dir(),
+            str(self.manager.store.get("ag_konumlari", "")))}
+
+    def ag_konumu_ekle(self, yol: str) -> dict:
+        """Modem/NAS paylasimini klasor agacina ekle (once ERISIM dogrulanir)."""
+        try:
+            temiz = kaydet.ag_konumu_dogrula(yol)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        mevcut = kaydet.ag_konumlari(str(self.manager.store.get("ag_konumlari", "")))
+        if temiz not in mevcut:
+            mevcut.append(temiz)
+        self.manager.store.set("ag_konumlari", "\n".join(mevcut))
+        return {"ok": True, "yol": temiz, "sayi": len(mevcut)}
+
+    def ag_konumu_sil(self, yol: str) -> dict:
+        mevcut = [y for y in kaydet.ag_konumlari(str(self.manager.store.get("ag_konumlari", "")))
+                  if y != (yol or "").strip()]
+        self.manager.store.set("ag_konumlari", "\n".join(mevcut))
+        return {"ok": True, "sayi": len(mevcut)}
 
     def klasor_alt(self, yol: str) -> dict:
         try:
