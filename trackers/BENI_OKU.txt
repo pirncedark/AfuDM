@@ -1,0 +1,11 @@
+Buraya istediğin kadar tracker listesi (.txt) atabilirsin.
+Her satırda bir adres olsun:
+    udp://tracker.ornek.org:1337/announce
+    http://izleyici.ornek.com/announce
+
+AfuDM bu klasördeki bütün dosyaları okur, tekrarları atar ve
+her adrese gerçekten sorar. Cevap vermeyen (ölü) tracker'lar
+kullanılmaz — ama silinmez, bir dahaki taramada yine denenir.
+
+Not: tracker eklemek seed SAYISINI artırmaz; var olan seed'leri
+daha hızlı bulmanı sağlar.

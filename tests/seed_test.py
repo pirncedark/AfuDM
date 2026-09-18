@@ -126,6 +126,21 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as gecici:
     check("aria2'ye yazildi", sayi >= 1, f"{sayi} tracker")
     check("elle eklenen EN BASTA", uygulanan[0] == KENDI, uygulanan[0])
 
+    print("2b) Saglik taramasi varsa olu genel liste geri eklenmiyor")
+    eski_refresh = trackers.refresh
+    try:
+        canli = "udp://canli.ornek:1337/announce"
+        olu = "udp://olu.ornek:6969/announce"
+        trackers.refresh = lambda force=False: [canli, olu]
+        rpc_filtre = SahteRPC(str(tmp))
+        trackers.apply_to_aria2(rpc_filtre, canli=canli, ek=KENDI)
+        filtreli = rpc_filtre.global_ayar["bt-tracker"].split(",")
+        check("olculen canli tracker kullaniliyor", canli in filtreli, str(filtreli))
+        check("olculen olu tracker geri eklenmiyor", olu not in filtreli, str(filtreli))
+        check("cevap vermeyen elle eklenen uygulanmiyor", KENDI not in filtreli, str(filtreli))
+    finally:
+        trackers.refresh = eski_refresh
+
     print("3) seed_bilgi: pencerenin gosterdigi degerler")
     m = yonetici(tmp / "a", SahteRPC(str(tmp)))
     m.store.set("ek_trackerlar", KENDI)
@@ -154,6 +169,31 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as gecici:
     check("kayit yeni GID'e baglandi", m.store.by_id(kimlik)["gid"] == "yeni-gid")
     check("elle eklenen tracker yine listede",
           rpc.global_ayar["bt-tracker"].split(",")[0] == KENDI)
+
+    print("4b) Tarama torrent hash ile yapilip sonuc hemen uygulanir")
+    from core import tracker_saglik
+    eski_tazele = tracker_saglik.tazele
+    eski_uygula = trackers.apply_to_aria2
+    kayit = {"hash": "", "uygulandi": 0}
+    try:
+        def sahte_tazele(store, info_hash=""):
+            kayit["hash"] = info_hash
+            store.set("canli_trackerlar", "udp://canli.ornek:1337/announce")
+            return {"sayilar": {"toplam": 1, "canli": 1, "olu": 0, "tanyan": 1}}
+
+        def sahte_uygula(rpc, force=False, ek="", canli=""):
+            kayit["uygulandi"] += 1
+            return 1
+
+        tracker_saglik.tazele = sahte_tazele
+        trackers.apply_to_aria2 = sahte_uygula
+        tarama = m.tracker_tara("yeni-gid")
+        check("torrent hash taramaya verildi", kayit["hash"] == HASH, kayit["hash"])
+        check("canli sonuc hemen aria2ye uygulandi", kayit["uygulandi"] == 1)
+        check("tarama ozeti dondu", tarama.get("canli") == 1, str(tarama))
+    finally:
+        tracker_saglik.tazele = eski_tazele
+        trackers.apply_to_aria2 = eski_uygula
 
     print("5) Torrent olmayan is tazelenemez")
     class TorrentDegil(SahteRPC):

@@ -79,7 +79,8 @@ class Manager:
     def _refresh_trackers(self, force: bool = False) -> None:
         try:
             count = trackers.apply_to_aria2(
-                self.rpc, force=force, ek=str(self.store.get("ek_trackerlar", "")))
+                self.rpc, force=force, ek=str(self.store.get("ek_trackerlar", "")),
+                canli=str(self.store.get("canli_trackerlar", "")))
             if count:
                 self.store.log("info", f"{count} guncel tracker uygulandi")
         except Exception as exc:  # aglar kopabilir, uygulamayi dusurmesin
@@ -548,11 +549,37 @@ class Manager:
             "dht": (global_ayar.get("enable-dht") or "") == "true",
             "ek_trackerlar": str(self.store.get("ek_trackerlar", "")),
             "ek_sayisi": len(trackers.ayikla(str(self.store.get("ek_trackerlar", "")))),
+            "canli_sayisi": len(trackers.ayikla(str(self.store.get("canli_trackerlar", "")))),
+            "tarama": self.store.get("tracker_tarama_ozeti", {}) or {},
             "durum": status.get("status", ""),
             "ilerleme": round(
                 int(status.get("completedLength", 0)) * 100
                 / max(int(status.get("totalLength", 1)), 1), 1),
         }
+
+    def tracker_tara(self, gid: str = "") -> dict:
+        """Klasordeki tracker'lari olc, canlilari hemen aria2'ye uygula.
+
+        GID verilirse o torrentin info hash'iyle scrape yapilir; torrenti
+        taniyan tracker'lar listenin basina gelir.
+        """
+        infohash = ""
+        if gid:
+            try:
+                status = self.rpc.tell_status(gid, ["infoHash"])
+            except Aria2Error as exc:
+                return {"ok": False, "error": str(exc)[:200]}
+            infohash = (status.get("infoHash") or "").lower()
+        try:
+            from . import tracker_saglik
+            sonuc = tracker_saglik.tazele(self.store, infohash)
+            uygulanan = trackers.apply_to_aria2(
+                self.rpc, force=False,
+                ek=str(self.store.get("ek_trackerlar", "")),
+                canli=str(self.store.get("canli_trackerlar", "")))
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:200]}
+        return {"ok": True, **sonuc["sayilar"], "uygulanan": uygulanan}
 
     def seed_tazele(self, gid: str) -> dict:
         """Guncel tracker listesini cekip torrenti YENIDEN DUYURUR.
@@ -575,8 +602,12 @@ class Manager:
             return {"ok": False, "error": "bu is bir torrent degil"}
         hedef = status.get("dir") or (row or {}).get("dest_dir") or self.current_download_dir()
 
+        # NOT: tarama BURADA yapilmaz — ag islemi tazelemeyi 15+ sn geciktirir
+        # ve kullanici dugmeye basinca beklemis olur. Tarama arka planda,
+        # gunluk dongude calisir (bkz. _maybe_trackers).
         sayi = trackers.apply_to_aria2(
-            self.rpc, force=True, ek=str(self.store.get("ek_trackerlar", "")))
+            self.rpc, force=True, ek=str(self.store.get("ek_trackerlar", "")),
+            canli=str(self.store.get("canli_trackerlar", "")))
 
         # Kaynak: once kaydin kendi kaynagi (.torrent dosyasi hala duruyorsa),
         # yoksa info hash'ten magnet — tracker'lar zaten global listeden gelir.
@@ -853,6 +884,25 @@ class Manager:
         self._last_tracker_check = now
         if not trackers.is_fresh():
             threading.Thread(target=self._refresh_trackers, daemon=True).start()
+        # Olu tracker ayiklama da gunde bir: 192 adresin 151'i oluydu (olculdu)
+        if self.store.get("tracker_otomatik_tara"):
+            from . import tracker_saglik
+            if not tracker_saglik.taze_mi(self.store):
+                threading.Thread(target=self._tracker_saglik_tara, daemon=True).start()
+
+    def _tracker_saglik_tara(self) -> None:
+        # Aktif torrent varsa onun hash'iyle tara; boylece onu taniyanlar one
+        # gelir. Sonuc tracker_tara icinde aria2'ye hemen uygulanir.
+        gid = ""
+        try:
+            aktif = self.rpc.tell_active()
+            if aktif:
+                gid = aktif[0].get("gid", "")
+        except Aria2Error:
+            pass
+        sonuc = self.tracker_tara(gid)
+        if not sonuc.get("ok"):
+            self.store.log("warn", f"tracker taramasi basarisiz: {sonuc.get('error', '')}"[:150])
 
     # --- bitis islemleri --------------------------------------------------
     def _on_complete(self, title: str, size: int) -> None:

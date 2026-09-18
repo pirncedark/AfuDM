@@ -189,7 +189,7 @@
         <label class="opt"><input type="checkbox" id="sSleep"> <span data-i18n="set.sleep">Hepsi bitince bilgisayarı uyut</span></label>
         <label class="opt"><input type="checkbox" id="sKaydet"> <span data-i18n="set.kaydet">İndirmeden önce kaydetme penceresini göster</span></label>
         <label class="opt"><input type="checkbox" id="sKategori"> <span data-i18n="set.kategori">Dosyaları kategori klasörlerine ayır</span></label>
-        <label class="opt"><input type="checkbox" id="sTepsi"> <span data-i18n="set.tepsi">Küçültünce sistem tepsisine in</span></label>
+        <label class="opt"><input type="checkbox" id="sTepsi"> <span data-i18n="set.tepsi">X ile kapatınca sistem tepsisine git</span></label>
         <label class="opt"><input type="checkbox" id="sBaslangic"> <span data-i18n="set.baslangic">Bilgisayar açılınca AfuDM'i başlat</span></label>
         <label class="opt"><input type="checkbox" id="sTorrent"> <span data-i18n="set.torrent">.torrent ve magnet linklerini AfuDM açsın</span></label>
         <label class="opt"><input type="checkbox" id="sBasTepside"> <span data-i18n="set.basTepside">Açılışta pencere açılmasın, tepside başlasın</span></label>
@@ -216,7 +216,7 @@
       <div class="yol-satir">
         <button class="btn" id="sVarsayilan" data-i18n="set.varsayilan">Windows varsayılan uygulama ekranını aç</button>
       </div>
-      <div class="hint" data-i18n="hint.tepsi">Küçültünce pencere görev çubuğundan kalkar; simge sağ alttaki ^ okunun altındadır (Windows 11 yeni simgeleri orada saklar).</div>
+      <div class="hint" data-i18n="hint.tepsi">Küçültme normal görev çubuğuna iner. X uygulamayı kapatmaz; simge sağ alttaki ^ okunun altına gider.</div>
       <div class="hint" id="torrentHint"></div>
       <div class="hint" id="apiHint"></div>
     </div>
@@ -356,7 +356,15 @@
       <div>
         <label for="seedEk" data-i18n="seed.ek">Kendi tracker'ların (her satıra bir adres)</label>
         <textarea id="seedEk" spellcheck="false" placeholder="udp://tracker.ornek.org:1337/announce"></textarea>
-        <div class="hint" data-i18n="seed.ekHint">Bunlar listenin BAŞINA eklenir ve her güncellemede uygulanır. Tek tek peer (IP:port) eklemeyi aria2 desteklemiyor.</div>
+        <div class="hint" data-i18n="seed.ekHint">Bunlar sağlık taramasına katılır; yalnız cevap verenler uygulanır. Ölü görünenler silinmez, ertesi gün yeniden denenir.</div>
+      </div>
+      <div>
+        <label data-i18n="seed.klasor">Tracker klasörü (istediğin kadar .txt at)</label>
+        <div class="yol-satir">
+          <button class="btn" id="seedKlasor" data-i18n="seed.klasorAc">Klasörü aç</button>
+          <button class="btn" id="seedTara" data-i18n="seed.tara">Şimdi tara</button>
+        </div>
+        <div class="hint" id="seedTarama"></div>
       </div>
       <div class="hint" data-i18n="seed.hint">Güncel tracker listesi indirilir ve torrent yeniden duyurulur. İnen parçalar korunur, dosyalara dokunulmaz.</div>
       <div class="err-note" id="seedErr"></div>

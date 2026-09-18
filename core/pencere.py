@@ -150,6 +150,38 @@ def one_getir(window) -> None:
 
 
 
+def kapatinca_gizle(window, etkin_mi, cikiliyor_mi, gizlenince=None) -> bool:
+    """Windows X/Alt+F4 olayini qBittorrent gibi tepsiye yonlendir.
+
+    Kucultme olayina dokunulmaz; '-' normal Windows gorev cubuguna iner.
+    Tepsi menusu > Cikis gercek kapatmadir ve cikiliyor_mi ile engellenmez.
+    """
+    if not _ETKIN or window.native is None:
+        return False
+    form = window.native
+
+    def kur():
+        from System.Windows.Forms import FormClosingEventHandler
+
+        def kapanirken(_gonderen, olay):
+            try:
+                if not cikiliyor_mi() and etkin_mi():
+                    olay.Cancel = True
+                    form.Hide()
+                    if gizlenince:
+                        gizlenince()
+            except Exception:
+                pass
+
+        form.FormClosing += FormClosingEventHandler(kapanirken)
+        return True
+
+    try:
+        return bool(_ui_is_parcaciginda(form, kur))
+    except Exception:
+        return False
+
+
 def kucultunce_gizle(window, etkin_mi, gizlenince=None) -> bool:
     """Kucultme dugmesi pencereyi GOREV CUBUGUNDAN da kaldirsin (tepsiye insin).
 

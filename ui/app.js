@@ -444,6 +444,12 @@ async function seedCiz() {
     seedSatir(t("seed.dht"), t(bilgi.dht ? "seed.on" : "seed.off")),
     seedSatir(t("seed.ekSayi"), bilgi.ek_sayisi || 0),
   ].join("");
+  // Tarama ozeti: olu tracker'lar elendigi icin liste kisa gorunur, sasirtmasin
+  const tarama = bilgi.tarama || {};
+  $("seedTarama").textContent = tarama.toplam
+    ? t("seed.taramaOzet", { canli: tarama.canli || 0, toplam: tarama.toplam,
+                             olu: tarama.olu || 0, tanyan: tarama.tanyan || 0 })
+    : t("seed.taramaYok");
   // Kullanici yazarken ustune YAZMA: yalniz kutu bosken/degismemisken doldur.
   if (document.activeElement !== $("seedEk") && !$("seedEk").dataset.kirli) {
     $("seedEk").value = bilgi.ek_trackerlar || "";
@@ -486,6 +492,28 @@ $("seedKaydet").onclick = async () => {
     delete $("seedEk").dataset.kirli;
     toast(t("seed.eklendi", { n: out.sayi || 0 }));
   } catch (err) { $("seedErr").textContent = err.message; }
+};
+
+/* Tracker saglik taramasi (core/tracker_saglik.py): klasordeki butun listeleri
+   okur, her adrese GERCEKTEN sorar, cevap vermeyenleri eler. Olculdu: 192
+   adresin 151'i oluydu ve aria2 her duyuruda hepsini bekliyordu. */
+$("seedTara").onclick = async () => {
+  const dugme = $("seedTara");
+  const eskiYazi = dugme.textContent;
+  dugme.disabled = true;
+  dugme.textContent = t("seed.tariyor");
+  $("seedErr").textContent = "";
+  try {
+    const out = await call("tracker_tara", seedGid);
+    toast(t("seed.taramaBitti", { canli: out.canli || 0, olu: out.olu || 0 }));
+    await seedCiz();
+  } catch (err) { $("seedErr").textContent = err.message; }
+  dugme.disabled = false;
+  dugme.textContent = eskiYazi;
+};
+
+$("seedKlasor").onclick = () => {
+  call("tracker_klasoru_ac").catch((err) => { $("seedErr").textContent = err.message; });
 };
 
 /* ---------- Chrome'a ekle (core/chrome_kurulum.py) ---------- */

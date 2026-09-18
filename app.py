@@ -24,6 +24,7 @@ from api.server import LocalAPI  # noqa: E402
 
 VARSAYILAN_API_PORT = 6811   # uzantinin da ilk denedigi port
 from core import (baslangic, chrome_kurulum, clipboard, engines, guc, iliskilendir,  # noqa: E402
+                  tracker_saglik,
                   kaydet, lang, paths, pencere)
 from core.manager import Manager  # noqa: E402
 
@@ -79,6 +80,8 @@ class Api:
         self._ozel_baslik = False  # Windows basligi kaldirildi mi (core/pencere.py)
         self._chrome = chrome_kurulum.OtomatikEkleme()
         self._tepsi = None              # pystray simgesi (bkz. build_tray)
+        self._cikiliyor = False           # yalniz tepsi > Cikis gercekten kapatir
+        self._tepsi_bildirimi = lambda: None
         self._bekleyenler = kaydet.Bekleyenler()
         self._chrome_baslangic = 0.0
 
@@ -304,6 +307,18 @@ class Api:
     def seed_tazele(self, gid: str) -> dict:
         return self.manager.seed_tazele(gid)
 
+    def tracker_tara(self, gid: str = "") -> dict:
+        """Klasordeki tracker'lari olc ve canli sonucu hemen uygula."""
+        return self.manager.tracker_tara(gid)
+
+    def tracker_klasoru_ac(self) -> dict:
+        tracker_saglik.klasoru_hazirla()
+        try:
+            os.startfile(str(tracker_saglik.KLASOR))          # noqa: S606
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:200]}
+        return {"ok": True}
+
     def seed_tracker_kaydet(self, metin: str) -> dict:
         """Elle eklenen tracker'lari sakla (uygulanmasi tazelemede olur)."""
         from core import trackers as _tr
@@ -471,9 +486,22 @@ class Api:
         return self.pencere_durumu()
 
     def pencere_kapat(self) -> dict:
+        # qBittorrent tipi davranis: X uygulamayi kapatmaz, tepsiye gizler.
+        # Tepsi simgesi kurulamadiysa gizlemek pencereyi erisilmez yapacagi icin
+        # o durumda gercek kapatma guvenli geri donustur.
+        tepside = bool(
+            self._window
+            and self._tepsi is not None
+            and self.manager.store.get("tepsiye_kucult")
+            and not self._cikiliyor
+        )
         if self._window:
-            self._window.destroy()
-        return {"ok": True}
+            if tepside:
+                self._window.hide()
+                self._tepsi_bildirimi()
+            else:
+                self._window.destroy()
+        return {"ok": True, "tepside": tepside}
 
     def pencere_durumu(self) -> dict:
         return {
@@ -572,7 +600,7 @@ def calisan_ornege_yolla(link: str = "") -> bool:
         return False       # acik degil (ya da baska bir program o portta)
 
 
-def build_tray(window, manager: Manager):
+def build_tray(window, manager: Manager, api: Api | None = None):
     """Sistem tepsisi simgesi; kurulan simgeyi dondurur (kurulamazsa None).
 
     Donen deger onemli: simge YOKSA "kucultunce tepsiye in" davranisi
@@ -609,6 +637,8 @@ def build_tray(window, manager: Manager):
             pass
 
     def quit_app(icon=None, _item=None) -> None:
+        if api is not None:
+            api._cikiliyor = True
         if icon:
             icon.stop()
         try:
@@ -653,6 +683,7 @@ def main() -> int:
         return 2
 
     manager = Manager()
+    tracker_saglik.klasoru_hazirla()   # kullanici .txt atabilsin diye hep dursun
     try:
         manager.start()
     except Exception as exc:
@@ -706,17 +737,20 @@ def main() -> int:
         except Exception:
             pass
 
+    api._tepsi_bildirimi = tepsi_bildirimi
+
     def baslik_hazir() -> None:
         try:
-            pencere.kucultunce_gizle(
+            pencere.kapatinca_gizle(
                 window,
                 # Tepsi simgesi kurulamadiysa GIZLEME: pencereye donus yolu kalmaz.
                 lambda: bool(manager.store.get("tepsiye_kucult"))
                 and getattr(api, "_tepsi", None) is not None,
+                lambda: bool(api._cikiliyor),
                 tepsi_bildirimi,
             )
         except Exception as exc:
-            print(f"UYARI: tepsiye kucultme kurulamadi: {exc}")
+            print(f"UYARI: X ile tepsiye gizleme kurulamadi: {exc}")
         try:
             ozel = pencere.basligi_kaldir(window)
         except Exception as exc:  # kaldirilamazsa Windows basligi kalir, uygulama calisir
@@ -748,7 +782,7 @@ def main() -> int:
 
     def on_start() -> None:
         # ONCE tepsi: pano izleyicisi patlarsa simge de kurulmadan kalirdi.
-        api._tepsi = build_tray(window, manager)
+        api._tepsi = build_tray(window, manager, api)
         if tepside_basla and api._tepsi is None:
             # Simge yoksa gizli baslamak uygulamayi erisilmez yapardi.
             manager.store.log("warn", "tepsi simgesi yok: pencere gosteriliyor")

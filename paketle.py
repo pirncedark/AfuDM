@@ -23,7 +23,7 @@ CIKTI = KOK / "build_out" / "paket"
 
 # Paketin icine giren dosyalar. engine/ ozel: hangi motorun gireceği secime bagli.
 KOPYALANACAK_DOSYALAR = ("AfuDM.exe", "README.md", "THIRD_PARTY_NOTICES.md")
-KOPYALANACAK_KLASORLER = ("ui", "extension")
+KOPYALANACAK_KLASORLER = ("ui", "extension", "trackers")
 
 CEKIRDEK_MOTORLAR = ("aria2c.exe",)
 TAM_MOTORLAR = ("aria2c.exe", "yt-dlp.exe", "ffmpeg.exe")

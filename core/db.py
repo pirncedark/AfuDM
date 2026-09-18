@@ -72,12 +72,18 @@ DEFAULTS: dict[str, Any] = {
     "kaydetme_penceresi": True,
     # Bos hedefte indirmeler downloads/Video, downloads/Muzik... altina
     "kategori_klasorleri": True,
-    # Kucultme dugmesi pencereyi tepsiye indirsin (gorev cubugundan kalksin)
+    # qBittorrent gibi: kucult gorev cubuguna, X sistem tepsisine gitsin
     "tepsiye_kucult": True,
     # Bilgisayar acilinca pencere ACILMADAN tepside basla
     "baslangicta_tepside": True,
     # Kullanicinin elle ekledigi tracker'lar (her satirda bir adres)
     "ek_trackerlar": "",
+    # trackers/ klasoru + elle eklenenler taranip CANLI kalanlar (otomatik)
+    "canli_trackerlar": "",
+    "tracker_tarama_zamani": 0,
+    "tracker_tarama_ozeti": {},
+    # Gunde bir kendiliginden tara (olu tracker'lar duyuruyu geciktiriyor)
+    "tracker_otomatik_tara": True,
     # Telefondan baglan: yerel API 0.0.0.0'a acilir (VARSAYILAN KAPALI)
     "lan_erisimi": False,
     # Kullanicinin ekledigi ag konumlari (her satirda bir UNC yolu)

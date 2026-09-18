@@ -85,15 +85,25 @@ def ayikla(metin: str) -> list[str]:
     return parcalar
 
 
-def apply_to_aria2(rpc, force: bool = False, ek: str = "") -> int:
-    """Guncel listeyi + KULLANICININ ekledigi tracker'lari aria2'ye yazar.
+def apply_to_aria2(rpc, force: bool = False, ek: str = "", canli: str = "") -> int:
+    """Guncel listeyi + KULLANICININ tracker'larini aria2'ye yazar.
 
-    Donen deger: uygulanan toplam tracker sayisi. Kullanicinin eklediklerini
-    BASA koyar: aria2 listeyi sirayla duyurur, elle eklenen once denensin.
+    `canli` verilirse (bkz. core/tracker_saglik.py) OLCULMUS canli liste
+    kullanilir ve en basa konur: cevap vermeyen tracker'lar aria2'yi her
+    duyuruda zaman asimi kadar bekletiyordu (olculdu: 192 adresin 151'i olu).
+    Donen deger: uygulanan toplam tracker sayisi.
     """
-    kendi = ayikla(ek)
-    liste = refresh(force=force)
-    tumu = kendi + [t for t in liste if t not in kendi]
+    filtreli = ayikla(canli)
+    # Saglik taramasi varsa SADECE cevap verenler uygulanir. Elle girilenler de
+    # tracker_saglik.tazele tarafindan taramaya katilir; cevap vermeyenleri
+    # burada geri eklemek, olu elemenin tum faydasini yok ederdi. Kaynak
+    # listeler silinmez ve ertesi gun yeniden denenir.
+    if filtreli:
+        tumu = filtreli
+    else:
+        kendi = ayikla(ek)
+        liste = refresh(force=force)
+        tumu = kendi + [t for t in liste if t not in kendi]
     if not tumu:
         return 0
     rpc.change_global_option({"bt-tracker": ",".join(tumu)})
