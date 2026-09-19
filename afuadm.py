@@ -308,6 +308,31 @@ def komut_add(args) -> int:
         govde["proxy"] = args.proxy
     if args.checksum:
         govde["checksum"] = args.checksum
+    # v1.6 Video Pro bayraklari
+    if args.altyazi:
+        govde["altyazi_diller"] = args.altyazi
+    if args.oto_altyazi:
+        govde["oto_altyazi"] = True
+    if args.altyazi_goem:
+        govde["altyazi_goem"] = True
+    if args.kucuk_resim:
+        govde["kucuk_resim"] = args.kucuk_resim
+    if args.ustveri:
+        govde["ustveri_goem"] = True
+    if args.bolumler:
+        govde["bolumler"] = args.bolumler
+    if args.sponsorblock:
+        govde["sponsorblock"] = args.sponsorblock
+    if args.bolum_araligi:
+        govde["bolum_araligi"] = args.bolum_araligi
+    if args.kapsayici:
+        govde["kapsayici"] = args.kapsayici
+    if args.ses_formati:
+        govde["ses_formati"] = args.ses_formati
+    if args.sablon:
+        govde["dosya_sablonu"] = args.sablon
+    if args.tarayici_cerezi:
+        govde["tarayici_cerezi"] = args.tarayici_cerezi
     sonuc = _istek("POST", "/add", govde)
     if sonuc.get("pending"):
         # Kaydetme penceresi bekliyor: --json'da tek JSON satiri, duz metinde
@@ -574,6 +599,25 @@ def komutlar_ayirici() -> argparse.ArgumentParser:
     ik.add_argument("--header", action="append", help="'Name: value' (tekrar edilebilir)")
     ik.add_argument("--proxy", help="bu is icin proxy (ornek socks5://127.0.0.1:1080)")
     ik.add_argument("--checksum", help="'sha-256:<hex>' / 'md5:<hex>' — bitince dogrula")
+    # v1.6 Video Pro: yalniz VIDEO islerinde anlamlidir; boslarda hicbir
+    # yt-dlp bayragi uretilmez.
+    ik.add_argument("--altyazi", help="altyazi dilleri (orn. 'tr,en') -> --write-subs --sub-langs")
+    ik.add_argument("--oto-altyazi", action="store_true",
+                    help="otomatik altyazi (.vtt) -> --write-auto-subs")
+    ik.add_argument("--altyazi-goem", action="store_true",
+                    help="altyaziyi videoya gom (ffmpeg ister) -> --embed-subs")
+    ik.add_argument("--kucuk-resim", choices=("goem", "dosya"),
+                    help="kucuk resim: 'goem' gomer, 'dosya' ayri indirir")
+    ik.add_argument("--ustveri", action="store_true",
+                    help="baslik/aciklama vb. gom -> --embed-metadata (ffmpeg ister)")
+    ik.add_argument("--bolumler", choices=("goem", "ayir"),
+                    help="bolumleri gom veya ayri dosyalara bol (ffmpeg ister)")
+    ik.add_argument("--sponsorblock", help="silinecek segmentler (orn. 'sponsor,selfpromo')")
+    ik.add_argument("--bolum-araligi", help="yalniz araligi indir (orn. '00:01:00-00:02:30')")
+    ik.add_argument("--kapsayici", help="birlesik kapsayici (varsayilan mp4)")
+    ik.add_argument("--ses-formati", help="ses bicimi (--audio-only ile; varsayilan mp3)")
+    ik.add_argument("--sablon", help="dosya adi sablonu (-o); orn. 'Video/%(title)s.%(ext)s'")
+    ik.add_argument("--tarayici-cerezi", help="tarayici cerezi profili (orn. 'chrome')")
     ik.set_defaults(func=komut_add)
 
     il = alt.add_parser("list", parents=[_ortak()], help="isi listele")

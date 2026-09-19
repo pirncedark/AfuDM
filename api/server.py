@@ -266,6 +266,19 @@ class _Handler(BaseHTTPRequestHandler):
                     "start_at": data.get("start_at"),
                     "proxy": data.get("proxy"),
                     "checksum": data.get("checksum"),
+                    # v1.6 Video Pro — sinirlar/dogrulama from_mapping'de tek yerde.
+                    "altyazi_diller": data.get("altyazi_diller") or None,
+                    "oto_altyazi": bool(data.get("oto_altyazi")),
+                    "altyazi_goem": bool(data.get("altyazi_goem")),
+                    "kucuk_resim": data.get("kucuk_resim") or None,
+                    "ustveri_goem": bool(data.get("ustveri_goem")),
+                    "bolumler": data.get("bolumler") or None,
+                    "sponsorblock": data.get("sponsorblock") or None,
+                    "bolum_araligi": data.get("bolum_araligi") or None,
+                    "kapsayici": data.get("kapsayici") or None,
+                    "ses_formati": data.get("ses_formati") or None,
+                    "dosya_sablonu": data.get("dosya_sablonu") or None,
+                    "tarayici_cerezi": data.get("tarayici_cerezi") or None,
                 }))
                 self._send(200, {"ok": True, **result})
             elif parsed.path == "/control":
