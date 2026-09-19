@@ -930,6 +930,14 @@ class Manager:
         if not kaynak.startswith("magnet:") and not kaynak.startswith("http"):
             if not kaynak:
                 kaynak = f"magnet:?xt=urn:btih:{infohash}"
+        secenekler = {"dir": hedef}
+        # ``select-file`` belirtilmezse aria2 tum dosyalari secer. Kullanici
+        # tercihi varsa (bos tercih dahil) yeniden eklenen torrente acikca
+        # yeniden ver; aksi halde seed tazeleme tum torrent'i indirir.
+        if self.store.torrent_dosya_secimi_var(gid):
+            secenekler["select-file"] = self._select_file_degeri(
+                self.store.torrent_dosya_secimleri(gid)
+            )
         try:
             self.rpc.pause(gid)
         except Aria2Error:
@@ -945,14 +953,15 @@ class Manager:
         try:
             if kaynak.lower().endswith(".torrent") and Path(kaynak).exists():
                 yeni_gid = self.rpc.add_torrent(
-                    base64.b64encode(Path(kaynak).read_bytes()).decode(), {"dir": hedef})
+                    base64.b64encode(Path(kaynak).read_bytes()).decode(), secenekler)
             else:
-                yeni_gid = self.rpc.add_uri([kaynak], {"dir": hedef})
+                yeni_gid = self.rpc.add_uri([kaynak], secenekler)
         except Aria2Error as exc:
             self.store.log("warn", f"seed tazeleme basarisiz: {exc}")
             return {"ok": False, "error": str(exc)[:200]}
         if row:
             self.store.update_by_id(row["id"], gid=yeni_gid, status="active", error=None)
+            self.store.torrent_dosya_secimlerini_tasi(gid, yeni_gid)
         self.store.log("info", f"seed tazelendi: {sayi} tracker ile yeniden duyuruldu")
         return {"ok": True, "tracker": sayi, "gid": yeni_gid}
 
@@ -1187,6 +1196,51 @@ class Manager:
         self.store.torrent_dosya_secimlerini_kaydet(gid, temiz)
         return temiz
 
+    @staticmethod
+    def _select_file_degeri(indeksler: list[int]) -> str:
+        """aria2 ``select-file`` degeri: 1-tabanli indeksler, virgullu liste.
+
+        Bos dize aria2'de secenegin verilmemesiyle ayni anlama gelir: tum
+        torrent dosyalari secilir. Bu nedenle bos kullanici tercihini de
+        acikca ``{"select-file": ""}`` olarak yazariz.
+        """
+        return ",".join(str(indeks) for indeks in indeksler)
+
+    def torrent_secimi_ayarla(self, gid: str, indeksler: list[int]) -> dict:
+        """Torrent dosya secimini aria2'ye hemen uygula ve kalici sakla.
+
+        aria2 ``changeOption`` ``select-file`` secenegini calisan torrentte
+        dinamik uygular; bu yuzden duraklatma/yeniden baslatma yapilmaz.
+        """
+        row = self.store.by_gid(gid)
+        if not row or row.get("kind") != "torrent":
+            raise ValueError("dosya secimi yalnizca torrent GID icin ayarlanir")
+        if not isinstance(indeksler, list):
+            raise ValueError("dosya indeksleri liste olmali")
+        try:
+            temiz = sorted(set(indeksler))
+        except TypeError as exc:
+            raise ValueError("gecersiz dosya indeksi") from exc
+        if any(isinstance(indeks, bool) or not isinstance(indeks, int) or indeks < 1
+               for indeks in temiz):
+            raise ValueError("gecersiz dosya indeksi: 1-tabanli pozitif tam sayi olmali")
+        try:
+            dosyalar = self.rpc.get_files(gid)
+        except Aria2Error as exc:
+            raise ValueError("torrent dosya listesi okunamadi: %s" % str(exc)[:160]) from exc
+        gecerli = {int(dosya.get("index", 0) or 0) for dosya in dosyalar}
+        if not gecerli:
+            raise ValueError("torrent dosya listesi henuz hazir degil")
+        gecersiz = [indeks for indeks in temiz if indeks not in gecerli]
+        if gecersiz:
+            raise ValueError("gecersiz dosya indeksi: %s" % ",".join(map(str, gecersiz)))
+        try:
+            self.rpc.change_option(gid, {"select-file": self._select_file_degeri(temiz)})
+        except Aria2Error as exc:
+            raise ValueError("dosya secimi canli degistirilemedi: %s" % str(exc)[:160]) from exc
+        self.store.torrent_dosya_secimlerini_kaydet(gid, temiz)
+        return {"ok": True, "gid": gid, "indeksler": temiz}
+
     def torrent_dosya_secimleri(self, gid: str) -> list[int]:
         """Kaydedilmis dosya indekslerini dondur."""
         return self.store.torrent_dosya_secimleri(gid)
@@ -1245,8 +1299,17 @@ class Manager:
             if followed and row:
                 child = followed[0]
                 if not self.store.by_gid(child):
+                    tercih_var = self.store.torrent_dosya_secimi_var(gid)
+                    secilenler = self.store.torrent_dosya_secimleri(gid)
                     self.store.update_by_id(row["id"], gid=child, status="active")
                     self.store.torrent_dosya_secimlerini_tasi(gid, child)
+                    if tercih_var:
+                        try:
+                            self.rpc.change_option(child, {
+                                "select-file": self._select_file_degeri(secilenler)
+                            })
+                        except Aria2Error as exc:
+                            self.store.log("warn", f"magnet dosya secimi uygulanamadi: {exc}")
             if state == "complete" and gid not in self._known_complete and not followed:
                 self._known_complete.add(gid)
                 title = name or (row["title"] if row else gid)
