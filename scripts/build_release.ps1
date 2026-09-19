@@ -17,9 +17,8 @@ try {
     Write-Output "surum.py: $surum"
 
     if ($Tag) {
-        $isonum = $Tag.TrimStart("v")
-        if ($isonum -ne $surum) {
-            Write-Output "GATE HATA: tag '$Tag' surum.py'deki '$surum' ile eslesmiyor."
+        if ($Tag -ne "v$surum") {
+            Write-Output "GATE HATA: beklenen: v$surum, gelen: $Tag"
             exit 1
         }
         Write-Output "gate: tag $Tag ile surum eslesiyor"

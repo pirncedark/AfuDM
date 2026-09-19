@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, v1.5-linkgrabber]
+    branches: [main, "v*"]
   pull_request:
 
 jobs:
@@ -37,6 +37,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Motorlari indir
+        run: python -c "from core import engines; engines.indir('aria2c')"
       - name: Paket
         run: |
           python -m pip install --quiet pyinstaller
