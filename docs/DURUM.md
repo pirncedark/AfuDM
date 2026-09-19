@@ -1,5 +1,5 @@
 # AfuDM — Durum & Devam Notu
-Son guncelleme: 2026-09-19 (AfuDM v1.4.0 — Foundation + Network Core: tek ekleme noktasi, proxy/SOCKS, checksum, canli is ayari)
+Son guncelleme: 2026-09-19 (AfuDM v1.5.0 — LinkGrabber + browser handoff + Release Train planı)
 ## Ne yapiyoruz
 IDM yerine gecen, PORTABLE (tek klasor, kopyala-calistir) Windows masaustu
 indirme yoneticisi. Motor: aria2 + yt-dlp.
