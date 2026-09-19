@@ -42,6 +42,12 @@ indirme listesi (http + torrent + video ayni anda) arayuzde dogru akti.
 > **TAM URUN PLANI (kimlik, aşamalar, özellik/referans matrisi, öncelik modeli,
 > v1.3.2–v2.3 sürüm yolu, Torrent Boost tasarımı) → `docs/ROADMAP.md`.**
 
+## YOL HARITASI KARARI (2026-09-19): WINDOWS MERKEZLI
+> AfuDM Windows merkezli ürün olarak devam edecek. Linux/macOS masaüstü
+> hedefleri roadmap'ten çıkarıldı. Uzaktan kullanım Browser + PWA/Android
+> Remote + Headless API üzerinden geliştirilecek. v1.5'in P0 hedefi masaüstü
+> LinkGrabber'dır.
+
 
 ## YENI: v1.4.0 Foundation + Network Core (2026-09-19)
 `docs/ROADMAP.md` v1.4 isinin TAMAMI geldi:

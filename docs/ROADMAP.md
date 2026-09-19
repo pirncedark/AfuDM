@@ -1,8 +1,13 @@
-# AfuDM Ürün Geliştirme Planı
+# AfuDM Ürün Yol Haritası
 
 > Kullanıcı kararı (2026-09-19): rakip listesi artık **ürün geliştirme araştırma
 > planıdır**. Amaç rakiplerden özellik kopyalamak değil; hangi problemin hangi
 > projede EN İYİ çözüldüğünü bulup AfuDM mimarisine uygun olanları seçmek.
+>
+> Aynı tarihli ikinci karar: AfuDM **Windows merkezli** üründür. Linux/macOS
+> masaüstü hedefleri roadmap'ten tamamen çıkarıldı; cross-platform masaüstü
+> hedefi YOKTUR. Uzaktan kullanım Browser + PWA/Android Remote + Headless API
+> üzerinden geliştirilir.
 
 ## Kimlik — 5 temel sütun
 
@@ -18,6 +23,26 @@ Uzun vadede fark yaratacak 5 sütun:
 **Karar ilkesi:** "Hepsinde ne varsa ekleyelim" YOK. Rakip referansı ancak
 fayda/efor/risk/fark puanlamasından sonra seçilir.
 
+## Yön — Windows merkezli
+
+```
+                    Windows ana uygulama
+                            │
+              ┌─────────────┼─────────────┐
+              ▼             ▼             ▼
+            CLI       Browser        Mobile/PWA
+          (afuadm)   Extension        Remote
+                            │
+                            ▼
+                      Headless API
+                    (afuadm server)
+```
+
+- **Ana platform: Windows** (portable, tek klasör, kopyala-çalıştır).
+- **Uzaktan kullanım:** Browser Extension zaten var; mobil tarafta PWA →
+  Android Companion; sunucu tarafında Headless API.
+- Linux/macOS masaüstü uygulaması yapılmayacak; Docker ana hedef değildir (P3).
+
 ## Aşama yöntemi
 
 | Aşama | İş | Çıktı |
@@ -26,10 +51,15 @@ fayda/efor/risk/fark puanlamasından sonra seçilir.
 | 1 | ~30 projeyi özellik bazlı tara | Karşılaştırma matrisi |
 | 2 | AfuDM'de `✓ var / ◐ kısmen / ○ yok / → planlı` işaretle | Gap analysis |
 | 3 | Fayda/efor/risk/fark ile sırala | Önceliklendirme |
-| 4 | v1.4–2.x roadmap'e dağıt | Geliştirme planı |
+| 4 | v1.4–v2.3 roadmap'e dağıt | Geliştirme planı |
 | 5 | Her sürüm için test/acceptance kriteri | Kontrollü geliştirme |
 
-## İncelenecek proje grupları
+## Araştırma — iki dalga
+
+Dalga 1 (P0/P1 — hemen etki): LinkGrabber, Video, Torrent, Mobile/PWA.
+Dalga 2 (P2 — sonra): Rules, Plugin, Headless, Windows Integration.
+
+İncelenecek proje grupları:
 
 - **Genel DM:** IDM, FDM, Neat, XDM, AB Download Manager, File Centipede, Gopeed, Varia, Persepolis, DLMan
 - **Torrent:** qBittorrent, Transmission, Motrix, Gopeed, File Centipede
@@ -49,7 +79,7 @@ LinkGrabber, Clipboard monitoring, Cookie import, Torrent file selection,
 Seed/peer details, Tracker management, DHT/PEX, UPnP/NAT-PMP, Subtitle,
 SponsorBlock, Metadata, Chapters, Thumbnail, Archive extraction, Antivirus scan,
 Post-processing, Rules, Plugin system, CLI, API, Web UI, Mobile app, PWA,
-Headless, Docker, Portable, Windows, Linux, macOS, Android.
+Headless, Docker, Portable, Windows, Android.
 
 ## Referans matrisi — "kim neyi en iyi yapıyor?"
 
@@ -80,80 +110,240 @@ Headless, Docker, Portable, Windows, Linux, macOS, Android.
 Her özellik 4 puan: **Kullanıcı değeri 1–5 · Geliştirme maliyeti 1–5 ·
 Teknik risk 1–5 · Fark yaratma 1–5.**
 
-Örnek: Proxy (5/2/2/3), Checksum (4/1/1/2), LinkGrabber (5/3/2/5),
-Video Pro (5/2/2/5), Torrent file selection (5/3/3/4), Android app (5/5/4/5),
-Plugin system (5/5/5/5), UPnP (2/3/4/2).
+P0 = hemen, P1 = yakın, P2 = sonra. (Proxy 5/2/2/3, Checksum 4/1/1/2,
+LinkGrabber 5/3/2/5, Video Pro 5/2/2/5, Torrent file selection 5/3/3/4,
+Android app 5/5/4/5, Plugin system 5/5/5/5, UPnP 2/3/4/2.)
 
 ## Sürüm yol haritası
 
-### v1.3.2 — Stabilizasyon ✅ (commit c7514be, 2026-09-19)
-CLI, renew, mode, scheduler, stale endpoint, JSON contract, concurrency lock,
-testler. Yeni büyük özellik yok.
+| Sürüm  | Ana hedef                    | Öncelik |
+| ---    | ---                          | ---     |
+| v1.4.0 | Foundation + Network Core ✅ | —       |
+| v1.5   | LinkGrabber                  | **P0**  |
+| v1.6   | Video Pro                    | P1      |
+| v1.7   | Torrent Pro                  | P1      |
+| v1.7.5 | Mobile Remote / PWA          | P1      |
+| v1.8   | Automation & Post-processing | P1      |
+| v1.9   | Rules Engine                 | P2      |
+| v2.0   | Plugin API + Marketplace     | P2      |
+| v2.1   | Headless / NAS / Remote      | P2      |
+| v2.2   | Windows Integration          | P1/P2   |
+| v2.3   | Security / Reliability / UX  | P2      |
 
-### v1.4 — Foundation + Network Core
-Önce modeller: `DownloadRequest`, `NetworkOpts`, `IntegrityOpts`, `VideoOpts`,
-`TorrentOpts`. Sonra: Proxy HTTP/SOCKS, System proxy, PAC, Basic Auth, Custom
-headers, User-Agent, Checksum, Live connection/speed adjustment, Strong Renew,
-API error contract (✅), DB migration (PRAGMA user_version), `/capabilities`,
-fake HTTP test suite.
-Referans: Neat + AB DM + IDM/XDM.
+### v1.4.0 — Foundation + Network Core ✅ TAMAMLANDI (commit 7dd7bdd, 2026-09-19)
+Tek ekleme noktası (`DownloadRequest.from_mapping`), DB migration (PRAGMA
+user_version), `/capabilities`, proxy HTTP/SOCKS (+ sistem proxy), checksum,
+canlı bağlantı/hız ayarı, strong renew, API error contract, fake HTTP test
+harness. **PAC bilinçli olarak kapsam dışı** (bkz. DURUM — JS çalıştırıp ağ
+davranışını değiştirmek yerine net adres).
 
-### v1.5 — LinkGrabber
+### v1.5 — LinkGrabber (P0)
 Referans: JDownloader + DownThemAll! + Video DownloadHelper.
-Browser DOM extraction, clipboard URLs, HTML link extraction (`a[href]`,
-video/audio/source, magnet), filtre, dedupe, lazy probe, boyut tespiti,
-çoklu seçim, batch add. Uzantı: "Sayfadaki tüm linkleri gönder / seçili
-linkleri gönder / video linklerini gönder".
 
-### v1.6 — Video Pro
+Akış:
+
+```text
+Clipboard / Browser / Manuel URL
+        ↓
+URL çıkarma (Extract)
+        ↓
+normalize
+        ↓
+duplicate temizleme (Dedupe)
+        ↓
+tür/domain filtreleme (Filter)
+        ↓
+lazy probe
+        ↓
+LinkGrabber Panel
+        ↓
+toplu indirme (Batch Add)
+```
+
+Ekler:
+- Dosya türü filtresi
+- Boyut filtresi
+- Domain filtresi
+- "Sadece video"
+- "Sadece arşiv"
+- "Sadece torrent/magnet"
+- Seçilenleri topluca indirme
+- Aynı URL'nin tekrar eklenmesini engelleme
+- Probe concurrency limiti
+
+Not: masaüstü LinkGrabber paneli ana iştir; uzantı tarafında "seçili/sayfa
+linklerini indir" zaten var (v1.3.2), masaüstü karşılığı eksiktir.
+
+### v1.6 — Video Pro (P1)
 Referans: yt-dlp + Stacher + Seal + N_m3u8DL-RE.
-Subtitle, auto subtitle, embed subtitle, thumbnail, metadata, chapters,
-SponsorBlock, download section, codec, container, filename template,
-cookies-from-browser, playlist controls, audio options, Live/HLS/DASH.
-Avantaj: **motor zaten var.**
+Subtitle, auto subtitle, subtitle embed, thumbnail, metadata, chapters,
+SponsorBlock, video section download, codec seçimi, container seçimi, audio
+format seçimi, filename template, cookies-from-browser UI, playlist gelişmiş
+seçenekleri. Avantaj: **motor zaten var** (yt-dlp + ffmpeg).
 
-### v1.7 — Torrent Pro
+### v1.7 — Torrent Pro (P1)
 Referans: qBittorrent + Transmission + Motrix + Gopeed.
-Torrent file tree, selective files, file priority, seed ratio/time, upload
-limit, peer list, seed/peer count, DHT/PEX status, tracker health, tracker
-pool, tracker dedupe, tracker latency. UI örneği: `Seeds: 12 / Peers: 47 /
-Connected: 19 / DHT: ON / PEX: ON / Trackers: 28/34 healthy`.
+
+```text
+Torrent
+├─ Dosya ağacı
+├─ Seçili dosyaları indir
+├─ Priority
+├─ Seed / Peer / Connected
+├─ Upload speed
+├─ Ratio
+├─ Seed time
+└─ Tracker health
+```
+
+Tracker sistemi:
+
+```text
+ham tracker listesi
+        ↓
+normalize (var)
+        ↓
+dedupe
+        ↓
+health scan (var — tracker_saglik.py)
+        ↓
+en iyi trackerlar
+```
+
+UPnP/NAT-PMP burada şart değil; sonraya bırakılabilir.
 **Ayrıca: "Daha Fazla Seed/Peer Bul" — Torrent Boost Bölümü aşağıda.**
 
-### v1.8 — Automation / Post Processing
+### v1.7.5 — Mobile Remote / PWA (P1)
+Referans: AB Download Manager / Seal.
+
+```text
+Telefon
+   ↓
+QR ile eşleştir
+   ↓
+Windows PC
+   ↓
+AfuDM
+```
+
+Telefon üzerinden: link gönder, magnet gönder, video URL gönder, pause/resume,
+Snail/Normal/Turbo, indirme durumunu gör, seed/peer gör, tamamlanınca bildirim al.
+
+Sonra: **PWA → Android Companion** (native Android, masaüstü uygulamasının
+yerine geçmez — uzaktan kumandasıdır).
+Güvenlik: API portu internete ASLA açılmaz; QR + kısa ömürlü cihaz token.
+
+### v1.8 — Automation & Post-processing (P1)
 Referans: JDownloader + XDM.
-`PostProcessQueue` (Manager thread'i bloke ETMEZ, idempotent): ZIP/7z/RAR
-çıkar, checksum doğrula, Windows Defender taraması, taşı/yeniden adlandır,
-script çalıştır, Telegram bildirimi, uyut/kapat.
+İndirme bittikten sonra:
 
-### v1.9 — Smart Rules
+```text
+Checksum
+ ↓
+Defender scan
+ ↓
+ZIP/RAR/7z extract
+ ↓
+Move
+ ↓
+Rename
+ ↓
+Script
+ ↓
+Notification
+ ↓
+Sleep / Shutdown
+```
+
+Ayrı worker queue kullanılmalı (manager thread'ini bloke etmez, idempotent).
+
+### v1.9 — Rules Engine (P2)
 Referans: File Centipede + AB DM. Kurallı yönlendirme:
-`youtube.com → Video → subtitles tr,en` / `*.iso → ISO → SHA256` / `>10 GB →
-gece kuyruğu` / `github.com → D:\Github` / `torrent → seed-ratio 1.0`.
 
-### v2.0 — Plugin Platform
+```text
+youtube.com   → D:\Video   → yt-dlp   → Chrome cookies
+*.iso         → D:\ISO     → 16 connections
+>20 GB        → gece kuyruğu
+torrent       → ratio 1.0
+github.com    → D:\GitHub
+```
+
+Rules: domain / extension / filename / size / protocol / category.
+Actions: folder / proxy / speed / connection / schedule / headers / post-process.
+
+### v2.0 — Plugin API + Marketplace (P2)
 Referans: Gopeed + JDownloader + Motrix + pyLoad.
-Türler: resolver, downloader, post processor, notification, metadata,
-automation, site integration, theme. Manifest: name, version, minimum AfuDM,
-permissions, domains, SHA256, entrypoint. İlk sürüm **trusted plugins**;
-gerçek sandbox sonra.
 
-### v2.1 — Mobile / Remote (yüksek öncelik)
-- **AfuDM PWA:** QR pairing, downloads, pause/resume, add URL, torrent/magnet,
-  video, snail/normal/turbo, notifications.
-- **Android Companion:** "Paylaş → AfuDM → Ev PC → indirmeyi başlat",
-  video → kalite seç, magnet → PC'ye gönder, torrent → dosya seç.
-  **Farklılaştırıcı sütunlardan biri.** (bkz. DURUM "YOL HARITASI — EK KARARLAR")
-- Güvenlik: API portu internete ASLA açılmaz; QR + kısa ömürlü cihaz token.
+```text
+resolve(url)
+before_download(job)
+after_download(job)
+on_error(job)
+```
 
-### v2.2 — Headless / Server
-Referans: pyLoad + Transmission + AriaNg. `afuadm --headless`, REST API,
-Web UI, LAN/NAS, Windows service; Docker değerlendirmesi.
+Plugin türleri: Site Resolver / Post Processor / Integration / Automation / Theme.
+İlk aşamada **trusted plugin** modeli; gerçek sandbox daha sonra.
+Manifest: name, version, minimum AfuDM, permissions, domains, SHA256, entrypoint.
 
-### v2.3+ — Network / Protocol Expansion
-UPnP, NAT-PMP, FTP/SFTP geliştirme, WebDAV, Metalink UI, recursive website
-download, gallery-dl entegrasyonu. Referans: curl + Wget2 + Gallery-dl +
-File Centipede.
+### v2.1 — Headless / NAS / Remote Server (P2)
+Referans: pyLoad + Transmission + AriaNg.
+Native Linux masaüstü uygulaması YAPILMAZ; AfuDM core `afuadm server` ile
+UI olmadan çalışır: Windows sunucu / ev sunucusu / NAS'a bağlı Windows makine /
+uzaktan kullanılan AfuDM instance. Docker ana hedef değil (P3).
+
+### v2.2 — Windows Integration (P1/P2)
+- Windows startup
+- Windows Service / background mode
+- Explorer sağ tık menüsü
+- `afudm://` protocol handler
+- Windows notifications
+- "AfuDM ile indir" / "Linki AfuDM'ye gönder"
+- Defender entegrasyonu
+- Windows proxy entegrasyonunu geliştirme
+- Default download-handler seçenekleri
+
+### v2.3 — Security / Reliability / UX polish (P2)
+- API rate limiting
+- device token rotation
+- secure pairing
+- plugin permission audit
+- DB recovery
+- crash recovery
+- interrupted download recovery
+- corrupted `.aria2` recovery
+- backup/restore settings
+- diagnostics export
+- structured logs
+- sensitive-data redaction
+- automatic engine health check
+
+---
+
+## Nihai ürün yönü
+
+```text
+WINDOWS DESKTOP
+      │
+      ├── HTTP / Files
+      ├── Torrent
+      ├── Video
+      ├── LinkGrabber
+      ├── Automation
+      ├── Rules
+      └── Plugins
+             │
+             ▼
+         AfuDM Core
+             │
+     ┌───────┼────────┐
+     ▼       ▼        ▼
+   CLI    Browser   Mobile
+                   Remote/PWA
+```
+
+> **Windows ana uygulama + Browser + PWA/Android Remote + Headless API.**
+> Linux/macOS masaüstü hedefleri roadmap'ten çıkarılmıştır; cross-platform
+> masaüstü hedefi yoktur.
 
 ---
 
