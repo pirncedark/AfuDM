@@ -26,7 +26,8 @@ from contextlib import redirect_stderr, redirect_stdout
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-sys.path.insert(0, r"C:\Users\afuuu\AfuDM")
+KOK = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(KOK))
 
 import afuadm  # noqa: E402
 from core import paths  # noqa: E402

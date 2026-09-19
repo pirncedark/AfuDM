@@ -7,8 +7,10 @@
    urettigi gercek dosya adi olmali.
 """
 import sys
+from pathlib import Path
 
-sys.path.insert(0, r"C:\Users\afuuu\AfuDM")
+KOK = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(KOK))
 
 from core.manager import Manager  # noqa: E402
 from video.ytdlp import VideoJob  # noqa: E402

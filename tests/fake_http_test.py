@@ -12,9 +12,11 @@ import hashlib
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 
-sys.path.insert(0, r"C:\Users\afuuu\AfuDM")
-sys.path.insert(0, r"C:\Users\afuuu\AfuDM\tests")
+KOK = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(KOK))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from fake_http import SunucuAyarlari, baslat  # noqa: E402
 

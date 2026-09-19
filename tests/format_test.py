@@ -9,7 +9,8 @@ ffmpeg VARSA eski davranis surer: en iyi video + en iyi ses, mp4'e birlestir.
 import pathlib
 import sys
 
-sys.path.insert(0, r"C:\Users\afuuu\AfuDM")
+KOK = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(KOK))
 
 from video import ytdlp  # noqa: E402
 

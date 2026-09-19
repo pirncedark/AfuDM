@@ -5,7 +5,10 @@ Ag gerektirmez; yalniz komut kurulumunu dogrular. (Kok neden: aria2c IPv6 yolu
 olmayan makinede AAAA adresini deneyip indirmeyi iptal ediyordu.)
 """
 import sys
-sys.path.insert(0, r"C:\Users\afuuu\AfuDM")
+from pathlib import Path
+
+KOK = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(KOK))
 
 fails = []
 

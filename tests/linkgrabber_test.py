@@ -15,9 +15,11 @@ from __future__ import annotations
 import hashlib
 import sys
 import time
+from pathlib import Path
 
-sys.path.insert(0, r"C:\Users\afuuu\AfuDM")
-sys.path.insert(0, r"C:\Users\afuuu\AfuDM\tests")
+KOK = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(KOK))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from core import linkgrabber as lg  # noqa: E402
 from fake_http import SunucuAyarlari, baslat  # noqa: E402
