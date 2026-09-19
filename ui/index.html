@@ -53,6 +53,7 @@
     <div class="rail-foot">
       <button id="openFolder" data-i18n="rail.openFolder">İndirme klasörünü aç</button>
       <button id="openChrome" class="rail-chrome" data-i18n="rail.chrome">Chrome'a ekle</button>
+      <button id="openServer" data-i18n="srv.title">Sunucu</button>
       <button id="openSettings" data-i18n="rail.settings">Ayarlar</button>
       <div class="dir-hint" id="dirHint"></div>
     </div>
@@ -312,6 +313,102 @@
       <span style="flex:1"></span>
       <button class="btn ghost" data-close="setVeil" data-i18n="set.cancel">Vazgeç</button>
       <button class="btn primary" id="setGo" data-i18n="set.save">Ayarları kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sunucu (v2.1 Headless Server) — masaustu ve web paneli AYNI servis
+     katmanini cagirir; buradaki her dugmenin arkasinda gercek bir backend
+     vardir, placeholder yoktur. -->
+<div class="veil" id="srvVeil">
+  <div class="sheet">
+    <h2 data-i18n="srv.title">Sunucu</h2>
+    <div class="body">
+      <div class="hint" data-i18n="srv.subtitle"></div>
+
+      <!-- durum + anahtar dugmesi -->
+      <div class="yol-satir">
+        <label class="satir-onay">
+          <input type="checkbox" id="srvAcik">
+          <span data-i18n="srv.start">Sunucuyu aç</span>
+        </label>
+        <span class="num" id="srvRozet">—</span>
+        <span class="num" id="srvUygulama">—</span>
+      </div>
+      <div class="hint" id="srvHata" style="color:#ff8a8a"></div>
+
+      <div>
+        <label data-i18n="srv.address">Adres</label>
+        <select id="srvAdres">
+          <option value="yerel" data-i18n="srv.addrLocal"></option>
+          <option value="lan" data-i18n="srv.addrLan"></option>
+        </select>
+      </div>
+      <div>
+        <label data-i18n="srv.port">Port</label>
+        <input id="srvPort" type="number" min="1024" max="65535" value="6821">
+      </div>
+      <div>
+        <label data-i18n="srv.url">Panel adresi</label>
+        <div class="yol-satir">
+          <input id="srvUrl" type="text" readonly spellcheck="false">
+          <button class="btn" id="srvUrlKopya" data-i18n="srv.copy">Kopyala</button>
+          <button class="btn" id="srvPanelAc" data-i18n="srv.open">Tarayıcıda aç</button>
+        </div>
+        <div class="hint" id="srvLanUrl"></div>
+      </div>
+      <div class="hint" data-i18n="srv.noTls"></div>
+      <div class="yol-satir">
+        <button class="btn" id="srvYeniden" data-i18n="srv.restart">Yeniden başlat</button>
+        <button class="btn" id="srvKilitTemizle" data-i18n="srv.rateClear">Kilitleri kaldır</button>
+        <button class="btn ghost" id="srvYenile" data-i18n="pnl.refresh">Yenile</button>
+      </div>
+      <div class="kv" id="srvKv"></div>
+
+      <!-- erisim anahtarlari -->
+      <h3 data-i18n="srv.keys">Erişim anahtarları</h3>
+      <div class="hint" data-i18n="srv.keysHint"></div>
+      <div class="yol-satir">
+        <input id="srvKAd" type="text" maxlength="64" data-i18n-ph="srv.keyName">
+        <select id="srvKRol" style="max-width:170px">
+          <option value="yonetici" data-i18n="srv.roleAdmin"></option>
+          <option value="salt_okur" data-i18n="srv.roleReader"></option>
+        </select>
+        <button class="btn primary" id="srvKOlustur" data-i18n="srv.keyCreate">Anahtar oluştur</button>
+      </div>
+      <div class="hint" data-i18n="srv.roleHint"></div>
+      <div id="srvGizliKutu" class="hint" style="display:none">
+        <div data-i18n="srv.keyOnce"></div>
+        <div class="yol-satir">
+          <input id="srvGizli" type="text" readonly spellcheck="false">
+          <button class="btn" id="srvGizliKopya" data-i18n="srv.copy">Kopyala</button>
+        </div>
+      </div>
+      <div id="srvKListe" class="dpanel-logs"></div>
+
+      <!-- aktif istemciler -->
+      <h3 data-i18n="srv.clients">Aktif istemciler</h3>
+      <div class="hint" data-i18n="srv.clientsHint"></div>
+      <div id="srvIListe" class="dpanel-logs"></div>
+
+      <!-- sunucu profilleri -->
+      <h3 data-i18n="srv.profiles">Sunucu profilleri</h3>
+      <div class="hint" data-i18n="srv.profilesHint"></div>
+      <div class="yol-satir">
+        <input id="srvPAd" type="text" maxlength="48" data-i18n-ph="srv.profileName">
+        <select id="srvPAdres" style="max-width:170px">
+          <option value="yerel" data-i18n="srv.addrLocal"></option>
+          <option value="lan" data-i18n="srv.addrLan"></option>
+        </select>
+        <input id="srvPPort" type="number" min="1024" max="65535" value="6821" style="max-width:110px">
+        <input id="srvPLimit" type="number" min="1" value="120" style="max-width:110px">
+        <button class="btn" id="srvPKaydet" data-i18n="srv.profileSave">Profili kaydet</button>
+      </div>
+      <div id="srvPListe" class="dpanel-logs"></div>
+    </div>
+    <div class="foot">
+      <span class="hint" id="srvNot" style="flex:1"></span>
+      <button class="btn ghost" data-close="srvVeil" data-i18n="tor.close">Kapat</button>
     </div>
   </div>
 </div>

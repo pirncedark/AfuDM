@@ -98,6 +98,26 @@ DEFAULTS: dict[str, Any] = {
     #   system_proxy -> Windows Internet Settings'teki sistem proxy kullanilsin mi
     "proxy": "",
     "system_proxy": False,
+    # --- v2.1 Headless Server -------------------------------------------
+    # HTTP yonetim sunucusu. VARSAYILAN KAPALI: acilmadan hicbir uzak
+    # erisim yoktur. Acilinca bile anahtarsiz hicbir sey yapilamaz.
+    "sunucu_acik": False,
+    # "yerel" = yalniz 127.0.0.1, "lan" = 0.0.0.0 (ayni Wi-Fi).
+    # Internete acma OZELLIGI YOKTUR; port yonlendirmeyi kullanici yapar.
+    "sunucu_adres": "yerel",
+    "sunucu_port": 6821,
+    # Kaba kuvvet korumasi: ayni IP'den dakikada izin verilen istek sayisi
+    "sunucu_istek_limiti": 120,
+    # Ust uste bu kadar yanlis anahtar -> o IP gecici kilitlenir
+    "sunucu_hatali_limit": 8,
+    "sunucu_kilit_saniye": 300,
+    # CSRF/origin: panel disindan gelen tarayici isteklerini reddet.
+    # Bos ise YALNIZ sunucunun kendi adresi kabul edilir (en siki).
+    "sunucu_izinli_originler": "",
+    # Istemci oturum kaydi tutulsun mu (kim bagli ekrani bunu okur)
+    "sunucu_istemci_kaydi": True,
+    # Etkin sunucu profili (server_profiles.id); 0 = profil yok
+    "sunucu_profil_id": 0,
 }
 
 
@@ -105,7 +125,7 @@ DEFAULTS: dict[str, Any] = {
 # `USER_VERSION`'i artirinca aradaki ADIMI `MIGRATIONS` sozlugune ekle.
 # Adimlar YALNIZCA degisiklik gerektiginde vardir; gecis 0->1 hic is yapmaz
 # (mevcut _SCHEMA zaten v1'dir). Eski veri ASLA silinmez.
-USER_VERSION = 3
+USER_VERSION = 4
 
 
 def _v2_torrent_dosya_secimleri(conn: sqlite3.Connection) -> None:
@@ -126,9 +146,63 @@ def _v2_torrent_dosya_secimleri(conn: sqlite3.Connection) -> None:
 def _v3_events_gid(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE events ADD COLUMN gid TEXT")
 
+def _v4_sunucu_erisimi(conn: sqlite3.Connection) -> None:
+    """v2.1 Headless Server: erisim anahtarlari, istemciler, sunucu profilleri.
+
+    YALNIZCA EKLER. downloads/settings/events tablolarina DOKUNMAZ; kullanici
+    ayarlari ve indirme gecmisi oldugu gibi kalir. Idempotent: IF NOT EXISTS.
+
+    `gizli_hash` alani anahtarin SHA-256 ozetidir; anahtarin KENDISI hicbir
+    yerde saklanmaz ve loglanmaz. Rotasyon ayni satirin ozetini degistirir,
+    boylece eski anahtar ANINDA gecersiz olur.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS api_keys (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            ad          TEXT NOT NULL,
+            rol         TEXT NOT NULL DEFAULT 'salt_okur',
+            gizli_hash  TEXT NOT NULL,
+            onek        TEXT NOT NULL DEFAULT '',
+            olusturuldu REAL NOT NULL,
+            son_kullanim REAL,
+            son_rotasyon REAL,
+            iptal       INTEGER NOT NULL DEFAULT 0,
+            not_metni   TEXT DEFAULT ''
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(gizli_hash)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS api_clients (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            key_id       INTEGER,
+            oturum       TEXT NOT NULL UNIQUE,
+            ip           TEXT NOT NULL DEFAULT '',
+            istemci      TEXT NOT NULL DEFAULT '',
+            rol          TEXT NOT NULL DEFAULT 'salt_okur',
+            ilk_gorulme  REAL NOT NULL,
+            son_gorulme  REAL NOT NULL,
+            istek_sayisi INTEGER NOT NULL DEFAULT 0,
+            iptal        INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_api_clients_oturum ON api_clients(oturum)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS server_profiles (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            ad          TEXT NOT NULL,
+            adres       TEXT NOT NULL DEFAULT 'yerel',
+            port        INTEGER NOT NULL DEFAULT 6821,
+            originler   TEXT NOT NULL DEFAULT '',
+            istek_limiti INTEGER NOT NULL DEFAULT 120,
+            olusturuldu REAL NOT NULL
+        )
+    """)
+
+
 MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     2: _v2_torrent_dosya_secimleri,
     3: _v3_events_gid,
+    4: _v4_sunucu_erisimi,
 }
 
 

@@ -141,7 +141,32 @@ afuadm info                                   version + service state
 afuadm ayarla <gid> --baglanti 8 --hiz 500    live per-download connections/speed cap (v1.4)
 afuadm ayar proxy socks5://127.0.0.1:1080     set global proxy (also: system_proxy 1)
 afuadm add URL --proxy http://... --checksum sha-256:<hex>  per-download proxy + verify
+
+afuadm server start                           run the service without any UI (v2.1)
+afuadm server status                          is the headless service up? panel address
+afuadm server stop                            shut it down cleanly (aria2 session is saved)
 ```
+
+### Headless server (v2.1)
+
+`afuadm server start` runs AfuDM with **no desktop window**: the download
+engine, the shared service layer and the browser management panel only. The
+desktop UI, the panel and the CLI all call the *same* service layer, so there
+is one copy of the logic.
+
+The panel needs an **access key**. Create one in AfuDM → *Server* → *Create
+key*, choosing a role: `administrator` (everything) or `read-only` (watch only).
+The key is shown once and only its SHA-256 digest is stored; *Rotate* issues a
+new one and invalidates the old one instantly, dropping every client that used
+it. Keys are never put in a URL and are never logged.
+
+The panel is served over **plain HTTP — the connection is not encrypted.**
+Keep it on `127.0.0.1` or your own local network. AfuDM never opens itself to
+the internet; if you forward the port yourself, the traffic is not protected.
+
+Only one AfuDM instance per folder: if the desktop app is open, `server start`
+stops with a clear message instead of two processes fighting over the same
+database and aria2 session.
 
 Every subcommand accepts `--json`; `--json` and `--no-start` work on either
 side of the command (`afuadm status --json` == `afuadm --json status`). In
@@ -363,7 +388,32 @@ afuadm info                                   sürüm + servis durumu
 afuadm ayarla <gid> --baglanti 8 --hiz 500    canlı is-özel bağlantı/hız ayarı (v1.4)
 afuadm ayar proxy socks5://127.0.0.1:1080     genel proxy ata (ayrıca: system_proxy 1)
 afuadm add URL --proxy http://... --checksum sha-256:<hex>  is-özel proxy + doğrulama
+
+afuadm server start                           servisi arayüzsüz çalıştır (v2.1)
+afuadm server status                          arayüzsüz servis ayakta mı? panel adresi
+afuadm server stop                            düzenli kapat (aria2 oturumu kaydedilir)
 ```
+
+### Arayüzsüz sunucu (v2.1)
+
+`afuadm server start` AfuDM'i **masaüstü penceresi olmadan** çalıştırır:
+yalnızca indirme motoru, ortak servis katmanı ve tarayıcıdan yönetim paneli.
+Masaüstü arayüzü, panel ve CLI *aynı* servis katmanını çağırır; iş mantığının
+tek bir kopyası vardır.
+
+Panel bir **erişim anahtarı** ister. AfuDM → *Sunucu* → *Anahtar oluştur* ile
+üret ve rolünü seç: `yönetici` (her şey) ya da `salt okur` (yalnızca izler).
+Anahtar bir kez gösterilir, veritabanında yalnızca SHA-256 özeti durur;
+*Yenile* yeni bir anahtar verir ve eskisini anında geçersiz kılar — o anahtarla
+bağlı her istemci düşer. Anahtar hiçbir zaman adrese yazılmaz ve loglanmaz.
+
+Panel **düz HTTP ile sunulur — bağlantı şifrelenmez.** `127.0.0.1` ya da kendi
+yerel ağında tut. AfuDM kendini internete hiç açmaz; portu sen yönlendirirsen
+trafik korunmaz.
+
+Bir klasörde tek AfuDM örneği: masaüstü uygulaması açıkken `server start` iki
+sürecin aynı veritabanı ve aria2 oturumu üzerinde çakışması yerine net bir
+mesajla durur.
 
 Her alt komut `--json` kabul eder; `--json` ve `--no-start` komutun iki
 yanında da geçerli (`afuadm status --json` = `afuadm --json status`). `--json`

@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<!--
+  AfuDM yonetim paneli (tarayici) — v2.1 Headless Server.
+
+  Masaustu arayuzuyle AYNI servis katmanini kullanir: bu sayfa yalnizca
+  /api/* cagirir, hicbir is mantigi burada TEKRARLANMAZ.
+
+  Anahtar ADRES CUBUGUNA YAZILMAZ. Kullanici yapistirir, sessionStorage'da
+  (yalniz bu sekme, yalniz bu oturum) tutulur ve her istege BASLIK olarak
+  eklenir. URL'ye, log'a, gecmise dusmez.
+-->
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<title>AfuDM</title>
+<style>
+  :root{
+    --bg:#11151c; --bg2:#171d26; --bg3:#1e2631; --line:#2a3542;
+    --fg:#e6edf5; --dim:#93a3b5; --acc:#4da3ff; --ok:#3ddc84;
+    --warn:#ffb020; --err:#ff5c5c; --r:10px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:14px/1.5 "Segoe UI",system-ui,sans-serif;-webkit-text-size-adjust:100%}
+  a{color:var(--acc)}
+  .wrap{max-width:1100px;margin:0 auto;padding:16px}
+  h1{font-size:20px;margin:0}
+  h2{font-size:15px;margin:0 0 4px}
+  .sub{color:var(--dim);font-size:12.5px}
+  .card{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);
+        padding:14px;margin-bottom:14px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .row.sb{justify-content:space-between}
+  .grow{flex:1 1 180px;min-width:0}
+  label{display:block;font-size:12.5px;color:var(--dim);margin-bottom:4px}
+  input,select,textarea{width:100%;background:var(--bg3);color:var(--fg);
+       border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit}
+  input[type=checkbox]{width:auto}
+  textarea{min-height:80px;resize:vertical}
+  button{background:var(--bg3);color:var(--fg);border:1px solid var(--line);
+       border-radius:8px;padding:8px 13px;font:inherit;cursor:pointer}
+  button:hover:not(:disabled){border-color:var(--acc)}
+  button.pri{background:var(--acc);border-color:var(--acc);color:#07121f;font-weight:600}
+  button.dan{border-color:#5a2a2a;color:#ffb3b3}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .tabs button{border-radius:20px}
+  .tabs button[aria-selected=true]{background:var(--acc);border-color:var(--acc);color:#07121f}
+  .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11.5px;
+        border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+  .pill.ok{color:var(--ok);border-color:#204b33}
+  .pill.err{color:var(--err);border-color:#5a2a2a}
+  .pill.warn{color:var(--warn);border-color:#5a4520}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);
+        vertical-align:middle}
+  th{color:var(--dim);font-weight:600;font-size:12px}
+  .bar{height:5px;background:var(--bg3);border-radius:4px;overflow:hidden;margin-top:4px}
+  .bar i{display:block;height:100%;background:var(--acc)}
+  .state{padding:22px;text-align:center;color:var(--dim)}
+  .state.err{color:var(--err)}
+  .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
+     background:var(--bg3);border:1px solid var(--line);border-radius:10px;
+     padding:10px 16px;max-width:92vw;z-index:50;box-shadow:0 8px 28px #0008}
+  .toast.err{border-color:#5a2a2a;color:#ffb3b3}
+  .toast.ok{border-color:#204b33}
+  .hide{display:none !important}
+  .mono{font-family:Consolas,"Cascadia Mono",monospace;font-size:12.5px;word-break:break-all}
+  .secret{background:#0e2a18;border:1px solid #2c6b45;border-radius:8px;padding:10px;margin-top:10px}
+  .warnbox{background:#2a2113;border:1px solid #5a4520;border-radius:8px;
+     padding:10px;color:#ffd98a;font-size:12.5px}
+  .set{border-bottom:1px solid var(--line);padding:10px 0}
+  .set:last-child{border-bottom:0}
+  .name{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  @media (max-width:640px){
+    .wrap{padding:12px}
+    th.opt,td.opt{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ===================== GIRIS ===================== -->
+  <section id="giris" class="card" style="max-width:480px;margin:10vh auto">
+    <h1 data-i18n="pnl.title">AfuDM yönetim paneli</h1>
+    <p class="sub" data-i18n="pnl.loginHint"></p>
+    <div style="margin-top:12px">
+      <label for="anahtar" data-i18n="pnl.key">Erişim anahtarı</label>
+      <input id="anahtar" type="password" autocomplete="off" spellcheck="false"
+             placeholder="afudm_...">
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="pri" id="baglanBtn" data-i18n="pnl.connect">Bağlan</button>
+      <span id="girisDurum" class="sub"></span>
+    </div>
+    <div class="warnbox" style="margin-top:12px" data-i18n="srv.noTls"></div>
+  </section>
+
+  <!-- ===================== PANEL ===================== -->
+  <main id="panel" class="hide">
+    <div class="row sb" style="margin-bottom:12px">
+      <div>
+        <h1>AfuDM</h1>
+        <div class="sub"><span id="ustDurum">—</span></div>
+      </div>
+      <div class="row">
+        <span class="pill" id="rolPill">—</span>
+        <span class="pill" id="baglantiPill">—</span>
+        <button id="cikisBtn" data-i18n="pnl.logout">Oturumu kapat</button>
+      </div>
+    </div>
+
+    <div id="soHint" class="warnbox hide" data-i18n="pnl.readOnlyHint"></div>
+
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-sekme="indirmeler" aria-selected="true" data-i18n="pnl.tabDownloads"></button>
+      <button role="tab" data-sekme="ayarlar" data-i18n="pnl.tabSettings"></button>
+      <button role="tab" data-sekme="sunucu" data-i18n="pnl.tabServer"></button>
+      <button role="tab" data-sekme="anahtarlar" data-i18n="pnl.tabKeys"></button>
+      <button role="tab" data-sekme="istemciler" data-i18n="pnl.tabClients"></button>
+      <button role="tab" data-sekme="profiller" data-i18n="pnl.tabProfiles"></button>
+    </nav>
+
+    <!-- ---------- INDIRMELER ---------- -->
+    <section id="s-indirmeler">
+      <div class="card">
+        <h2 data-i18n="pnl.addLinks"></h2>
+        <textarea id="ekleMetin" data-i18n-ph="pnl.addPlaceholder" spellcheck="false"></textarea>
+        <div class="row" style="margin-top:10px">
+          <button class="pri yaz" id="ekleBtn" data-i18n="pnl.add"></button>
+          <div class="grow"></div>
+          <select id="hizProfil" class="yaz" style="width:auto">
+            <option value="snail">snail</option>
+            <option value="normal">normal</option>
+            <option value="turbo">turbo</option>
+          </select>
+        </div>
+        <div id="ekleHata" class="state err hide"></div>
+      </div>
+
+      <div class="card">
+        <div class="row sb" style="margin-bottom:10px">
+          <div class="row">
+            <select id="filtre" style="width:auto">
+              <option value="all">all</option>
+              <option value="active">active</option>
+              <option value="paused">paused</option>
+              <option value="video">video</option>
+              <option value="torrent">torrent</option>
+              <option value="complete">complete</option>
+              <option value="error">error</option>
+            </select>
+            <input id="arama" style="width:180px" data-i18n-ph="pnl.search">
+          </div>
+          <div class="row">
+            <label class="row" style="margin:0;gap:6px">
+              <input type="checkbox" id="otoYenile" checked>
+              <span data-i18n="pnl.autoRefresh"></span>
+            </label>
+            <button id="yenileBtn" data-i18n="pnl.refresh"></button>
+            <button class="yaz" id="hepsiDurBtn" data-i18n="pnl.pauseAll"></button>
+            <button class="yaz" id="hepsiDevamBtn" data-i18n="pnl.resumeAll"></button>
+            <button class="yaz dan" id="temizleBtn" data-i18n="pnl.clearDone"></button>
+          </div>
+        </div>
+        <div id="listeDurum" class="state" data-i18n="pnl.loading"></div>
+        <table id="listeTablo" class="hide">
+          <thead><tr>
+            <th>#</th><th></th><th class="opt">%</th>
+            <th class="opt" data-i18n="srv.state"></th><th></th>
+          </tr></thead>
+          <tbody id="listeGovde"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2 data-i18n="pnl.events"></h2>
+        <div id="olayDurum" class="state" data-i18n="pnl.loading"></div>
+        <table id="olayTablo" class="hide"><tbody id="olayGovde"></tbody></table>
+      </div>
+    </section>
+
+    <!-- ---------- AYARLAR ---------- -->
+    <section id="s-ayarlar" class="hide">
+      <div class="card">
+        <h2 data-i18n="pnl.tabSettings"></h2>
+        <div id="ayarDurum" class="state" data-i18n="pnl.loading"></div>
+        <div id="ayarAlan" class="hide"></div>
+        <div class="row" style="margin-top:12px">
+          <button class="pri yaz" id="ayarKaydetBtn" data-i18n="pnl.settingsSave"></button>
+          <span id="ayarNot" class="sub"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- SUNUCU ---------- -->
+    <section id="s-sunucu" class="hide">
+      <div class="card">
+        <div class="row sb">
+          <div><h2 data-i18n="srv.title"></h2>
+            <div class="sub" data-i18n="srv.subtitle"></div></div>
+          <span class="pill" id="srvPill">—</span>
+        </div>
+        <div id="srvDurum" class="state" data-i18n="pnl.loading"></div>
+        <div id="srvAlan" class="hide" style="margin-top:10px">
+          <table><tbody id="srvGovde"></tbody></table>
+          <div class="warnbox" style="margin-top:10px" data-i18n="srv.noTls"></div>
+          <div class="row" style="margin-top:10px">
+            <button class="yonet dan" id="srvDurdurBtn" data-i18n="srv.stop"></button>
+            <span class="sub" id="srvNot"></span>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2 data-i18n="srv.rate"></h2>
+        <div class="sub" data-i18n="srv.rateHint"></div>
+        <table style="margin-top:8px"><tbody id="limitGovde"></tbody></table>
+        <div class="row" style="margin-top:10px">
+          <button class="yonet" id="kilitTemizleBtn" data-i18n="srv.rateClear"></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- ANAHTARLAR ---------- -->
+    <section id="s-anahtarlar" class="hide">
+      <div class="card">
+        <h2 data-i18n="srv.keys"></h2>
+        <div class="sub" data-i18n="srv.keysHint"></div>
+        <div class="row" style="margin-top:10px">
+          <div class="grow"><label data-i18n="srv.keyName"></label>
+            <input id="kAd" maxlength="64"></div>
+          <div style="flex:0 0 160px"><label data-i18n="srv.keyRole"></label>
+            <select id="kRol">
+              <option value="yonetici" data-i18n="srv.roleAdmin"></option>
+              <option value="salt_okur" data-i18n="srv.roleReader"></option>
+            </select></div>
+          <div class="grow"><label data-i18n="srv.keyNote"></label>
+            <input id="kNot" maxlength="200"></div>
+          <div style="align-self:flex-end">
+            <button class="pri yonet" id="kOlusturBtn" data-i18n="srv.keyCreate"></button>
+          </div>
+        </div>
+        <div class="sub" style="margin-top:6px" data-i18n="srv.roleHint"></div>
+        <div id="kGizli" class="secret hide">
+          <div data-i18n="srv.keyOnce"></div>
+          <div class="mono" id="kGizliDeger" style="margin:8px 0"></div>
+          <button id="kKopyalaBtn" data-i18n="srv.copy"></button>
+        </div>
+      </div>
+      <div class="card">
+        <div id="kDurum" class="state" data-i18n="pnl.loading"></div>
+        <table id="kTablo" class="hide">
+          <thead><tr>
+            <th data-i18n="srv.keyName"></th>
+            <th data-i18n="srv.keyRole"></th>
+            <th class="opt" data-i18n="srv.keyPrefix"></th>
+            <th class="opt" data-i18n="srv.keyLastUsed"></th>
+            <th></th>
+          </tr></thead>
+          <tbody id="kGovde"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ---------- ISTEMCILER ---------- -->
+    <section id="s-istemciler" class="hide">
+      <div class="card">
+        <div class="row sb">
+          <div><h2 data-i18n="srv.clients"></h2>
+            <div class="sub" data-i18n="srv.clientsHint"></div></div>
+          <button class="yonet" id="iTemizleBtn" data-i18n="srv.clientsPurge"></button>
+        </div>
+        <div id="iDurum" class="state" data-i18n="pnl.loading"></div>
+        <table id="iTablo" class="hide">
+          <thead><tr>
+            <th data-i18n="srv.clientKey"></th>
+            <th data-i18n="srv.keyRole"></th>
+            <th class="opt" data-i18n="srv.clientIp"></th>
+            <th class="opt" data-i18n="srv.clientAgent"></th>
+            <th data-i18n="srv.clientLastSeen"></th>
+            <th class="opt" data-i18n="srv.clientRequests"></th>
+            <th></th>
+          </tr></thead>
+          <tbody id="iGovde"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ---------- PROFILLER ---------- -->
+    <section id="s-profiller" class="hide">
+      <div class="card">
+        <h2 data-i18n="srv.profiles"></h2>
+        <div class="sub" data-i18n="srv.profilesHint"></div>
+        <div class="row" style="margin-top:10px">
+          <input type="hidden" id="pId" value="0">
+          <div class="grow"><label data-i18n="srv.profileName"></label>
+            <input id="pAd" maxlength="48"></div>
+          <div style="flex:0 0 190px"><label data-i18n="srv.address"></label>
+            <select id="pAdres">
+              <option value="yerel" data-i18n="srv.addrLocal"></option>
+              <option value="lan" data-i18n="srv.addrLan"></option>
+            </select></div>
+          <div style="flex:0 0 110px"><label data-i18n="srv.port"></label>
+            <input id="pPort" type="number" min="1024" max="65535" value="6821"></div>
+          <div style="flex:0 0 130px"><label data-i18n="srv.profileLimit"></label>
+            <input id="pLimit" type="number" min="1" value="120"></div>
+        </div>
+        <div style="margin-top:10px">
+          <label data-i18n="srv.origins"></label>
+          <textarea id="pOrigin" spellcheck="false" style="min-height:60px"></textarea>
+          <div class="sub" data-i18n="srv.originsHint"></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="pri yonet" id="pKaydetBtn" data-i18n="srv.profileSave"></button>
+        </div>
+      </div>
+      <div class="card">
+        <div id="pDurum" class="state" data-i18n="pnl.loading"></div>
+        <table id="pTablo" class="hide">
+          <thead><tr>
+            <th data-i18n="srv.profileName"></th>
+            <th data-i18n="srv.address"></th>
+            <th data-i18n="srv.port"></th>
+            <th class="opt" data-i18n="srv.profileLimit"></th>
+            <th></th>
+          </tr></thead>
+          <tbody id="pGovde"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="toast" class="toast hide"></div>
+
+<script src="/varlik/i18n.js"></script>
+<script>
+/* eslint-env browser */
+"use strict";
+
+/* ===================== durum ===================== */
+var S = {
+  anahtar: "",
+  oturum: "",
+  rol: "",
+  csrf: "X-AfuDM-CSRF",
+  sekme: "indirmeler",
+  cevrimici: true,
+  ayarlar: null,
+  uygulama: null,
+  zamanlayici: 0
+};
+
+var DEPO = "afudm_panel_anahtar";
+function $(id) { return document.getElementById(id); }
+
+/* ===================== ag katmani =====================
+ * Anahtar HER ZAMAN baslikta gider; URL'ye ASLA konmaz.
+ */
+function istek(yol, veri) {
+  var basliklar = { "Accept": "application/json" };
+  if (S.anahtar) basliklar["X-AfuDM-Key"] = S.anahtar;
+  if (S.oturum) basliklar["X-AfuDM-Oturum"] = S.oturum;
+  var ayar = { method: veri === undefined ? "GET" : "POST", headers: basliklar,
+               credentials: "omit", cache: "no-store" };
+  if (veri !== undefined) {
+    basliklar["Content-Type"] = "application/json";
+    basliklar[S.csrf] = "1";            /* CSRF: tarayici bunu capraz gonderemez */
+    ayar.body = JSON.stringify(veri || {});
+  }
+  return fetch(yol, ayar).then(function (r) {
+    return r.json().catch(function () {
+      return { ok: false, code: "BOZUK_YANIT", error: "HTTP " + r.status };
+    }).then(function (g) {
+      cevrimici(true);
+      if (!r.ok && g.ok !== false) g.ok = false;
+      g._durum = r.status;
+      return g;
+    });
+  }, function () {
+    cevrimici(false);
+    return { ok: false, code: "BAGLANTI_YOK", error: t("pnl.offline"), _durum: 0 };
+  });
+}
+
+function cevrimici(acik) {
+  if (S.cevrimici === acik) return;
+  S.cevrimici = acik;
+  var p = $("baglantiPill");
+  if (!p) return;
+  p.textContent = acik ? t("pnl.connected") : t("pnl.offline");
+  p.className = "pill " + (acik ? "ok" : "err");
+}
+
+/* Oturum dustu / anahtar iptal edildi -> giris ekranina don. */
+function oturumKontrol(g) {
+  if (g && (g.code === "OTURUM_IPTAL" || g.code === "GECERSIZ_ANAHTAR")) {
+    cikis(g.code === "OTURUM_IPTAL" ? t("srv.clientRevoked") : t("pnl.badKey"));
+    return false;
+  }
+  return true;
+}
+
+/* ===================== bildirim ===================== */
+var toastZaman = 0;
+function bildir(metin, tur) {
+  var el = $("toast");
+  el.textContent = metin;
+  el.className = "toast " + (tur || "");
+  clearTimeout(toastZaman);
+  toastZaman = setTimeout(function () { el.className = "toast hide"; }, 3600);
+}
+function hataBildir(g) {
+  bildir((g && (g.message || g.error)) || t("pnl.error"), "err");
+}
+
+/* ===================== bicimleyiciler ===================== */
+function boyut(n) {
+  n = Number(n) || 0;
+  var b = ["B", "KB", "MB", "GB", "TB"], i = 0;
+  while (n >= 1024 && i < b.length - 1) { n /= 1024; i++; }
+  return (i ? n.toFixed(1) : n) + " " + b[i];
+}
+function sure(sn) {
+  sn = Math.max(0, Math.round(Number(sn) || 0));
+  var s = sn % 60, d = Math.floor(sn / 60) % 60, saat = Math.floor(sn / 3600);
+  return (saat ? saat + "s " : "") + (d ? d + "d " : "") + s + "sn";
+}
+function zaman(ts) {
+  if (!ts) return "—";
+  try { return new Date(Number(ts) * 1000).toLocaleString(); } catch (e) { return "—"; }
+}
+function kacak(s) {
+  return String(s === null || s === undefined ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+function rolAdi(r) {
+  return r === "yonetici" ? t("srv.roleAdmin") : t("srv.roleReader");
+}
+function rozetAdi(kod) {
+  if (kod === "hemen") return t("apply.now");
+  if (kod === "yeni_indirmelerde") return t("apply.newDownloads");
+  if (kod === "sonraki_baslatmada") return t("apply.nextStart");
+  if (kod === "servis_yeniden") return t("apply.serviceRestart");
+  return t("apply.unknown");
+}
+
+/* ===================== rol kapisi =====================
+ * Placeholder dugme BIRAKILMAZ: yetkisi olmayan her dugme GERCEKTEN
+ * devre disi kalir ve nedeni title olarak yazilir.
+ */
+function rolUygula() {
+  var yonetici = S.rol === "yonetici";
+  var liste = document.querySelectorAll(".yaz, .yonet");
+  for (var i = 0; i < liste.length; i++) {
+    liste[i].disabled = !yonetici;
+    if (!yonetici) liste[i].title = t("pnl.readOnlyHint");
+    else liste[i].removeAttribute("title");
+  }
+  $("soHint").classList.toggle("hide", yonetici);
+  $("rolPill").textContent = t("pnl.role") + ": " + rolAdi(S.rol);
+  $("rolPill").className = "pill " + (yonetici ? "ok" : "warn");
+}
+
+/* ===================== giris / cikis ===================== */
+function baglan(anahtar) {
+  S.anahtar = anahtar;
+  $("girisDurum").textContent = t("pnl.connecting");
+  $("baglanBtn").disabled = true;
+  return istek("/api/oturum", {}).then(function (g) {
+    $("baglanBtn").disabled = false;
+    if (!g.ok) {
+      S.anahtar = "";
+      var m = g.code === "COK_FAZLA_ISTEK" ? t("pnl.locked")
+            : g.code === "BAGLANTI_YOK" ? t("pnl.offline")
+            : g.code === "ANAHTAR_GEREKLI" || g.code === "GECERSIZ_ANAHTAR"
+              ? t("pnl.badKey") : (g.message || t("pnl.error"));
+      $("girisDurum").textContent = m;
+      return false;
+    }
+    S.oturum = g.oturum || "";
+    S.rol = g.rol || "salt_okur";
+    if (g.csrf_baslik) S.csrf = g.csrf_baslik;
+    try { sessionStorage.setItem(DEPO, anahtar); } catch (e) { /* ozel kip */ }
+    $("girisDurum").textContent = "";
+    $("giris").classList.add("hide");
+    $("panel").classList.remove("hide");
+    rolUygula();
+    cevrimici(true);
+    baslat();
+    return true;
+  });
+}
+
+function cikis(mesaj) {
+  if (S.oturum) istek("/api/oturum/kapat", {});
+  S.anahtar = ""; S.oturum = ""; S.rol = "";
+  try { sessionStorage.removeItem(DEPO); } catch (e) { /* ozel kip */ }
+  clearInterval(S.zamanlayici);
+  $("panel").classList.add("hide");
+  $("giris").classList.remove("hide");
+  $("anahtar").value = "";
+  $("girisDurum").textContent = mesaj || "";
+}
+
+/* ===================== sekmeler ===================== */
+function sekmeAc(ad) {
+  S.sekme = ad;
+  var dugmeler = document.querySelectorAll(".tabs button");
+  for (var i = 0; i < dugmeler.length; i++) {
+    dugmeler[i].setAttribute("aria-selected",
+      dugmeler[i].dataset.sekme === ad ? "true" : "false");
+  }
+  ["indirmeler", "ayarlar", "sunucu", "anahtarlar", "istemciler", "profiller"]
+    .forEach(function (s) { $("s-" + s).classList.toggle("hide", s !== ad); });
+  tazele(true);
+}
+
+/* ===================== indirmeler ===================== */
+function listeYukle() {
+  var yol = "/api/liste?filtre=" + encodeURIComponent($("filtre").value) +
+            "&arama=" + encodeURIComponent($("arama").value.trim());
+  return istek(yol).then(function (g) {
+    if (!oturumKontrol(g)) return;
+    var durum = $("listeDurum"), tablo = $("listeTablo");
+    if (!g.ok) {
+      tablo.classList.add("hide");
+      durum.className = "state err";
+      durum.innerHTML = kacak(g.message || g.error) +
+        ' <button id="listeTekrar">' + kacak(t("pnl.retryAction")) + "</button>";
+      durum.classList.remove("hide");
+      var b = $("listeTekrar");
+      if (b) b.onclick = listeYukle;
+      return;
+    }
+    var ogeler = g.items || [];
+    if (!ogeler.length) {
+      tablo.classList.add("hide");
+      durum.className = "state";
+      durum.textContent = t("pnl.empty");
+      durum.classList.remove("hide");
+      return;
+    }
+    durum.classList.add("hide");
+    tablo.classList.remove("hide");
+    $("listeGovde").innerHTML = ogeler.map(satir).join("");
+  });
+}
+
+function satir(o) {
+  var ad = o.title || o.filename || o.source || "?";
+  var yuzde = Number(o.progress || 0);
+  var durum = String(o.status || "");
+  var sinif = durum === "error" ? "err" : durum === "complete" ? "ok"
+            : durum === "active" ? "" : "warn";
+  var gid = kacak(o.gid || "");
+  var dugmeler = "";
+  if (durum === "active") {
+    dugmeler += '<button class="yaz" data-ey="pause" data-gid="' + gid + '">' +
+                kacak(t("pnl.pause")) + "</button> ";
+  } else if (durum === "paused") {
+    dugmeler += '<button class="yaz" data-ey="resume" data-gid="' + gid + '">' +
+                kacak(t("pnl.resume")) + "</button> ";
+  }
+  if (durum === "error" && o.id) {
+    dugmeler += '<button class="yaz" data-ey="retry" data-id="' + Number(o.id) + '">' +
+                kacak(t("pnl.retryItem")) + "</button> ";
+  }
+  if (durum !== "complete") {
+    dugmeler += '<button class="yaz dan" data-ey="remove" data-gid="' + gid + '">' +
+                kacak(t("pnl.cancel")) + "</button>";
+  }
+  var hata = o.error ? '<div class="sub" style="color:var(--err)">' +
+             kacak(String(o.error).slice(0, 200)) + "</div>" : "";
+  return "<tr><td class='mono'>" + kacak(String(o.gid || "").slice(0, 8)) + "</td>" +
+    "<td><div>" + kacak(String(ad).slice(0, 90)) + "</div>" +
+    "<div class='sub'>" + boyut(o.completed || o.done_bytes || 0) + " " +
+    kacak(t("pnl.of")) + " " + boyut(o.total || o.total_bytes || 0) +
+    (o.speed ? " · " + boyut(o.speed) + "/s" : "") + "</div>" +
+    "<div class='bar'><i style='width:" + Math.max(0, Math.min(100, yuzde)) +
+    "%'></i></div>" + hata + "</td>" +
+    "<td class='opt'>" + yuzde.toFixed(1) + "</td>" +
+    "<td class='opt'><span class='pill " + sinif + "'>" + kacak(durum) + "</span></td>" +
+    "<td style='white-space:nowrap'>" + dugmeler + "</td></tr>";
+}
+
+function olaylarYukle() {
+  return istek("/api/olaylar?limit=25").then(function (g) {
+    if (!g.ok) {
+      $("olayTablo").classList.add("hide");
+      $("olayDurum").className = "state err";
+      $("olayDurum").textContent = g.message || g.error || t("pnl.error");
+      $("olayDurum").classList.remove("hide");
+      return;
+    }
+    var e = g.events || [];
+    if (!e.length) {
+      $("olayTablo").classList.add("hide");
+      $("olayDurum").className = "state";
+      $("olayDurum").textContent = t("pnl.eventsEmpty");
+      $("olayDurum").classList.remove("hide");
+      return;
+    }
+    $("olayDurum").classList.add("hide");
+    $("olayTablo").classList.remove("hide");
+    $("olayGovde").innerHTML = e.map(function (x) {
+      var s = x.level === "error" ? "err" : x.level === "warn" ? "warn" : "";
+      return "<tr><td style='width:150px' class='sub'>" + kacak(zaman(x.at)) + "</td>" +
+        "<td style='width:70px'><span class='pill " + s + "'>" + kacak(x.level) +
+        "</span></td><td>" + kacak(x.message) + "</td></tr>";
+    }).join("");
+  });
+}
+
+/* ===================== ayarlar ===================== */
+/* Panelden duzenlenen ayarlar. Her satirin yaninda UYGULANMA ROZETI vardir;
+ * rozet degeri sunucudan gelir, burada tahmin edilmez. */
+var AYAR_ALANLARI = [
+  ["download_dir", "set.dir", "metin"],
+  ["max_concurrent", "set.conc", "sayi"],
+  ["split", "set.split", "sayi"],
+  ["max_conn_per_server", "set.conn", "sayi"],
+  ["max_speed_kb", "set.speed", "sayi"],
+  ["seed_ratio", "set.ratio", "ondalik"],
+  ["clipboard_watch", "set.clip", "bool"],
+  ["auto_update_trackers", "set.trackers", "bool"],
+  ["kategori_klasorleri", "set.kategori", "bool"],
+  ["shutdown_when_done", "set.shutdown", "bool"],
+  ["sleep_when_done", "set.sleep", "bool"],
+  ["notify_telegram", "set.notify", "bool"],
+  ["sunucu_istek_limiti", "srv.rateLimit", "sayi"],
+  ["sunucu_hatali_limit", "srv.rateFails", "sayi"],
+  ["sunucu_kilit_saniye", "srv.rateLock", "sayi"],
+  ["sunucu_istemci_kaydi", "srv.clientLog", "bool"],
+  ["sunucu_izinli_originler", "srv.origins", "cokSatir"],
+  ["sunucu_adres", "srv.address", "adres"],
+  ["sunucu_port", "srv.port", "sayi"]
+];
+
+function ayarlarYukle() {
+  return istek("/api/ayarlar").then(function (g) {
+    if (!oturumKontrol(g)) return;
+    if (!g.ok) {
+      $("ayarAlan").classList.add("hide");
+      $("ayarDurum").className = "state err";
+      $("ayarDurum").innerHTML = kacak(g.message || g.error) +
+        ' <button id="ayarTekrar">' + kacak(t("pnl.retryAction")) + "</button>";
+      $("ayarDurum").classList.remove("hide");
+      var b = $("ayarTekrar");
+      if (b) b.onclick = ayarlarYukle;
+      return;
+    }
+    S.ayarlar = g.settings || {};
+    S.uygulama = g.uygulama || {};
+    $("ayarDurum").classList.add("hide");
+    $("ayarAlan").classList.remove("hide");
+    $("ayarAlan").innerHTML = AYAR_ALANLARI.map(ayarSatiri).join("");
+    rolUygula();
+  });
+}
+
+function ayarSatiri(a) {
+  var ad = a[0], etiket = t(a[1]), tur = a[2];
+  var deger = S.ayarlar[ad];
+  var rozet = '<span class="pill">' + kacak(t("apply.label")) + ": " +
+              kacak(rozetAdi(S.uygulama[ad])) + "</span>";
+  var alan;
+  if (tur === "bool") {
+    alan = '<input type="checkbox" class="yaz" data-ayar="' + ad + '" data-tur="bool"' +
+           (deger ? " checked" : "") + ">";
+    return '<div class="set"><label class="name" style="cursor:pointer">' + alan +
+           "<span>" + kacak(etiket) + "</span>" + rozet + "</label></div>";
+  }
+  if (tur === "adres") {
+    alan = '<select class="yaz" data-ayar="' + ad + '" data-tur="metin">' +
+      '<option value="yerel"' + (deger === "yerel" ? " selected" : "") + ">" +
+      kacak(t("srv.addrLocal")) + "</option>" +
+      '<option value="lan"' + (deger === "lan" ? " selected" : "") + ">" +
+      kacak(t("srv.addrLan")) + "</option></select>";
+  } else if (tur === "cokSatir") {
+    alan = '<textarea class="yaz" data-ayar="' + ad + '" data-tur="metin" ' +
+           'style="min-height:60px">' + kacak(deger || "") + "</textarea>";
+  } else {
+    alan = '<input class="yaz" data-ayar="' + ad + '" data-tur="' + tur + '" ' +
+      (tur === "metin" ? "" : 'type="number" ') +
+      (tur === "ondalik" ? 'step="0.1" ' : "") +
+      'value="' + kacak(deger === null || deger === undefined ? "" : deger) + '">';
+  }
+  return '<div class="set"><label class="name">' + kacak(etiket) + rozet +
+         "</label>" + alan + "</div>";
+}
+
+function ayarKaydet() {
+  var alanlar = document.querySelectorAll("[data-ayar]");
+  var yuk = {};
+  for (var i = 0; i < alanlar.length; i++) {
+    var el = alanlar[i], ad = el.dataset.ayar, tur = el.dataset.tur;
+    if (tur === "bool") yuk[ad] = !!el.checked;
+    else if (tur === "sayi") yuk[ad] = parseInt(el.value, 10) || 0;
+    else if (tur === "ondalik") yuk[ad] = parseFloat(el.value) || 0;
+    else yuk[ad] = el.value;
+  }
+  $("ayarKaydetBtn").disabled = true;
+  istek("/api/ayarlar", { settings: yuk }).then(function (g) {
+    $("ayarKaydetBtn").disabled = false;
+    if (!g.ok) { hataBildir(g); return; }
+    bildir(t("pnl.saved"), "ok");
+    $("ayarNot").textContent = g.sunucu_yeniden_gerekli ? t("srv.restartNeeded") : "";
+    ayarlarYukle();
+  });
+}
+
+/* ===================== sunucu ===================== */
+function sunucuYukle() {
+  return istek("/api/durum").then(function (g) {
+    if (!oturumKontrol(g)) return;
+    if (!g.ok) {
+      $("srvAlan").classList.add("hide");
+      $("srvDurum").className = "state err";
+      $("srvDurum").textContent = g.message || g.error || t("pnl.error");
+      $("srvDurum").classList.remove("hide");
+      return;
+    }
+    var s = g.sunucu || {}, l = g.limit || {};
+    $("ustDurum").textContent = "v" + (g.surum || "?") + " · " + (g.kip || "?") +
+      " · " + (g.aktif_indirme || 0) + " " + t("trace.active");
+    $("srvPill").textContent = s.calisiyor ? t("srv.on") : t("srv.off");
+    $("srvPill").className = "pill " + (s.calisiyor ? "ok" : "err");
+    $("srvDurum").classList.add("hide");
+    $("srvAlan").classList.remove("hide");
+    var satirlar = [
+      [t("srv.state"), s.calisiyor ? t("srv.on") : t("srv.off")],
+      [t("srv.address"), s.adres === "lan" ? t("srv.addrLan") : t("srv.addrLocal")],
+      [t("srv.port"), s.port],
+      [t("srv.url"), s.url || "—"],
+      [t("srv.lanUrl"), s.lan_url || "—"],
+      [t("srv.uptime"), s.baslangic ? sure(Date.now() / 1000 - s.baslangic) : "—"],
+      [t("srv.requests"), s.istek_sayisi],
+      [t("srv.rejected"), s.reddedilen],
+      [t("srv.profiles"), s.profil_ad || t("srv.profileNone")]
+    ];
+    if (s.hata) satirlar.push([t("pnl.error"), s.hata]);
+    $("srvGovde").innerHTML = satirlar.map(function (r) {
+      return "<tr><td class='sub' style='width:180px'>" + kacak(r[0]) +
+             "</td><td>" + kacak(r[1]) + "</td></tr>";
+    }).join("");
+    $("limitGovde").innerHTML = [
+      [t("srv.rateLimit"), l.limit],
+      [t("srv.rateFails"), l.hatali_limit],
+      [t("srv.rateLock"), l.kilit_saniye],
+      [t("srv.rateWatched"), l.izlenen_ip],
+      [t("srv.rateLocked"), l.kilitli_ip]
+    ].map(function (r) {
+      return "<tr><td class='sub' style='width:220px'>" + kacak(r[0]) +
+             "</td><td>" + kacak(r[1]) + "</td></tr>";
+    }).join("");
+  });
+}
+
+/* ===================== anahtarlar ===================== */
+function anahtarlarYukle() {
+  return istek("/api/anahtarlar").then(function (g) {
+    if (!oturumKontrol(g)) return;
+    if (!g.ok) {
+      $("kTablo").classList.add("hide");
+      $("kDurum").className = "state err";
+      $("kDurum").textContent = g.message || g.error || t("pnl.error");
+      $("kDurum").classList.remove("hide");
+      return;
+    }
+    var liste = g.anahtarlar || [];
+    if (!liste.length) {
+      $("kTablo").classList.add("hide");
+      $("kDurum").className = "state";
+      $("kDurum").textContent = t("srv.keyEmpty");
+      $("kDurum").classList.remove("hide");
+      return;
+    }
+    $("kDurum").classList.add("hide");
+    $("kTablo").classList.remove("hide");
+    $("kGovde").innerHTML = liste.map(function (k) {
+      var dugme = k.iptal
+        ? '<button class="yonet dan" data-ey="sil" data-kid="' + k.id + '">' +
+          kacak(t("srv.keyDelete")) + "</button>"
+        : '<button class="yonet" data-ey="rot" data-kid="' + k.id + '">' +
+          kacak(t("srv.keyRotate")) + '</button> ' +
+          '<button class="yonet dan" data-ey="iptal" data-kid="' + k.id + '">' +
+          kacak(t("srv.keyRevoke")) + "</button>";
+      return "<tr><td>" + kacak(k.ad) +
+        (k.iptal ? " <span class='pill err'>" + kacak(t("srv.keyRevokedTag")) +
+         "</span>" : "") +
+        (k.not_metni ? "<div class='sub'>" + kacak(k.not_metni) + "</div>" : "") +
+        "</td><td><span class='pill'>" + kacak(rolAdi(k.rol)) + "</span></td>" +
+        "<td class='opt mono'>" + kacak(k.onek) + "…</td>" +
+        "<td class='opt sub'>" +
+        kacak(k.son_kullanim ? zaman(k.son_kullanim) : t("srv.keyNever")) + "</td>" +
+        "<td style='white-space:nowrap'>" + dugme + "</td></tr>";
+    }).join("");
+    rolUygula();
+  });
+}
+
+function gizliGoster(g) {
+  $("kGizli").classList.remove("hide");
+  $("kGizliDeger").textContent = g.gizli;
+  $("kKopyalaBtn").onclick = function () {
+    var yaz = navigator.clipboard && navigator.clipboard.writeText
+      ? navigator.clipboard.writeText(g.gizli)
+      : Promise.reject();
+    yaz.then(function () { bildir(t("srv.copied"), "ok"); },
+             function () { bildir(t("pnl.error"), "err"); });
+  };
+}
+
+/* ===================== istemciler ===================== */
+function istemcilerYukle() {
+  return istek("/api/istemciler").then(function (g) {
+    if (!oturumKontrol(g)) return;
+    if (!g.ok) {
+      $("iTablo").classList.add("hide");
+      $("iDurum").className = "state err";
+      $("iDurum").textContent = g.message || g.error || t("pnl.error");
+      $("iDurum").classList.remove("hide");
+      return;
+    }
+    var liste = (g.istemciler || []).filter(function (c) { return !c.iptal; });
+    if (!liste.length) {
+      $("iTablo").classList.add("hide");
+      $("iDurum").className = "state";
+      $("iDurum").textContent = t("srv.clientsEmpty");
+      $("iDurum").classList.remove("hide");
+      return;
+    }
+    $("iDurum").classList.add("hide");
+    $("iTablo").classList.remove("hide");
+    $("iGovde").innerHTML = liste.map(function (c) {
+      return "<tr><td>" + kacak(c.anahtar_adi || "—") + "</td>" +
+        "<td><span class='pill'>" + kacak(rolAdi(c.rol)) + "</span></td>" +
+        "<td class='opt mono'>" + kacak(c.ip) + "</td>" +
+        "<td class='opt sub'>" + kacak(String(c.istemci || "").slice(0, 60)) + "</td>" +
+        "<td class='sub'>" + kacak(zaman(c.son_gorulme)) + "</td>" +
+        "<td class='opt'>" + kacak(c.istek_sayisi) + "</td>" +
+        "<td><button class='yonet dan' data-ey='iptal' data-cid='" + c.id + "'>" +
+        kacak(t("srv.clientRevoke")) + "</button></td></tr>";
+    }).join("");
+    rolUygula();
+  });
+}
+
+/* ===================== profiller ===================== */
+function profillerYukle() {
+  return istek("/api/profiller").then(function (g) {
+    if (!oturumKontrol(g)) return;
+    if (!g.ok) {
+      $("pTablo").classList.add("hide");
+      $("pDurum").className = "state err";
+      $("pDurum").textContent = g.message || g.error || t("pnl.error");
+      $("pDurum").classList.remove("hide");
+      return;
+    }
+    var liste = g.profiller || [];
+    if (!liste.length) {
+      $("pTablo").classList.add("hide");
+      $("pDurum").className = "state";
+      $("pDurum").textContent = t("srv.profilesEmpty");
+      $("pDurum").classList.remove("hide");
+      return;
+    }
+    $("pDurum").classList.add("hide");
+    $("pTablo").classList.remove("hide");
+    $("pGovde").innerHTML = liste.map(function (p) {
+      return "<tr><td>" + kacak(p.ad) +
+        (p.etkin ? " <span class='pill ok'>" + kacak(t("srv.profileActive")) +
+         "</span>" : "") + "</td>" +
+        "<td>" + kacak(p.adres === "lan" ? t("srv.addrLan") : t("srv.addrLocal")) +
+        "</td><td>" + kacak(p.port) + "</td>" +
+        "<td class='opt'>" + kacak(p.istek_limiti) + "</td>" +
+        "<td style='white-space:nowrap'>" +
+        "<button class='yonet' data-ey='duzenle' data-pid='" + p.id + "'>" +
+        kacak(t("srv.profileSave")) + "</button> " +
+        "<button class='yonet' data-ey='etkin' data-pid='" + p.id + "'>" +
+        kacak(t("srv.profileActivate")) + "</button> " +
+        "<button class='yonet dan' data-ey='sil' data-pid='" + p.id + "'>" +
+        kacak(t("srv.profileDelete")) + "</button></td></tr>";
+    }).join("");
+    S._profiller = liste;
+    rolUygula();
+  });
+}
+
+/* ===================== dongu ===================== */
+function tazele(zorla) {
+  if (!S.anahtar) return;
+  if (S.sekme === "indirmeler") { listeYukle(); if (zorla) olaylarYukle(); }
+  else if (S.sekme === "sunucu") sunucuYukle();
+  else if (S.sekme === "ayarlar") { if (zorla) ayarlarYukle(); }
+  else if (S.sekme === "anahtarlar") { if (zorla) anahtarlarYukle(); }
+  else if (S.sekme === "istemciler") istemcilerYukle();
+  else if (S.sekme === "profiller") { if (zorla) profillerYukle(); }
+}
+
+function baslat() {
+  tazele(true);
+  sunucuYukle();
+  clearInterval(S.zamanlayici);
+  S.zamanlayici = setInterval(function () {
+    if ($("otoYenile").checked) tazele(false);
+  }, 2500);
+}
+
+/* ===================== olaylar (DOM) ===================== */
+function kur() {
+  setLang((navigator.language || "tr").toLowerCase().indexOf("tr") === 0 ? "tr" : "en");
+  applyStatic();
+  document.title = t("pnl.title");
+
+  $("baglanBtn").onclick = function () {
+    var v = $("anahtar").value.trim();
+    if (!v) { $("girisDurum").textContent = t("pnl.badKey"); return; }
+    baglan(v);
+  };
+  $("anahtar").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") $("baglanBtn").click();
+  });
+  $("cikisBtn").onclick = function () { cikis(""); };
+
+  var sekmeler = document.querySelectorAll(".tabs button");
+  for (var i = 0; i < sekmeler.length; i++) {
+    sekmeler[i].onclick = function () { sekmeAc(this.dataset.sekme); };
+  }
+
+  $("yenileBtn").onclick = function () { tazele(true); };
+  $("filtre").onchange = listeYukle;
+  $("arama").oninput = function () {
+    clearTimeout(S._ara);
+    S._ara = setTimeout(listeYukle, 300);
+  };
+
+  $("ekleBtn").onclick = function () {
+    var satirlar = $("ekleMetin").value.split("\n")
+      .map(function (s) { return s.trim(); })
+      .filter(function (s) { return s.length > 0; });
+    if (!satirlar.length) return;
+    $("ekleBtn").disabled = true;
+    $("ekleHata").classList.add("hide");
+    istek("/api/ekle", { urls: satirlar }).then(function (g) {
+      $("ekleBtn").disabled = false;
+      if (!g.ok) {
+        $("ekleHata").textContent = g.message || g.error || t("pnl.error");
+        $("ekleHata").classList.remove("hide");
+        return;
+      }
+      $("ekleMetin").value = "";
+      bildir(t("pnl.added", { n: (g.added || 0) + (g.scheduled || 0) }), "ok");
+      if ((g.failed || []).length) {
+        $("ekleHata").textContent = g.failed.join(" | ");
+        $("ekleHata").classList.remove("hide");
+      }
+      listeYukle();
+    });
+  };
+
+  $("hizProfil").onchange = function () {
+    istek("/api/hiz-profili", { profil: this.value }).then(function (g) {
+      if (!g.ok) hataBildir(g); else bildir(t("pnl.saved"), "ok");
+    });
+  };
+
+  $("hepsiDurBtn").onclick = function () { eylem("pause_all", {}); };
+  $("hepsiDevamBtn").onclick = function () { eylem("resume_all", {}); };
+  $("temizleBtn").onclick = function () {
+    istek("/api/temizle", {}).then(function (g) {
+      if (!g.ok) hataBildir(g);
+      else { bildir(t("pnl.saved"), "ok"); listeYukle(); }
+    });
+  };
+
+  $("listeGovde").onclick = function (ev) {
+    var b = ev.target.closest("button[data-ey]");
+    if (!b || b.disabled) return;
+    var ey = b.dataset.ey;
+    if (ey === "retry") {
+      istek("/api/yeniden-dene", { id: Number(b.dataset.id) }).then(function (g) {
+        if (!g.ok) hataBildir(g); else { bildir(t("pnl.saved"), "ok"); listeYukle(); }
+      });
+      return;
+    }
+    if (ey === "remove" && !confirm(t("pnl.cancelConfirm"))) return;
+    eylem(ey, { gid: b.dataset.gid });
+  };
+
+  $("kOlusturBtn").onclick = function () {
+    var ad = $("kAd").value.trim();
+    if (!ad) { bildir(t("srv.keyName"), "err"); return; }
+    this.disabled = true;
+    var btn = this;
+    istek("/api/anahtar/olustur",
+          { ad: ad, rol: $("kRol").value, not_metni: $("kNot").value.trim() })
+      .then(function (g) {
+        btn.disabled = false;
+        if (!g.ok) { hataBildir(g); return; }
+        $("kAd").value = ""; $("kNot").value = "";
+        gizliGoster(g);
+        bildir(t("srv.keyCreated"), "ok");
+        anahtarlarYukle();
+      });
+  };
+
+  $("kGovde").onclick = function (ev) {
+    var b = ev.target.closest("button[data-ey]");
+    if (!b || b.disabled) return;
+    var id = Number(b.dataset.kid), ey = b.dataset.ey;
+    if (ey === "rot") {
+      if (!confirm(t("srv.keyConfirmRotate"))) return;
+      istek("/api/anahtar/rotasyon", { id: id }).then(function (g) {
+        if (!g.ok) { hataBildir(g); return; }
+        gizliGoster(g);
+        bildir(t("srv.keyRotated"), "ok");
+        anahtarlarYukle();
+      });
+    } else if (ey === "iptal") {
+      if (!confirm(t("srv.keyConfirmRevoke"))) return;
+      istek("/api/anahtar/iptal", { id: id }).then(function (g) {
+        if (!g.ok) { hataBildir(g); return; }
+        bildir(t("srv.keyRevoked"), "ok");
+        anahtarlarYukle();
+      });
+    } else if (ey === "sil") {
+      istek("/api/anahtar/sil", { id: id }).then(function (g) {
+        if (!g.ok) { hataBildir(g); return; }
+        bildir(t("srv.keyDeleted"), "ok");
+        anahtarlarYukle();
+      });
+    }
+  };
+
+  $("iGovde").onclick = function (ev) {
+    var b = ev.target.closest("button[data-ey]");
+    if (!b || b.disabled) return;
+    istek("/api/istemci/iptal", { id: Number(b.dataset.cid) }).then(function (g) {
+      if (!g.ok) { hataBildir(g); return; }
+      bildir(t("srv.clientRevoked"), "ok");
+      istemcilerYukle();
+    });
+  };
+  $("iTemizleBtn").onclick = function () {
+    istek("/api/istemci/temizle", { gun: 7 }).then(function (g) {
+      if (!g.ok) { hataBildir(g); return; }
+      bildir(t("srv.clientsPurged", { n: g.silinen || 0 }), "ok");
+      istemcilerYukle();
+    });
+  };
+
+  $("kilitTemizleBtn").onclick = function () {
+    istek("/api/kilit/temizle", {}).then(function (g) {
+      if (!g.ok) { hataBildir(g); return; }
+      bildir(t("srv.rateCleared", { n: g.temizlenen || 0 }), "ok");
+      sunucuYukle();
+    });
+  };
+
+  $("srvDurdurBtn").onclick = function () {
+    istek("/api/sunucu/durdur", {}).then(function (g) {
+      if (!g.ok) { hataBildir(g); return; }
+      bildir(t("srv.stopped"), "ok");
+      $("srvNot").textContent = t("srv.stopped");
+    });
+  };
+
+  $("pKaydetBtn").onclick = function () {
+    istek("/api/profil/kaydet", {
+      id: Number($("pId").value) || 0,
+      ad: $("pAd").value.trim(),
+      adres: $("pAdres").value,
+      port: Number($("pPort").value) || 0,
+      istek_limiti: Number($("pLimit").value) || 120,
+      originler: $("pOrigin").value
+    }).then(function (g) {
+      if (!g.ok) { hataBildir(g); return; }
+      $("pId").value = "0"; $("pAd").value = "";
+      bildir(t("srv.profileSaved") +
+        (g.sunucu_yeniden_gerekli ? " · " + t("srv.restartNeeded") : ""), "ok");
+      profillerYukle();
+    });
+  };
+
+  $("pGovde").onclick = function (ev) {
+    var b = ev.target.closest("button[data-ey]");
+    if (!b || b.disabled) return;
+    var id = Number(b.dataset.pid), ey = b.dataset.ey;
+    if (ey === "duzenle") {
+      var p = (S._profiller || []).filter(function (x) { return x.id === id; })[0];
+      if (!p) return;
+      $("pId").value = p.id; $("pAd").value = p.ad; $("pAdres").value = p.adres;
+      $("pPort").value = p.port; $("pLimit").value = p.istek_limiti;
+      $("pOrigin").value = p.originler;
+      window.scrollTo(0, 0);
+    } else if (ey === "etkin") {
+      istek("/api/profil/etkinlestir", { id: id }).then(function (g) {
+        if (!g.ok) { hataBildir(g); return; }
+        bildir(t("srv.profileSaved") + " · " + t("srv.restartNeeded"), "ok");
+        profillerYukle();
+      });
+    } else if (ey === "sil") {
+      istek("/api/profil/sil", { id: id }).then(function (g) {
+        if (!g.ok) { hataBildir(g); return; }
+        bildir(t("srv.profileDeleted"), "ok");
+        profillerYukle();
+      });
+    }
+  };
+
+  $("ayarKaydetBtn").onclick = ayarKaydet;
+
+  /* Sekmeyi kapatinca oturum sunucuda asili kalmasin. */
+  window.addEventListener("pagehide", function () {
+    if (!S.oturum || !navigator.sendBeacon) return;
+    /* sendBeacon ozel baslik tasiyamaz; en iyi cabadir. Tasimadiginda oturum
+       "son gorulme" ile eskir ve yonetici elle iptal edebilir. */
+  });
+
+  /* Ayni sekmede sayfa yenilendiyse anahtari geri al. */
+  var kayitli = "";
+  try { kayitli = sessionStorage.getItem(DEPO) || ""; } catch (e) { kayitli = ""; }
+  if (kayitli) baglan(kayitli);
+}
+
+function eylem(ad, ek) {
+  var yuk = { action: ad };
+  for (var k in ek) yuk[k] = ek[k];
+  return istek("/api/kontrol", yuk).then(function (g) {
+    if (!g.ok) { hataBildir(g); return; }
+    listeYukle();
+  });
+}
+
+document.addEventListener("DOMContentLoaded", kur);
+</script>
+</body>
+</html>
