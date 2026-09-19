@@ -566,6 +566,12 @@ input, textarea, code, .kv, .row-title, .kay-url, .hint, .err-note { user-select
 .opt input { accent-color: var(--dl); }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
 .hint { font-size: 11px; color: var(--dim); line-height: 1.5; }
+.rules-sheet { width: 780px; }
+.rules-toolbar, .rule-head, .rule-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.rule-card { border:1px solid var(--line); border-radius:4px; padding:10px; margin:8px 0; background:var(--bg-deep); }
+.rule-card input, .rule-card select { width:auto; min-width:90px; padding:5px; }
+.rule-rows { display:grid; gap:5px; margin:8px 0; }.rule-row { display:flex; gap:5px; flex-wrap:wrap; align-items:center; }
+.rules-sim { border-top:1px solid var(--line); padding-top:12px; margin-top:12px; }.rules-sim input { margin-bottom:7px; }
 
 /* ---------- Chrome'a ekle ---------- */
 .rail-chrome { color: var(--dl) !important; }

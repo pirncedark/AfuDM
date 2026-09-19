@@ -105,7 +105,7 @@ DEFAULTS: dict[str, Any] = {
 # `USER_VERSION`'i artirinca aradaki ADIMI `MIGRATIONS` sozlugune ekle.
 # Adimlar YALNIZCA degisiklik gerektiginde vardir; gecis 0->1 hic is yapmaz
 # (mevcut _SCHEMA zaten v1'dir). Eski veri ASLA silinmez.
-USER_VERSION = 3
+USER_VERSION = 4
 
 
 def _v2_torrent_dosya_secimleri(conn: sqlite3.Connection) -> None:
@@ -126,9 +126,14 @@ def _v2_torrent_dosya_secimleri(conn: sqlite3.Connection) -> None:
 def _v3_events_gid(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE events ADD COLUMN gid TEXT")
 
+def _v4_rules_engine(conn: sqlite3.Connection) -> None:
+    conn.execute("CREATE TABLE IF NOT EXISTS rules (id TEXT PRIMARY KEY,name TEXT NOT NULL,active INTEGER DEFAULT 1,priority INTEGER NOT NULL,match_type TEXT NOT NULL,conditions TEXT NOT NULL,actions TEXT NOT NULL)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rules_priority ON rules(priority)")
+
 MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     2: _v2_torrent_dosya_secimleri,
     3: _v3_events_gid,
+    4: _v4_rules_engine,
 }
 
 
@@ -193,6 +198,18 @@ class Store:
             except json.JSONDecodeError:
                 out[row["key"]] = row["value"]
         return out
+
+    def rules_list(self) -> list[dict]:
+        with self._lock:
+            rows = self.conn.execute("SELECT * FROM rules ORDER BY priority, id").fetchall()
+        return [{**dict(r), "active":bool(r["active"]), "conditions":json.loads(r["conditions"]), "actions":json.loads(r["actions"])} for r in rows]
+
+    def rules_save(self, rules: list[dict]) -> None:
+        with self._lock:
+            self.conn.execute("BEGIN"); self.conn.execute("DELETE FROM rules")
+            for priority, rule in enumerate(rules, 1):
+                self.conn.execute("INSERT INTO rules(id,name,active,priority,match_type,conditions,actions) VALUES(?,?,?,?,?,?,?)", (rule["id"],rule["name"],int(bool(rule.get("active",True))),priority,rule.get("match_type","all"),json.dumps(rule.get("conditions") or []),json.dumps(rule.get("actions") or {})))
+            self.conn.commit()
 
     # --- indirmeler -------------------------------------------------------
     def add(

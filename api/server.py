@@ -209,6 +209,8 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/snapshot":
             self._send(200, {"ok": True, **self.manager.snapshot()})
+        elif parsed.path == "/rules":
+            self._send(200, {"ok": True, "rules": self.manager.store.rules_list()})
         elif parsed.path == "/probe":
             url = query.get("url", [""])[0]
             try:
@@ -234,6 +236,7 @@ class _Handler(BaseHTTPRequestHandler):
                     "scheduler", "hiz_profilleri", "renew", "ozel_basliklar",
                     "cerez", "zamanlama", "cli", "api", "kategori_klasorleri",
                     "proxy", "sistem_proxy", "checksum", "canli_ayar",
+                    "rules_engine",
                 ],
                 "sinirlar": {
                     "kaynak": models.SOURCE_MAX,
@@ -324,6 +327,20 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(200, {"ok": True, **sonuc})
             elif parsed.path == "/settings":
                 self._send(200, {"ok": True, "settings": self.manager.update_settings(data)})
+            elif parsed.path == "/rules":
+                incoming = data.get("rules")
+                if not isinstance(incoming, list):
+                    self._hata(400, "BAD_REQUEST", "rules liste olmali")
+                    return
+                # Same persistent Store/service used by the pywebview bridge.
+                normalized = []
+                for index, rule in enumerate(incoming, 1):
+                    if not isinstance(rule, dict) or not str(rule.get("name") or "").strip():
+                        self._hata(400, "BAD_REQUEST", "her kuralin adi olmali")
+                        return
+                    normalized.append({"id": str(rule.get("id") or f"api-rule-{index}"), "name": str(rule["name"]).strip()[:100], "active": bool(rule.get("active", True)), "match_type": rule.get("match_type") if rule.get("match_type") in ("all", "any") else "all", "conditions": rule.get("conditions") if isinstance(rule.get("conditions"), list) else [], "actions": rule.get("actions") if isinstance(rule.get("actions"), dict) else {}})
+                self.manager.store.rules_save(normalized)
+                self._send(200, {"ok": True, "rules": self.manager.store.rules_list()})
             elif parsed.path == "/renew":
                 # Olen linki yeni adresle devam ettir (afuadm renew <gid> <url>).
                 # headers/cookies/user_agent OPSIYONEL: varliksa ayni atomik

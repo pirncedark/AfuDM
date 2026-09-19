@@ -22,7 +22,7 @@ from video import ytdlp
 
 from .dosya_adi import resolve_filename
 
-from . import cerez, lang, models, paths, trackers
+from . import cerez, lang, models, paths, trackers, rules
 from . import proxy as P
 from .daemon import Aria2Daemon
 from .db import Store
@@ -360,7 +360,12 @@ class Manager:
         if duplicate:
             label = "bu torrent" if kind == "torrent" else "bu baglanti"
             raise ValueError(f"{label} zaten kuyrukta: {duplicate.get('title') or req.source[:60]}")
-        dest_dir = req.dest_dir or self.current_download_dir()
+        category = "video" if kind == "video" else ("torrent" if kind == "torrent" else "")
+        resolved = rules.evaluate(self.store.rules_list(), {"dest_dir": self.current_download_dir(), "proxy": self.store.get("proxy", ""), "max_speed_kb": self.store.get("max_speed_kb", 0), "split": self.store.get("max_conn_per_server", 16)}, rules.context(req.source, req.filename or req.title or "", 0, kind, category), {"dest_dir": req.dest_dir, "proxy": req.proxy})
+        effective = resolved["effective_options"]
+        dest_dir = effective.get("dest_dir") or self.current_download_dir()
+        rule_start_after = models.parse_time_spec(effective.get("start_after", ""))
+        start_after = req.start_after or rule_start_after
         Path(dest_dir).mkdir(parents=True, exist_ok=True)
         options = {
             "quality": req.quality or self.store.get("video_quality", "best"),
@@ -370,7 +375,10 @@ class Manager:
             "filename": req.filename or "",
             "user_agent": req.user_agent or "",
             "title": req.title or "",
-            "proxy": req.proxy or "",
+            "proxy": effective.get("proxy", ""),
+            "hiz_kb": effective.get("max_speed_kb", 0),
+            "baglanti": effective.get("split", 0),
+            "rules_trace": resolved["trace"],
             "checksum": req.checksum or "",
             "adopt_gid": getattr(req, "adopt_gid", None),
             "selected_files": getattr(req, "selected_files", None),
@@ -395,15 +403,15 @@ class Manager:
             title=options["title"] or self.guess_name(req.source),
             dest_dir=dest_dir,
             options=options,
-            start_after=req.start_after,
+            start_after=start_after,
         )
         temiz = cerez.temizle(req.cookies)
         if temiz:
             self._cerezler[row_id] = temiz
-        if req.start_after:
-            when = time.strftime("%H:%M", time.localtime(req.start_after))
+        if start_after:
+            when = time.strftime("%H:%M", time.localtime(start_after))
             self.store.log("info", f"zamanlandi ({when}): {req.source[:80]}")
-            return {"id": row_id, "kind": kind, "scheduled_for": req.start_after}
+            return {"id": row_id, "kind": kind, "scheduled_for": start_after}
         return self._launch(self.store.by_id(row_id))  # type: ignore[arg-type]
 
     def _launch(self, row: dict) -> dict:

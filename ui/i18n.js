@@ -848,6 +848,9 @@ const DICT = {
 
 let LANG = "tr";
 
+Object.assign(DICT.tr, {"rules.open":"Kuralları yönet","rules.title":"İndirme kuralları","rules.new":"Yeni kural","rules.save":"Kuralları kaydet","rules.sim":"URL simülatörü","rules.run":"Test et","rules.badgeNew":"Yeni indirmelerde","rules.empty":"Kural yok.","rules.active":"Etkin","rules.name":"Kural adı","rules.all":"Tüm koşullar (VE)","rules.any":"Herhangi koşul (VEYA)","rules.condition":"Koşul","rules.action":"Eylem","rules.addCondition":"Koşul ekle","rules.addAction":"Eylem ekle","rules.delete":"Sil","rules.up":"Yukarı","rules.down":"Aşağı","rules.copy":"Kopyala","rules.match":"Eşleşen: {n}","rules.conflict":"Çakışan ayarlar: {items}","rules.noMatch":"Eşleşen kural yok; genel varsayılan kullanılır.","rules.source":"Kaynak: {name}","rules.openRule":"Kurali aç","rules.override":"Bu indirme için değiştir","rules.default":"Varsayılanı kullan"});
+Object.assign(DICT.en, {"rules.open":"Manage rules","rules.title":"Download rules","rules.new":"New rule","rules.save":"Save rules","rules.sim":"URL simulator","rules.run":"Test","rules.badgeNew":"New downloads","rules.empty":"No rules.","rules.active":"Active","rules.name":"Rule name","rules.all":"All conditions (AND)","rules.any":"Any condition (OR)","rules.condition":"Condition","rules.action":"Action","rules.addCondition":"Add condition","rules.addAction":"Add action","rules.delete":"Delete","rules.up":"Up","rules.down":"Down","rules.copy":"Copy","rules.match":"Matched: {n}","rules.conflict":"Conflicting settings: {items}","rules.noMatch":"No rule matched; general defaults apply.","rules.source":"Source: {name}","rules.openRule":"Open rule","rules.override":"Change for this download","rules.default":"Use default"});
+
 function setLang(code) {
   LANG = DICT[code] ? code : "tr";
   document.documentElement.lang = LANG;
