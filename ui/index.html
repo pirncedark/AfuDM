@@ -75,11 +75,43 @@
       <div class="drawer-head">
         <strong id="dTitle">—</strong>
         <span class="num" id="dGid"></span>
+        <div class="detail-tabs" id="detailTabs" role="tablist">
+          <button type="button" class="dtab active" data-dtab="overview" id="dTabOverview" data-i18n="dtab.overview">Genel bakış</button>
+          <button type="button" class="dtab" data-dtab="files" id="dTabFiles" data-i18n="dtab.files">Dosyalar</button>
+          <button type="button" class="dtab" data-dtab="trackers" id="dTabTrackers" data-i18n="dtab.trackers">Trackerlar</button>
+          <button type="button" class="dtab" data-dtab="rules" id="dTabRules" data-i18n="dtab.rules">Kurallar</button>
+          <button type="button" class="dtab" data-dtab="automation" id="dTabAutomation" data-i18n="dtab.automation">Otomasyon</button>
+          <button type="button" class="dtab" data-dtab="logs" id="dTabLogs" data-i18n="dtab.logs">Günlükler</button>
+        </div>
+        <button class="btn" id="dTorFiles" data-i18n="tor.btnFiles" style="display:none">Torrent dosyaları</button>
         <button class="btn ghost close" id="dClose" data-i18n="drawer.close">Kapat</button>
       </div>
       <div class="drawer-body">
-        <div class="kv" id="dKv"></div>
-        <div id="dPeersWrap"></div>
+        <!-- 1. Overview -->
+        <div class="dpanel active" id="dPanelOverview">
+          <div class="kv" id="dKv"></div>
+        </div>
+        <!-- 2. Files -->
+        <div class="dpanel" id="dPanelFiles">
+          <div id="dFilesContent"></div>
+        </div>
+        <!-- 3. Trackers -->
+        <div class="dpanel" id="dPanelTrackers">
+          <div id="dTrackersContent"></div>
+          <div id="dPeersWrap"></div>
+        </div>
+        <!-- 4. Rules -->
+        <div class="dpanel" id="dPanelRules">
+          <div class="dpanel-placeholder" id="dRulesContent"></div>
+        </div>
+        <!-- 5. Automation -->
+        <div class="dpanel" id="dPanelAutomation">
+          <div class="dpanel-placeholder" id="dAutomationContent"></div>
+        </div>
+        <!-- 6. Logs -->
+        <div class="dpanel" id="dPanelLogs">
+          <div class="dpanel-logs" id="dLogsContent"></div>
+        </div>
       </div>
     </section>
   </main>
@@ -388,6 +420,25 @@
           <label for="kayAt" data-i18n="add.startAt">Saatinde başlat (boş = hemen)</label>
           <input id="kayAt" type="text" placeholder="23:30" spellcheck="false">
         </div>
+      <div id="kayTorWrap" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
+        <div class="tor-meta">
+          <strong data-i18n="kay.torFiles">Torrent Dosyaları</strong>
+          <div class="tor-sayac" id="kayTorSayac"></div>
+        </div>
+        <div class="tor-araclar">
+          <div class="tor-filtre-ara">
+            <input type="text" id="kayTorAra" placeholder="Dosya veya klasör ara..." data-i18n-ph="tor.filterPh" spellcheck="false">
+          </div>
+          <button class="btn ghost btn-icon" id="kayTorSecHepsi" title="Hepsini seç" data-i18n-title="tor.selectAll">☑️</button>
+          <button class="btn ghost btn-icon" id="kayTorSecHicbiri" title="Seçimi temizle" data-i18n-title="tor.selectNone">🔲</button>
+          <button class="btn ghost btn-icon" id="kayTorSecTers" title="Seçimi tersine çevir" data-i18n-title="tor.invert">🔄</button>
+        </div>
+        <div class="tor-agac" id="kayTorAgac" style="max-height: 250px;"></div>
+        <div class="tor-limit-bar" id="kayTorLimitBar">
+          <span id="kayTorLimitNot"></span>
+          <button class="btn ghost" id="kayTorLimitHepsi">Hepsini göster</button>
+        </div>
+        <div class="tor-bos" id="kayTorBilgi"></div>
       </div>
       <div class="hint" id="kayQueue"></div>
       <div class="err-note" id="kayErr"></div>
@@ -513,6 +564,51 @@
       <button class="btn ghost" data-close="lgVeil" data-i18n="lg.cancel">Vazgeç</button>
       <span style="flex:1"></span>
       <button class="btn primary" id="lgGo" data-i18n="lg.go">Seçilenleri indir</button>
+    </div>
+  </div>
+
+<!-- Torrent dosya agaci ve secimi (core/manager.torrent_dosyalari, torrent_secimi_ayarla) -->
+<div class="veil" id="torrentVeil">
+  <div class="sheet sheet-genis">
+    <div class="tor-head-bar">
+      <h2 data-i18n="tor.title">Torrent dosyaları</h2>
+      <span class="tor-gid-badge" id="torGid"></span>
+    </div>
+    <div class="body">
+      <div class="tor-meta">
+        <strong id="torBaslik">—</strong>
+        <div class="tor-sayac" id="torSayac"></div>
+      </div>
+      <div class="tor-metrik-bar" id="torMetrikBar">
+        <div class="tor-metrik-kutu"><span class="tor-metrik-lbl" data-i18n="tor.seed">Seed</span><b id="torSeedVal">—</b></div>
+        <div class="tor-metrik-kutu"><span class="tor-metrik-lbl" data-i18n="tor.peers">Eşler (Peers)</span><b id="torPeersVal">—</b></div>
+        <div class="tor-metrik-kutu"><span class="tor-metrik-lbl" data-i18n="tor.ratio">Oran (Ratio)</span><b id="torRatioVal">—</b></div>
+        <div class="tor-metrik-kutu"><span class="tor-metrik-lbl" data-i18n="tor.download">İndirme</span><b id="torDownVal">—</b></div>
+        <div class="tor-metrik-kutu"><span class="tor-metrik-lbl" data-i18n="tor.upload">Gönderim</span><b id="torUpVal">—</b></div>
+        <div class="tor-metrik-kutu"><span class="tor-metrik-lbl" data-i18n="tor.trackers">Trackerlar</span><b id="torTrackersVal">—</b></div>
+      </div>
+      <div class="tor-araclar">
+        <div class="tor-filtre-ara">
+          <input id="torAra" type="text" data-i18n-ph="tor.filterPh" placeholder="Dosya veya klasör ara…" spellcheck="false">
+        </div>
+        <div class="tor-eylemler">
+          <button class="btn" id="torSecHepsi" data-i18n="tor.selectAll">Tümünü seç</button>
+          <button class="btn" id="torSecHicbiri" data-i18n="tor.selectNone">Hiçbirini seçme</button>
+          <button class="btn" id="torSecTers" data-i18n="tor.invert">Tersine çevir</button>
+        </div>
+      </div>
+      <div class="err-note" id="torErr"></div>
+      <div class="tor-bilgi" id="torBilgi" style="display:none"></div>
+      <div class="tor-agac" id="torAgac"></div>
+      <div class="tor-limit-bar" id="torLimitBar" style="display:none">
+        <span class="hint" id="torLimitNot"></span>
+        <button class="btn" id="torLimitHepsi" data-i18n="tor.showAll">Tümünü göster</button>
+      </div>
+    </div>
+    <div class="foot">
+      <button class="btn ghost" data-close="torrentVeil" data-i18n="tor.close">Kapat</button>
+      <span style="flex:1"></span>
+      <button class="btn primary" id="torUygula" data-i18n="tor.apply">Seçilenleri uygula</button>
     </div>
   </div>
 </div>

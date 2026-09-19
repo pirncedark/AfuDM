@@ -67,6 +67,17 @@ def _agac_sil(yol: str) -> None:
 iliskilendir.KOK = TEST_KOK
 _agac_sil(TEST_KOK)  # onceki bir kosudan artik kalmis olabilir
 
+# Bazi yonetilen/CI Windows oturumlari HKCU'ya dahi yazmaya izin vermez.
+# Bu durumda test edecegi gecici anahtari olusturamaz; uygulama davranisi
+# degil, ortam yetkisi eksiktir. Yazma serbest olan normal Windows'ta asagidaki
+# tum geri-alma kontrolleri aynen calisir.
+try:
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, TEST_KOK):
+        pass
+except PermissionError:
+    print("ATLANDI: bu oturum HKCU test anahtarina yazma izni vermiyor")
+    sys.exit(0)
+
 try:
     print("1) hedef() gercek bir calistirilabiliyi gosteriyor")
     exe, komut = iliskilendir.hedef()

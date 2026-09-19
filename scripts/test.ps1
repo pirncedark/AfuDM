@@ -91,13 +91,19 @@ if (`$parseHatalari) {
         "tests/trackerlar_test.py",
         "tests/tracker_saglik_test.py",
         "tests/db_test.py",
+        "tests/torrent_dosya_test.py",
+        "tests/torrent_secim_test.py",
         "tests/network_core_test.py",
         "tests/dosya_adi_test.py",
         "tests/linkgrabber_test.py",
         "tests/engines_test.py",
         "tests/video_pro_test.py",
         "tests/cli_yardim_test.py",
-        "tests/video_cerez_test.py"
+        "tests/video_cerez_test.py",
+        "tests/torrent_ui_test.py",
+        "tests/torrent_onekle_test.py",
+        "tests/torrent_duzeltme_test.py",
+        "tests/torrent_yaris_test.mjs"
     )
 
     $gecen = 0
@@ -106,7 +112,11 @@ if (`$parseHatalari) {
         if (-not (Test-Path $t)) { Write-Host "ATLANDI (yok): $t"; continue }
         $eskiEAP = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
-        $out = & python $t 2>&1
+        if ($t.EndsWith(".mjs") -or $t.EndsWith(".js")) {
+            $out = & node $t 2>&1
+        } else {
+            $out = & python $t 2>&1
+        }
         $kod = $LASTEXITCODE
         $ErrorActionPreference = $eskiEAP
         if ($kod -eq 0) {

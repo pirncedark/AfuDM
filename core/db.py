@@ -105,8 +105,31 @@ DEFAULTS: dict[str, Any] = {
 # `USER_VERSION`'i artirinca aradaki ADIMI `MIGRATIONS` sozlugune ekle.
 # Adimlar YALNIZCA degisiklik gerektiginde vardir; gecis 0->1 hic is yapmaz
 # (mevcut _SCHEMA zaten v1'dir). Eski veri ASLA silinmez.
-USER_VERSION = 1
-MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {}
+USER_VERSION = 3
+
+
+def _v2_torrent_dosya_secimleri(conn: sqlite3.Connection) -> None:
+    """Torrent dosya secimlerini aria2 oturumundan bagimsiz sakla.
+
+    `file_index=0` secim kaydinin varligini belirtir; bu sayede kullanicinin
+    tum dosyalari kapattigi durum, hic tercih kaydedilmemis durumdan ayrilir.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS torrent_file_selections (
+            gid        TEXT NOT NULL,
+            file_index INTEGER NOT NULL,
+            selected   INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (gid, file_index)
+        )
+    """)
+
+def _v3_events_gid(conn: sqlite3.Connection) -> None:
+    conn.execute("ALTER TABLE events ADD COLUMN gid TEXT")
+
+MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
+    2: _v2_torrent_dosya_secimleri,
+    3: _v3_events_gid,
+}
 
 
 def _guncelle_sema(conn: sqlite3.Connection) -> None:
@@ -272,6 +295,47 @@ class Store:
                 continue
         return highest
 
+    # --- torrent dosya secimleri -----------------------------------------
+    def torrent_dosya_secimlerini_kaydet(self, gid: str, indeksler: list[int]) -> None:
+        """Bir torrentin kullanici tarafindan secilen aria2 dosya indeksleri."""
+        with self._lock:
+            self.conn.execute("DELETE FROM torrent_file_selections WHERE gid = ?", (gid,))
+            self.conn.execute(
+                "INSERT INTO torrent_file_selections(gid, file_index, selected) VALUES(?,?,1)",
+                (gid, 0),
+            )
+            self.conn.executemany(
+                "INSERT INTO torrent_file_selections(gid, file_index, selected) VALUES(?,?,1)",
+                [(gid, indeks) for indeks in sorted(set(indeksler))],
+            )
+            self.conn.commit()
+
+    def torrent_dosya_secimleri(self, gid: str) -> list[int]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT file_index FROM torrent_file_selections "
+                "WHERE gid = ? AND file_index > 0 AND selected = 1 ORDER BY file_index",
+                (gid,),
+            ).fetchall()
+        return [int(row["file_index"]) for row in rows]
+
+    def torrent_dosya_secimi_var(self, gid: str) -> bool:
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT 1 FROM torrent_file_selections WHERE gid = ? AND file_index = 0",
+                (gid,),
+            ).fetchone()
+        return row is not None
+
+    def torrent_dosya_secimlerini_tasi(self, eski_gid: str, yeni_gid: str) -> None:
+        """Magnet ustverisi cocuk GID urettiginde secimleri de devral."""
+        with self._lock:
+            self.conn.execute(
+                "UPDATE OR IGNORE torrent_file_selections SET gid = ? WHERE gid = ?",
+                (yeni_gid, eski_gid),
+            )
+            self.conn.commit()
+
     def due_scheduled(self, now: float | None = None) -> list[dict]:
         now = now or time.time()
         with self._lock:
@@ -296,17 +360,22 @@ class Store:
             return cur.rowcount
 
     # --- olay kaydi -------------------------------------------------------
-    def log(self, level: str, message: str) -> None:
+    def log(self, level: str, message: str, gid: str = "") -> None:
         with self._lock:
             self.conn.execute(
-                "INSERT INTO events(at, level, message) VALUES(?,?,?)",
-                (time.time(), level, message),
+                "INSERT INTO events(at, level, message, gid) VALUES(?,?,?,?)",
+                (time.time(), level, message, gid or None),
             )
             self.conn.commit()
 
-    def recent_events(self, limit: int = 50) -> list[dict]:
+    def recent_events(self, limit: int = 50, gid: str = "") -> list[dict]:
         with self._lock:
-            rows = self.conn.execute(
-                "SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,)
-            ).fetchall()
+            if gid:
+                rows = self.conn.execute(
+                    "SELECT * FROM events WHERE gid = ? ORDER BY id DESC LIMIT ?", (gid, limit)
+                ).fetchall()
+            else:
+                rows = self.conn.execute(
+                    "SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,)
+                ).fetchall()
         return [dict(r) for r in rows]

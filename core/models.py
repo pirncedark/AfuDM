@@ -174,6 +174,8 @@ class DownloadRequest:
     start_after: float | None = None
     proxy: str | None = None
     checksum: str | None = None
+    adopt_gid: str | None = None
+    selected_files: list[int] | None = None
     # --- v1.6 Video Pro (tum varsayilanlar BOS/False; videoda islenir) ----
     altyazi_diller: str = ""
     oto_altyazi: bool = False
@@ -253,6 +255,8 @@ class DownloadRequest:
             start_after=start_after,
             proxy=px,
             checksum=checksum,
+            adopt_gid=data.get("adopt_gid") or None,
+            selected_files=data.get("selected_files"),
             altyazi_diller=_metin_al(data, "altyazi_diller", ALTYAZI_MAX),
             oto_altyazi=bool(data.get("oto_altyazi")),
             altyazi_goem=bool(data.get("altyazi_goem")),

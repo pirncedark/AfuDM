@@ -1,0 +1,9 @@
+# Satir sonlari: depoda LF, calisma agacinda LF. Windows kabuk betikleri CRLF kalir.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.png binary
+*.ico binary
+*.exe binary
+*.zip binary
