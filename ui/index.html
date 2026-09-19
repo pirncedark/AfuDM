@@ -382,6 +382,25 @@
           <label for="kayAt" data-i18n="add.startAt">Saatinde başlat (boş = hemen)</label>
           <input id="kayAt" type="text" placeholder="23:30" spellcheck="false">
         </div>
+      <div id="kayTorWrap" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
+        <div class="tor-meta">
+          <strong data-i18n="kay.torFiles">Torrent Dosyaları</strong>
+          <div class="tor-sayac" id="kayTorSayac"></div>
+        </div>
+        <div class="tor-araclar">
+          <div class="tor-filtre-ara">
+            <input type="text" id="kayTorAra" placeholder="Dosya veya klasör ara..." data-i18n-ph="tor.filterPh" spellcheck="false">
+          </div>
+          <button class="btn ghost btn-icon" id="kayTorSecHepsi" title="Hepsini seç" data-i18n-title="tor.selectAll">☑️</button>
+          <button class="btn ghost btn-icon" id="kayTorSecHicbiri" title="Seçimi temizle" data-i18n-title="tor.selectNone">🔲</button>
+          <button class="btn ghost btn-icon" id="kayTorSecTers" title="Seçimi tersine çevir" data-i18n-title="tor.invert">🔄</button>
+        </div>
+        <div class="tor-agac" id="kayTorAgac" style="max-height: 250px;"></div>
+        <div class="tor-limit-bar" id="kayTorLimitBar">
+          <span id="kayTorLimitNot"></span>
+          <button class="btn ghost" id="kayTorLimitHepsi">Hepsini göster</button>
+        </div>
+        <div class="tor-bos" id="kayTorBilgi"></div>
       </div>
       <div class="hint" id="kayQueue"></div>
       <div class="err-note" id="kayErr"></div>

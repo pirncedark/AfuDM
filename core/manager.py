@@ -370,6 +370,8 @@ class Manager:
             "title": req.title or "",
             "proxy": req.proxy or "",
             "checksum": req.checksum or "",
+            "adopt_gid": getattr(req, "adopt_gid", None),
+            "selected_files": getattr(req, "selected_files", None),
         }
         row_id = self.store.add(
             kind=kind,
@@ -466,23 +468,50 @@ class Manager:
         return self.rpc.add_uri([row["source"]], aria_options)
 
     def _launch_torrent(self, row: dict, dest_dir: str) -> str:
+        options = json.loads(row["options"] or "{}")
+        adopt_gid = options.get("adopt_gid")
+        
+        if adopt_gid:
+            gid = adopt_gid
+            try:
+                durum = self.rpc.tell_status(gid, ["followedBy"])
+                if durum.get("followedBy"):
+                    gid = durum["followedBy"][0]
+            except Aria2Error:
+                pass
+            
+            try:
+                self.rpc.change_option(gid, {"dir": dest_dir})
+            except Aria2Error as exc:
+                self.store.log("error", f"kayit dizini degistirilemedi: {exc}")
+                
+            selected = options.get("selected_files")
+            if selected:
+                try:
+                    self.rpc.change_option(gid, {"select-file": self._select_file_degeri(selected)})
+                    # DB guncellemesi (daha gid attach edilmedi ama sorun degil)
+                    self.store.torrent_dosya_secimlerini_kaydet(gid, selected)
+                except Aria2Error as exc:
+                    self.store.log("error", f"dosya secimi uygulanamadi: {exc}")
+            
+            try:
+                self.rpc.unpause(gid)
+            except Aria2Error:
+                pass
+            return gid
+
         source = row["source"]
         aria_options = {"dir": dest_dir}
-        proksi = self._proksi(json.loads(row["options"] or "{}"))
+        proksi = self._proksi(options)
         if proksi:
-            # all-proxy-type=socks5 ile BT baglantilari da proxy'den gecer;
-            # 'http' tipi HTTP/FTP'ye etkir (aria2 belgeli davranis).
             aria_options.update(P.aria2_secenekleri(proksi))
         local = Path(source)
         try:
             if local.exists() and local.suffix.lower() == ".torrent":
                 payload = base64.b64encode(local.read_bytes()).decode("ascii")
                 return self.rpc.add_torrent(payload, aria_options)
-            # magnet veya .torrent URL'si: aria2 --follow-torrent ile devralir
             return self.rpc.add_uri([source], aria_options)
         except Aria2Error as exc:
-            # aria2 ayni info hash'i ikinci kez kabul etmez; kullaniciya
-            # ham motor mesaji yerine anlasilir bir sey soyle.
             if "already registered" in str(exc).lower():
                 raise ValueError("bu torrent zaten kuyrukta") from exc
             raise
@@ -1107,13 +1136,47 @@ class Manager:
             for p in raw
         ]
 
+    def torrent_on_ekle(self, source: str) -> str:
+        """Kullanici dosya secimi yapabilsin diye torrenti duraklatilmis olarak aria2'ye ekler.
+        DB'ye kaydedilmez; secim/iptal adiminda nihai islem yapilir."""
+        aria_options = {
+            "pause": "true",
+            "pause-metadata": "false",
+        }
+        proksi = self._proksi({})
+        if proksi:
+            aria_options.update(P.aria2_secenekleri(proksi))
+        
+        local = Path(source)
+        try:
+            if local.exists() and local.suffix.lower() == ".torrent":
+                payload = base64.b64encode(local.read_bytes()).decode("ascii")
+                return self.rpc.add_torrent(payload, aria_options)
+            return self.rpc.add_uri([source], aria_options)
+        except Aria2Error as exc:
+            if "already registered" in str(exc).lower():
+                raise ValueError("bu torrent zaten kuyrukta") from exc
+            raise
+
+    def torrent_on_iptal(self, gid: str) -> None:
+        """On-eklenmis ancak iptal edilmis torrenti aria2'den siler."""
+        try:
+            durum = self.rpc.tell_status(gid, ["followedBy"])
+            child = (durum.get("followedBy") or [None])[0]
+            self.rpc.remove(gid, force=True)
+            self.rpc.remove_result(gid)
+            if child:
+                self.rpc.remove(child, force=True)
+                self.rpc.remove_result(child)
+        except Aria2Error:
+            pass
+
     # --- torrent dosyalari ------------------------------------------------
     @staticmethod
     def _torrent_dosya_turu(uzanti: str) -> str:
         turler = {
-            "video": {".mkv", ".mp4", ".avi", ".mov", ".webm", ".m4v"},
-            "ses": {".mp3", ".flac", ".wav", ".aac", ".ogg", ".m4a"},
-            "altyazi": {".srt", ".ass", ".ssa", ".vtt", ".sub"},
+            "video": {".mp4", ".mkv", ".avi", ".webm", ".ts"},
+            "ses": {".mp3", ".m4a", ".aac", ".ogg", ".flac", ".wav"},
             "arsiv": {".zip", ".rar", ".7z", ".tar", ".gz", ".iso"},
             "belge": {".pdf", ".txt", ".epub", ".mobi", ".doc", ".docx"},
             "resim": {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"},
@@ -1139,6 +1202,9 @@ class Manager:
         row = self.store.by_gid(gid)
         try:
             durum = self.rpc.tell_status(gid, ["gid", "infoHash", "bittorrent", "followedBy"])
+            if durum.get("followedBy"):
+                gid = durum["followedBy"][0]
+                durum = self.rpc.tell_status(gid, ["gid", "infoHash", "bittorrent", "followedBy"])
         except Aria2Error as exc:
             raise ValueError("torrent durumu okunamadi: %s" % str(exc)[:160]) from exc
         bittorrent = durum.get("bittorrent") or {}
@@ -1154,7 +1220,7 @@ class Manager:
             ham_dosyalar = self.rpc.get_files(gid)
         except Aria2Error as exc:
             raise ValueError("torrent dosya listesi okunamadi: %s" % str(exc)[:160]) from exc
-        if not ham_dosyalar and (row or {}).get("kind") == "torrent" and not bittorrent:
+        if not ham_dosyalar and torrent_mu and not bittorrent:
             return TorrentDosyaListesi(
                 hazir_degil=True,
                 neden="Magnet ustverisi henuz gelmedi; dosya listesi hazir degil.",

@@ -108,6 +108,8 @@ class DownloadRequest:
     start_after: float | None = None
     proxy: str | None = None
     checksum: str | None = None
+    adopt_gid: str | None = None
+    selected_files: list[int] | None = None
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "DownloadRequest":
@@ -164,4 +166,6 @@ class DownloadRequest:
             start_after=start_after,
             proxy=px,
             checksum=checksum,
+            adopt_gid=data.get("adopt_gid") or None,
+            selected_files=data.get("selected_files"),
         )

@@ -97,7 +97,8 @@ if (`$parseHatalari) {
         "tests/dosya_adi_test.py",
         "tests/linkgrabber_test.py",
         "tests/engines_test.py",
-        "tests/torrent_ui_test.py"
+        "tests/torrent_ui_test.py",
+        "tests/torrent_onekle_test.py"
     )
 
     $gecen = 0

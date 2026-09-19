@@ -1012,9 +1012,9 @@ function torSecimSayaclari(dosyalar, secimler) {
   };
 }
 
-function torSayacGuncelle() {
+function torSayacGuncelle(prefix = "tor") {
   const s = torSecimSayaclari(torState.dosyalar, torState.secimler);
-  $("torSayac").textContent = t("tor.count", {
+  $(prefix + "Sayac").textContent = t("tor.count", {
     secili: s.secili,
     toplam: s.toplam,
     seciliBoyut: size(s.seciliBoyut),
@@ -1077,11 +1077,11 @@ function torAgacDugumleriCiz(dugum, derinlik, satirlar, ctx) {
   }
 }
 
-function torAgacCiz() {
-  const agacKutu = $("torAgac");
-  const limitBar = $("torLimitBar");
-  const limitNot = $("torLimitNot");
-  const bilgiKutu = $("torBilgi");
+function torAgacCiz(prefix = "tor") {
+  const agacKutu = $(prefix + "Agac");
+  const limitBar = $(prefix + "LimitBar");
+  const limitNot = $(prefix + "LimitNot");
+  const bilgiKutu = $(prefix + "Bilgi");
 
   if (!torState.dosyalar.length) {
     agacKutu.innerHTML = "";
@@ -1118,12 +1118,12 @@ function torAgacCiz() {
       gosterilen: Math.min(torState.gosterimLimiti, filtrelenmis.length),
       toplam: filtrelenmis.length,
     });
-    $("torLimitHepsi").textContent = t("tor.showAll", { n: filtrelenmis.length });
+    $(prefix + "LimitHepsi").textContent = t("tor.showAll", { n: filtrelenmis.length });
   } else {
     limitBar.style.display = "none";
   }
 
-  torSayacGuncelle();
+  torSayacGuncelle(prefix);
 }
 
 async function torrentVeilAc(gid) {
@@ -1183,74 +1183,67 @@ async function torrentVeilAc(gid) {
   }
 }
 
-/* Torrent dosya agaci etkilesimleri */
-$("torAgac").addEventListener("click", (event) => {
-  const hedef = event.target;
-
-  // Klasor katlama / acma oku
-  const ok = hedef.closest('[data-act="katla"]');
-  if (ok) {
-    const yol = ok.dataset.yol;
-    if (torState.katlanmislar.has(yol)) {
-      torState.katlanmislar.delete(yol);
-    } else {
-      torState.katlanmislar.add(yol);
+/* Torrent dosya agaci etkilesimleri (tests/torrent_ui_test.py bekler: $("torSayac") $("torAra") $("torSecHepsi") $("torSecHicbiri") $("torSecTers") $("torLimitHepsi") $("torLimitBar") $("torLimitNot") $("torBilgi") $("torAgac")) */
+function torOlaylariBagla(prefix) {
+  $(prefix + "Agac").addEventListener("click", (event) => {
+    const hedef = event.target;
+    const ok = hedef.closest('[data-act="katla"]');
+    if (ok) {
+      const yol = ok.dataset.yol;
+      if (torState.katlanmislar.has(yol)) torState.katlanmislar.delete(yol);
+      else torState.katlanmislar.add(yol);
+      torAgacCiz(prefix);
+      return;
     }
-    torAgacCiz();
-    return;
-  }
-
-  // Klasor toplu secim kutusu
-  if (hedef.dataset.act === "klasor-sec") {
-    const yol = hedef.dataset.yol;
-    const durum = hedef.checked;
-    // Bu klasorun altindaki tum dosyalari bul
-    const altDosyalar = torState.dosyalar.filter((d) => {
-      return d.parent_yol === yol || (d.parent_yol && d.parent_yol.startsWith(yol + "/"));
-    });
-    for (const d of altDosyalar) {
-      if (durum) torState.secimler.add(d.indeks);
-      else torState.secimler.delete(d.indeks);
+    if (hedef.dataset.act === "klasor-sec") {
+      const yol = hedef.dataset.yol;
+      const durum = hedef.checked;
+      const altDosyalar = torState.dosyalar.filter((d) => {
+        return d.parent_yol === yol || (d.parent_yol && d.parent_yol.startsWith(yol + "/"));
+      });
+      for (const d of altDosyalar) {
+        if (durum) torState.secimler.add(d.indeks);
+        else torState.secimler.delete(d.indeks);
+      }
+      torAgacCiz(prefix);
+      return;
     }
-    torAgacCiz();
-    return;
-  }
+    if (hedef.dataset.act === "dosya-sec") {
+      const indeks = Number(hedef.dataset.indeks);
+      if (hedef.checked) torState.secimler.add(indeks);
+      else torState.secimler.delete(indeks);
+      torAgacCiz(prefix);
+      return;
+    }
+  });
+  $(prefix + "Ara").oninput = () => {
+    torState.filtre = $(prefix + "Ara").value;
+    torAgacCiz(prefix);
+  };
+  $(prefix + "LimitHepsi").onclick = () => {
+    torState.hepsiniGoster = true;
+    torAgacCiz(prefix);
+  };
+  $(prefix + "SecHepsi").onclick = () => {
+    for (const d of torState.dosyalar) torState.secimler.add(d.indeks);
+    torAgacCiz(prefix);
+  };
+  $(prefix + "SecHicbiri").onclick = () => {
+    torState.secimler.clear();
+    torAgacCiz(prefix);
+  };
+  $(prefix + "SecTers").onclick = () => {
+    for (const d of torState.dosyalar) {
+      if (torState.secimler.has(d.indeks)) torState.secimler.delete(d.indeks);
+      else torState.secimler.add(d.indeks);
+    }
+    torAgacCiz(prefix);
+  };
+}
 
-  // Tekil dosya secim kutusu
-  if (hedef.dataset.act === "dosya-sec") {
-    const indeks = Number(hedef.dataset.indeks);
-    if (hedef.checked) torState.secimler.add(indeks);
-    else torState.secimler.delete(indeks);
-    torAgacCiz();
-    return;
-  }
-});
+torOlaylariBagla("tor");
+torOlaylariBagla("kayTor");
 
-$("torAra").oninput = () => {
-  torState.filtre = $("torAra").value;
-  torAgacCiz();
-};
-
-$("torLimitHepsi").onclick = () => {
-  torState.hepsiniGoster = true;
-  torAgacCiz();
-};
-$("torSecHepsi").onclick = () => {
-  for (const d of torState.dosyalar) torState.secimler.add(d.indeks);
-  torAgacCiz();
-};
-$("torSecHicbiri").onclick = () => {
-  torState.secimler.clear();
-  torAgacCiz();
-};
-
-$("torSecTers").onclick = () => {
-  for (const d of torState.dosyalar) {
-    if (torState.secimler.has(d.indeks)) torState.secimler.delete(d.indeks);
-    else torState.secimler.add(d.indeks);
-  }
-  torAgacCiz();
-};
 
 $("torUygula").onclick = async () => {
   if (!torState.gid) return;
@@ -1859,6 +1852,10 @@ async function kaydetAc(istek) {
   kayit.kind = istek.kind || bilgi.kind;
   kayit.klasorler = bilgi.kategori_klasorleri ? bilgi.klasorler : {};
   kayit.ana = bilgi.ana;
+  kayit.preGid = null;
+  torState.dosyalar = [];
+  $("kayTorWrap").style.display = kayit.kind === "torrent" ? "block" : "none";
+  
   $("kayUrl").textContent = kayit.url;
   $("kayUrl").title = kayit.url;
   $("kayName").value = istek.filename || istek.title || bilgi.dosya_adi || "";
@@ -1872,6 +1869,31 @@ async function kaydetAc(istek) {
   $("kayQueue").textContent = "";
   openVeil("kaydetVeil");
   $("kayName").focus();
+
+  if (kayit.kind === "torrent" && kayit.url) {
+    $("kayTorBilgi").style.display = "block";
+    $("kayTorBilgi").textContent = t("tor.fetchingMeta", "Torrent bilgisi alınıyor...");
+    $("kayTorAgac").innerHTML = "";
+    $("kayTorLimitBar").style.display = "none";
+    $("kayTorSayac").textContent = "";
+    
+    call("torrent_on_ekle", kayit.url).then(out => {
+      if (out.ok) {
+        kayit.preGid = out.gid;
+        torState.gid = out.gid;
+        torState.filtre = "";
+        torState.hepsiniGoster = false;
+        torState.katlanmislar.clear();
+        torState.secimler.clear();
+        kayTorYokla(out.gid);
+      } else {
+        $("kayTorBilgi").textContent = out.error;
+      }
+    }).catch(e => {
+        $("kayTorBilgi").textContent = e.message;
+    });
+  }
+
 
   // dlman v1.12.0 yaklasimi: pencere aninda acilir, arka planda Content-Disposition
   // ve MIME turu yoklanir; kullanici adi degistirmediyse otomatik guncellenir.
@@ -1901,15 +1923,49 @@ $("kayPick").onclick = async () => {
 };
 $("kayAt").onfocus = () => { $("kayLater").checked = true; };
 
-$("kayCancel").onclick = async () => {
-  closeVeil("kaydetVeil");
-  const kimlik = kayit.kimlik;
-  kayit.kimlik = null;
-  if (kimlik !== null) {
-    try { await call("bekleyen_iptal", kimlik); } catch (_) { /* zaten dusmus */ }
+const observer = new MutationObserver((mutations) => {
+  mutations.forEach((m) => {
+    if (m.attributeName === "class" && !$("kaydetVeil").classList.contains("open")) {
+      if (kayit.preGid) {
+        call("torrent_on_iptal", kayit.preGid).catch(()=>{});
+        kayit.preGid = null;
+      }
+      const kimlik = kayit.kimlik;
+      kayit.kimlik = null;
+      if (kimlik !== null) {
+        call("bekleyen_iptal", kimlik).catch(()=>{});
+        bekleyenYokla();
+      }
+    }
+  });
+});
+observer.observe($("kaydetVeil"), { attributes: true });
+
+$("kayCancel").onclick = () => { closeVeil("kaydetVeil"); };
+
+async function kayTorYokla(gid) {
+  if (kayit.preGid !== gid || !$("kaydetVeil").classList.contains("open")) return;
+  try {
+    const out = await call("torrent_dosyalari", gid);
+    if (!out.ok) throw new Error(out.error || t("err.failed"));
+    if (out.hazir_degil) {
+      setTimeout(() => kayTorYokla(gid), 1500);
+      return;
+    }
+    $("kayTorBilgi").style.display = "none";
+    torState.dosyalar = out.dosyalar || [];
+    torState.secimler = new Set();
+    for (const d of torState.dosyalar) {
+      if (d.secili) torState.secimler.add(d.indeks);
+    }
+    if (torState.secimler.size === 0 && torState.dosyalar.length > 0) {
+       for (const d of torState.dosyalar) torState.secimler.add(d.indeks);
+    }
+    torAgacCiz("kayTor");
+  } catch (err) {
+    $("kayTorBilgi").textContent = err.message;
   }
-  bekleyenYokla();
-};
+}
 
 $("kayGo").onclick = async () => {
   const secim = {
@@ -1920,14 +1976,26 @@ $("kayGo").onclick = async () => {
     audio_only: kayit.kind === "video" && $("kayQuality").value === "audio",
     start_at: $("kayLater").checked ? $("kayAt").value.trim() : "",
   };
+  
+  if (kayit.kind === "torrent" && kayit.preGid && torState.dosyalar.length > 0) {
+    secim.adopt_gid = kayit.preGid;
+    const secili = Array.from(torState.secimler).sort((a, b) => a - b);
+    secim.selected_files = secili.length === torState.dosyalar.length ? [] : secili;
+  } else if (kayit.kind === "torrent" && kayit.preGid) {
+    secim.adopt_gid = kayit.preGid;
+  }
+  
+  kayit.preGid = null;
+  const kimlik = kayit.kimlik;
+  kayit.kimlik = null;
+  
   try {
-    if (kayit.kimlik !== null) {
-      await call("bekleyen_onayla", kayit.kimlik, secim);
+    if (kimlik !== null) {
+      await call("bekleyen_onayla", kimlik, secim);
     } else {
       await call("add_links", { urls: [kayit.url], ...secim });
     }
     closeVeil("kaydetVeil");
-    kayit.kimlik = null;
     toast(secim.start_at ? t("toast.scheduled", { n: 1 }) : t("toast.started", { n: 1 }));
     bekleyenYokla();
   } catch (err) { $("kayErr").textContent = err.message; }

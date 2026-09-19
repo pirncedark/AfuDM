@@ -414,6 +414,22 @@ class Api:
 
     def seed_tazele(self, gid: str) -> dict:
         return self.manager.seed_tazele(gid)
+    def torrent_on_ekle(self, source: str) -> dict:
+        """Dosya secimi icin torrenti duraklatilmis olarak aria2'ye ekler."""
+        try:
+            gid = self.manager.torrent_on_ekle(source)
+            return {"ok": True, "gid": gid}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+
+    def torrent_on_iptal(self, gid: str) -> dict:
+        """On-eklenmis torrenti kaldirir."""
+        try:
+            self.manager.torrent_on_iptal(gid)
+            return {"ok": True}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+
     def torrent_dosyalari(self, gid: str) -> dict:
         """Torrent dosya agaci ve secim bilgisi."""
         try:
