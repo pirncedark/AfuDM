@@ -414,6 +414,53 @@ class Api:
 
     def seed_tazele(self, gid: str) -> dict:
         return self.manager.seed_tazele(gid)
+    def torrent_dosyalari(self, gid: str) -> dict:
+        """Torrent dosya agaci ve secim bilgisi."""
+        try:
+            dosyalar = self.manager.torrent_dosyalari(gid)
+            hazir_degil = bool(getattr(dosyalar, "hazir_degil", False))
+            neden = str(getattr(dosyalar, "neden", ""))
+            return {
+                "ok": True,
+                "gid": gid,
+                "hazir_degil": hazir_degil,
+                "neden": neden,
+                "dosyalar": list(dosyalar),
+            }
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+
+    def torrent_secimi_ayarla(self, gid: str, indeksler: list[int]) -> dict:
+        """Torrent dosya secimini canli uygula ve DB'ye yaz."""
+        try:
+            return self.manager.torrent_secimi_ayarla(gid, indeksler)
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+    def torrent_metrikleri(self, gid: str) -> dict:
+        """Torrent seed/ratio/tracker metrikleri koprusu."""
+        try:
+            sonuc = self.manager.torrent_metrikleri(gid)
+            hazir_degil = bool(sonuc.get("hazir_degil", False))
+            neden = str(sonuc.get("neden", ""))
+            return {
+                "ok": True,
+                "gid": gid,
+                "hazir_degil": hazir_degil,
+                "neden": neden,
+                "metrikler": sonuc if not hazir_degil else {},
+            }
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:300], "hazir_degil": True, "neden": str(exc)[:300]}
+
+    def loglar(self, gid: str = "") -> dict:
+        """Detay paneli icin olay ve hata gunlukleri."""
+        try:
+            events = self.manager.store.recent_events(limit=50)
+            return {"ok": True, "events": events}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:200], "events": []}
+
+
 
     def tracker_tara(self, gid: str = "") -> dict:
         """Klasordeki tracker'lari olc ve canli sonucu hemen uygula."""

@@ -387,12 +387,63 @@ select:focus-visible, button:focus-visible {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 9px 14px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--line-soft);
 }
-.drawer-head strong { font-weight: 600; font-size: 13px; }
+.drawer-head strong { font-weight: 600; font-size: 13px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drawer-head .close { margin-left: auto; }
-.drawer-body { flex: 1; overflow: auto; padding: 10px 14px 14px; }
+.detail-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+}
+.dtab {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--dim);
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 4px 9px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.dtab:hover {
+  color: var(--text);
+  background: #ffffff0a;
+}
+.dtab.active {
+  color: var(--dl);
+  background: #19263a;
+  border-color: #274063;
+  font-weight: 600;
+}
+.drawer-body { flex: 1; overflow: auto; padding: 10px 14px 14px; position: relative; }
+.dpanel { display: none; }
+.dpanel.active { display: block; }
+.dpanel-placeholder {
+  padding: 18px 12px;
+  color: var(--dim);
+  font-size: 12px;
+  text-align: center;
+}
+.dpanel-logs {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.6;
+  word-break: break-word;
+}
+.dpanel-logs .log-row {
+  padding: 3px 0;
+  border-bottom: 1px solid #ffffff08;
+}
+.dpanel-logs .log-time { color: var(--dim); margin-right: 8px; }
+.dpanel-logs .log-level { font-weight: 600; margin-right: 8px; }
+.dpanel-logs .log-level.err { color: var(--err); }
+.dpanel-logs .log-level.warn { color: var(--warn); }
+.dpanel-logs .log-level.info { color: var(--dl); }
 .kv {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -745,4 +796,191 @@ input, textarea, code, .kv, .row-title, .kay-url, .hint, .err-note { user-select
   color: var(--dim);
   font-family: var(--mono);
   font-size: 10.5px;
+}
+
+/* ---------- Torrent dosya agaci ve secimi ---------- */
+.tor-head-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 18px 0 18px;
+}
+.tor-head-bar h2 { padding: 0; }
+.tor-gid-badge {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--surface-2);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.tor-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 4px;
+}
+.tor-meta strong {
+  font-size: 13.5px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 65%;
+}
+.tor-sayac {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+.tor-metrik-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 6px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 7px 12px;
+  margin-bottom: 2px;
+}
+.tor-metrik-kutu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tor-metrik-lbl {
+  font-size: 10.5px;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.tor-metrik-kutu b {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tor-araclar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.tor-filtre-ara {
+  flex: 1;
+  min-width: 200px;
+}
+.tor-filtre-ara input[type="text"] {
+  width: 100%;
+  background: var(--bg-deep);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text);
+}
+.tor-eylemler {
+  display: flex;
+  gap: 6px;
+}
+.tor-bilgi {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.tor-agac {
+  max-height: 380px;
+  overflow-y: auto;
+  background: var(--bg-deep);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 4px 0;
+}
+.tor-satir {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  user-select: none;
+}
+.tor-satir:hover { background: var(--surface); }
+.tor-satir.klasor { font-weight: 600; color: var(--text); }
+.tor-satir.dosya { color: var(--text); }
+.tor-satir input[type="checkbox"] {
+  accent-color: var(--dl);
+  flex: none;
+  cursor: pointer;
+}
+.tor-satir .tor-ok {
+  width: 14px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--dim);
+  cursor: pointer;
+  flex: none;
+}
+.tor-satir .tor-ok.bos { cursor: default; }
+.tor-satir .tor-simge {
+  flex: none;
+  font-size: 13px;
+  opacity: 0.8;
+}
+.tor-satir .tor-ad {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tor-satir .tor-boyut {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  width: 70px;
+  text-align: right;
+}
+.tor-satir .tor-yuzde-wrap {
+  flex: none;
+  width: 80px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tor-satir .tor-yuzde-bar {
+  flex: 1;
+  height: 5px;
+  background: var(--surface-2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.tor-satir .tor-yuzde-dolgu {
+  height: 100%;
+  background: var(--dl);
+}
+.tor-satir .tor-yuzde-metin {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  width: 32px;
+  text-align: right;
+}
+.tor-limit-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
 }

@@ -1244,6 +1244,80 @@ class Manager:
     def torrent_dosya_secimleri(self, gid: str) -> list[int]:
         """Kaydedilmis dosya indekslerini dondur."""
         return self.store.torrent_dosya_secimleri(gid)
+    def torrent_metrikleri(self, gid: str) -> dict:
+        """Torrent bazli seed, ratio, hiz, upload/download ve tracker ozeti.
+
+        Dosya agaci ve torrent pro UI panelleri icin canli metrik cikarir.
+        Magnet ustverisi henuz cozulmediyse hazir_degil=True dondurur.
+        """
+        row = self.store.by_gid(gid)
+        try:
+            status = self.rpc.tell_status(
+                gid,
+                [
+                    "gid", "status", "infoHash", "numSeeders", "connections",
+                    "bittorrent", "dir", "completedLength", "totalLength",
+                    "uploadLength", "downloadSpeed", "uploadSpeed", "seeder",
+                ],
+            )
+        except Aria2Error as exc:
+            raise ValueError("torrent durumu okunamadi: %s" % str(exc)[:160]) from exc
+
+        bittorrent = status.get("bittorrent") or {}
+        torrent_mu = (row or {}).get("kind") == "torrent" or bool(bittorrent) or bool(status.get("infoHash"))
+        if not torrent_mu:
+            raise ValueError("torrent metrikleri yalnizca torrent GID icin kullanilir")
+
+        if not bittorrent and not status.get("infoHash"):
+            return {
+                "hazir_degil": True,
+                "neden": "Magnet ustverisi henuz gelmedi; metrikler hazir degil.",
+            }
+
+        duyuru = bittorrent.get("announceList") or []
+        tracker_sayisi = sum(len(grup) for grup in duyuru)
+        try:
+            global_ayar = self.rpc.get_global_option()
+        except Aria2Error:
+            global_ayar = {}
+        havuz = [t for t in (global_ayar.get("bt-tracker") or "").split(",") if t]
+
+        done = int(status.get("completedLength", 0) or 0)
+        total = int(status.get("totalLength", 0) or 0)
+        uploaded = int(status.get("uploadLength", 0) or 0)
+        down_speed = int(status.get("downloadSpeed", 0) or 0)
+        up_speed = int(status.get("uploadSpeed", 0) or 0)
+        connections = int(status.get("connections", 0) or 0)
+        num_seeders = int(status.get("numSeeders", 0) or 0)
+        is_seeder = status.get("seeder") == "true"
+        ratio = round(uploaded / done, 3) if done > 0 else 0.0
+
+        # Canli peer listesi ozeti (guvenli sinirla)
+        canli_peers = self.peers(gid)
+        seeder_peers = sum(1 for p in canli_peers if p.get("seeder"))
+        leech_peers = len(canli_peers) - seeder_peers
+
+        return {
+            "hazir_degil": False,
+            "gid": gid,
+            "durum": status.get("status", ""),
+            "seeder": is_seeder,
+            "num_seeders": num_seeders,
+            "connections": connections,
+            "download_speed": down_speed,
+            "upload_speed": up_speed,
+            "completed_length": done,
+            "total_length": total,
+            "upload_length": uploaded,
+            "ratio": ratio,
+            "progress": round(done / total * 100, 1) if total else 0.0,
+            "tracker_sayisi": tracker_sayisi,
+            "havuz_sayisi": len(havuz),
+            "canli_tracker": len(trackers.ayikla(str(self.store.get("canli_trackerlar", "")))),
+            "peers_toplam": len(canli_peers),
+            "peers_seeders": seeder_peers,
+            "peers_leechers": leech_peers,
+        }
 
     def servers(self, gid: str) -> list[dict]:
         """HTTP indirmesinde aktif baglanti/parca bilgisi."""
