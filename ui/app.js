@@ -321,7 +321,7 @@ async function renderDetailTabContent(gid, tabName) {
       let peers = [];
       try { peers = (await call("peers", item.gid)).peers || []; } catch (_) { peers = []; }
       if (!peers.length) {
-        wrap.innerHTML = '<div class="hint">Peer bulunmadi. DHT ve guncel tracker listesi taramaya devam ediyor.</div>';
+        wrap.innerHTML = '<div class="hint">' + t("tor.noPeers") + '</div>';
       } else {
         peers.sort((a, b) => b.downloadSpeed - a.downloadSpeed);
         wrap.innerHTML =
@@ -542,9 +542,16 @@ function closeVeil(id) {
      clearInterval(state.seedTimer);
      state.seedTimer = null;
    }
-  if (id === "torrentVeil" && state.torTimer) {
-    clearInterval(state.torTimer);
-    state.torTimer = null;
+  if (id === "torrentVeil") {
+    torState.acik = false;
+    torState.nonce = (torState.nonce || 0) + 1;
+    // Askida kalan metrik istegi bu pencereyle birlikte terk edilir; kilidi tasimazsak
+    // yeniden acilan pencere hic metrik cekemez
+    torState.metrikInFlight = false;
+    if (state.torTimer) {
+      clearInterval(state.torTimer);
+      state.torTimer = null;
+    }
   }
   // LinkGrabber kapanirsa surunen probe'lari durdur (yeni is yok zaten)
   if (id === "lgVeil") call("linkgrabber_iptal").catch(() => {});
@@ -553,10 +560,10 @@ document.querySelectorAll("[data-close]").forEach((button) => {
   button.onclick = () => closeVeil(button.dataset.close);
 });
 document.querySelectorAll(".veil").forEach((veil) => {
-  veil.addEventListener("click", (event) => { if (event.target === veil) veil.classList.remove("open"); });
+  veil.addEventListener("click", (event) => { if (event.target === veil) closeVeil(veil.id); });
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") document.querySelectorAll(".veil.open").forEach((v) => v.classList.remove("open"));
+  if (event.key === "Escape") document.querySelectorAll(".veil.open").forEach((v) => closeVeil(v.id));
 });
 
 $("addBtn").onclick = () => {
@@ -907,6 +914,10 @@ const torState = {
   hepsiniGoster: false,
   secimler: new Set(),
   katlanmislar: new Set(),
+  sonBasari: null,
+  acik: false,
+  nonce: 0,
+  metrikInFlight: false,
 };
 
 function torMetrikleriSifirla(hazirDegilMesaj) {
@@ -923,11 +934,24 @@ function torMetrikleriSifirla(hazirDegilMesaj) {
   }
 }
 async function torMetrikleriGuncelle(gid) {
-  if (!gid || torState.gid !== gid) return;
+  // Pencere kimligini cagri aninda yakala; await sonrasi degistiyse yanit BAYAT demektir
+  const pencereNonce = torState.nonce;
+  if (!gid || torState.gid !== gid || !torState.acik) return;
+  if (torState.metrikInFlight) return;
+  torState.metrikInFlight = true;
   try {
     const out = await call("torrent_metrikleri", gid);
-    if (!out.ok || out.hazir_degil) {
-      torMetrikleriSifirla(out && out.hazir_degil);
+    if (!torState.acik || torState.gid !== gid || torState.nonce !== pencereNonce) return;
+    if (!out || !out.ok || out.hazir_degil) {
+      torMetrikleriSifirla(Boolean(out && out.hazir_degil));
+      if (out && !out.ok) {
+        const detay = out.error || out.neden || "";
+        $("torBilgi").textContent = detay
+          ? t("tor.metricsFailedDetail", { detay })
+          : t("tor.metricsFailed");
+        $("torBilgi").setAttribute("data-tur", "metrik-hata");
+        $("torBilgi").style.display = "block";
+      }
       return;
     }
     const m = out.metrikler || {};
@@ -937,8 +961,25 @@ async function torMetrikleriGuncelle(gid) {
     $("torDownVal").textContent = speed(m.download_speed || 0);
     $("torUpVal").textContent = speed(m.upload_speed || 0) + " [" + size(m.upload_length || 0) + "]";
     $("torTrackersVal").textContent = (m.tracker_sayisi || 0) + " (" + (m.canli_tracker || 0) + " " + t("eng.installed") + ")";
+    torState.sonBasari = Date.now();
+    if ($("torBilgi").getAttribute("data-tur") === "metrik-hata" || $("torBilgi").textContent.includes("...")) {
+      $("torBilgi").style.display = "none";
+      $("torBilgi").removeAttribute("data-tur");
+    }
   } catch (_) {
+    if (!torState.acik || torState.gid !== gid || torState.nonce !== pencereNonce) return;
     // Ag veya RPC anlik yanitsiz kalirsa metrikleri bozma
+    if (torState.sonBasari) {
+      const sn = Math.floor((Date.now() - torState.sonBasari) / 1000);
+      $("torBilgi").textContent = t("tor.retryMetrics", { sn });
+    } else {
+      $("torBilgi").textContent = t("tor.metricsInitialError");
+    }
+    $("torBilgi").setAttribute("data-tur", "metrik-hata");
+    $("torBilgi").style.display = "block";
+  } finally {
+    // Yalniz KENDI penceremizin kilidini birak; bayat istek taze pencereyi serbest birakmasin
+    if (torState.nonce === pencereNonce) torState.metrikInFlight = false;
   }
 }
 
@@ -984,10 +1025,10 @@ function torDugumSecimDurumu(dugum, secimler) {
 
 function torFiltrele(dosyalar, arama) {
   if (!arama) return dosyalar;
-  const q = arama.trim().toLowerCase();
+  const q = arama.trim().toLocaleLowerCase("tr-TR");
   return dosyalar.filter((d) => {
-    const ad = (d.ad || "").toLowerCase();
-    const yol = (d.yol || "").toLowerCase();
+    const ad = (d.ad || "").toLocaleLowerCase("tr-TR");
+    const yol = (d.yol || "").toLocaleLowerCase("tr-TR");
     return ad.includes(q) || yol.includes(q);
   });
 }
@@ -1047,7 +1088,6 @@ function torAgacDugumleriCiz(dugum, derinlik, satirlar, ctx) {
         '<span class="tor-yuzde-wrap"></span>' +
       "</div>"
     );
-    ctx.kalan--;
 
     if (!katlanmis) {
       torAgacDugumleriCiz(alt, derinlik + 1, satirlar, ctx);
@@ -1127,10 +1167,13 @@ function torAgacCiz(prefix = "tor") {
 }
 
 async function torrentVeilAc(gid) {
+  const pencereNonce = ++torState.nonce;
+  torState.acik = true;
   torState.gid = gid;
   torState.filtre = "";
   torState.hepsiniGoster = false;
   torState.katlanmislar.clear();
+  torState.sonBasari = null;
   $("torErr").textContent = "";
   $("torAra").value = "";
   $("torGid").textContent = gid;
@@ -1150,37 +1193,66 @@ async function torrentVeilAc(gid) {
    $("torUygula").disabled = true;
    openVeil("torrentVeil");
   torMetrikleriGuncelle(gid).catch(() => {});
-  state.torTimer = setInterval(() => {
-    if (torState.gid) torMetrikleriGuncelle(torState.gid).catch(() => {});
-  }, 2000);
+  let retryCount = 0;
+  let agacHazir = false;
+  let inFlight = false;
 
-  try {
-    const out = await call("torrent_dosyalari", gid);
-    if (!out.ok) throw new Error(out.error || t("err.failed"));
+  async function dosyalariCek() {
+    if (inFlight) return false;
+    if (!torState.acik || torState.nonce !== pencereNonce) return false;
+    inFlight = true;
+    try {
+      const out = await call("torrent_dosyalari", torState.gid);
+      if (!torState.acik || torState.nonce !== pencereNonce) return false;
 
-    if (out.hazir_degil) {
-      torState.dosyalar = [];
-      torState.secimler.clear();
-      $("torBilgi").textContent = out.neden || t("tor.notReady");
+      if (!out || !out.ok) throw new Error((out && out.error) || t("err.failed"));
+
+      if (out.hazir_degil) {
+        if (!torState.acik || torState.nonce !== pencereNonce) return false;
+        torState.dosyalar = [];
+        torState.secimler.clear();
+        $("torBilgi").textContent = out.neden || t("tor.notReady");
+        $("torBilgi").style.display = "block";
+        $("torSayac").textContent = "";
+        $("torUygula").disabled = true;
+        if (++retryCount > 30) {
+          $("torErr").textContent = t("tor.timeout");
+        }
+        return false;
+      }
+
+      if (!torState.acik || torState.nonce !== pencereNonce) return false;
+      torState.gid = out.gid || torState.gid; // resolved gid
+      $("torGid").textContent = torState.gid;
+      torState.dosyalar = out.dosyalar || [];
+      torState.secimler = new Set();
+      for (const d of torState.dosyalar) {
+        if (d.secili) torState.secimler.add(d.indeks);
+      }
+
+      $("torUygula").disabled = false;
+      torAgacCiz();
+      agacHazir = true;
+      return true;
+    } catch (err) {
+      if (!torState.acik || torState.nonce !== pencereNonce) return false;
+      $("torErr").textContent = err.message;
+      $("torBilgi").textContent = err.message;
       $("torBilgi").style.display = "block";
-      $("torSayac").textContent = "";
-      $("torUygula").disabled = true;
-      return;
+      agacHazir = true; // stop retrying on fatal error
+      return true;
+    } finally {
+      inFlight = false;
     }
-
-    torState.dosyalar = out.dosyalar || [];
-    torState.secimler = new Set();
-    for (const d of torState.dosyalar) {
-      if (d.secili) torState.secimler.add(d.indeks);
-    }
-
-    $("torUygula").disabled = false;
-    torAgacCiz();
-  } catch (err) {
-    $("torErr").textContent = err.message;
-    $("torBilgi").textContent = err.message;
-    $("torBilgi").style.display = "block";
   }
+
+  dosyalariCek();
+  state.torTimer = setInterval(() => {
+    if (torState.gid && torState.acik && torState.nonce === pencereNonce) {
+      torMetrikleriGuncelle(torState.gid).catch(() => {});
+      if (!agacHazir && retryCount <= 30 && !inFlight) dosyalariCek();
+    }
+  }, 2000);
 }
 
 /* Torrent dosya agaci etkilesimleri (tests/torrent_ui_test.py bekler: $("torSayac") $("torAra") $("torSecHepsi") $("torSecHicbiri") $("torSecTers") $("torLimitHepsi") $("torLimitBar") $("torLimitNot") $("torBilgi") $("torAgac")) */

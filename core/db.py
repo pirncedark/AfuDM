@@ -105,7 +105,7 @@ DEFAULTS: dict[str, Any] = {
 # `USER_VERSION`'i artirinca aradaki ADIMI `MIGRATIONS` sozlugune ekle.
 # Adimlar YALNIZCA degisiklik gerektiginde vardir; gecis 0->1 hic is yapmaz
 # (mevcut _SCHEMA zaten v1'dir). Eski veri ASLA silinmez.
-USER_VERSION = 2
+USER_VERSION = 3
 
 
 def _v2_torrent_dosya_secimleri(conn: sqlite3.Connection) -> None:
@@ -123,9 +123,12 @@ def _v2_torrent_dosya_secimleri(conn: sqlite3.Connection) -> None:
         )
     """)
 
+def _v3_events_gid(conn: sqlite3.Connection) -> None:
+    conn.execute("ALTER TABLE events ADD COLUMN gid TEXT")
 
 MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     2: _v2_torrent_dosya_secimleri,
+    3: _v3_events_gid,
 }
 
 
@@ -357,17 +360,22 @@ class Store:
             return cur.rowcount
 
     # --- olay kaydi -------------------------------------------------------
-    def log(self, level: str, message: str) -> None:
+    def log(self, level: str, message: str, gid: str = "") -> None:
         with self._lock:
             self.conn.execute(
-                "INSERT INTO events(at, level, message) VALUES(?,?,?)",
-                (time.time(), level, message),
+                "INSERT INTO events(at, level, message, gid) VALUES(?,?,?,?)",
+                (time.time(), level, message, gid or None),
             )
             self.conn.commit()
 
-    def recent_events(self, limit: int = 50) -> list[dict]:
+    def recent_events(self, limit: int = 50, gid: str = "") -> list[dict]:
         with self._lock:
-            rows = self.conn.execute(
-                "SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,)
-            ).fetchall()
+            if gid:
+                rows = self.conn.execute(
+                    "SELECT * FROM events WHERE gid = ? ORDER BY id DESC LIMIT ?", (gid, limit)
+                ).fetchall()
+            else:
+                rows = self.conn.execute(
+                    "SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,)
+                ).fetchall()
         return [dict(r) for r in rows]

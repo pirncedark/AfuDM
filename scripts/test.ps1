@@ -98,7 +98,9 @@ if (`$parseHatalari) {
         "tests/linkgrabber_test.py",
         "tests/engines_test.py",
         "tests/torrent_ui_test.py",
-        "tests/torrent_onekle_test.py"
+        "tests/torrent_onekle_test.py",
+        "tests/torrent_duzeltme_test.py",
+        "tests/torrent_yaris_test.mjs"
     )
 
     $gecen = 0
@@ -107,7 +109,11 @@ if (`$parseHatalari) {
         if (-not (Test-Path $t)) { Write-Host "ATLANDI (yok): $t"; continue }
         $eskiEAP = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
-        $out = & python $t 2>&1
+        if ($t.EndsWith(".mjs") -or $t.EndsWith(".js")) {
+            $out = & node $t 2>&1
+        } else {
+            $out = & python $t 2>&1
+        }
         $kod = $LASTEXITCODE
         $ErrorActionPreference = $eskiEAP
         if ($kod -eq 0) {

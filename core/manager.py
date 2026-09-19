@@ -42,10 +42,12 @@ HIZ_PROFILLERI = ("snail", "normal", "turbo")
 class TorrentDosyaListesi(list[dict]):
     """Dosya listesi; magnet ustverisi gelmediyse UI'nin ayirt edecegi durum."""
 
-    def __init__(self, *args, hazir_degil: bool = False, neden: str = "") -> None:
+    def __init__(self, *args, hazir_degil: bool = False, neden: str = "", gid: str = "") -> None:
         super().__init__(*args)
         self.hazir_degil = hazir_degil
         self.neden = neden
+        self.gid = gid
+
 
 
 def human_size(num: float) -> str:
@@ -195,7 +197,7 @@ class Manager:
             if hiz_kb is not None:
                 opts["hiz_kb"] = hiz_kb
             self.store.update_by_id(row["id"], options=json.dumps(opts))
-            self.store.log("info", "is ayarlari canli degistirildi: %s" % row["title"])
+            self.store.log("info", "is ayarlari canli degistirildi: %s" % row["title"], gid=gid)
         return {"ok": True, "gid": gid, "baglanti": baglanti, "hiz_kb": hiz_kb}
 
     def update_settings(self, changes: dict) -> dict:
@@ -319,7 +321,7 @@ class Manager:
                 row["id"], status="error", finished_at=time.time(),
                 error="motorda karsiligi kalmadi (uygulama kapanmis olabilir)",
             )
-            self.store.log("warn", f"olu kayit temizlendi: {row['title']}")
+            self.store.log("warn", f"olu kayit temizlendi: {row['title']}", gid=row.get("gid", "") or "")
         return None
 
     @staticmethod
@@ -405,10 +407,10 @@ class Manager:
             self.store.update_by_id(
                 row["id"], status="error", error=str(exc)[:500], finished_at=time.time()
             )
-            self.store.log("error", f"baslatilamadi: {exc}")
+            self.store.log("error", f"baslatilamadi: {exc}", gid=row.get("gid", "") or "")
             raise
         self.store.attach_gid(row["id"], gid)
-        self.store.log("info", f"basladi [{kind}]: {row['title']}")
+        self.store.log("info", f"basladi [{kind}]: {row['title']}", gid=gid)
         return {"id": row["id"], "gid": gid, "kind": kind}
 
     def _proksi(self, options: dict) -> dict | None:
@@ -483,7 +485,7 @@ class Manager:
             try:
                 self.rpc.change_option(gid, {"dir": dest_dir})
             except Aria2Error as exc:
-                self.store.log("error", f"kayit dizini degistirilemedi: {exc}")
+                self.store.log("error", f"kayit dizini degistirilemedi: {exc}", gid=gid)
                 
             selected = options.get("selected_files")
             if selected:
@@ -492,7 +494,7 @@ class Manager:
                     # DB guncellemesi (daha gid attach edilmedi ama sorun degil)
                     self.store.torrent_dosya_secimlerini_kaydet(gid, selected)
                 except Aria2Error as exc:
-                    self.store.log("error", f"dosya secimi uygulanamadi: {exc}")
+                    self.store.log("error", f"dosya secimi uygulanamadi: {exc}", gid=gid)
             
             try:
                 self.rpc.unpause(gid)
@@ -563,7 +565,7 @@ class Manager:
         if job.status == "complete" and job.job_id not in self._known_complete:
             self._known_complete.add(job.job_id)
             self._cerez_birak(self.store.by_gid(job.job_id))
-            self._on_complete(job.display_title(), job.total)
+            self._on_complete(job.display_title(), job.total, job.job_id)
 
     # --- video yardimcilari ----------------------------------------------
     def probe_video(self, url: str) -> dict:
@@ -800,7 +802,7 @@ class Manager:
                 self.rpc.unpause(gid)
             except Aria2Error:
                 pass
-        self.store.log("info", "adres yenilendi: %s" % row["title"])
+        self.store.log("info", "adres yenilendi: %s" % row["title"], gid=gid)
         return {
             "ok": True,
             "gid": gid,
@@ -986,12 +988,12 @@ class Manager:
             else:
                 yeni_gid = self.rpc.add_uri([kaynak], secenekler)
         except Aria2Error as exc:
-            self.store.log("warn", f"seed tazeleme basarisiz: {exc}")
+            self.store.log("warn", f"seed tazeleme basarisiz: {exc}", gid=gid)
             return {"ok": False, "error": str(exc)[:200]}
         if row:
             self.store.update_by_id(row["id"], gid=yeni_gid, status="active", error=None)
             self.store.torrent_dosya_secimlerini_tasi(gid, yeni_gid)
-        self.store.log("info", f"seed tazelendi: {sayi} tracker ile yeniden duyuruldu")
+        self.store.log("info", f"seed tazelendi: {sayi} tracker ile yeniden duyuruldu", gid=yeni_gid)
         return {"ok": True, "tracker": sayi, "gid": yeni_gid}
 
     # --- durum goruntusu --------------------------------------------------
@@ -1215,6 +1217,7 @@ class Manager:
             return TorrentDosyaListesi(
                 hazir_degil=True,
                 neden="Magnet ustverisi henuz gelmedi; dosya listesi hazir degil.",
+                gid=gid,
             )
         try:
             ham_dosyalar = self.rpc.get_files(gid)
@@ -1224,11 +1227,12 @@ class Manager:
             return TorrentDosyaListesi(
                 hazir_degil=True,
                 neden="Magnet ustverisi henuz gelmedi; dosya listesi hazir degil.",
+                gid=gid,
             )
         torrent_adi = str((bittorrent.get("info") or {}).get("name") or "")
         tercih_var = self.store.torrent_dosya_secimi_var(gid)
         secilenler = set(self.store.torrent_dosya_secimleri(gid)) if tercih_var else set()
-        sonuc = TorrentDosyaListesi()
+        sonuc = TorrentDosyaListesi(gid=gid)
         for ham in ham_dosyalar:
             indeks = int(ham.get("index", 0) or 0)
             yol = str(ham.get("path") or "")
@@ -1305,6 +1309,7 @@ class Manager:
         except Aria2Error as exc:
             raise ValueError("dosya secimi canli degistirilemedi: %s" % str(exc)[:160]) from exc
         self.store.torrent_dosya_secimlerini_kaydet(gid, temiz)
+        self.store.log("info", f"dosya secimi guncellendi ({len(temiz)} dosya)", gid=gid)
         return {"ok": True, "gid": gid, "indeksler": temiz}
 
     def torrent_dosya_secimleri(self, gid: str) -> list[int]:
@@ -1449,11 +1454,11 @@ class Manager:
                                 "select-file": self._select_file_degeri(secilenler)
                             })
                         except Aria2Error as exc:
-                            self.store.log("warn", f"magnet dosya secimi uygulanamadi: {exc}")
+                            self.store.log("warn", f"magnet dosya secimi uygulanamadi: {exc}", gid=child)
             if state == "complete" and gid not in self._known_complete and not followed:
                 self._known_complete.add(gid)
                 title = name or (row["title"] if row else gid)
-                self._on_complete(title, total)
+                self._on_complete(title, total, gid)
 
     def _reattach_torrent(self, status: dict) -> dict | None:
         """Yeniden baslatmada magnet'in GID'i DEGISIR ve kayit sahipsiz kalir.
@@ -1472,8 +1477,9 @@ class Manager:
                 continue
             if self.magnet_infohash(row["source"]) != infohash:
                 continue
-            self.store.update_by_id(row["id"], gid=status.get("gid", ""))
-            self.store.log("info", f"torrent kaydi yeniden baglandi: {row['title']}")
+            yeni_gid = status.get("gid", "")
+            self.store.update_by_id(row["id"], gid=yeni_gid)
+            self.store.log("info", f"torrent kaydi yeniden baglandi: {row['title']}", gid=yeni_gid)
             return self.store.by_id(row["id"])
         return None
 
@@ -1483,7 +1489,7 @@ class Manager:
                 self.store.update_by_id(row["id"], status="queued")
                 self._launch(self.store.by_id(row["id"]))  # type: ignore[arg-type]
             except Exception as exc:
-                self.store.log("error", f"zamanlanmis is basarisiz: {exc}")
+                self.store.log("error", f"zamanlanmis is basarisiz: {exc}", gid=row.get("gid", "") or "")
 
     def _maybe_trackers(self) -> None:
         if not self.store.get("auto_update_trackers"):
@@ -1512,11 +1518,11 @@ class Manager:
             pass
         sonuc = self.tracker_tara(gid)
         if not sonuc.get("ok"):
-            self.store.log("warn", f"tracker taramasi basarisiz: {sonuc.get('error', '')}"[:150])
+            self.store.log("warn", f"tracker taramasi basarisiz: {sonuc.get('error', '')}"[:150], gid=gid or "")
 
     # --- bitis islemleri --------------------------------------------------
-    def _on_complete(self, title: str, size: int) -> None:
-        self.store.log("info", f"tamamlandi: {title} ({human_size(size)})")
+    def _on_complete(self, title: str, size: int, gid: str = "") -> None:
+        self.store.log("info", f"tamamlandi: {title} ({human_size(size)})", gid=gid or "")
         if self.store.get("notify_telegram"):
             threading.Thread(
                 target=self.notify_telegram,

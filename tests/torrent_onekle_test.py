@@ -104,7 +104,7 @@ class DummyStore:
     def torrent_dosya_secimleri(self, gid):
         return self.secimler.get(gid, [])
         
-    def log(self, level, msg):
+    def log(self, level, msg, gid=""):
         pass
         
 class DummyManager(Manager):

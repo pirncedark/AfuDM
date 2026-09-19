@@ -438,7 +438,7 @@ class Api:
             neden = str(getattr(dosyalar, "neden", ""))
             return {
                 "ok": True,
-                "gid": gid,
+                "gid": getattr(dosyalar, "gid", gid),
                 "hazir_degil": hazir_degil,
                 "neden": neden,
                 "dosyalar": list(dosyalar),
@@ -471,7 +471,7 @@ class Api:
     def loglar(self, gid: str = "") -> dict:
         """Detay paneli icin olay ve hata gunlukleri."""
         try:
-            events = self.manager.store.recent_events(limit=50)
+            events = self.manager.store.recent_events(limit=50, gid=gid)
             return {"ok": True, "events": events}
         except Exception as exc:
             return {"ok": False, "error": str(exc)[:200], "events": []}
