@@ -142,6 +142,10 @@ class Aria2RPC:
         """Torrent icin canli peer listesi (seed takibi detayi)."""
         return self.call("aria2.getPeers", gid)
 
+    def get_files(self, gid: str) -> list[dict]:
+        """Torrent/indirmenin aria2 dosya listesi (index, yol, ilerleme, secim)."""
+        return self.call("aria2.getFiles", gid)
+
     def get_servers(self, gid: str) -> list[dict]:
         """HTTP/FTP indirmesinde parca basina baglanti bilgisi."""
         return self.call("aria2.getServers", gid)

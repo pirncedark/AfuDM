@@ -55,7 +55,7 @@ _conn.close()
 
 s = db.Store(str(eski_path))
 ver = s.conn.execute("PRAGMA user_version").fetchone()[0]
-check("eski db user_version 1 oldu", ver == 1, str(ver))
+check("eski db user_version guncel surume tasindi", ver == db.USER_VERSION, str(ver))
 satirlar = s.conn.execute("SELECT id, source, status FROM downloads").fetchall()
 check("eski kayit korundu", len(satirlar) == 1
       and satirlar[0][1] == "eski-link" and satirlar[0][2] == "error", str(satirlar))
@@ -70,7 +70,7 @@ yeniden.execute("PRAGMA user_version = 0")
 yeniden.commit()
 yeniden.close()
 s = db.Store(str(tmp / "gecici.db"))
-check("ikinci acilis da 1", s.conn.execute("PRAGMA user_version").fetchone()[0] == 1)
+check("ikinci acilis da guncel", s.conn.execute("PRAGMA user_version").fetchone()[0] == db.USER_VERSION)
 s.conn.close()
 
 print("\ndb migration: %d kontrol, %d hata" % (_toplam, len(fails)))

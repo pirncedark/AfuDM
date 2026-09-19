@@ -39,6 +39,15 @@ TRACKER_CHECK_INTERVAL = 3600.0
 HIZ_PROFILLERI = ("snail", "normal", "turbo")
 
 
+class TorrentDosyaListesi(list[dict]):
+    """Dosya listesi; magnet ustverisi gelmediyse UI'nin ayirt edecegi durum."""
+
+    def __init__(self, *args, hazir_degil: bool = False, neden: str = "") -> None:
+        super().__init__(*args)
+        self.hazir_degil = hazir_degil
+        self.neden = neden
+
+
 def human_size(num: float) -> str:
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if abs(num) < 1024:
@@ -1089,6 +1098,99 @@ class Manager:
             for p in raw
         ]
 
+    # --- torrent dosyalari ------------------------------------------------
+    @staticmethod
+    def _torrent_dosya_turu(uzanti: str) -> str:
+        turler = {
+            "video": {".mkv", ".mp4", ".avi", ".mov", ".webm", ".m4v"},
+            "ses": {".mp3", ".flac", ".wav", ".aac", ".ogg", ".m4a"},
+            "altyazi": {".srt", ".ass", ".ssa", ".vtt", ".sub"},
+            "arsiv": {".zip", ".rar", ".7z", ".tar", ".gz", ".iso"},
+            "belge": {".pdf", ".txt", ".epub", ".mobi", ".doc", ".docx"},
+            "resim": {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"},
+        }
+        for ad, uzantilar in turler.items():
+            if uzanti in uzantilar:
+                return ad
+        return "diger"
+
+    @staticmethod
+    def _torrent_yol_parcalari(yol: str, torrent_adi: str) -> list[str]:
+        parcalar = [parca for parca in yol.replace("\\", "/").split("/") if parca]
+        if parcalar and parcalar[0].endswith(":"):
+            parcalar = parcalar[1:]
+        if torrent_adi:
+            for sira, parca in enumerate(parcalar):
+                if parca.casefold() == torrent_adi.casefold():
+                    return parcalar[sira:]
+        return parcalar
+
+    def torrent_dosyalari(self, gid: str) -> list[dict]:
+        """Bir torrentin aria2 dosyalarini UI'den bagimsiz, agac-hazir hale getir."""
+        row = self.store.by_gid(gid)
+        try:
+            durum = self.rpc.tell_status(gid, ["gid", "infoHash", "bittorrent", "followedBy"])
+        except Aria2Error as exc:
+            raise ValueError("torrent durumu okunamadi: %s" % str(exc)[:160]) from exc
+        bittorrent = durum.get("bittorrent") or {}
+        torrent_mu = (row or {}).get("kind") == "torrent" or bool(bittorrent) or bool(durum.get("infoHash"))
+        if not torrent_mu:
+            raise ValueError("dosya listesi yalnizca torrent GID icin kullanilir")
+        if not bittorrent and not durum.get("infoHash"):
+            return TorrentDosyaListesi(
+                hazir_degil=True,
+                neden="Magnet ustverisi henuz gelmedi; dosya listesi hazir degil.",
+            )
+        try:
+            ham_dosyalar = self.rpc.get_files(gid)
+        except Aria2Error as exc:
+            raise ValueError("torrent dosya listesi okunamadi: %s" % str(exc)[:160]) from exc
+        if not ham_dosyalar and (row or {}).get("kind") == "torrent" and not bittorrent:
+            return TorrentDosyaListesi(
+                hazir_degil=True,
+                neden="Magnet ustverisi henuz gelmedi; dosya listesi hazir degil.",
+            )
+        torrent_adi = str((bittorrent.get("info") or {}).get("name") or "")
+        tercih_var = self.store.torrent_dosya_secimi_var(gid)
+        secilenler = set(self.store.torrent_dosya_secimleri(gid)) if tercih_var else set()
+        sonuc = TorrentDosyaListesi()
+        for ham in ham_dosyalar:
+            indeks = int(ham.get("index", 0) or 0)
+            yol = str(ham.get("path") or "")
+            parcalar = self._torrent_yol_parcalari(yol, torrent_adi)
+            ad = parcalar[-1] if parcalar else yol.replace("\\", "/").rsplit("/", 1)[-1]
+            uzanti = Path(ad).suffix.lower()
+            boyut = int(ham.get("length", 0) or 0)
+            tamamlanan = int(ham.get("completedLength", 0) or 0)
+            sonuc.append({
+                "indeks": indeks,
+                "ad": ad,
+                "yol": yol,
+                "boyut": boyut,
+                "boyut_insan": human_size(boyut),
+                "tamamlanan": tamamlanan,
+                "yuzde": round(tamamlanan * 100 / boyut, 1) if boyut else 0.0,
+                "secili": indeks in secilenler if tercih_var else ham.get("selected") == "true",
+                "uzanti": uzanti,
+                "tur": self._torrent_dosya_turu(uzanti),
+                "yol_parcalari": parcalar,
+                "parent_yol": "/".join(parcalar[:-1]),
+                "uris": ham.get("uris") or [],
+            })
+        return sonuc
+
+    def torrent_dosya_secimini_kaydet(self, gid: str, indeksler: list[int]) -> list[int]:
+        """UI secimini sonraki baslatmaya kadar DB'de sakla."""
+        if not ((self.store.by_gid(gid) or {}).get("kind") == "torrent"):
+            raise ValueError("dosya secimi yalnizca torrent GID icin kaydedilir")
+        temiz = sorted({int(indeks) for indeks in indeksler if int(indeks) > 0})
+        self.store.torrent_dosya_secimlerini_kaydet(gid, temiz)
+        return temiz
+
+    def torrent_dosya_secimleri(self, gid: str) -> list[int]:
+        """Kaydedilmis dosya indekslerini dondur."""
+        return self.store.torrent_dosya_secimleri(gid)
+
     def servers(self, gid: str) -> list[dict]:
         """HTTP indirmesinde aktif baglanti/parca bilgisi."""
         if gid.startswith(("yt:", "row:")):
@@ -1144,6 +1246,7 @@ class Manager:
                 child = followed[0]
                 if not self.store.by_gid(child):
                     self.store.update_by_id(row["id"], gid=child, status="active")
+                    self.store.torrent_dosya_secimlerini_tasi(gid, child)
             if state == "complete" and gid not in self._known_complete and not followed:
                 self._known_complete.add(gid)
                 title = name or (row["title"] if row else gid)

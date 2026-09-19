@@ -91,6 +91,7 @@ if (`$parseHatalari) {
         "tests/trackerlar_test.py",
         "tests/tracker_saglik_test.py",
         "tests/db_test.py",
+        "tests/torrent_dosya_test.py",
         "tests/network_core_test.py",
         "tests/dosya_adi_test.py",
         "tests/linkgrabber_test.py",
