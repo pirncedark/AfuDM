@@ -215,6 +215,21 @@ class VideoJob:
     headers: dict = field(default_factory=dict)  # Referer vb. (gomulu oynaticilar ister)
     proxy: str = ""                 # yt-dlp --proxy girisi (Network Core); bossa dogrudan
     dosya_adi: str = ""             # sayfa basligi; bossa yt-dlp'nin basligi
+    # --- v1.6 Video Pro --------------------------------------------------
+    # Hepsi varsayilan BOS/False: dolular haric komut uretimine HICBIR etkisi
+    # yoktur (eski build_cmd ciktisi birebir korunur).
+    altyazi_diller: str = ""        # --write-subs --sub-langs <deger> (orn. "tr,en")
+    oto_altyazi: bool = False       # --write-auto-subs (otomatik .vtt altyazilari)
+    altyazi_goem: bool = False      # --embed-subs (ffmpeg ister; yoksa atlanir)
+    kucuk_resim: str = ""           # "goem" => --embed-thumbnail, "dosya" => --write-thumbnail
+    ustveri_goem: bool = False      # --embed-metadata (ffmpeg ister; yoksa atlanir)
+    bolumler: str = ""              # "goem" => --embed-chapters, "ayir" => --split-chapters
+    sponsorblock: str = ""          # --sponsorblock-remove <deger> (orn. "sponsor,selfpromo")
+    bolum_araligi: str = ""         # --download-sections "*<deger>" (orn. "00:01:00-00:02:30")
+    kapsayici: str = ""             # --merge-output-format <deger> (bossa mevcut "mp4")
+    ses_formati: str = ""           # audio_only --audio-format <deger> (bossa "mp3")
+    dosya_sablonu: str = ""         # -o sablonu (bossa MEVCUT davranis aynen)
+    tarayici_cerezi: str = ""       # --cookies-from-browser <deger>; cookie_file ile ayni anda degil
     started_at: float = field(default_factory=time.time)
     finished_at: float = 0.0
     _thread: threading.Thread | None = None
@@ -244,6 +259,10 @@ class VideoJob:
                 / "%(playlist_title).80B"
                 / "%(playlist_index)03d - %(title).120B.%(ext)s"
             )
+        if self.dosya_sablonu:
+            # Kullanici sablonu HAM gider: "%(...)s" yer degistiricileri
+            # guvenli_ad'in % kacisindan GECMEZ (yoksa sablon bozulur).
+            out_tpl = self.dosya_sablonu
         cmd = [
             ytdlp_path(),
             "--newline",
@@ -263,15 +282,46 @@ class VideoJob:
         if ffmpeg_var:
             cmd += ["--ffmpeg-location", paths.ffmpeg_dir()]
             if self.audio_only or self.quality == "audio":
-                cmd += ["--extract-audio", "--audio-format", "mp3", "--audio-quality", "0"]
+                # v1.6: ses bicimi secilebilir; bossa mevcut mp3 kalir.
+                ses = self.ses_formati or "mp3"
+                cmd += ["--extract-audio", "--audio-format", ses, "--audio-quality", "0"]
             else:
-                # Tek dosya mp4 cikar (IDM gibi): ayri inen izler birlestirilir.
-                cmd += ["--merge-output-format", "mp4"]
-        # ffmpeg yoksa hicbiri istenmez: video zaten birlesik iner, ses de
-        # kaynaktaki bicimiyle (m4a/webm) kalir.
+                # v1.6: kapsayici secilebilir; bossa mevcut mp4 kalir.
+                kab = self.kapsayici or "mp4"
+                cmd += ["--merge-output-format", kab]
+        # --- v1.6 Video Pro bayraklari (hepsi BOS olmadikca eklenmez) ------
+        if self.altyazi_diller:
+            cmd += ["--write-subs", "--sub-langs", self.altyazi_diller]
+        if self.oto_altyazi:
+            cmd += ["--write-auto-subs"]
+        # --embed-* ffmpeg ister; is basarili kalsin ama kayda gorunur not dus.
+        if not ffmpeg_var and (
+            self.altyazi_goem or self.kucuk_resim == "goem"
+            or self.ustveri_goem or self.bolumler == "goem"
+        ):
+            self.error = lang.t("note.ffmpegEmbedSkipped", self.dil)
+        if ffmpeg_var and self.altyazi_goem:
+            cmd += ["--embed-subs"]
+        if ffmpeg_var and self.kucuk_resim == "goem":
+            cmd += ["--embed-thumbnail"]
+        elif self.kucuk_resim == "dosya":
+            cmd += ["--write-thumbnail"]
+        if ffmpeg_var and self.ustveri_goem:
+            cmd += ["--embed-metadata"]
+        if ffmpeg_var and self.bolumler == "goem":
+            cmd += ["--embed-chapters"]
+        elif self.bolumler == "ayir":
+            cmd += ["--split-chapters"]
+        if self.sponsorblock:
+            cmd += ["--sponsorblock-remove", self.sponsorblock]
+        if self.bolum_araligi:
+            cmd += ["--download-sections", "*" + self.bolum_araligi]
         cmd += ["--yes-playlist"] if self.playlist else ["--no-playlist"]
         if self.cookie_file and not cerezsiz:
             cmd += ["--cookies", self.cookie_file]
+        elif self.tarayici_cerezi and not cerezsiz:
+            # cookie_file onceliklidir; tarayici cerezi yalniz o bosken gider.
+            cmd += ["--cookies-from-browser", self.tarayici_cerezi]
         if self.user_agent and not cerezsiz:
             cmd += ["--user-agent", self.user_agent]
         for anahtar, deger in ({} if cerezsiz else (self.headers or {})).items():
@@ -391,7 +441,7 @@ class VideoJob:
             karar = self.yedek_karari(
                 " ".join(tail[-6:]),
                 aria2c_var=self._dis_indirici_vardi(),
-                cerez_var=bool(self.cookie_file),
+                cerez_var=bool(self.cookie_file or self.tarayici_cerezi),
                 aria_denendi=self._yedek_denendi,
                 cerezsiz_denendi=self._cerezsiz_denendi,
             )

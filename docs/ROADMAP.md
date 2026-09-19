@@ -119,9 +119,9 @@ Android app 5/5/4/5, Plugin system 5/5/5/5, UPnP 2/3/4/2.)
 | Sürüm  | Ana hedef                    | Öncelik |
 | ---    | ---                          | ---     |
 | v1.4.0 | Foundation + Network Core ✅ | —       |
-| v1.5   | LinkGrabber                  | **P0**  |
-| v1.6   | Video Pro                    | P1      |
-| v1.7   | Torrent Pro                  | P1      |
+| v1.5.0 | LinkGrabber — YAYINLANDI (tag v1.5.0, 2026-09-19) | **P0** |
+| v1.6.0 | Video Pro — YAYINLANDI (tag v1.6.0, 2026-09-19 10:17 UTC) | P1 |
+| v1.7   | Torrent Pro — dilim 1-2 tamam | P1      |
 | v1.7.5 | Mobile Remote / PWA          | P1      |
 | v1.8   | Automation & Post-processing | P1      |
 | v1.9   | Rules Engine                 | P2      |
@@ -137,7 +137,7 @@ canlı bağlantı/hız ayarı, strong renew, API error contract, fake HTTP test
 harness. **PAC bilinçli olarak kapsam dışı** (bkz. DURUM — JS çalıştırıp ağ
 davranışını değiştirmek yerine net adres).
 
-### v1.5 — LinkGrabber (P0)
+### v1.5.0 — LinkGrabber — YAYINLANDI (tag v1.5.0, 2026-09-19)
 Referans: JDownloader + DownThemAll! + Video DownloadHelper.
 
 Akış:
@@ -174,15 +174,25 @@ Ekler:
 Not: masaüstü LinkGrabber paneli ana iştir; uzantı tarafında "seçili/sayfa
 linklerini indir" zaten var (v1.3.2), masaüstü karşılığı eksiktir.
 
-### v1.6 — Video Pro (P1)
+### v1.6.0 — Video Pro — YAYINLANDI (tag v1.6.0, 2026-09-19 10:17 UTC)
 Referans: yt-dlp + Stacher + Seal + N_m3u8DL-RE.
 Subtitle, auto subtitle, subtitle embed, thumbnail, metadata, chapters,
 SponsorBlock, video section download, codec seçimi, container seçimi, audio
 format seçimi, filename template, cookies-from-browser UI, playlist gelişmiş
 seçenekleri. Avantaj: **motor zaten var** (yt-dlp + ffmpeg).
 
-### v1.7 — Torrent Pro (P1)
+### v1.7 — Torrent Pro (P1, `v1.7-torrent` ayrı worktree)
 Referans: qBittorrent + Transmission + Motrix + Gopeed.
+
+Beş dilimli teslim planı:
+
+- [x] Dilim 1 (`77d6499`): `aria2.getFiles`, `torrent_dosyalari()` ve DB
+  migration ile seçim kalıcılığı.
+- [x] Dilim 2 (`d4f93c8`): canlı `select-file` için `torrent_secimi_ayarla()`;
+  seçim magnet çocuk GID'ine ve `seed_tazele` sonrasına taşınır.
+- [ ] Dilim 3: dosya ağacı UI.
+- [ ] Dilim 4: metrikler.
+- [ ] Dilim 5: `.torrent` ön-ekleme.
 
 ```text
 Torrent

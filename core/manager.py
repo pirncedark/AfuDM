@@ -374,6 +374,20 @@ class Manager:
             "checksum": req.checksum or "",
             "adopt_gid": getattr(req, "adopt_gid", None),
             "selected_files": getattr(req, "selected_files", None),
+            # v1.6 Video Pro: istege bagli, varsayilanlar DB ayarlarindan
+            # (video_quality uslubu); request verilen onde gelir.
+            "altyazi_diller": req.altyazi_diller or self.store.get("video_altyazi_diller", ""),
+            "oto_altyazi": req.oto_altyazi or self.store.get("video_oto_altyazi", False),
+            "altyazi_goem": req.altyazi_goem or self.store.get("video_altyazi_goem", False),
+            "kucuk_resim": req.kucuk_resim or self.store.get("video_kucuk_resim", ""),
+            "ustveri_goem": req.ustveri_goem or self.store.get("video_ustveri_goem", False),
+            "bolumler": req.bolumler or self.store.get("video_bolumler", ""),
+            "sponsorblock": req.sponsorblock or self.store.get("video_sponsorblock", ""),
+            "bolum_araligi": req.bolum_araligi or self.store.get("video_bolum_araligi", ""),
+            "kapsayici": req.kapsayici or self.store.get("video_kapsayici", ""),
+            "ses_formati": req.ses_formati or self.store.get("video_ses_formati", ""),
+            "dosya_sablonu": req.dosya_sablonu or self.store.get("video_dosya_sablonu", ""),
+            "tarayici_cerezi": req.tarayici_cerezi or self.store.get("video_tarayici_cerezi", ""),
         }
         row_id = self.store.add(
             kind=kind,
@@ -541,6 +555,21 @@ class Manager:
             headers=options.get("headers") or {},
             dosya_adi=options.get("title", ""),
             proxy=proxy_url,
+            # v1.6 Video Pro: alanlar add()'de options'a islendi; VideoJob'a
+            # tasinir. Varsayilanlar zaten add()'de cozuldugu icin burada
+            # quick get yeterli.
+            altyazi_diller=options.get("altyazi_diller", ""),
+            oto_altyazi=bool(options.get("oto_altyazi")),
+            altyazi_goem=bool(options.get("altyazi_goem")),
+            kucuk_resim=options.get("kucuk_resim", ""),
+            ustveri_goem=bool(options.get("ustveri_goem")),
+            bolumler=options.get("bolumler", ""),
+            sponsorblock=options.get("sponsorblock", ""),
+            bolum_araligi=options.get("bolum_araligi", ""),
+            kapsayici=options.get("kapsayici", ""),
+            ses_formati=options.get("ses_formati", ""),
+            dosya_sablonu=options.get("dosya_sablonu", ""),
+            tarayici_cerezi=options.get("tarayici_cerezi", ""),
         )
         self.video_jobs[job_id] = job
         job.start(aria2c=str(paths.ARIA2C), on_update=self._on_video_update)

@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from api.server import LocalAPI  # noqa: E402
+from api.server import LocalAPI, _boolean_al  # noqa: E402
 from core.manager import Manager  # noqa: E402
 
 TEST_URL = "https://download.thinkbroadband.com/100MB.zip"
@@ -43,6 +43,8 @@ def request(port: int, path: str, token: str | None = None, body: dict | None = 
 
 def main() -> int:
     print("AfuDM yerel API testi\n")
+    record("false boolean True'ya donusmez",
+           _boolean_al({"deger": "false"}, "deger") is False)
     # LocalAPI.start() api_endpoint.json'u EZER; AfuDM aciksa uzanti yanlis
     # porta gider. Yedekle, sonda geri yaz.
     endpoint = Path(__file__).resolve().parent.parent / "data" / "api_endpoint.json"
@@ -97,6 +99,11 @@ def main() -> int:
         status, body = request(port, "/add", token=api.token, body={"url": ""})
         record("Bos link anlasilir hata veriyor",
                status == 400 and "bos" in (body.get("error", "").lower()),
+               body.get("error", "")[:50])
+
+        status, body = request(port, "/add", token=api.token,
+                               body={"url": TEST_URL, "audio_only": "hayir"})
+        record("Gecersiz boolean erken reddedilir", status == 400,
                body.get("error", "")[:50])
 
         # Browser -> LinkGrabber handoff: uzanti ham metni panele devreder.

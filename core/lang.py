@@ -39,6 +39,9 @@ _TEXTS = {
             "mp3'e çevirmek için ffmpeg gerekiyor. Ayarlar'dan gelişmiş video "
             "desteğini indir; o zamana kadar ses kaynaktaki biçimiyle iner."
         ),
+        "note.ffmpegEmbedSkipped": (
+            "ffmpeg bulunamadigi icin istenen video gomme islemleri uygulanamadi."
+        ),
     },
     "en": {
         "window.title": "AfuDM — download manager",
@@ -62,6 +65,9 @@ _TEXTS = {
         "err.needFfmpegAudio": (
             "ffmpeg is needed to convert to mp3. Download the advanced video support "
             "from Settings; until then the audio is saved in its original format."
+        ),
+        "note.ffmpegEmbedSkipped": (
+            "ffmpeg was not found, so the requested video embedding operations were skipped."
         ),
     },
 }

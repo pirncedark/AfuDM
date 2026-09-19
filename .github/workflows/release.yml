@@ -116,9 +116,27 @@ jobs:
             Write-Host "SHA-256 eklendi: $not"
           }
 
+      - name: Release basligini nottan oku
+        id: release_basligi
+        shell: pwsh
+        run: |
+          $not = "docs/RELEASE_NOTES/${{ github.ref_name }}.md"
+          $baslik = "AfuDM ${{ github.ref_name }}"
+          if (Test-Path $not -PathType Leaf) {
+            $satir = Get-Content -Path $not | Where-Object { $_ -match '^#\s+' } | Select-Object -First 1
+            if (-not [string]::IsNullOrWhiteSpace($satir)) {
+              $aday = $satir -replace '^#\s+', ''
+              if (-not [string]::IsNullOrWhiteSpace($aday)) {
+                $baslik = $aday.Trim()
+              }
+            }
+          }
+          "baslik=$baslik" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - name: Github Release yayinla
         uses: softprops/action-gh-release@v2
         with:
+          name: ${{ steps.release_basligi.outputs.baslik }}
           files: |
             build_out/AfuDM-v*-win64.zip
             build_out/*.sha256

@@ -238,6 +238,25 @@
         <label class="opt"><input type="checkbox" id="sBasTepside"> <span data-i18n="set.basTepside">Açılışta pencere açılmasın, tepside başlasın</span></label>
         <label class="opt"><input type="checkbox" id="sTelefon"> <span data-i18n="set.telefon">Telefondan bağlan (aynı Wi-Fi)</span></label>
       </div>
+      <div class="seed-kutu">
+        <label data-i18n="vid.title">Video</label>
+        <div class="grid2">
+          <div><label for="sVideoAltyaziDiller" data-i18n="vid.altyaziDiller">Altyazı dilleri</label><input id="sVideoAltyaziDiller" type="text" spellcheck="false" data-i18n-ph="vid.phAltyaziDiller" placeholder="tr,en"></div>
+          <div><label for="sVideoSponsorblock" data-i18n="vid.sponsorblock">SponsorBlock bölümleri</label><input id="sVideoSponsorblock" type="text" spellcheck="false" data-i18n-ph="vid.phSponsorblock" placeholder="sponsor,selfpromo"></div>
+          <div><label for="sVideoKucukResim" data-i18n="vid.kucukResim">Küçük resim</label><select id="sVideoKucukResim"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="goem" data-i18n="vid.goem">Göm</option><option value="dosya" data-i18n="vid.dosya">Dosya</option></select></div>
+          <div><label for="sVideoBolumler" data-i18n="vid.bolumler">Bölümler</label><select id="sVideoBolumler"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="goem" data-i18n="vid.goem">Göm</option><option value="ayir" data-i18n="vid.ayir">Ayır</option></select></div>
+          <div><label for="sVideoBolumAraligi" data-i18n="vid.bolumAraligi">Bölüm aralığı</label><input id="sVideoBolumAraligi" type="text" spellcheck="false" data-i18n-ph="vid.phBolumAraligi" placeholder="00:01:00-00:02:30"></div>
+          <div><label for="sVideoKapsayici" data-i18n="vid.kapsayici">Kapsayıcı</label><select id="sVideoKapsayici"><option value="" data-i18n="vid.varsayilanMp4">Varsayılan (mp4)</option><option value="mkv">mkv</option><option value="webm">webm</option><option value="mp4">mp4</option></select></div>
+          <div><label for="sVideoSesFormati" data-i18n="vid.sesFormati">Ses formatı</label><select id="sVideoSesFormati"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="mp3">mp3</option><option value="m4a">m4a</option><option value="opus">opus</option><option value="flac">flac</option></select></div>
+          <div><label for="sVideoTarayiciCerezi" data-i18n="vid.tarayiciCerezi">Tarayıcı çerezleri</label><select id="sVideoTarayiciCerezi"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="chrome">chrome</option><option value="edge">edge</option><option value="firefox">firefox</option><option value="brave">brave</option></select></div>
+        </div>
+        <div><label for="sVideoDosyaSablonu" data-i18n="vid.dosyaSablonu">Dosya adı şablonu</label><input id="sVideoDosyaSablonu" type="text" spellcheck="false" data-i18n-ph="vid.phDosyaSablonu" placeholder=""></div>
+        <div class="opts">
+          <label class="opt"><input type="checkbox" id="sVideoOtoAltyazi"> <span data-i18n="vid.otoAltyazi">Otomatik altyazı yaz</span></label>
+          <label class="opt"><input type="checkbox" id="sVideoAltyaziGoem"> <span data-i18n="vid.altyaziGoem">Altyazıyı göm</span></label>
+          <label class="opt"><input type="checkbox" id="sVideoUstveriGoem"> <span data-i18n="vid.ustveriGoem">Üstveriyi göm</span></label>
+        </div>
+      </div>
       <div class="surum-kutu">
         <label data-i18n="set.surum">Sürüm</label>
         <div class="surum-satir" id="sSurum"></div>
@@ -366,6 +385,25 @@
           </select>
         </div>
       </div>
+      <details id="kayVideoGelismisWrap" class="chr-elle">
+        <summary data-i18n="vid.gelismis">Gelişmiş video seçenekleri</summary>
+        <div class="grid2">
+          <div><label for="kayVideoAltyaziDiller" data-i18n="vid.altyaziDiller">Altyazı dilleri</label><input id="kayVideoAltyaziDiller" type="text" spellcheck="false" data-i18n-ph="vid.phAltyaziDiller" placeholder="tr,en"></div>
+          <div><label for="kayVideoSponsorblock" data-i18n="vid.sponsorblock">SponsorBlock bölümleri</label><input id="kayVideoSponsorblock" type="text" spellcheck="false" data-i18n-ph="vid.phSponsorblock" placeholder="sponsor,selfpromo"></div>
+          <div><label for="kayVideoKucukResim" data-i18n="vid.kucukResim">Küçük resim</label><select id="kayVideoKucukResim"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="goem" data-i18n="vid.goem">Göm</option><option value="dosya" data-i18n="vid.dosya">Dosya</option></select></div>
+          <div><label for="kayVideoBolumler" data-i18n="vid.bolumler">Bölümler</label><select id="kayVideoBolumler"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="goem" data-i18n="vid.goem">Göm</option><option value="ayir" data-i18n="vid.ayir">Ayır</option></select></div>
+          <div><label for="kayVideoBolumAraligi" data-i18n="vid.bolumAraligi">Bölüm aralığı</label><input id="kayVideoBolumAraligi" type="text" spellcheck="false" data-i18n-ph="vid.phBolumAraligi" placeholder="00:01:00-00:02:30"></div>
+          <div><label for="kayVideoKapsayici" data-i18n="vid.kapsayici">Kapsayıcı</label><select id="kayVideoKapsayici"><option value="" data-i18n="vid.varsayilanMp4">Varsayılan (mp4)</option><option value="mkv">mkv</option><option value="webm">webm</option><option value="mp4">mp4</option></select></div>
+          <div><label for="kayVideoSesFormati" data-i18n="vid.sesFormati">Ses formatı</label><select id="kayVideoSesFormati"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="mp3">mp3</option><option value="m4a">m4a</option><option value="opus">opus</option><option value="flac">flac</option></select></div>
+          <div><label for="kayVideoTarayiciCerezi" data-i18n="vid.tarayiciCerezi">Tarayıcı çerezleri</label><select id="kayVideoTarayiciCerezi"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="chrome">chrome</option><option value="edge">edge</option><option value="firefox">firefox</option><option value="brave">brave</option></select></div>
+        </div>
+        <div><label for="kayVideoDosyaSablonu" data-i18n="vid.dosyaSablonu">Dosya adı şablonu</label><input id="kayVideoDosyaSablonu" type="text" spellcheck="false" data-i18n-ph="vid.phDosyaSablonu" placeholder=""></div>
+        <div class="opts">
+          <label class="opt"><input type="checkbox" id="kayVideoOtoAltyazi"> <span data-i18n="vid.otoAltyazi">Otomatik altyazı yaz</span></label>
+          <label class="opt"><input type="checkbox" id="kayVideoAltyaziGoem"> <span data-i18n="vid.altyaziGoem">Altyazıyı göm</span></label>
+          <label class="opt"><input type="checkbox" id="kayVideoUstveriGoem"> <span data-i18n="vid.ustveriGoem">Üstveriyi göm</span></label>
+        </div>
+      </details>
       <div>
         <label for="kayDest" data-i18n="kay.dest">Kaydedilecek klasör</label>
         <div class="yol-satir">

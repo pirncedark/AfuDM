@@ -1525,6 +1525,18 @@ $("openSettings").onclick = async () => {
   telefonDurumu();
   seedListeCiz();
   $("sSeedEk").value = s.ek_trackerlar || "";
+  $("sVideoAltyaziDiller").value = s.video_altyazi_diller || "";
+  $("sVideoOtoAltyazi").checked = !!s.video_oto_altyazi;
+  $("sVideoAltyaziGoem").checked = !!s.video_altyazi_goem;
+  $("sVideoKucukResim").value = s.video_kucuk_resim || "";
+  $("sVideoUstveriGoem").checked = !!s.video_ustveri_goem;
+  $("sVideoBolumler").value = s.video_bolumler || "";
+  $("sVideoSponsorblock").value = s.video_sponsorblock || "";
+  $("sVideoBolumAraligi").value = s.video_bolum_araligi || "";
+  $("sVideoKapsayici").value = s.video_kapsayici || "";
+  $("sVideoSesFormati").value = s.video_ses_formati || "";
+  $("sVideoDosyaSablonu").value = s.video_dosya_sablonu || "";
+  $("sVideoTarayiciCerezi").value = s.video_tarayici_cerezi || "";
   $("sSeedEkOzet").textContent = "";
   surumuCiz();
   try {
@@ -1727,6 +1739,18 @@ $("setGo").onclick = async () => {
     tepsiye_kucult: $("sTepsi").checked,
     baslangicta_tepside: $("sBasTepside").checked,
     tracker_otomatik_tara: $("sSeedOto").checked,
+    video_altyazi_diller: $("sVideoAltyaziDiller").value.trim(),
+    video_oto_altyazi: $("sVideoOtoAltyazi").checked,
+    video_altyazi_goem: $("sVideoAltyaziGoem").checked,
+    video_kucuk_resim: $("sVideoKucukResim").value,
+    video_ustveri_goem: $("sVideoUstveriGoem").checked,
+    video_bolumler: $("sVideoBolumler").value,
+    video_sponsorblock: $("sVideoSponsorblock").value.trim(),
+    video_bolum_araligi: $("sVideoBolumAraligi").value.trim(),
+    video_kapsayici: $("sVideoKapsayici").value,
+    video_ses_formati: $("sVideoSesFormati").value,
+    video_dosya_sablonu: $("sVideoDosyaSablonu").value.trim(),
+    video_tarayici_cerezi: $("sVideoTarayiciCerezi").value,
   };
   try {
     await call("settings_save", payload);
@@ -1934,6 +1958,11 @@ async function kaydetAc(istek) {
   kategoriDoldur(bilgi);
   kayHedefYaz();
   $("kayQualityWrap").style.display = kayit.kind === "video" ? "" : "none";
+  $("kayVideoGelismisWrap").style.display = kayit.kind === "video" ? "" : "none";
+  $("kayVideoGelismisWrap").open = false;
+  ["AltyaziDiller", "Sponsorblock", "BolumAraligi", "DosyaSablonu"].forEach((ad) => { $("kayVideo" + ad).value = ""; });
+  ["KucukResim", "Bolumler", "Kapsayici", "SesFormati", "TarayiciCerezi"].forEach((ad) => { $("kayVideo" + ad).value = ""; });
+  ["OtoAltyazi", "AltyaziGoem", "UstveriGoem"].forEach((ad) => { $("kayVideo" + ad).checked = false; });
   $("kayQuality").value = istek.quality || state.settings.video_quality || "best";
   $("kayNow").checked = true;
   $("kayAt").value = "";
@@ -2047,6 +2076,18 @@ $("kayGo").onclick = async () => {
     quality: kayit.kind === "video" ? $("kayQuality").value : "",
     audio_only: kayit.kind === "video" && $("kayQuality").value === "audio",
     start_at: $("kayLater").checked ? $("kayAt").value.trim() : "",
+    altyazi_diller: $("kayVideoAltyaziDiller").value.trim(),
+    oto_altyazi: $("kayVideoOtoAltyazi").checked ? true : "",
+    altyazi_goem: $("kayVideoAltyaziGoem").checked ? true : "",
+    kucuk_resim: $("kayVideoKucukResim").value.trim(),
+    ustveri_goem: $("kayVideoUstveriGoem").checked ? true : "",
+    bolumler: $("kayVideoBolumler").value.trim(),
+    sponsorblock: $("kayVideoSponsorblock").value.trim(),
+    bolum_araligi: $("kayVideoBolumAraligi").value.trim(),
+    kapsayici: $("kayVideoKapsayici").value.trim(),
+    ses_formati: $("kayVideoSesFormati").value.trim(),
+    dosya_sablonu: $("kayVideoDosyaSablonu").value.trim(),
+    tarayici_cerezi: $("kayVideoTarayiciCerezi").value.trim(),
   };
   
   if (kayit.kind === "torrent" && kayit.preGid && torState.dosyalar.length > 0) {
