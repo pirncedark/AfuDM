@@ -167,7 +167,8 @@
 <div class="veil" id="setVeil">
   <div class="sheet">
     <h2 data-i18n="set.title">Ayarlar</h2>
-    <div class="body">
+    <div class="body" id="settingsBody">
+      <div class="settings-tools"><input id="settingsSearch" type="search" data-i18n-ph="set.search" placeholder="Ayarlarda ara" spellcheck="false"><span id="settingsSearchResult" class="hint"></span></div>
       <div>
         <label for="sLang" data-i18n="set.lang">Dil / Language</label>
         <select id="sLang">
@@ -323,10 +324,15 @@
           <div>
             <label for="sApiPort" data-i18n="set.remote.port">API portu</label>
             <input id="sApiPort" type="number" min="1024" max="65535">
+            <div id="sPortRestart" class="hint"></div>
           </div>
           <div>
             <label for="sLanAddr" data-i18n="set.remote.addr">Bağlantı adresi</label>
             <input id="sLanAddr" type="text" spellcheck="false" readonly>
+          </div>
+          <div>
+            <label for="sRunningPort" data-i18n="set.remote.runningPort">Calisan port</label>
+            <input id="sRunningPort" type="text" readonly>
           </div>
         </div>
       </div>

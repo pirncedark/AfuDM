@@ -993,3 +993,14 @@ input, textarea, code, .kv, .row-title, .kay-url, .hint, .err-note { user-select
   border: 1px solid var(--line);
   border-radius: 3px;
 }
+
+/* Ayarlar: arama her boyutta gorunur, uzun aciklamalar tasmaz. */
+.settings-tools { display:flex; gap:8px; align-items:center; margin-bottom:12px; }
+.settings-tools input { flex:1; min-width:0; }
+.hint, .err-note { overflow-wrap:anywhere; }
+input:disabled, textarea:disabled, select:disabled { opacity:.52; background:var(--surface-2); cursor:not-allowed; }
+@media (max-width: 600px) {
+  #setVeil .sheet { width:calc(100vw - 16px); max-width:none; }
+  #setVeil .grid2, #setVeil .grid3 { grid-template-columns:1fr; }
+  #setVeil .yol-satir { flex-wrap:wrap; }
+}

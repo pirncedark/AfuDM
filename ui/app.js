@@ -1516,7 +1516,7 @@ $("openSettings").onclick = async () => {
   $("sSnailSpeed").value = s.snail_speed_kb ?? 100;
   // v1.7.5 Bolum 1-2: uzaktan erisim + ag (docs/v175_SOZLESME.md)
   $("sLanAccess").checked = s.lan_erisimi ?? false;
-  $("sApiPort").value = s.api_port ?? 6811;
+  $("sApiPort").value = s.api_listen_port ?? s.api_port ?? 6811;
   $("sSystemProxy").checked = s.system_proxy ?? false;
   $("sProxy").value = s.proxy ?? "";
   $("sNetLocations").value = s.ag_konumlari ?? "";
@@ -1551,6 +1551,9 @@ $("openSettings").onclick = async () => {
   $("sSeedEkOzet").textContent = "";
   surumuCiz();
   try {
+    const port = await call("port_durumu");
+    $("sRunningPort").value = port.calisan || "-";
+    $("sPortRestart").textContent = port.yeniden_baslatma_gerekli ? t("set.remote.restart") : "";
     const info = await call("api_info");
     $("apiHint").textContent =
       t("hint.api", { port: info.port });
@@ -1788,7 +1791,7 @@ $("setGo").onclick = async () => {
     snail_speed_kb: Number($("sSnailSpeed").value) || 100,
     // v1.7.5: uzaktan erisim + ag. api_port araligi disindaysa varsayilana duser.
     lan_erisimi: $("sLanAccess").checked,
-    api_port: portSayisi($("sApiPort").value),
+    api_listen_port: portSayisi($("sApiPort").value),
     system_proxy: $("sSystemProxy").checked,
     proxy: $("sProxy").value.trim(),
     ag_konumlari: $("sNetLocations").value.trim(),
@@ -1815,13 +1818,30 @@ $("setGo").onclick = async () => {
     video_tarayici_cerezi: $("sVideoTarayiciCerezi").value,
   };
   try {
-    await call("settings_save", payload);
+    $("setGo").disabled = true;
+    const sonuc = await call("ayarlari_dogrula_kaydet", payload);
+    if (!sonuc.ok) {
+      const ilk = (sonuc.hatalar || [])[0];
+      const alan = ilk && ilk.alan;
+      const map = {api_port:"sApiPort", api_listen_port:"sApiPort", snail_speed_kb:"sSnailSpeed", proxy:"sProxy", clipboard_exts:"sClipExts", ag_konumlari:"sNetLocations"};
+      const hedef = $(map[alan]);
+      if (hedef) { hedef.focus(); toast(t(ilk.mesaj_anahtari), true); }
+      return;
+    }
+    state.settings = sonuc.ayarlar || state.settings;
     // Windows'a dokunan iki ayar (Baslangic klasoru / kayit defteri) ayri
     // gider: biri patlarsa digerleri ve ayarlar yine de kaydedilmis olsun.
     await sistemAyarlariniUygula();
     closeVeil("setVeil");
     toast(t("toast.saved"));
-  } catch (err) { toast(err.message, true); }
+  } catch (err) { toast(err.message, true); } finally { $("setGo").disabled = false; }
+};
+
+$("settingsSearch").oninput = () => {
+  const q = $("settingsSearch").value.trim().toLocaleLowerCase();
+  const fields = [...$("settingsBody").querySelectorAll("label, .hint")];
+  const match = !q || fields.some((x) => (x.textContent || "").toLocaleLowerCase().includes(q));
+  $("settingsSearchResult").textContent = q ? (match ? t("set.searchFound") : t("set.searchNone")) : "";
 };
 
 /* ---------- klasor agaci (core/kaydet.py) ----------

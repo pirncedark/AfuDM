@@ -72,6 +72,11 @@ DEFAULTS: dict[str, Any] = {
     "seed_ratio": 1.0,
     "auto_update_trackers": True,
     "video_quality": "best",
+    # v1.7.5 — PORT IKIYE AYRILDI:
+    #   api_listen_port -> KULLANICININ sectigi port (tercih; kalicidir)
+    #   api_port        -> GERCEKTEN baglanilan calisan port (yalniz durum
+    #                      bilgisi; tercih doluysa +1..+9 kaymis olabilir)
+    "api_listen_port": 6811,
     "api_port": 6811,
     # Tarayicidan gelen indirmede once kaydetme penceresi (IDM gibi)
     "kaydetme_penceresi": True,
@@ -105,7 +110,7 @@ DEFAULTS: dict[str, Any] = {
 # `USER_VERSION`'i artirinca aradaki ADIMI `MIGRATIONS` sozlugune ekle.
 # Adimlar YALNIZCA degisiklik gerektiginde vardir; gecis 0->1 hic is yapmaz
 # (mevcut _SCHEMA zaten v1'dir). Eski veri ASLA silinmez.
-USER_VERSION = 3
+USER_VERSION = 5
 
 
 def _v2_torrent_dosya_secimleri(conn: sqlite3.Connection) -> None:
@@ -126,9 +131,32 @@ def _v2_torrent_dosya_secimleri(conn: sqlite3.Connection) -> None:
 def _v3_events_gid(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE events ADD COLUMN gid TEXT")
 
+def _v4_api_listen_port(conn: sqlite3.Connection) -> None:
+    """Dinlenecek port (tercih) ile calisan portu AYIR.
+
+    Eski surumde tek `api_port` vardi ve icine "su an baglanilan" port
+    yaziliyordu; tercih doluysa 6812'ye kayan deger kalici gorunuyordu.
+    Yukseltmede tercih VARSAYILANA (6811) alinir — eski `api_port` kaydi
+    oldugu gibi birakilir (calisan port bilgisidir, ilk acilista tazelenir).
+    Mevcut kullanici ayarlari ve indirme gecmisi ELLENMEZ.
+    """
+    eski = conn.execute("SELECT value FROM settings WHERE key='api_port'").fetchone()
+    deger = eski[0] if eski and eski[0] else json.dumps(DEFAULTS["api_listen_port"])
+    conn.execute("INSERT OR IGNORE INTO settings(key, value) VALUES('api_listen_port', ?)", (deger,))
+
+def _v5_mobile_devices(conn: sqlite3.Connection) -> None:
+    conn.execute("""CREATE TABLE IF NOT EXISTS mobile_devices (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'owner',
+        token_hash TEXT NOT NULL, created_at REAL NOT NULL, last_seen REAL NOT NULL,
+        revoked_at REAL
+    )""")
+
+
 MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     2: _v2_torrent_dosya_secimleri,
     3: _v3_events_gid,
+    4: _v4_api_listen_port,
+    5: _v5_mobile_devices,
 }
 
 
@@ -140,6 +168,10 @@ def _guncelle_sema(conn: sqlite3.Connection) -> None:
         if adim:
             adim(conn)
         conn.execute(f"PRAGMA user_version = {surum}")
+    if mevcut < USER_VERSION:
+        # Adim bir INSERT/UPDATE yaptiysa islem acik kalabilir; surum atlamasi
+        # ile verinin AYNI anda kalici olmasi icin burada kapatiyoruz.
+        conn.commit()
 
 
 class Store:

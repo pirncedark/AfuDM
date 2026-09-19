@@ -489,34 +489,126 @@ class LocalAPI:
         self.token = load_or_create_token()
         _Handler.manager = manager
         _Handler.token = self.token
-        self.port = port
+        # tercih_edilen: kullanicinin/uygulamanin ISTEDIGI port (degismez).
+        # port: GERCEKTEN baglanilan calisan port (dolulukta +1..+9 kayabilir).
+        self.tercih_edilen = int(port)
+        self.port = int(port)
         # lan=True: telefon baglanabilsin diye yerel aga ac (bkz. modul basligi)
         self.lan = lan
         self.httpd: ThreadingHTTPServer | None = None
         self.thread: threading.Thread | None = None
 
-    def start(self) -> int:
-        last_error: Exception | None = None
-        adres = "0.0.0.0" if self.lan else "127.0.0.1"
-        for port in range(self.port, self.port + 10):
-            try:
-                self.httpd = _ExclusiveServer((adres, port), _Handler)
-                self.port = port
+    # --- durum ------------------------------------------------------------
+    @property
+    def calisiyor(self) -> bool:
+        return self.httpd is not None
+
+    def durum(self) -> dict:
+        """UI kopru sozlesmesi: tercih vs calisan port."""
+        return {
+            "ok": True,
+            "tercih_edilen": int(self.tercih_edilen),
+            "calisan": int(self.port) if self.calisiyor else 0,
+            "yeniden_baslatma_gerekli": bool(
+                self.calisiyor and int(self.port) != int(self.tercih_edilen)
+            ),
+        }
+
+    # --- yasam dongusu ----------------------------------------------------
+    def _baslat(self, adres: str, ilk_port: int) -> ThreadingHTTPServer:
+        """Portu (ve dolu ise sonraki 9'u) dene; hicbiri olmazsa hata ver."""
+        son_hata: Exception | None = None
+        for port in range(int(ilk_port), int(ilk_port) + 10):
+            if port > 65535:
                 break
+            try:
+                httpd = _ExclusiveServer((adres, port), _Handler)
             except OSError as exc:
-                last_error = exc
-        if self.httpd is None:
-            raise RuntimeError(f"API portu acilamadi: {last_error}")
-        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+                son_hata = exc
+                continue
+            self.port = port
+            return httpd
+        raise RuntimeError("API portu acilamadi: %s" % (son_hata,))
+
+    def start(self) -> int:
+        adres = "0.0.0.0" if self.lan else "127.0.0.1"
+        httpd = self._baslat(adres, self.tercih_edilen)
+        self.httpd = httpd
+        self.thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         self.thread.start()
-        # Uzantinin okuyabilmesi icin port + token'i dosyaya yaz.
+        self._endpoint_yaz()
+        return self.port
+
+    def _endpoint_yaz(self) -> None:
+        """Uzantinin okuyabilmesi icin port + token'i dosyaya yaz.
+
+        Token dosyaya YAZILIR ama ASLA loglanmaz; dosya izni kisitlanir.
+        """
         endpoint = paths.DATA / "api_endpoint.json"
         endpoint.write_text(
             json.dumps({"port": self.port, "token": self.token}, indent=1),
             encoding="utf-8",
         )
         _dosya_iznini_kisitla(endpoint)
-        return self.port
+
+    def stop(self) -> None:
+        """Sunucuyu kapat ve REFERANSLARI TEMIZLE.
+
+        Eskiden `httpd`/`thread` kapandiktan sonra da duruyordu; `calisiyor`
+        yanlis pozitif veriyor, ikinci bir `stop()` kapali sokete
+        `shutdown()` cagirip patlayabiliyordu."""
+        httpd, thread = self.httpd, self.thread
+        self.httpd = None
+        self.thread = None
+        if httpd is None:
+            return
+        try:
+            httpd.shutdown()
+        except Exception:
+            pass
+        try:
+            httpd.server_close()
+        except Exception:
+            pass
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=5)
+
+    def lan_ayarla(self, acik: bool) -> dict:
+        """LAN'i ac/kapat — BASARISIZLIKTA ESKI DURUMA GERI DON.
+
+        Yerel aga baglanma (0.0.0.0) guvenlik yazilimi ya da baska bir surec
+        yuzunden basarisiz olabilir. O zaman:
+          * eski `lan` degeri geri alinir,
+          * sunucu onceki adres/portta YENIDEN ayaga kaldirilir,
+          * doner sozlukte `acik` GERCEK durumu gosterir — cagiran taraf
+            ayari yanlislikla "acik" diye kaydetmesin.
+        """
+        istenen = bool(acik)
+        eski_lan = bool(self.lan)
+        eski_port = int(self.port)
+        if istenen == eski_lan and self.calisiyor:
+            return {"ok": True, "acik": eski_lan, "port": self.port, "geri_alindi": False}
+        self.stop()
+        self.lan = istenen
+        try:
+            self.start()
+        except Exception as exc:
+            hata = str(exc)[:200]
+            # --- rollback: eski calisma durumu ---
+            self.lan = eski_lan
+            self.port = eski_port
+            try:
+                self.start()
+            except Exception:
+                self.stop()
+            return {
+                "ok": False,
+                "acik": bool(self.lan) and self.calisiyor,
+                "port": self.port if self.calisiyor else 0,
+                "geri_alindi": True,
+                "hata": hata,
+            }
+        return {"ok": True, "acik": self.lan, "port": self.port, "geri_alindi": False}
 
     def lan_adresi(self) -> str:
         """Telefonun yazacagi adres. Makinenin LAN IP'si UDP rota secimiyle
@@ -543,8 +635,3 @@ class LocalAPI:
     @property
     def son_eslesme(self) -> float:
         return _Handler.son_eslesme
-
-    def stop(self) -> None:
-        if self.httpd:
-            self.httpd.shutdown()
-            self.httpd.server_close()
