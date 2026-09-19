@@ -698,6 +698,14 @@ input, textarea, code, .kv, .row-title, .kay-url, .hint, .err-note { user-select
 .lg-satir:last-child { border-bottom: none; }
 .lg-satir:hover { background: var(--surface); }
 .lg-satir.secili { background: var(--dl-soft); }
+.lg-satir.onceki { background: var(--hold-soft); }
+.lg-onceki {
+  font-size: 10.5px;
+  color: var(--hold);
+  font-weight: 500;
+  margin-left: 6px;
+  white-space: nowrap;
+}
 .lg-satir input[type="checkbox"] { accent-color: var(--dl); flex: none; }
 .lg-tur {
   flex: none;

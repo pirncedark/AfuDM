@@ -150,6 +150,28 @@ def tekil_les(urller: list[str]) -> list[str]:
     return sonuc
 
 
+def onceki_eslesen(adresler: list[str], gecmis: list[str]) -> list[str]:
+    """Verilen adreslerden gecmiste kayitli olanlar (tekil liste olarak).
+
+    Esleme anahtari `_anahtar` ile aynidir: http/https/ftp icin normalize edilmis
+    URL, magnet icin btih infohash (buyuk/kucuk harf duyarsiz). Yalnizca
+    "uyari cizgisi" icin kullanilir — indirmeyi engellemez.
+    """
+    bilinen: set[str] = set()
+    for eski in gecmis or []:
+        anahtar = _anahtar(eski)
+        if anahtar:
+            bilinen.add(anahtar)
+    gorulen: set[str] = set()
+    sonuc: list[str] = []
+    for adres in adresler or []:
+        anahtar = _anahtar(adres)
+        if anahtar in bilinen and anahtar not in gorulen:
+            gorulen.add(anahtar)
+            sonuc.append(adres)
+    return sonuc
+
+
 def _domain_eslesir(host: str, domain: str) -> bool:
     """Bir host'un verilen alan adina ait olup olmadigini dogru sekilde soyler.
 

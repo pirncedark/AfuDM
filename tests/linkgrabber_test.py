@@ -182,6 +182,44 @@ check("hepsi birlikte", lg.ogeleri_filtrele(
 check("eslesmeyen bos liste", lg.ogeleri_filtrele(_ogeler, ara="cisim") == [], "cisim")
 check("ogeler bos ise bos", lg.ogeleri_filtrele([], ara="x") == [], "bos")
 
+print("5d) onceki_eslesen — gecmis kayitlarina gore mevcut olanlar (engellemez, isaretler)")
+_gecmis = [
+    "https://cdn.com/file1.zip",
+    "HTTP://cdn.com/file1.zip",  # ayni URL farkli case -> normalize birlestirir
+    "magnet:?xt=urn:btih:abcdef0123456789abcdef0123456789abcdef",
+    "magnet:?xt=urn:btih:ABCDEF0123456789ABCDEF0123456789ABCDEF",  # infohash buyuk harf
+]
+_kontrol = [
+    "https://cdn.com/file1.zip",   # gecmiste var
+    "http://cdn.com/file1.zip?x=1",  # farkli query -> YOK
+    "magnet:?xt=urn:btih:abcdef0123456789abcdef0123456789abcdef",  # infohash eslesir
+    "https://cdn.com/line2.zip",   # yok
+]
+check("gecmistekiler isaretlenir",
+      set(lg.onceki_eslesen(_kontrol, _gecmis)) ==
+      {"https://cdn.com/file1.zip",
+       "magnet:?xt=urn:btih:abcdef0123456789abcdef0123456789abcdef"},
+      str(lg.onceki_eslesen(_kontrol, _gecmis)))
+check("buyuk/kucuk harf normalize birlesir",
+      len(lg.onceki_eslesen(["HTTP://cdn.com/File1.ZIP?"], ["http://cdn.com/file1.zip"])) == 0,
+      "path farki File1 vs file1 -> farkli (case korunur)")
+check("gecmis bos ise bos", lg.onceki_eslesen(_kontrol, []) == [], "bos gecmis")
+check("adres bos ise bos", lg.onceki_eslesen([], _gecmis) == [], "bos adres")
+check("infohash thumbnailsiz tekrar etmez", len(lg.onceki_eslesen(
+    ["magnet:?xt=urn:btih:abcdef0123456789abcdef0123456789abcdef"] * 3, _gecmis)) == 1,
+    "magnet tekili")
+print("5e) manager.gecmis_sources — DB'den kaynak listesi")
+import inspect
+import core.manager as mgr
+if hasattr(mgr, "Manager"):
+    sig = inspect.signature(mgr.Manager.gecmis_sources)
+    check("gecmis_sources limit parametresi var",
+          any(p.name == "limit" for p in sig.parameters.values()), str(sig))
+    donen = sig.return_annotation
+    check("gecmis_sources list[str] doner", "list" in str(donen), str(donen))
+else:
+    check("manager.Manager bulunamadi", False, "gecmis_sources eksik")
+
 print("6) probe_es_zamanli — fake_http ile boyut/ad, eszamanlilik siniri")
 veri = hashlib.sha256(b"LinkGrabber").digest() * 5  # 160 bayt deterministic
 ayarlar = SunucuAyarlari(veri=veri)

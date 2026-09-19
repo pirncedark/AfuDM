@@ -512,10 +512,11 @@ function lgRender() {
     const o = lgState.ogeler[i];
     const boyut = o.probed ? (o.size ? size(Number(o.size)) : t("lg.boyutYok")) : "…";
     const ad = o.filename || "—";
-    return `<label class="lg-satir${o.secili ? " secili" : ""}">
+    const onceki = o.oncekiIndirme ? ` <span class="lg-onceki">⚠ ${t("lg.uyariOnceki")}</span>` : "";
+    return `<label class="lg-satir${o.secili ? " secili" : ""}${o.oncekiIndirme ? " onceki" : ""}">
       <input type="checkbox" data-i="${i}" ${o.secili ? "checked" : ""}>
       <span class="lg-tur ${o.tur}">${lgTurEtiketi(o.tur)}</span>
-      <span class="lg-ad">${escapeHtml(ad)}</span>
+      <span class="lg-ad">${escapeHtml(ad)}${onceki}</span>
       <span class="lg-boyut">${o.probed ? boyut : "…"}</span>
       <span class="lg-url">${escapeHtml(o.url)}</span>
     </label>`;
@@ -526,6 +527,18 @@ function lgRender() {
       lgRender();
     };
   });
+  const eskiSayisi = lgState.ogeler.filter((o) => o.oncekiIndirme && o.secili).length;
+  if (eskiSayisi) {
+    durum.textContent += " · " + t("lg.oncekiKaldir");
+    durum.style.cursor = "pointer";
+    durum.onclick = () => {
+      for (const o of lgState.ogeler) if (o.oncekiIndirme) o.secili = false;
+      lgRender();
+    };
+  } else {
+    durum.style.cursor = "";
+    durum.onclick = null;
+  }
 }
 
 async function linkgrabberAnaliz() {
@@ -537,10 +550,19 @@ async function linkgrabberAnaliz() {
     const ogeler = (out.ogeler || []).map((o) => ({
       ...o, secili: true, probed: false, filename: "", size: null,
     }));
+    const onceki = await call("linkgrabber_onceki", ogeler.map((o) => o.url));
+    if (onceki && onceki.ok && onceki.onceki) {
+      const set = new Set(onceki.onceki);
+      for (const o of ogeler) o.oncekiIndirme = set.has(o.url);
+    } else {
+      for (const o of ogeler) o.oncekiIndirme = false;
+    }
     lgState.ogeler = ogeler;
     lgState.gosterim = lgState.ogeler.map((_, i) => i);
     lgSuz();
-    toast(t("lg.bulundu", { n: lgState.ogeler.length }));
+    const eski = ogeler.filter((o) => o.oncekiIndirme).length;
+    toast(t("lg.bulundu", { n: lgState.ogeler.length })
+      + (eski ? " · " + t("lg.oncekiUyari", { n: eski }) : ""));
   } catch (err) { toast(err.message, true); }
 }
 

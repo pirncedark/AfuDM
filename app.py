@@ -218,6 +218,16 @@ class Api:
             "domainler": linkgrabber.domainler(ogeler or []),
         }
 
+    def linkgrabber_onceki(self, urller: list[str]) -> dict:
+        """Paneldeki adreslerden DB'de daha once kayitli olanlar (uyari).
+
+        Engellemez yalnizca isaretler: kullanici isterse yine ekler.
+        Magnet icin info hash, digerleri icin normalize URL eslestirilir.
+        """
+        eslesen = linkgrabber.onceki_eslesen(
+            urller or [], self.manager.gecmis_sources())
+        return {"ok": True, "onceki": eslesen, "sayi": len(eslesen)}
+
     def linkgrabber_probe(self, urller: list[str], es_zamanli: int = 8) -> dict:
         """Seçilen URL'ler icin toplu lazy probe (sinirli eszamanlilik)."""
         urller = urller or []
