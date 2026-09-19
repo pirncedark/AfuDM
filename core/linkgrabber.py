@@ -6,8 +6,15 @@ v1.5 P0 masaustu LinkGrabber panelinin kalbi. Akis:
 
 - `ayikla` content.js'teki seciliBaglantilariBul regex'inin Python karsiligidir
   (http/https/ftp + magnet), metin icinde gomulu URL'leri de yakalar.
+- `normalize` kurallastirir: trim + sondaki ayrac, scheme/host kucuk harf,
+  path/query KORUNUR (File.zip != file.zip), http/https/ftp'de fragment atilir.
 - `tekil_les` ayni URL'yi (ve magnet'te ayni infohashi) birden fazla
-  gostermez — "ayni URL tekrari engeli" ROADMAP geregidir.
+  gostermez — "ayni URL tekrari engeli" ROADMAP geregidir. Anahtar
+  kurallastirilmis URL'dir: scheme/host farki birlesir ama path farki birlesmez
+  (File.zip != file.zip).
+- `filtrele` alan adini UCUNA dayarir: `github.com` icin github.com ve alt
+  alan adlari (api.github.com) eslesir, evilgithub.com eslesmez. www on eki
+  simge olarak degil, dogru sekilde (yalniz on ek) elenir.
 - `tur_bul` uzanti + bilinen video sitesi + magnet/.torrent ile tahmin yapar;
   kesin ayrim indirme aninda manager.detect_kind'da yapilir.
 - `probe_es_zamanli` core/dosya_adi.probe_url_info'yu sinirli eszamanlilikla
@@ -73,16 +80,51 @@ def ayikla(metin: str) -> list[str]:
 
 
 def normalize(url: str) -> str:
-    """URL'yi temizler: trim, sondaki noktalama ve tirnak ayracini atar."""
+    """URL'yi temizler ve kurallastirir.
+
+    - trim; cevreleyen tirnak/isaret ve metin sonundaki nokta/virgul URL'nin
+      parcasi degildir.
+    - scheme ve host kucuk harfe indirilir (a/b ve A/B ayni sunucudur).
+    - path ve query AYNEN korunur: buyuk/kucuk harf farki URL'nin kendisidir
+      (File.zip ile file.zip farkli baglantilardir).
+    - http/https/ftp'de fragment atilir: sunucuya giden istekte yeri yoktur.
+    """
     url = (url or "").strip()
     # Cevreleyen tirnak/isaret ve metin sonundaki nokta/virgul URL'nin parcasi
     # degildir. (URL regex tirnaklari yakalamaz ama normalize disaridan da
     # cagrilabilir — orn. panodan kopyalanan metin.)
-    return url.strip(".,;:!?\"'")
+    url = url.strip(".,;:!?\"'")
+    try:
+        bolum = urllib.parse.urlsplit(url)
+        if not bolum.scheme or not bolum.netloc:
+            return url
+        scheme = bolum.scheme.lower()
+        if scheme in ("http", "https", "ftp"):
+            # Yalnizca hostu kucuk harfe indir; userinfo (kimlik) ve port korunur.
+            netloc = bolum.netloc
+            if "@" in netloc:
+                kullanici, _, host = netloc.rpartition("@")
+                netloc = f"{kullanici}@{host.lower()}"
+            else:
+                netloc = netloc.lower()
+            bolum = bolum._replace(
+                scheme=scheme,
+                netloc=netloc,
+                fragment="",  # sunucuya giden istekte yeri yok
+            )
+            return bolum.geturl()
+        return url
+    except Exception:
+        return url
 
 
 def _anahtar(url: str) -> str:
-    """Tekillesme anahtari: normal URL'de sirali hali, magnet'te infohash."""
+    """Tekillesme anahtari: kurallastirilmis URL, magnet'te infohash.
+
+    `normalize` scheme/host'u kucuk harfe indirir ama path/query'yi KORUR
+    (File.zip != file.zip); boylece ayni sunucunun farkli case'leri tekrarli
+    sayilmaz ama gercekten farkli dosyalar yanlis birlesmez.
+    """
     url = normalize(url)
     if url.lower().startswith("magnet:"):
         try:
@@ -93,7 +135,7 @@ def _anahtar(url: str) -> str:
         except Exception:
             pass
         return url.lower()
-    return url.casefold()
+    return url
 
 
 def tekil_les(urller: list[str]) -> list[str]:
@@ -106,6 +148,22 @@ def tekil_les(urller: list[str]) -> list[str]:
             gorulen.add(anahtar)
             sonuc.append(normalize(url))
     return sonuc
+
+
+def _domain_eslesir(host: str, domain: str) -> bool:
+    """Bir host'un verilen alan adina ait olup olmadigini dogru sekilde soyler.
+
+    Kural: `host == domain` (github.com == github.com) VEYA host bir alt alan
+    adidir (api.github.com, www.github.com ... .github.com biter). `github.com`
+    asla `evilgithub.com` ile eslesmez. www on eki iki tarafta da yok sayilir
+    (yalniz on ek — `lstrip` gibi karakter kumesiyle oynamaz).
+    """
+    domain = (domain or "").strip().lower()
+    if domain.startswith("www."):
+        domain = domain[4:]
+    if host.startswith("www."):
+        host = host[4:]
+    return bool(domain) and (host == domain or host.endswith("." + domain))
 
 
 def tur_bul(url: str) -> str:
@@ -125,7 +183,7 @@ def tur_bul(url: str) -> str:
 
     host = _host(u)
     for site in VIDEO_SITELERI:
-        if host == site or host.endswith("." + site):
+        if _domain_eslesir(host, site):
             return "video"
     return "http"
 
@@ -137,16 +195,20 @@ def filtrele(
 ) -> list[str]:
     """Tur (sadece) ve alan adi (domain) filtrelerini uygular."""
     sonuc: list[str] = []
-    dom = (domain or "").strip().lower().lstrip("www.")
+    dom = (domain or "").strip().lower()
     for url in urller:
         if sadece and tur_bul(url) not in sadece:
             continue
         if dom:
-            host = _host(url).lstrip("www.")
-            if dom not in host:
+            host = _host(url)
+            if not _domain_eslesir(host, dom):
                 continue
         sonuc.append(url)
     return sonuc
+
+
+# --- Probe olcutleri -----------------------------------------------------
+PROBE_MAKS_WORKER = 16  # eszamanli HEAD/Range sondajinin hard limiti
 
 
 def probe_es_zamanli(
@@ -158,8 +220,14 @@ def probe_es_zamanli(
     sinirli (ThreadPoolExecutor). Sonuc sozlugu: {url: probe_dict}.
     http/https olmayanlar (magnet, .torrent dosyasi) atlanmaz — probe_url_info
     onlar icin ok=False dondurur, panel \"bilgi yok\" gosterir.
+
+    Hard limit: es_zamanli PROBE_MAKS_WORKER (16) ile sinirlanir; 0/negatif
+    deger 1'e, metinsel deger varsayilana (8) iner.
     """
-    es_zamanli = max(1, int(es_zamanli))
+    try:
+        cap = max(1, min(int(es_zamanli), PROBE_MAKS_WORKER))
+    except (TypeError, ValueError):
+        cap = 8
     sonuclar: dict[str, dict] = {}
 
     def _probe(url: str) -> tuple[str, dict]:
@@ -168,7 +236,7 @@ def probe_es_zamanli(
         except Exception as exc:  # beklenmedik hata paneli kilitlemesin
             return url, {"ok": False, "error": str(exc)[:120]}
 
-    with ThreadPoolExecutor(max_workers=es_zamanli) as havuz:
+    with ThreadPoolExecutor(max_workers=cap) as havuz:
         gelecekler = {havuz.submit(_probe, u): u for u in urller}
         for gelecek in as_completed(gelecekler):
             url, sonuc = gelecek.result()

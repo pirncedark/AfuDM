@@ -56,6 +56,26 @@ check("trim", lg.normalize("  https://x.com/a.zip  ") == "https://x.com/a.zip",
 check("sorgu korunur", lg.normalize("https://x.com/a?b=1&c=2") == "https://x.com/a?b=1&c=2",
       lg.normalize("https://x.com/a?b=1&c=2"))
 
+print("2b) normalize — URL canonicalization (scheme/host kucuk, path/query korunur)")
+check("scheme kucuk harf", lg.normalize("HTTPS://X.com/a.zip") == "https://x.com/a.zip",
+      lg.normalize("HTTPS://X.com/a.zip"))
+check("scheme kucuk harf (ftp)", lg.normalize("FTP://X.com/a.zip") == "ftp://x.com/a.zip",
+      lg.normalize("FTP://X.com/a.zip"))
+check("host kucuk harf", lg.normalize("https://GIThub.COM/Rapo/File.exe") == "https://github.com/Rapo/File.exe",
+      lg.normalize("https://GIThub.COM/Rapo/File.exe"))
+check("path case korunur", lg.normalize("https://x.com/File.zip") == "https://x.com/File.zip",
+      lg.normalize("https://x.com/File.zip"))
+check("query case korunur", lg.normalize("https://x.com/a?TOKEN=AbC&b=1") == "https://x.com/a?TOKEN=AbC&b=1",
+      lg.normalize("https://x.com/a?TOKEN=AbC&b=1"))
+check("fragment atilir", lg.normalize("https://x.com/a.zip#kaydir") == "https://x.com/a.zip",
+      lg.normalize("https://x.com/a.zip#kaydir"))
+check("port korunur", lg.normalize("HTTP://X.com:8080/a") == "http://x.com:8080/a",
+      lg.normalize("HTTP://X.com:8080/a"))
+check("userinfo host'u etkilemez", lg.normalize("https://KULLANICI:sifre@X.com/a") == "https://KULLANICI:sifre@x.com/a",
+      lg.normalize("https://KULLANICI:sifre@X.com/a"))
+check("magnet dokunulmaz", lg.normalize("MAGNET:?xt=urn:btih:ABC") == "MAGNET:?xt=urn:btih:ABC",
+      lg.normalize("MAGNET:?xt=urn:btih:ABC"))
+
 print("3) tekil_les — ayni URL / magnet infohash tekrar edilmez")
 check("ayni URL bir kez", lg.tekil_les(["https://x.com/a.zip", "https://x.com/a.zip"]) == ["https://x.com/a.zip"],
       str(lg.tekil_les(["https://x.com/a.zip", "https://x.com/a.zip"])))
@@ -63,6 +83,13 @@ check("noktali hali tekille", lg.tekil_les(["https://x.com/a.zip.", "https://x.c
       str(lg.tekil_les(["https://x.com/a.zip.", "https://x.com/a.zip"])))
 check("sira korunur", lg.tekil_les(["https://b.com/1", "https://a.com/2", "https://b.com/1"])
       == ["https://b.com/1", "https://a.com/2"], str(lg.tekil_les(["https://b.com/1", "https://a.com/2", "https://b.com/1"])))
+check("host case tekille", lg.tekil_les(["https://X.COM/a.zip", "https://x.com/a.zip"]) == ["https://x.com/a.zip"],
+      str(lg.tekil_les(["https://X.COM/a.zip", "https://x.com/a.zip"])))
+check("fragment farki tekille", lg.tekil_les(["https://x.com/a.zip#x", "https://x.com/a.zip#y"]) == ["https://x.com/a.zip"],
+      str(lg.tekil_les(["https://x.com/a.zip#x", "https://x.com/a.zip#y"])))
+check("path case AYRI KALIR", lg.tekil_les(["https://x.com/File.zip", "https://x.com/file.zip"])
+      == ["https://x.com/File.zip", "https://x.com/file.zip"],
+      str(lg.tekil_les(["https://x.com/File.zip", "https://x.com/file.zip"])))
 m1 = "magnet:?xt=urn:btih:ABC123&dn=a&tr=http://t/announce"
 m2 = "magnet:?xt=urn:btih:abc123&dn=b&tr=http://t/x"
 check("ayni infohash bir kez (kucuk harf)", lg.tekil_les([m1, m2]) == [m1],
@@ -82,6 +109,9 @@ check("youtube -> video", lg.tur_bul("https://www.youtube.com/watch?v=abc") == "
 check("vimeo -> video", lg.tur_bul("https://vimeo.com/123") == "video")
 check("bilinmeyen -> http", lg.tur_bul("https://x.com/sayfa") == "http")
 check("alt alan adi video sitesi", lg.tur_bul("https://m.youtube.com/watch?v=abc") == "video")
+check("www on ekli video sitesi", lg.tur_bul("https://www.vimeo.com/123") == "video")
+check("taklit video sitesi (evil.com HARIC)", lg.tur_bul("https://evilyoutube.com/x") == "http")
+check("taklit video sitesi (youtube.com.evil.com HARIC)", lg.tur_bul("https://youtube.com.evil.com/x") == "http")
 
 print("5) filtrele — tur + domain")
 liste = ["https://x.com/a.zip", "https://x.com/b.mp4", "magnet:?xt=urn:btih:abc",
@@ -97,6 +127,31 @@ check("domain + tur birlikte",
       str(lg.filtrele(liste, sadece={"video"}, domain="x.com")))
 check("www on eki esnek", lg.filtrele(liste, domain="www.x.com") == ["https://x.com/a.zip", "https://x.com/b.mp4"],
       str(lg.filtrele(liste, domain="www.x.com")))
+
+print("5b) filtrele — domain matching dogru uca dayali (subdomain dahil, taklit haric)")
+gh = ["https://github.com/a.zip", "https://api.github.com/b.mp4",
+      "https://sub.api.github.com/c", "https://evilgithub.com/x.zip",
+      "https://notgithub.com/y", "https://github.com.evil.com/z"]
+check("github.com kendisi", lg.filtrele(gh, domain="github.com")[0] == "https://github.com/a.zip",
+      str(lg.filtrele(gh, domain="github.com")))
+check("alt alan adi dahil", set(lg.filtrele(gh, domain="github.com")) >=
+      {"https://api.github.com/b.mp4", "https://sub.api.github.com/c"},
+      str(lg.filtrele(gh, domain="github.com")))
+check("evilgithub.com HARIC", "https://evilgithub.com/x.zip" not in lg.filtrele(gh, domain="github.com"),
+      str(lg.filtrele(gh, domain="github.com")))
+check("notgithub.com HARIC", "https://notgithub.com/y" not in lg.filtrele(gh, domain="github.com"),
+      str(lg.filtrele(gh, domain="github.com")))
+check("github.com.evil.com HARIC", "https://github.com.evil.com/z" not in lg.filtrele(gh, domain="github.com"),
+      str(lg.filtrele(gh, domain="github.com")))
+check("www on eki sadece on ek (wwexample.com HARIC)",
+      lg.filtrele(["https://wwexample.com/a.zip"], domain="example.com") == [],
+      str(lg.filtrele(["https://wwexample.com/a.zip"], domain="example.com")))
+check("www.example.com host dahil",
+      lg.filtrele(["https://www.example.com/a.zip"], domain="example.com") == ["https://www.example.com/a.zip"],
+      str(lg.filtrele(["https://www.example.com/a.zip"], domain="example.com")))
+check("www.example.com domain, host dropsuz dahil",
+      lg.filtrele(["https://example.com/a.zip"], domain="www.example.com") == ["https://example.com/a.zip"],
+      str(lg.filtrele(["https://example.com/a.zip"], domain="www.example.com")))
 
 print("6) probe_es_zamanli — fake_http ile boyut/ad, eszamanlilik siniri")
 veri = hashlib.sha256(b"LinkGrabber").digest() * 5  # 160 bayt deterministic
@@ -119,6 +174,19 @@ try:
     check("6 URL'den 6 sonuc", len(sonuclar) == 6, str(len(sonuclar)))
     check("hepsi ok", all(s.get("ok") for s in sonuclar.values()), str(sonuclar))
     check("hizli biter (toplu probe)", gecen < 5.0, f"{gecen:.2f} s")
+
+    check("hard limit tanimli ve mantikli",
+          0 < lg.PROBE_MAKS_WORKER <= 16, str(lg.PROBE_MAKS_WORKER))
+    # es_zamanli 0/negatif/e-posta yuksek girilse havuz patlamaz, cap takilir
+    cok = lg.probe_es_zamanli([url], es_zamanli=9999, timeout=3.0)
+    check("es_zamanli 9999 cap'lenir", cok.get(url, {}).get("ok") is True,
+          str(cok.get(url, {})))
+    sifir = lg.probe_es_zamanli([url], es_zamanli=0, timeout=3.0)
+    check("es_zamanli 0 en az 1 worker", sifir.get(url, {}).get("ok") is True,
+          str(sifir.get(url, {})))
+    hatali = lg.probe_es_zamanli([url], es_zamanli="asci", timeout=3.0)
+    check("es_zamanli metin varsayilana duser", hatali.get(url, {}).get("ok") is True,
+          str(hatali.get(url, {})))
 finally:
     httpd.shutdown()
 
