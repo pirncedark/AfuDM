@@ -128,17 +128,20 @@ class _Handler(BaseHTTPRequestHandler):
         supplied = header or (query.get("token", [""])[0])
         return bool(self.token) and secrets.compare_digest(supplied, self.token)
 
-    def _sayfa_gonder(self, yol) -> None:
-        """Tek dosyalik arayuzu gonder (telefon icin; CSS/JS iceride gomulu)."""
+    def _sayfa_gonder(self, yol, icerik_turu="text/html; charset=utf-8",
+                      onbellek="no-store", ek_basliklar=None) -> None:
+        """Telefon arayuzu ve PWA dosyalarini dogru basliklarla gonder."""
         try:
             govde = yol.read_bytes()
         except OSError:
             self._hata(404, "SAYFA_YOK", "sayfa bulunamadi")
             return
         self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Type", icerik_turu)
         self.send_header("Content-Length", str(len(govde)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", onbellek)
+        for ad, deger in (ek_basliklar or {}).items():
+            self.send_header(ad, deger)
         self.end_headers()
         self.wfile.write(govde)
 
@@ -185,6 +188,23 @@ class _Handler(BaseHTTPRequestHandler):
             # icindeki her API cagrisi anahtari basliga koyar. Anahtar adres
             # cubugundan (?k=) gelir ve telefonda saklanir.
             self._sayfa_gonder(paths.UI / "mobil.html")
+            return
+        if parsed.path == "/manifest.webmanifest":
+            # Manifest yeni kurulumlarda hemen yenilensin.
+            self._sayfa_gonder(
+                paths.UI / "manifest.webmanifest",
+                "application/manifest+json; charset=utf-8", "no-cache",
+            )
+            return
+        if parsed.path == "/sw.js":
+            # Worker tum kok yolu kapsayabilsin ve her acilista kontrol edilsin.
+            self._sayfa_gonder(
+                paths.UI / "sw.js", "text/javascript; charset=utf-8", "no-cache",
+                {"Service-Worker-Allowed": "/"},
+            )
+            return
+        if parsed.path == "/ikon.png":
+            self._sayfa_gonder(paths.UI / "icon.png", "image/png", "public, max-age=31536000")
             return
         if parsed.path == "/show":
             # Ikinci kopya: kendi penceresini acmak yerine bunu cagirir.

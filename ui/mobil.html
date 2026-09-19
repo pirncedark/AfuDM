@@ -6,6 +6,8 @@
 <meta name="theme-color" content="#14181f">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/ikon.png">
 <title>AfuDM</title>
 <style>
 /* Telefon arayuzu: tek dosya (API sadece bunu servis eder, ek istek yok).
@@ -101,6 +103,7 @@ input[type="text"], select {
 }
 .bildirim.goster { opacity: 1; transform: none; }
 .bildirim.kotu { border-color: #f2678a66; color: #ffc9d6; }
+#pwaKur { font-size: 11px; min-height: 32px; padding: 6px 8px; }
 </style>
 </head>
 <body>
@@ -108,6 +111,7 @@ input[type="text"], select {
 <header>
   <div class="ust">
     <div class="marka">Afu<span>DM</span></div>
+    <button class="sessiz" id="pwaKur" hidden>Ana ekrana ekle</button>
     <div class="hiz"><span id="hiz">0.0</span><small>MB/s</small></div>
   </div>
   <div class="durum">
@@ -306,6 +310,28 @@ $("gonder").onclick = async () => {
 $("link").addEventListener("keydown", (olay) => {
   if (olay.key === "Enter") $("gonder").click();
 });
+
+/* Tarayici kurulum secenegini verirse dugmeyi gorunur yapar. */
+let kurulumIstegi;
+const pwaKur = $("pwaKur");
+window.addEventListener("beforeinstallprompt", (olay) => {
+  olay.preventDefault();
+  kurulumIstegi = olay;
+  pwaKur.hidden = false;
+});
+pwaKur.addEventListener("click", async () => {
+  if (!kurulumIstegi) return;
+  await kurulumIstegi.prompt();
+  kurulumIstegi = null;
+  pwaKur.hidden = true;
+});
+
+/* Worker kaydi basarisiz olsa bile telefon arayuzu normal calismaya devam eder. */
+if ("serviceWorker" in navigator) {
+  (async () => {
+    try { await navigator.serviceWorker.register("/sw.js", { scope: "/" }); } catch (_) {}
+  })();
+}
 
 yenile();
 klasorleriDoldur();

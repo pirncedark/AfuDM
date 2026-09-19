@@ -104,6 +104,7 @@ if (`$parseHatalari) {
         "tests/torrent_onekle_test.py",
         "tests/torrent_duzeltme_test.py",
         "tests/v175_ayar_test.py",
+        "tests/pwa_test.py",
         "tests/torrent_yaris_test.mjs"
     )
 
