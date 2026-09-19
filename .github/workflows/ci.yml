@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main, v1.5-linkgrabber]
+  pull_request:
+
+jobs:
+  parse:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Sozdizimi kapisi
+        run: powershell -ExecutionPolicy Bypass -File scripts/test.ps1 -ParseOnly
+
+  offline:
+    runs-on: windows-latest
+    needs: parse
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cevrimdisi kutuphaneler
+        run: python -m pip install --quiet pywebview pystray pillow qrcode
+      - name: Cevrimdisi testler (ag gerektirmez)
+        run: powershell -ExecutionPolicy Bypass -File scripts/test.ps1
+
+  build:
+    runs-on: windows-latest
+    needs: offline
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Paket
+        run: |
+          python -m pip install --quiet pyinstaller
+          powershell -ExecutionPolicy Bypass -File scripts/build_release.ps1
+      - name: Zip + dogrulama + checksum
+        shell: pwsh
+        run: |
+          $surum = & python scripts\surum_oku.py
+          $zip = "build_out\AfuDM-v$surum-win64.zip"
+          Compress-Archive -Path build_out\paket\AfuDM -DestinationPath $zip -Force
+          powershell -ExecutionPolicy Bypass -File scripts\verify_release.ps1 $zip
+          powershell -ExecutionPolicy Bypass -File scripts\make_checksums.ps1 $zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: afudm-ci-package
+          path: |
+            build_out/AfuDM-v*-win64.zip
+            build_out/*.sha256
+          if-no-files-found: error

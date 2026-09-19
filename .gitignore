@@ -10,6 +10,11 @@ engine/*.dll
 
 # Paketlenmis uygulama (surum ciktisi olarak yayimlanir, kaynakta durmaz)
 AfuDM.exe
+AfuDM.exe.eski
+
+# PyInstaller ara ciktilari (kokteki AfuDM.spec'ten uretilir)
+build/
+dist/
 
 # --- Uretilen / gecici ---
 build_out/

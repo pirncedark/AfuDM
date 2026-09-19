@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  gate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: TEMEL GATE - tag + surum.py + origin/main HEAD ayni olmali
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $surum = & python scripts\surum_oku.py
+          Write-Host "tag: $tag   surum.py: $surum"
+          if ($tag.TrimStart('v') -ne $surum) {
+            Write-Host "GATE HATA: tag ile surum eslesmiyor"
+            exit 1
+          }
+          git fetch origin main
+          $head = git rev-parse HEAD
+          $mainHead = git rev-parse origin/main
+          if ($head -ne $mainHead) {
+            Write-Host "GATE HATA: tag, origin/main HEAD'inde degil (head=$head main=$mainHead)"
+            exit 1
+          }
+          Write-Host "gate OK"
+
+  build:
+    runs-on: windows-latest
+    needs: gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cevrimdisi kutuphaneler
+        run: python -m pip install --quiet pywebview pystray pillow qrcode pyinstaller
+
+      - name: Cevrimdisi testler
+        run: powershell -ExecutionPolicy Bypass -File scripts/test.ps1
+
+      - name: Surum kapisi + paket
+        shell: pwsh
+        run: |
+          $surum = & python scripts\surum_oku.py
+          powershell -ExecutionPolicy Bypass -File scripts\build_release.ps1 -Tag "v$surum"
+
+      - name: Zip + dogrulama + duman + checksum
+        shell: pwsh
+        run: |
+          $surum = & python scripts\surum_oku.py
+          $zip = "build_out\AfuDM-v$surum-win64.zip"
+          Compress-Archive -Path build_out\paket\AfuDM -DestinationPath $zip -Force
+          powershell -ExecutionPolicy Bypass -File scripts\verify_release.ps1 $zip
+          powershell -ExecutionPolicy Bypass -File scripts\smoke_test.ps1 $zip
+          powershell -ExecutionPolicy Bypass -File scripts\make_checksums.ps1 $zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: afudm-release
+          path: |
+            build_out/AfuDM-v*-win64.zip
+            build_out/*.sha256
+          if-no-files-found: error
+
+      - name: Github Release yayinla
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build_out/AfuDM-v*-win64.zip
+            build_out/*.sha256
+          generate_release_notes: true

@@ -475,10 +475,15 @@ push → CI (test + build) → release tag vX.Y.Z
 | `security.yml` | token/parola sızar mı (ör. `secrets/gitleaks` benzeri tarama) |
 
 ### Betikler (`scripts/`)
-`test.ps1` (tüm testler, çevrimdışı) · `build_release.ps1` (temp klasör →
-paket) · `verify_release.ps1` (zip gerekli dosyaları içeriyor mu, attığında
-çalışıyor mu) · `smoke_test.ps1` (paketlenen exe'yi gerçekten koşturur) ·
-`make_checksums.ps1`.
+`test.ps1` (tüm testler, çevrimdışı) · `surum_oku.py` (sürümü tek yerden okur —
+inline regex yok) · `build_exe.ps1` (AfuDM.spec → PyInstaller → dist → kök) ·
+`build_release.ps1` (exe gerekirse üretir → temp klasör → paket) ·
+`verify_release.ps1` (zip gerekli dosyaları içeriyor mu, attığında çalışıyor mu) ·
+`smoke_test.ps1` (paketlenen exe'yi gerçekten koşturur) · `make_checksums.ps1`.
+
+### GitHub Actions klasörü
+Kökteki `AfuDM.spec` (PyInstaller spec) CI'da exe üretimini sağlar;
+`build_out/AfuDM.spec` yalnızca yerel tarihsel bir kopyadır (gitignore'da).
 
 ### Kurallar
 1. **main koruması:** `main`'e doğrudan veya force-push **YOK**; PR + CI zorunlu.
