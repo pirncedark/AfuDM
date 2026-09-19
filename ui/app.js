@@ -126,7 +126,7 @@ function segbar(item) {
   return html + "</div>";
 }
 function visible() {
-  const q = state.search.toLowerCase();
+  const q = state.search.toLocaleLowerCase("tr-TR");
   return state.items.filter((item) => {
     if (item.status === "removed") return false;
     const f = state.filter;
@@ -136,7 +136,7 @@ function visible() {
     if (f === "torrent" && item.kind !== "torrent") return false;
     if (f === "complete" && item.status !== "complete") return false;
     if (f === "error" && item.status !== "error") return false;
-    if (q && !(item.title || "").toLowerCase().includes(q)) return false;
+    if (q && !(item.title || "").toLocaleLowerCase("tr-TR").includes(q)) return false;
     return true;
   });
 }
