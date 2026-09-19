@@ -6,6 +6,27 @@ indirme yoneticisi. Motor: aria2 + yt-dlp.
 
 Konum: `C:\Users\afuuu\AfuDM\`
 
+## LINKGRABBER (v1.5) — BITTI (2026-09-19), tests/linkgrabber_test.py
+Bar'da "Link yakala". Pano/tarayicidan kopyalanmis METIN yapistirilir, "Analiz et":
+`core/linkgrabber.py` ayikla -> normalize -> tekil_les -> tur_bul -> filtrele.
+- Ayiklama regex'i content.js'teki seciliBaglantilariBul'un Python karsiligi
+  (+ ftp); metin icinde gomulu URL'leri de yakalar.
+- tekil_les: ayni URL bir kez; magnet'te AYNI infohash bir kez (dn/tr farki
+  onemsiz).
+- tur_bul hafif tahmin (uzanti + video sitesi + magnet/.torrent); KESIN tur
+  ayrimi indirme aninda manager.detect_kind'da.
+- Dikkat: x.com VIDEO_SITELERI'nde DEGIL — cok yaygin bir alan adi, yanlis
+  eslesme. Yalniz twitter.com.
+- filtrele: "sadece" tur kumesi + domain (www on eki esnek).
+- probe_es_zamanli: ThreadPoolExecutor ile sinirli (varsayilan 8) lazy probe;
+  core/dosya_adi.probe_url_info uzerine. Panel "Boyutları tara" ile cagirir.
+- App koprusu: Api.linkgrabber_analiz / _probe / _ekle. _ekle add_links'e
+  deleje eder (kategori/klasor/quality/start_at destegi hazir).
+- UI: ui/index.html lgVeil (genis sheet, tur+domain+hedef filtreleri), app.js
+  lgState/linkgrabberAnaliz/Probe/Ekle. i18n lg.* tr+en birebir.
+- TUZAK: lgSadece "all" bolumu `["all"]` olarak sadece'ye girmemeli — hem
+  app.js hem app.py'de filtrelenir (yoksa hic sonuc cikmaz).
+
 ## YENI: AfuDM v1.3.2 — `afuadm` komut satiri + hiz profilleri + link yenileme
 Motrix (MDXP), Neat DM (Renew expired link) ve FDM (Snail Mode) incelemelerinden
 alınan yetenekler. Bos motora DEĞIL, aria2/yt-dlp'nin ustune iner (Secenek C):
@@ -1077,6 +1098,7 @@ tests/seed_dosya_test.py (YENI, 27 kontrol, ag gerektirmez).
     python tests/baslik_test.py          (AfuDM acikken; fare kullanmaz)
     python tests/video_panel_test.py     (AfuDM acikken; ffmpeg+ffprobe gerekir, 12 test)
     python tests/chrome_ekle_test.py     (Chrome gerekir; gecici profil, 7 kontrol)
+    python tests/linkgrabber_test.py     (ag gerektirmez; fake_http, 35 kontrol)
 
 ## ONEMLI KURALLAR
 - Portable: hicbir sey sisteme yazilmaz; `data/` ve `downloads/` klasor icinde.

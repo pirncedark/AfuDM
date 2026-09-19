@@ -421,6 +421,122 @@ $("addGo").onclick = async () => {
   } catch (err) { $("addErr").textContent = err.message; }
 };
 
+/* ---------- LinkGrabber (v1.5) ----------
+   Akis: metin yapistir -> analiz (ayikla+normalize+tekil+filtre) ->
+   liste (onay kutusu, tur, ad, boyut) -> sec -> toplu ekle. */
+const lgState = { ogeler: [], filtre: { sadece: [], domain: "" } };
+
+function lgTurEtiketi(tur) {
+  const anahtar = "lg.tur." + tur;
+  const metin = t(anahtar);
+  return metin === anahtar ? escapeHtml(tur) : metin;
+}
+
+function lgRender() {
+  const liste = $("lgListe");
+  const durum = $("lgDurum");
+  if (!lgState.ogeler.length) {
+    liste.innerHTML = '<div class="lg-bos">' + t("lg.bos") + "</div>";
+    durum.textContent = t("lg.durumBos");
+    $("lgGo").disabled = true;
+    return;
+  }
+  const secili = lgState.ogeler.filter((o) => o.secili).length;
+  durum.textContent = t("lg.sonuc", { n: lgState.ogeler.length, m: secili });
+  $("lgGo").disabled = secili === 0;
+  $("lgGo").textContent = t("lg.go", { n: secili });
+  liste.innerHTML = lgState.ogeler.map((o, i) => {
+    const boyut = o.probed ? size(Number(o.size) || 0) : "…";
+    const ad = o.filename || "—";
+    return `<label class="lg-satir${o.secili ? " secili" : ""}">
+      <input type="checkbox" data-i="${i}" ${o.secili ? "checked" : ""}>
+      <span class="lg-tur ${o.tur}">${lgTurEtiketi(o.tur)}</span>
+      <span class="lg-ad">${escapeHtml(ad)}</span>
+      <span class="lg-boyut">${o.probed ? boyut : "…"}</span>
+      <span class="lg-url">${escapeHtml(o.url)}</span>
+    </label>`;
+  }).join("");
+  liste.querySelectorAll("input[type=checkbox]").forEach((cb) => {
+    cb.onchange = () => {
+      lgState.ogeler[Number(cb.dataset.i)].secili = cb.checked;
+      lgRender();
+    };
+  });
+}
+
+async function linkgrabberAnaliz() {
+  const metin = $("lgMetin").value || "";
+  if (!metin.trim()) { toast(t("err.noLink"), true); return; }
+  const filtre = { ...lgState.filtre };
+  filtre.sadece = Array.from($("lgSadece").selectedOptions)
+    .map((o) => o.value).filter((v) => v !== "all");
+  filtre.domain = $("lgDomain").value.trim();
+  lgState.filtre = filtre;
+  $("lgDurum").textContent = t("lg.analizDurum");
+  try {
+    const out = await call("linkgrabber_analiz", metin, filtre);
+    lgState.ogeler = (out.ogeler || []).map((o) => ({
+      ...o, secili: true, probed: false, filename: "", size: null,
+    }));
+    lgRender();
+    toast(t("lg.bulundu", { n: lgState.ogeler.length }));
+  } catch (err) { toast(err.message, true); }
+}
+
+async function linkgrabberProbe() {
+  const secili = lgState.ogeler.filter((o) => o.secili);
+  if (!secili.length) { toast(t("err.noLink"), true); return; }
+  $("lgDurum").textContent = t("lg.probeDurum");
+  try {
+    const out = await call("linkgrabber_probe", secili.map((o) => o.url), 8);
+    if (out.ogeler) {
+      for (const bilgi of out.ogeler) {
+        const hedef = lgState.ogeler.find((o) => o.url === bilgi.url);
+        if (hedef) {
+          hedef.probed = true;
+          hedef.filename = bilgi.filename && bilgi.filename !== "download" ? bilgi.filename : "";
+          hedef.size = bilgi.size;
+          if (bilgi.kategori) hedef.kategori = bilgi.kategori;
+        }
+      }
+    }
+    lgRender();
+    toast(t("lg.probeBitti"));
+  } catch (err) { toast(err.message, true); }
+}
+
+async function linkgrabberEkle() {
+  const secili = lgState.ogeler.filter((o) => o.secili);
+  if (!secili.length) { toast(t("err.noLink"), true); return; }
+  const secim = {
+    dest_dir: $("lgDest").value.trim(),
+    quality: $("quality").value,
+  };
+  try {
+    const out = await call("linkgrabber_ekle", secili.map((o) => o.url), secim);
+    closeVeil("lgVeil");
+    $("lgMetin").value = "";
+    lgState.ogeler = [];
+    lgRender();
+    let message = t("toast.started", { n: out.added });
+    if (out.scheduled) message = t("toast.scheduled", { n: out.scheduled });
+    if (out.failed && out.failed.length) toast(message + ": " + out.failed[0], true);
+    else toast(message);
+  } catch (err) { toast(err.message, true); }
+}
+
+$("lgBtn").onclick = () => {
+  $("lgDomain").value = lgState.filtre.domain || "";
+  $("lgSadece").value = "all";
+  $("quality").value = state.settings.video_quality || "best";
+  openVeil("lgVeil");
+  lgRender();
+  $("lgMetin").focus();
+};
+$("lgAnaliz").onclick = linkgrabberAnaliz;
+$("lgProbe").onclick = linkgrabberProbe;
+$("lgGo").onclick = linkgrabberEkle;
+
 /* ---------- seed penceresi (core/manager.seed_tazele) ----------
    aria2 CALISAN torrente tracker EKLEMEZ (olculdu); tazeleme, isi kaldirip
    ayni dizine yeniden eklemekle olur — inen parcalar korunur. */

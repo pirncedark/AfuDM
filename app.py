@@ -25,7 +25,7 @@ from api.server import LocalAPI  # noqa: E402
 VARSAYILAN_API_PORT = 6811   # uzantinin da ilk denedigi port
 from core import (baslangic, chrome_kurulum, clipboard, dosya_adi, engines, guc, iliskilendir,  # noqa: E402
                   tracker_saglik,
-                  kaydet, lang, models, paths, pencere)
+                  kaydet, lang, linkgrabber, models, paths, pencere)
 from core.manager import Manager  # noqa: E402
 
 # Pencere basligi dile gore secilir (bkz. core/lang.py); ayar okunana kadar bu durur.
@@ -171,6 +171,59 @@ class Api:
             "kategori": kategori,
             "resumable": sonuc.get("resumable", False),
         }
+
+    # --- LinkGrabber (v1.5) ---------------------------------------------
+    def linkgrabber_analiz(self, metin: str, filtre: dict | None = None) -> dict:
+        """Ham metinden URL cikarir: ayikla -> normalize -> tekil -> tur+domain filtre.
+
+        filtre: {"sadece": ["video","arsiv","torrent"], "domain": "ornek.com"}
+        onemli: discriminate sonrasi tür tahmini hafiftir (uzanti/site); net
+        tur ayrimi indirme aninda manager.detect_kind'da yapilir.
+        """
+        filtre = filtre or {}
+        sadece = {t for t in (filtre.get("sadece") or []) if t and t != "all"}
+        domain = filtre.get("domain") or ""
+        urller = linkgrabber.ayikla(metin or "")
+        urller = linkgrabber.tekil_les(urller)
+        urller = linkgrabber.filtrele(urller, sadece=sadece, domain=domain)
+        ogeler = [{"url": u, "tur": linkgrabber.tur_bul(u)} for u in urller]
+        return {"ok": True, "toplam": len(ogeler), "ogeler": ogeler, "filtre": filtre}
+
+    def linkgrabber_probe(self, urller: list[str], es_zamanli: int = 8) -> dict:
+        """Seçilen URL'ler icin toplu lazy probe (sinirli eszamanlilik)."""
+        urller = urller or []
+        sonuclar = linkgrabber.probe_es_zamanli(urller, es_zamanli=es_zamanli)
+        ogeler = []
+        for url in urller:
+            bilgi = sonuclar.get(url, {"ok": False})
+            ad = bilgi.get("filename") or ""
+            ogeler.append({
+                "url": url,
+                "ok": bilgi.get("ok", False),
+                "filename": ad,
+                "size": bilgi.get("size"),
+                "content_type": bilgi.get("content_type"),
+                "kategori": kaydet.kategori_tahmin(url, linkgrabber.tur_bul(url), ad)
+                if url.lower().startswith(("http://", "https://")) else "",
+                "resumable": bilgi.get("resumable", False),
+            })
+        return {"ok": True, "ogeler": ogeler}
+
+    def linkgrabber_ekle(self, urller: list[str], secim: dict | None = None) -> dict:
+        """LinkGrabber panelinden secilen baglantilari topluca kuyruga ekler."""
+        urller = [u for u in (urller or []) if u]
+        secim = secim or {}
+        if not urller:
+            return {"ok": False, "error": lang.t("err.noLink", self.manager.store.get("language", "auto"))}
+        return self.add_links({
+            "urls": urller,
+            "dest_dir": secim.get("dest_dir") or "",
+            "kategori": secim.get("kategori") or "",
+            "quality": secim.get("quality") or None,
+            "audio_only": bool(secim.get("audio_only")),
+            "playlist": bool(secim.get("playlist")),
+            "start_at": secim.get("start_at") or "",
+        })
 
     def klasor_kisayollar(self) -> dict:
         return {"ok": True, "ogeler": kaydet.kisayollar(
