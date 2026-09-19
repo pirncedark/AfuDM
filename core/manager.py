@@ -22,7 +22,8 @@ from video import ytdlp
 
 from .dosya_adi import resolve_filename
 
-from . import cerez, lang, paths, trackers
+from . import cerez, lang, models, paths, trackers
+from . import proxy as P
 from .daemon import Aria2Daemon
 from .db import Store
 from .hata import BadSource, KayitYok, RenewDesteklenmez
@@ -145,6 +146,48 @@ class Manager:
             "limit_kb": self.hiz_limiti_kb(),
             "durum": "degisti",
         }
+
+    def baglanti_ayarla(
+        self,
+        gid: str,
+        baglanti: int | None = None,
+        hiz_kb: int | None = None,
+    ) -> dict:
+        """Network Core — CALISAN indirmenin ayarlarini KESMEDEN degisir.
+
+        aria2 `changeOption` calisan ise aninda uygulanir. Degerler DB'ye de
+        islenir; yeniden baslatmada `_launch_http` ayni sinirlarla baslar
+        (bkz. `_baglanti_secenekleri`). Video (yt-dlp) islerinde canli ayar
+        desteklenmez (ayrik alt surectir, secenekleri sonradan erismez)."""
+        row = self.store.by_gid(gid)
+        if not row:
+            raise KayitYok("kayit bulunamadi: %s" % gid)
+        if gid.startswith("yt:"):
+            raise ValueError("video islerinde canli ayar desteklenmez")
+        sec: dict[str, object] = {}
+        if baglanti is not None:
+            baglanti = int(baglanti)
+            if not 1 <= baglanti <= 64:
+                raise ValueError("baglanti sayisi 1-64 araliginda olmali")
+            sec["max-connection-per-server"] = str(baglanti)
+        if hiz_kb is not None:
+            hiz_kb = int(hiz_kb)
+            if hiz_kb < 0:
+                raise ValueError("hiz negatif KB/s olamaz")
+            sec["max-download-limit"] = "0" if hiz_kb == 0 else "%dK" % hiz_kb
+        if sec:
+            try:
+                self.rpc.change_option(gid, sec)
+            except Aria2Error as exc:
+                raise ValueError("canli degistirilemedi: %s" % str(exc)[:160]) from exc
+            opts = json.loads(row["options"] or "{}")
+            if baglanti is not None:
+                opts["baglanti"] = baglanti
+            if hiz_kb is not None:
+                opts["hiz_kb"] = hiz_kb
+            self.store.update_by_id(row["id"], options=json.dumps(opts))
+            self.store.log("info", "is ayarlari canli degistirildi: %s" % row["title"])
+        return {"ok": True, "gid": gid, "baglanti": baglanti, "hiz_kb": hiz_kb}
 
     def update_settings(self, changes: dict) -> dict:
         for key, value in changes.items():
@@ -282,64 +325,53 @@ class Manager:
         return bool(status.get("followedBy"))
 
     # --- ekleme -----------------------------------------------------------
-    def add(
-        self,
-        source: str,
-        kind: str | None = None,
-        dest_dir: str | None = None,
-        quality: str | None = None,
-        audio_only: bool = False,
-        playlist: bool = False,
-        start_after: float | None = None,
-        headers: dict | None = None,
-        filename: str | None = None,
-        cookies: list | None = None,
-        user_agent: str | None = None,
-        title: str | None = None,
-    ) -> dict:
-        source = source.strip()
-        if not source:
-            raise ValueError("bos link")
-        if not self.is_supported_source(source):
+    def add(self, source: str | models.DownloadRequest, **kw) -> dict:
+        """Is ekler. Girdi ya `models.DownloadRequest` ya da flat-kwargs'tir;
+        ikisi de TEK kuralla (`models.DownloadRequest.from_mapping`) gecerli
+        kisa forma indirgenir (v1.4 Foundation: tum cagiricilar bu noktada
+        birlesir). Tarihsel imza korundu: `add(url, kind=..., dest_dir=...)`.
+        """
+        req = (source if isinstance(source, models.DownloadRequest)
+               else models.DownloadRequest.from_mapping({"source": source, **kw}))
+        if not self.is_supported_source(req.source):
             # Panodan/elle gelen duz metin (ornegin bir dosya adi) aria2'ye
             # gidince "Unrecognized URI or unsupported protocol" diye kaybolurdu.
             raise ValueError(
                 "gecersiz baglanti: http(s), ftp, magnet ya da .torrent dosyasi olmali"
             )
-        kind = kind or self.detect_kind(source)
-        duplicate = self.find_duplicate(source)
+        kind = req.kind or self.detect_kind(req.source)
+        duplicate = self.find_duplicate(req.source)
         if duplicate:
             label = "bu torrent" if kind == "torrent" else "bu baglanti"
-            raise ValueError(f"{label} zaten kuyrukta: {duplicate.get('title') or source[:60]}")
-        dest_dir = dest_dir or self.current_download_dir()
+            raise ValueError(f"{label} zaten kuyrukta: {duplicate.get('title') or req.source[:60]}")
+        dest_dir = req.dest_dir or self.current_download_dir()
         Path(dest_dir).mkdir(parents=True, exist_ok=True)
         options = {
-            "quality": quality or self.store.get("video_quality", "best"),
-            "audio_only": audio_only,
-            "playlist": playlist,
-            "headers": headers or {},
-            "filename": filename or "",
-            # Cerezler bazi sitelerde tarayicinin kimligine bagli (Cloudflare vb.)
-            # split/join satir sonlarini da yok eder: basliga satir enjekte edilemez
-            "user_agent": " ".join((user_agent or "").split())[:512],
-            # Video paneli sayfa basligini yollar (HLS'te yt-dlp "master" der)
-            "title": " ".join((title or "").split())[:200],
+            "quality": req.quality or self.store.get("video_quality", "best"),
+            "audio_only": req.audio_only,
+            "playlist": req.playlist,
+            "headers": req.headers or {},
+            "filename": req.filename or "",
+            "user_agent": req.user_agent or "",
+            "title": req.title or "",
+            "proxy": req.proxy or "",
+            "checksum": req.checksum or "",
         }
         row_id = self.store.add(
             kind=kind,
-            source=source,
-            title=options["title"] or self.guess_name(source),
+            source=req.source,
+            title=options["title"] or self.guess_name(req.source),
             dest_dir=dest_dir,
             options=options,
-            start_after=start_after,
+            start_after=req.start_after,
         )
-        temiz = cerez.temizle(cookies)
+        temiz = cerez.temizle(req.cookies)
         if temiz:
             self._cerezler[row_id] = temiz
-        if start_after:
-            when = time.strftime("%H:%M", time.localtime(start_after))
-            self.store.log("info", f"zamanlandi ({when}): {source[:80]}")
-            return {"id": row_id, "kind": kind, "scheduled_for": start_after}
+        if req.start_after:
+            when = time.strftime("%H:%M", time.localtime(req.start_after))
+            self.store.log("info", f"zamanlandi ({when}): {req.source[:80]}")
+            return {"id": row_id, "kind": kind, "scheduled_for": req.start_after}
         return self._launch(self.store.by_id(row_id))  # type: ignore[arg-type]
 
     def _launch(self, row: dict) -> dict:
@@ -363,6 +395,42 @@ class Manager:
         self.store.log("info", f"basladi [{kind}]: {row['title']}")
         return {"id": row["id"], "gid": gid, "kind": kind}
 
+    def _proksi(self, options: dict) -> dict | None:
+        """Bir is icin gecerli proxy: is-acik → sistem → genel (sirasiyla).
+
+        Her katman 'proxy' katmanina ait; normalize (host:port + tip) curls
+        `core/proxy.parcala` yapar. Sistem proxy GitHub gibi her acilista
+        yeniden okunur — kullanici Windows'ta proxy acmis olabilir."""
+        adres = str(options.get("proxy") or "").strip()
+        if adres:
+            return P.parcala(adres)
+        if self.store.get("system_proxy"):
+            sistem = P.sistem_proxysi()
+            if sistem:
+                return P.parcala(sistem)
+        genel = str(self.store.get("proxy") or "").strip()
+        if genel:
+            return P.parcala(genel)
+        return None
+
+    def _baglanti_secenekleri(self, options: dict) -> dict:
+        """Is uzerinde hatirlanan CANLI ayar degerleri (max-connection-par-server
+        ve max-download-limit). Yeniden baslatmada da korunur (bkz. baglanti_ayarla)."""
+        sec: dict = {}
+        try:
+            baglanti = int(options.get("baglanti") or 0)
+        except (TypeError, ValueError):
+            baglanti = 0
+        if 1 <= baglanti <= 64:
+            sec["max-connection-per-server"] = str(baglanti)
+        try:
+            hiz = int(options.get("hiz_kb") or 0)
+        except (TypeError, ValueError):
+            hiz = 0
+        if hiz > 0:
+            sec["max-download-limit"] = "%dK" % hiz
+        return sec
+
     def _launch_http(self, row: dict, options: dict, dest_dir: str) -> str:
         aria_options: dict[str, object] = {"dir": dest_dir}
         if options.get("filename"):
@@ -375,11 +443,22 @@ class Manager:
             aria_options["header"] = headers
         if options.get("user_agent"):
             aria_options["user-agent"] = options["user_agent"]
+        proksi = self._proksi(options)
+        if proksi:
+            aria_options.update(P.aria2_secenekleri(proksi))
+        if options.get("checksum"):
+            aria_options["checksum"] = options["checksum"]
+        aria_options.update(self._baglanti_secenekleri(options))
         return self.rpc.add_uri([row["source"]], aria_options)
 
     def _launch_torrent(self, row: dict, dest_dir: str) -> str:
         source = row["source"]
         aria_options = {"dir": dest_dir}
+        proksi = self._proksi(json.loads(row["options"] or "{}"))
+        if proksi:
+            # all-proxy-type=socks5 ile BT baglantilari da proxy'den gecer;
+            # 'http' tipi HTTP/FTP'ye etkir (aria2 belgeli davranis).
+            aria_options.update(P.aria2_secenekleri(proksi))
         local = Path(source)
         try:
             if local.exists() and local.suffix.lower() == ".torrent":
@@ -400,6 +479,8 @@ class Manager:
             job_id = f"yt:{self._video_seq}"
         cerezler = self._cerezler.get(row["id"])
         cerez_dosyasi = str(cerez.dosya_yaz(job_id, cerezler)) if cerezler else ""
+        proksi = self._proksi(options)
+        proxy_url = P.url(proksi) if proksi else ""
         job = ytdlp.VideoJob(
             job_id=job_id,
             url=row["source"],
@@ -414,6 +495,7 @@ class Manager:
             user_agent=options.get("user_agent", ""),
             headers=options.get("headers") or {},
             dosya_adi=options.get("title", ""),
+            proxy=proxy_url,
         )
         self.video_jobs[job_id] = job
         job.start(aria2c=str(paths.ARIA2C), on_update=self._on_video_update)

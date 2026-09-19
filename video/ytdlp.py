@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from core import lang, netcheck, paths
+from core import proxy as _proxy
 from . import mp4mux
 
 CREATE_NO_WINDOW = 0x08000000
@@ -212,6 +213,7 @@ class VideoJob:
     cookie_file: str = ""           # tarayicidan gelen oturum cerezleri (core/cerez.py)
     user_agent: str = ""
     headers: dict = field(default_factory=dict)  # Referer vb. (gomulu oynaticilar ister)
+    proxy: str = ""                 # yt-dlp --proxy girisi (Network Core); bossa dogrudan
     dosya_adi: str = ""             # sayfa basligi; bossa yt-dlp'nin basligi
     started_at: float = field(default_factory=time.time)
     finished_at: float = 0.0
@@ -285,7 +287,17 @@ class VideoJob:
             args = "aria2c:-x16 -s16 -k1M --file-allocation=none --console-log-level=error"
             if extra:
                 args += " " + extra
+            if self.proxy:
+                # aria2c dis indiricinin de proxy'den gecmesi gerekir; yt-dlp'nin
+                # kendi --proxy'si indiriciye aktarilmaz.
+                try:
+                    p = _proxy.parcala(self.proxy)
+                    args += " " + _proxy.komut_secenekleri(p)
+                except ValueError:
+                    pass  # gecersiz ise indirici prostysiz calisir; yt-dlp hatayi kendisi verir
             cmd += ["--downloader", aria2c, "--downloader-args", args]
+        if self.proxy:
+            cmd += ["--proxy", self.proxy]
         cmd.append(self.url)
         return cmd
 

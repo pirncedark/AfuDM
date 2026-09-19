@@ -1,5 +1,5 @@
 # AfuDM — Durum & Devam Notu
-Son guncelleme: 2026-09-19 (AfuDM v1.3.2 — komut satiri aracı + hiz profilleri + link yenileme + dlman v1.12.0 dosya adi cozumu)
+Son guncelleme: 2026-09-19 (AfuDM v1.4.0 — Foundation + Network Core: tek ekleme noktasi, proxy/SOCKS, checksum, canli is ayari)
 ## Ne yapiyoruz
 IDM yerine gecen, PORTABLE (tek klasor, kopyala-calistir) Windows masaustu
 indirme yoneticisi. Motor: aria2 + yt-dlp.
@@ -39,6 +39,45 @@ Tam test (HTTP + torrent + video) TEK kosuda 17/17 gecti. Paketlenmis
 indirme listesi (http + torrent + video ayni anda) arayuzde dogru akti.
 
 ## YOL HARITASI — EK KARARLAR (2026-09-19)
+> **TAM URUN PLANI (kimlik, aşamalar, özellik/referans matrisi, öncelik modeli,
+> v1.3.2–v2.3 sürüm yolu, Torrent Boost tasarımı) → `docs/ROADMAP.md`.**
+
+
+## YENI: v1.4.0 Foundation + Network Core (2026-09-19)
+`docs/ROADMAP.md` v1.4 isinin TAMAMI geldi:
+1. **`core/models.py`** — `DownloadRequest` TEK KAYNAK + `parse_time_spec`.
+   `manager.add`, `app.bekleyen_onayla` ve API `/add` artik ayri dict/flat-kwargs
+   uretmiyor; hepsi `DownloadRequest.from_mapping`'ten geciyor (boyut sinirlari
+   orada). Iki ayri zamanlama parse'i (`app.parse_start_at` +
+   `api.server._zamanla`) tek fonksiyona birlesiyor; `.zamanla` geriye uyumla
+   onu cagirir (cli_test aynen gecer).
+2. **DB migration altyapisi** — `PRAGMA user_version` + `MIGRATIONS` sozlugu
+   (`core/db.py`); `tests/db_test.py` eski db'de verinin korundugunu + surekli
+   acilisin tutarli kaldigini dogrular.
+3. **`GET /capabilities`** — app/surum/api, motorlar (`engines.durum()`),
+   protokoller/turler/ozellikler, sinirlar (kaynak/baslik/user_agent/header/
+   proxy).
+4. **`tests/fake_http.py`** — harici ag YOK; Range/206 resume, Basic auth 401,
+   403, 302 ve yarida kesilme (drop) sonrasi resume+checksum'u tekrarlanabilir
+   dogrular (`tests/fake_http_test.py`, 19 kontrol).
+5. **Network Core (`core/proxy.py` + is-ayarlari):**
+   - Proxy UÇ katman: is-acik → Windows sistem proxy (`system_proxy` ayari) →
+     genel (`proxy` ayari). `parcala` host:port+tur+kimlik normalize eder;
+     `aria2_secenekleri` all-proxy ailesini, `url` yt-dlp --proxy girdisini
+     uretir. PAC (AutoConfigURL) KASTEN devre disi (JS calistirmak yerine net
+     adres — belgeli karar).
+   - HTTP + torrent + video islerine uygulanir; SOCKS5'te BT de proxy'den gecer.
+   - **Checksum:** `/add --checksum sha-256:<hex>` → aria2 `checksum=TYPE=HEX`,
+     bitince dogrulanir, tutmazsa error.
+   - **Canli ayar (kesmeden):** `/control action=ayarla` (CLI `afuadm ayarla
+     <gid> --baglanti N --hiz KB/s`) → `changeOption`; degerler DB'ye islenir,
+     yeniden baslatmada `_launch_http` ayni sinirla baslar.
+   - CLI: `afuadm add --proxy/--checksum`, `afuadm ayar [ad] [deger]` (genel
+     proxy/system_proxy dahil tüm ayarlar).
+SURUM: **1.4.0** (bundan once 1.3.2).
+
+
+## YOL HARITASI — EK KARARLAR (2026-09-19) (devam)
 1. **Mobile Companion / PWA — ONEMLI URUN OZELLIGI.** "PC basinda olmak zorunda
    degilsin" mesajini AB Download Manager da veriyor; asagidaki plan onu bir
    adim oteye tasir (torrent + yt-dlp + http tek yerde, telefonda):

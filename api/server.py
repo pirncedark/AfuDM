@@ -20,7 +20,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from core import paths
+from core import models, paths
 from core.hata import hata_json
 
 
@@ -48,33 +48,8 @@ def _dosya_iznini_kisitla(yol) -> None:
 
 
 def _zamanla(s) -> float | None:
-    """'23:30' / '2026-09-19 23:30' bicimindeki zamanlamayi epoch'a cevirir.
-    Sadece saat:dakika verilirse, o an gecmisiyse yarina planlar."""
-
-    s = str(s).strip()
-    if not s:
-        return None
-    if s.isdigit():
-        return float(s)
-    now = time.time()
-    for fmt in ("%H:%M", "%Y-%m-%d %H:%M"):
-        try:
-            cal = time.strptime(s, fmt)
-        except ValueError:
-            continue
-        if fmt == "%H:%M":
-            # strptime "%H:%M" 1900-01-01 doner; gunumuze tasi (yoksa mktime
-            # Windows'ta tasar dısı doner)
-            bugun = time.localtime()
-            cal = time.struct_time((
-                bugun.tm_year, bugun.tm_mon, bugun.tm_mday,
-                cal.tm_hour, cal.tm_min, cal.tm_sec, -1, -1, -1
-            ))
-        t = time.mktime(cal)
-        if fmt == "%H:%M" and t <= now:
-            t += 86400.0
-        return t
-    raise ValueError(f"zamanlama anlasilamadi: {s!r} ('23:30' veya 'YYYY-AA-GG SS:DD')")
+    """Eski adres geriye donuk uyumlnaktadir; tek kaynak `parse_time_spec`."""
+    return models.parse_time_spec(s)
 
 
 def load_or_create_token() -> str:
@@ -225,6 +200,30 @@ class _Handler(BaseHTTPRequestHandler):
         elif parsed.path == "/peers":
             gid = query.get("gid", [""])[0]
             self._send(200, {"ok": True, "peers": self.manager.peers(gid)})
+        elif parsed.path == "/capabilities":
+            from core import engines, surum
+            self._send(200, {
+                "ok": True,
+                "app": "AfuDM",
+                "surum": surum.SURUM,
+                "api": 1,
+                "uzanti_surumu": surum.uzanti_surumu(),
+                "motorlar": engines.durum(),
+                "protokoller": ["http", "https", "ftp", "sftp", "magnet", "torrent"],
+                "turler": ["http", "video", "torrent"],
+                "ozellikler": [
+                    "scheduler", "hiz_profilleri", "renew", "ozel_basliklar",
+                    "cerez", "zamanlama", "cli", "api", "kategori_klasorleri",
+                    "proxy", "sistem_proxy", "checksum", "canli_ayar",
+                ],
+                "sinirlar": {
+                    "kaynak": models.SOURCE_MAX,
+                    "baslik": models.TITLE_MAX,
+                    "user_agent": models.USER_AGENT_MAX,
+                    "ozel_baslik": models.HEADER_COUNT_MAX,
+                    "proxy": models.PROXY_MAX,
+                },
+            })
         else:
             self._hata(404, "BILINMEYEN_YOL", "bilinmeyen yol")
 
@@ -249,24 +248,27 @@ class _Handler(BaseHTTPRequestHandler):
                     from core import kaydet
                     hedef = kaydet.kategori_klasoru(
                         self.manager.current_download_dir(), str(data["kategori"]))
-                result = self.manager.add(
-                    url,
-                    kind=data.get("kind"),
-                    dest_dir=hedef,
-                    quality=data.get("quality"),
-                    audio_only=bool(data.get("audio_only")),
-                    playlist=bool(data.get("playlist")),
-                    headers=data.get("headers") or {},
-                    filename=data.get("filename") or None,
-                    cookies=data.get("cookies"),
-                    user_agent=data.get("user_agent") or None,
-                    title=data.get("title") or None,
-                    start_after=_zamanla(data.get("start_at")),
-                )
+                result = self.manager.add(models.DownloadRequest.from_mapping({
+                    "source": url,
+                    "kind": data.get("kind"),
+                    "dest_dir": hedef,
+                    "quality": data.get("quality"),
+                    "audio_only": bool(data.get("audio_only")),
+                    "playlist": bool(data.get("playlist")),
+                    "headers": data.get("headers") or {},
+                    "filename": data.get("filename") or None,
+                    "cookies": data.get("cookies"),
+                    "user_agent": data.get("user_agent") or None,
+                    "title": data.get("title") or None,
+                    "start_at": data.get("start_at"),
+                    "proxy": data.get("proxy"),
+                    "checksum": data.get("checksum"),
+                }))
                 self._send(200, {"ok": True, **result})
             elif parsed.path == "/control":
                 action = data.get("action", "")
                 gid = data.get("gid", "")
+                sonuc: dict = {}
                 if action == "pause":
                     self.manager.pause(gid)
                 elif action == "resume":
@@ -277,10 +279,17 @@ class _Handler(BaseHTTPRequestHandler):
                     self.manager.pause_all()
                 elif action == "resume_all":
                     self.manager.resume_all()
+                elif action == "ayarla":
+                    # Network Core: calisan isi KESMEDEN baglanti/hiz ayari
+                    sonuc = self.manager.baglanti_ayarla(
+                        gid,
+                        baglanti=data.get("baglanti"),
+                        hiz_kb=data.get("hiz_kb"),
+                    )
                 else:
                     self._hata(400, "BILINMEYEN_EYLEM", "bilinmeyen eylem")
                     return
-                self._send(200, {"ok": True})
+                self._send(200, {"ok": True, **sonuc})
             elif parsed.path == "/settings":
                 self._send(200, {"ok": True, "settings": self.manager.update_settings(data)})
             elif parsed.path == "/renew":

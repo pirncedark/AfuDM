@@ -138,6 +138,9 @@ afuadm mode snail|normal|turbo                live speed profile (100 KB/s / you
 afuadm renew <gid> "https://new-valid-link"   swap expired URL, keep downloaded bytes
 afuadm watch --json                           live NDJSON stream (poll every 0.5s)
 afuadm info                                   version + service state
+afuadm ayarla <gid> --baglanti 8 --hiz 500    live per-download connections/speed cap (v1.4)
+afuadm ayar proxy socks5://127.0.0.1:1080     set global proxy (also: system_proxy 1)
+afuadm add URL --proxy http://... --checksum sha-256:<hex>  per-download proxy + verify
 ```
 
 Every subcommand accepts `--json`; `--json` and `--no-start` work on either
@@ -184,6 +187,9 @@ python tests/iliskilendir_test.py      # .torrent / magnet registration
 python tests/cli_test.py               # speed profiles, link renewal, scheduling
 python tests/cli_surum_test.py         # stale endpoint, double auto-start lock, JSON purity, exit codes, token leak
 python tests/trackerlar_test.py        # tracker list normalization
+python tests/db_test.py                # DB migration (PRAGMA user_version, data preserved)
+python tests/fake_http_test.py         # fake HTTP: range/206 resume, auth 401, 403, redirect, drop, checksum
+python tests/network_core_test.py      # proxy parsing, checksum, live per-download options
 ```
 
 `smoke.py` performs real downloads: multi-connection HTTP, pause/resume, magnet
@@ -354,6 +360,9 @@ afuadm mode snail|normal|turbo                canlı hız profili (100 KB/s / li
 afuadm renew <gid> "https://yeni-gecerli-link"  ölen linki değiştir, inen baytları koru
 afuadm watch --json                           canlı NDJSON akışı (0.5 sn'de bir)
 afuadm info                                   sürüm + servis durumu
+afuadm ayarla <gid> --baglanti 8 --hiz 500    canlı is-özel bağlantı/hız ayarı (v1.4)
+afuadm ayar proxy socks5://127.0.0.1:1080     genel proxy ata (ayrıca: system_proxy 1)
+afuadm add URL --proxy http://... --checksum sha-256:<hex>  is-özel proxy + doğrulama
 ```
 
 Her alt komut `--json` kabul eder; `--json` ve `--no-start` komutun iki
@@ -397,6 +406,11 @@ python tests/cerez_test.py             # oturum çerezleri
 python tests/baslangic_test.py         # başlangıç kısayolu
 python tests/iliskilendir_test.py      # .torrent / magnet kaydı
 python tests/cli_test.py               # hız profilleri, link yenileme, zamanlama
+python tests/cli_surum_test.py         # stale endpoint, çift auto-start kilidi, JSON saflığı, exit kodları, token sızması
+python tests/trackerlar_test.py        # tracker listesi normalizasyonu
+python tests/db_test.py                # DB migration (PRAGMA user_version, veri korunur)
+python tests/fake_http_test.py         # sahte HTTP: range/206 resume, auth 401, 403, redirect, drop, checksum
+python tests/network_core_test.py      # proxy ayristirma, checksum, canli ayar secenekleri
 ```
 
 `smoke.py` gerçekten indirir: çok bağlantılı HTTP, duraklat/sürdür, magnet seed

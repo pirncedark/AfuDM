@@ -25,7 +25,7 @@ from api.server import LocalAPI  # noqa: E402
 VARSAYILAN_API_PORT = 6811   # uzantinin da ilk denedigi port
 from core import (baslangic, chrome_kurulum, clipboard, dosya_adi, engines, guc, iliskilendir,  # noqa: E402
                   tracker_saglik,
-                  kaydet, lang, paths, pencere)
+                  kaydet, lang, models, paths, pencere)
 from core.manager import Manager  # noqa: E402
 
 # Pencere basligi dile gore secilir (bkz. core/lang.py); ayar okunana kadar bu durur.
@@ -33,26 +33,10 @@ WINDOW_TITLE = "AfuDM"
 
 
 def parse_start_at(text: str) -> float | None:
-    """'23:30' veya '2026-09-17 23:30' -> epoch. Bos ise None."""
-    text = (text or "").strip()
-    if not text:
-        return None
-    now = time.localtime()
-    for fmt, needs_date in (("%Y-%m-%d %H:%M", False), ("%d.%m.%Y %H:%M", False), ("%H:%M", True)):
-        try:
-            parsed = time.strptime(text, fmt)
-        except ValueError:
-            continue
-        if needs_date:
-            stamp = time.mktime(
-                (now.tm_year, now.tm_mon, now.tm_mday, parsed.tm_hour, parsed.tm_min,
-                 0, 0, 0, -1)
-            )
-            if stamp <= time.time():
-                stamp += 86400  # gecmisse yarina al
-            return stamp
-        return time.mktime(parsed)
-    raise ValueError(lang.t("err.timeFormat"))
+    """'23:30' veya '2026-09-17 23:30' -> epoch. Bos ise None.
+
+    Tek kaynak: core/models.parse_time_spec (v1.4 Foundation)."""
+    return models.parse_time_spec(text)
 
 
 def open_in_explorer(target: str) -> None:
@@ -255,21 +239,21 @@ class Api:
         url = istek.get("url") or ""
         kind = istek.get("kind") or self.manager.detect_kind(url)
         try:
-            start_after = parse_start_at(secim.get("start_at", ""))
             ad = kaydet.guvenli_dosya_adi(secim.get("filename") or "")
-            sonuc = self.manager.add(
-                url,
-                kind=kind,
-                dest_dir=self._hedef_klasor(secim.get("dest_dir") or "", url, kind, secim.get("kategori") or ""),
-                quality=secim.get("quality") or istek.get("quality"),
-                audio_only=bool(secim.get("audio_only", istek.get("audio_only"))),
-                start_after=start_after,
-                headers=istek.get("headers") or {},
-                filename=(ad or istek.get("filename")) if kind == "http" else None,
-                cookies=istek.get("cookies"),
-                user_agent=istek.get("user_agent"),
-                title=(ad or istek.get("title")) if kind == "video" else istek.get("title"),
-            )
+            istek_req = models.DownloadRequest.from_mapping({
+                "source": url,
+                "kind": kind,
+                "dest_dir": self._hedef_klasor(secim.get("dest_dir") or "", url, kind, secim.get("kategori") or ""),
+                "quality": secim.get("quality") or istek.get("quality"),
+                "audio_only": bool(secim.get("audio_only", istek.get("audio_only"))),
+                "start_at": secim.get("start_at") or "",
+                "headers": istek.get("headers") or {},
+                "filename": (ad or istek.get("filename")) if kind == "http" else None,
+                "cookies": istek.get("cookies"),
+                "user_agent": istek.get("user_agent"),
+                "title": (ad or istek.get("title")) if kind == "video" else istek.get("title"),
+            })
+            sonuc = self.manager.add(istek_req)
         except Exception as exc:
             return {"ok": False, "error": str(exc)[:300]}
         return {"ok": True, **sonuc}

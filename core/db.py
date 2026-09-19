@@ -9,7 +9,7 @@ import json
 import sqlite3
 import threading
 import time
-from typing import Any
+from typing import Any, Callable
 
 from . import paths
 
@@ -93,7 +93,30 @@ DEFAULTS: dict[str, Any] = {
     "lan_erisimi": False,
     # Kullanicinin ekledigi ag konumlari (her satirda bir UNC yolu)
     "ag_konumlari": "",
+    # Network Core v1.4: proxy katmanlari (bkz. core/proxy.py)
+    #   proxy        -> genel varsayilan proxy (ayri adresler is uzerinde yazabilir)
+    #   system_proxy -> Windows Internet Settings'teki sistem proxy kullanilsin mi
+    "proxy": "",
+    "system_proxy": False,
 }
+
+
+# --- sema surumu (migration) ---------------------------------------------
+# `USER_VERSION`'i artirinca aradaki ADIMI `MIGRATIONS` sozlugune ekle.
+# Adimlar YALNIZCA degisiklik gerektiginde vardir; gecis 0->1 hic is yapmaz
+# (mevcut _SCHEMA zaten v1'dir). Eski veri ASLA silinmez.
+USER_VERSION = 1
+MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {}
+
+
+def _guncelle_sema(conn: sqlite3.Connection) -> None:
+    """`PRAGMA user_version`'u USER_VERSION'a tasir, aradaki adimlari uygular."""
+    mevcut = int(conn.execute("PRAGMA user_version").fetchone()[0] or 0)
+    for surum in range(mevcut + 1, USER_VERSION + 1):
+        adim = MIGRATIONS.get(surum)
+        if adim:
+            adim(conn)
+        conn.execute(f"PRAGMA user_version = {surum}")
 
 
 class Store:
@@ -113,6 +136,7 @@ class Store:
                     (key, json.dumps(value)),
                 )
             self.conn.commit()
+            _guncelle_sema(self.conn)
 
     # --- ayarlar ----------------------------------------------------------
     def get(self, key: str, default: Any = None) -> Any:

@@ -304,6 +304,10 @@ def komut_add(args) -> int:
         govde["start_at"] = args.start_at
     if args.header:
         govde["headers"] = dict(kv.split(":", 1) for kv in args.header if ":" in kv)
+    if args.proxy:
+        govde["proxy"] = args.proxy
+    if args.checksum:
+        govde["checksum"] = args.checksum
     sonuc = _istek("POST", "/add", govde)
     if sonuc.get("pending"):
         # Kaydetme penceresi bekliyor: --json'da tek JSON satiri, duz metinde
@@ -427,6 +431,73 @@ def komut_mode(args) -> int:
     return 0
 
 
+def komut_ayarla(args) -> int:
+    """Network Core: calisan isin baglanti/hiz ayarini KESMEDEN degistir."""
+    if args.baglanti is None and args.hiz is None:
+        raise CliHata("ayarla: en az bir deger gerekli (--baglanti ve/veya --hiz)")
+    govde: dict = {"action": "ayarla", "gid": args.gid}
+    if args.baglanti is not None:
+        govde["baglanti"] = args.baglanti
+    if args.hiz is not None:
+        govde["hiz_kb"] = args.hiz
+    sonuc = _istek("POST", "/control", govde)
+    if args.json:
+        print(json.dumps(sonuc, ensure_ascii=False))
+    else:
+        print("gid %s — baglanti: %s  hiz: %s KB/s" % (
+            sonuc.get("gid", args.gid),
+            "ayirtilmadi" if sonuc.get("baglanti") is None else sonuc.get("baglanti"),
+            "deismedi" if sonuc.get("hiz_kb") is None else sonuc.get("hiz_kb")))
+    return 0
+
+
+def _kestir(metin: str):
+    """Ayarlar degerini JSON'a cevir (sayi/boolean/string)."""
+    kalin = metin.strip()
+    if kalin in ("true", "on"):
+        return True
+    if kalin in ("false", "off"):
+        return False
+    if kalin.lstrip("-").isdigit():
+        return int(kalin)
+    try:
+        return float(kalin)
+    except ValueError:
+        return kalin
+
+
+def komut_ayar(args) -> int:
+    """Grup ayarini goster veya degistir.
+
+    `afuadm ayar`                          -> tumu (JSON: --json)
+    `afuadm ayar proxy`                    -> tek deger
+    `afuadm ayar system_proxy 1`           -> sistem proxy kullan
+    `afuadm ayar proxy socks5://127.0.0.1:1080`
+    """
+    if args.anahtar and args.deger is not None:
+        sonuc = _istek("POST", "/settings", {args.anahtar: _kestir(args.deger)})
+        ayar = sonuc.get("settings") or {}
+        if args.json:
+            print(json.dumps({args.anahtar: ayar.get(args.anahtar)}, ensure_ascii=False))
+        else:
+            print("%s = %s" % (args.anahtar, ayar.get(args.anahtar)))
+        return 0
+    snap = _istek("GET", "/snapshot")
+    ayar = snap.get("settings") or {}
+    if args.anahtar:
+        if args.json:
+            print(json.dumps({args.anahtar: ayar.get(args.anahtar)}, ensure_ascii=False))
+        else:
+            print(ayar.get(args.anahtar))
+        return 0
+    if args.json:
+        print(json.dumps(ayar, ensure_ascii=False))
+        return 0
+    for k in sorted(ayar):
+        print("%s = %s" % (k, ayar[k]))
+    return 0
+
+
 def komut_watch(args) -> int:
     aralik = max(float(args.interval), 0.2)
     try:
@@ -501,6 +572,8 @@ def komutlar_ayirici() -> argparse.ArgumentParser:
     ik.add_argument("--playlist", action="store_true")
     ik.add_argument("--start-at", help="'23:30' veya '2026-09-19 23:30'")
     ik.add_argument("--header", action="append", help="'Name: value' (tekrar edilebilir)")
+    ik.add_argument("--proxy", help="bu is icin proxy (ornek socks5://127.0.0.1:1080)")
+    ik.add_argument("--checksum", help="'sha-256:<hex>' / 'md5:<hex>' — bitince dogrula")
     ik.set_defaults(func=komut_add)
 
     il = alt.add_parser("list", parents=[_ortak()], help="isi listele")
@@ -537,6 +610,19 @@ def komutlar_ayirici() -> argparse.ArgumentParser:
     km = alt.add_parser("mode", parents=[_ortak()], help="hiz profili: snail | normal | turbo")
     km.add_argument("profil", nargs="?", choices=("snail", "normal", "turbo"))
     km.set_defaults(func=komut_mode)
+
+    ka = alt.add_parser("ayarla", parents=[_ortak()],
+                        help="calisan isin baglanti/hiz ayarini kesmeden degistir")
+    ka.add_argument("gid")
+    ka.add_argument("--baglanti", type=int, help="baglanti sayisi (1-64)")
+    ka.add_argument("--hiz", type=int, help="hiz siniri KB/s; 0 = sinirsiz")
+    ka.set_defaults(func=komut_ayarla)
+
+    kss = alt.add_parser("ayar", parents=[_ortak()],
+                         help="ayarlari goster / degistir (afuadm ayar [ad] [deger])")
+    kss.add_argument("anahtar", nargs="?")
+    kss.add_argument("deger", nargs="?")
+    kss.set_defaults(func=komut_ayar)
 
     kw = alt.add_parser("watch", parents=[_ortak()], help="canli akis (NDJSON ile --json)")
     kw.add_argument("gid", nargs="?")
