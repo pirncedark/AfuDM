@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """v1.7.5 PWA uc noktalari — GERCEK sunucuya karsi duman testi."""
-import json, sys, urllib.request
+import json, sys, tempfile, urllib.request
+from pathlib import Path
 sys.path.insert(0, ".")
+from api import server as api_server
 from api.server import LocalAPI
 
 class SahteStore(dict):
@@ -11,6 +13,21 @@ class SahteStore(dict):
 class SahteManager:
     store = SahteStore()
     def current_download_dir(self): return "."
+
+gecici_data = None
+eski_data = api_server.paths.DATA
+eski_token_dosyasi = api_server.paths.API_TOKEN_FILE
+eski_izin_kisitla = api_server._dosya_iznini_kisitla
+try:
+    # CI/sandbox, canli token dosyasini bilincli olarak okunamaz kilitleyebilir.
+    # PWA testi kimlik bilgisini degil, herkese acik statik uc noktalari sinar;
+    # bu nedenle yalitilmis gecici token kullanir.
+    api_server.load_or_create_token()
+except PermissionError:
+    gecici_data = tempfile.TemporaryDirectory()
+    api_server.paths.DATA = Path(gecici_data.name)
+    api_server.paths.API_TOKEN_FILE = api_server.paths.DATA / "api_token.txt"
+    api_server._dosya_iznini_kisitla = lambda _yol: None
 
 api = LocalAPI(SahteManager(), port=6899, lan=False)
 port = api.start()
@@ -69,6 +86,11 @@ try:
                 api.token.encode() not in govde)
 finally:
     api.stop()
+    api_server.paths.DATA = eski_data
+    api_server.paths.API_TOKEN_FILE = eski_token_dosyasi
+    api_server._dosya_iznini_kisitla = eski_izin_kisitla
+    if gecici_data is not None:
+        gecici_data.cleanup()
 
 print(f"\nSONUC: {gecti} gecti, {dusen} basarisiz")
 sys.exit(1 if dusen else 0)

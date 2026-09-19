@@ -341,7 +341,19 @@ async function renderDetailTabContent(gid, tabName) {
     if (rContent) rContent.textContent = t("dtab.rulesEmpty");
   } else if (tabName === "automation") {
     const aContent = $("dAutomationContent");
-    if (aContent) aContent.textContent = t("dtab.automationEmpty");
+    if (aContent) {
+      try {
+        const jobs = (await call("automation_jobs", gid)).jobs || [];
+        if (!jobs.length) aContent.innerHTML = '<div class="hint">' + t("auto.empty") + '</div>';
+        else aContent.innerHTML = jobs.map((job) => {
+          const err = job.error ? '<div class="err-note">' + escapeHtml(job.error) + '</div>' : '';
+          const actions = (job.status === "error" ? '<button class="btn" data-auto-retry="' + job.id + '">' + t("auto.retry") + '</button>' : '') + ((job.status === "queued" || job.status === "running") ? '<button class="btn ghost" data-auto-cancel="' + job.id + '">' + t("auto.cancel") + '</button>' : '');
+          return '<div class="automation-job"><b>' + escapeHtml(t("auto.step." + job.action)) + '</b><span class="rozet">' + escapeHtml(t("auto.status." + job.status)) + ' · ' + (job.progress || 0) + '%</span>' + (job.action === "power" && job.status === "running" ? '<div class="hint">' + t("auto.countdown") + '</div>' : '') + err + '<div>' + actions + '</div></div>';
+        }).join("");
+        aContent.querySelectorAll("[data-auto-retry]").forEach((b) => b.onclick = async () => { await call("automation_retry", Number(b.dataset.autoRetry)); renderDetailTabContent(gid, "automation"); });
+        aContent.querySelectorAll("[data-auto-cancel]").forEach((b) => b.onclick = async () => { await call("automation_cancel", Number(b.dataset.autoCancel)); renderDetailTabContent(gid, "automation"); });
+      } catch (err) { aContent.innerHTML = '<div class="err-note">' + escapeHtml(err.message) + '</div>'; }
+    }
   } else if (tabName === "logs") {
     const lContent = $("dLogsContent");
     if (lContent) {
@@ -1548,6 +1560,16 @@ $("openSettings").onclick = async () => {
   $("sVideoSesFormati").value = s.video_ses_formati || "";
   $("sVideoDosyaSablonu").value = s.video_dosya_sablonu || "";
   $("sVideoTarayiciCerezi").value = s.video_tarayici_cerezi || "";
+  $("sAutoEnabled").checked = s.automation_enabled !== false;
+  $("sAutoSteps").value = (s.automation_steps || []).join(", ");
+  $("sAutoChecksum").checked = !!s.automation_checksum;
+  $("sAutoExtract").checked = !!s.automation_extract;
+  $("sAutoMove").value = s.automation_move_to || "";
+  $("sAutoRename").value = s.automation_rename_to || "";
+  $("sAutoScript").value = s.automation_script || "";
+  $("sAutoNotify").checked = s.automation_notify !== false;
+  $("sAutoPower").value = s.automation_power || "none";
+  $("sAutoSeconds").value = s.automation_power_seconds || 60;
   $("sSeedEkOzet").textContent = "";
   surumuCiz();
   try {
@@ -1816,6 +1838,16 @@ $("setGo").onclick = async () => {
     video_ses_formati: $("sVideoSesFormati").value,
     video_dosya_sablonu: $("sVideoDosyaSablonu").value.trim(),
     video_tarayici_cerezi: $("sVideoTarayiciCerezi").value,
+    automation_enabled: $("sAutoEnabled").checked,
+    automation_steps: $("sAutoSteps").value.split(",").map((x) => x.trim()).filter((x) => ["checksum", "extract", "move", "rename", "script", "notify", "power"].includes(x)),
+    automation_checksum: $("sAutoChecksum").checked,
+    automation_extract: $("sAutoExtract").checked,
+    automation_move_to: $("sAutoMove").value.trim(),
+    automation_rename_to: $("sAutoRename").value.trim(),
+    automation_script: $("sAutoScript").value.trim(),
+    automation_notify: $("sAutoNotify").checked,
+    automation_power: $("sAutoPower").value,
+    automation_power_seconds: Math.max(5, Number($("sAutoSeconds").value) || 60),
   };
   try {
     $("setGo").disabled = true;

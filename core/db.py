@@ -46,6 +46,22 @@ CREATE TABLE IF NOT EXISTS events (
     level    TEXT NOT NULL,
     message  TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS automation_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    download_gid TEXT NOT NULL,
+    action TEXT NOT NULL,
+    payload TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'queued',
+    attempt INTEGER NOT NULL DEFAULT 0,
+    progress INTEGER NOT NULL DEFAULT 0,
+    error TEXT,
+    created_at REAL NOT NULL,
+    started_at REAL,
+    finished_at REAL,
+    UNIQUE(download_gid, action)
+);
+CREATE INDEX IF NOT EXISTS idx_automation_jobs_status ON automation_jobs(status, id);
 """
 
 DEFAULTS: dict[str, Any] = {
@@ -103,6 +119,17 @@ DEFAULTS: dict[str, Any] = {
     #   system_proxy -> Windows Internet Settings'teki sistem proxy kullanilsin mi
     "proxy": "",
     "system_proxy": False,
+    # v1.8 Automation: adim sirasi ve parametreler yeni indirmelerde uygulanir.
+    "automation_enabled": True,
+    "automation_steps": ["checksum", "extract", "move", "rename", "script", "notify", "power"],
+    "automation_checksum": True,
+    "automation_extract": False,
+    "automation_move_to": "",
+    "automation_rename_to": "",
+    "automation_script": "",
+    "automation_notify": True,
+    "automation_power": "none",
+    "automation_power_seconds": 60,
 }
 
 
@@ -110,7 +137,10 @@ DEFAULTS: dict[str, Any] = {
 # `USER_VERSION`'i artirinca aradaki ADIMI `MIGRATIONS` sozlugune ekle.
 # Adimlar YALNIZCA degisiklik gerektiginde vardir; gecis 0->1 hic is yapmaz
 # (mevcut _SCHEMA zaten v1'dir). Eski veri ASLA silinmez.
-USER_VERSION = 5
+# v1.8 ile v1.7.5 ayni v4 numarasini farkli, bagimsiz migration'lar icin
+# kullandi. v6 bu iki tarihi yolu idempotent olarak uzlastirir; boylece hangi
+# daldan yukseltilirse yukseltilsin her iki ozellik de eksiksiz kalir.
+USER_VERSION = 6
 
 
 def _v2_torrent_dosya_secimleri(conn: sqlite3.Connection) -> None:
@@ -131,6 +161,17 @@ def _v2_torrent_dosya_secimleri(conn: sqlite3.Connection) -> None:
 def _v3_events_gid(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE events ADD COLUMN gid TEXT")
 
+def _v4_automation_jobs(conn: sqlite3.Connection) -> None:
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS automation_jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, download_gid TEXT NOT NULL,
+        action TEXT NOT NULL, payload TEXT NOT NULL DEFAULT '{}',
+        status TEXT NOT NULL DEFAULT 'queued', attempt INTEGER NOT NULL DEFAULT 0,
+        progress INTEGER NOT NULL DEFAULT 0, error TEXT, created_at REAL NOT NULL,
+        started_at REAL, finished_at REAL, UNIQUE(download_gid, action)
+    );
+    CREATE INDEX IF NOT EXISTS idx_automation_jobs_status ON automation_jobs(status, id);
+    """)
 def _v4_api_listen_port(conn: sqlite3.Connection) -> None:
     """Dinlenecek port (tercih) ile calisan portu AYIR.
 
@@ -151,12 +192,18 @@ def _v5_mobile_devices(conn: sqlite3.Connection) -> None:
         revoked_at REAL
     )""")
 
+def _v6_v175_v18_uzlastir(conn: sqlite3.Connection) -> None:
+    """Tarihi v4 numara cakismasindan kalan eksik semayi tamamla."""
+    _v4_automation_jobs(conn)
+    _v4_api_listen_port(conn)
+
 
 MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     2: _v2_torrent_dosya_secimleri,
     3: _v3_events_gid,
-    4: _v4_api_listen_port,
+    4: _v4_automation_jobs,
     5: _v5_mobile_devices,
+    6: _v6_v175_v18_uzlastir,
 }
 
 
@@ -390,6 +437,49 @@ class Store:
             )
             self.conn.commit()
             return cur.rowcount
+
+    # --- kalici otomasyon kuyrugu ---------------------------------------
+    def automation_enqueue(self, gid: str, action: str, payload: dict | None = None) -> None:
+        with self._lock:
+            self.conn.execute("INSERT OR IGNORE INTO automation_jobs(download_gid,action,payload,created_at) VALUES(?,?,?,?)", (gid, action, json.dumps(payload or {}), time.time()))
+            self.conn.commit()
+
+    def automation_jobs(self, gid: str = "", limit: int = 200) -> list[dict]:
+        sql, args = ("SELECT * FROM automation_jobs WHERE download_gid=? ORDER BY id", (gid,)) if gid else ("SELECT * FROM automation_jobs ORDER BY id DESC LIMIT ?", (limit,))
+        with self._lock: rows = self.conn.execute(sql, args).fetchall()
+        out = [dict(row) for row in rows]
+        for row in out:
+            try: row["payload"] = json.loads(row["payload"] or "{}")
+            except json.JSONDecodeError: row["payload"] = {}
+        return out
+
+    def automation_claim(self) -> dict | None:
+        with self._lock:
+            row = self.conn.execute("SELECT * FROM automation_jobs WHERE status IN ('queued','running') ORDER BY id LIMIT 1").fetchone()
+            if not row: return None
+            self.conn.execute("UPDATE automation_jobs SET status='running',attempt=attempt+1,started_at=?,error=NULL WHERE id=?", (time.time(), row["id"]))
+            self.conn.commit()
+        return self.automation_jobs_by_id(int(row["id"]))
+
+    def automation_jobs_by_id(self, job_id: int) -> dict | None:
+        with self._lock: row = self.conn.execute("SELECT * FROM automation_jobs WHERE id=?", (job_id,)).fetchone()
+        if not row: return None
+        out=dict(row)
+        try: out["payload"] = json.loads(out["payload"] or "{}")
+        except json.JSONDecodeError: out["payload"] = {}
+        return out
+
+    def automation_update(self, job_id: int, **fields: Any) -> None:
+        if not fields: return
+        cols=", ".join(f"{key}=?" for key in fields)
+        with self._lock:
+            self.conn.execute(f"UPDATE automation_jobs SET {cols} WHERE id=?", (*fields.values(), job_id)); self.conn.commit()
+
+    def automation_retry(self, job_id: int) -> None:
+        self.automation_update(job_id, status="queued", progress=0, error=None, finished_at=None)
+
+    def automation_cancel(self, job_id: int) -> None:
+        self.automation_update(job_id, status="cancelled", finished_at=time.time())
 
     # --- olay kaydi -------------------------------------------------------
     def log(self, level: str, message: str, gid: str = "") -> None:

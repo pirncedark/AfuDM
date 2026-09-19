@@ -665,6 +665,18 @@ class Api:
     def clear_finished(self) -> dict:
         return {"ok": True, "removed": self.manager.store.clear_finished()}
 
+    # --- v1.8 Automation -------------------------------------------------
+    def automation_jobs(self, gid: str = "") -> dict:
+        return {"ok": True, "jobs": self.manager.store.automation_jobs(str(gid))}
+
+    def automation_retry(self, job_id: int) -> dict:
+        try: return {"ok": True, "job": self.manager.automation.retry(int(job_id))}
+        except Exception as exc: return {"ok": False, "error": str(exc)[:300]}
+
+    def automation_cancel(self, job_id: int) -> dict:
+        try: return {"ok": True, "job": self.manager.automation.cancel(int(job_id))}
+        except Exception as exc: return {"ok": False, "error": str(exc)[:300]}
+
     # --- ayarlar ----------------------------------------------------------
     def settings_save(self, payload: dict) -> dict:
         return self.ayarlari_dogrula_kaydet(payload)

@@ -272,6 +272,21 @@
         <label data-i18n="set.surum">Sürüm</label>
         <div class="surum-satir" id="sSurum"></div>
       </div>
+      <div class="seed-kutu" id="automationSettings">
+        <label data-i18n="auto.title">Otomasyon</label>
+        <div class="hint" data-i18n="auto.hint">İndirme tamamlanınca seçtiğin adımlar sırayla arka planda çalışır.</div>
+        <div><label for="sAutoSteps" data-i18n="auto.order">Adım sırası (virgülle)</label><input id="sAutoSteps" type="text" spellcheck="false"><div class="hint" data-i18n="auto.orderHint">checksum, extract, move, rename, script, notify, power kullan. Geçersiz adımlar atlanır.</div><span class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</span></div>
+        <label class="opt"><input type="checkbox" id="sAutoEnabled"> <span data-i18n="auto.enabled">Otomasyonu aç</span> <em class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</em></label>
+        <div class="grid2">
+          <label class="opt"><input type="checkbox" id="sAutoChecksum"> <span data-i18n="auto.checksum">Checksum doğrula</span> <em class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</em></label>
+          <label class="opt"><input type="checkbox" id="sAutoExtract"> <span data-i18n="auto.extract">Arşivi çıkar</span> <em class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</em></label>
+        </div>
+        <div><label for="sAutoMove" data-i18n="auto.move">Taşıma klasörü</label><input id="sAutoMove" type="text" spellcheck="false"><span class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</span></div>
+        <div><label for="sAutoRename" data-i18n="auto.rename">Yeniden adlandırma şablonu</label><input id="sAutoRename" type="text" placeholder="{name}-done{ext}" spellcheck="false"><span class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</span></div>
+        <div><label for="sAutoScript" data-i18n="auto.script">Güvenli script komutu</label><input id="sAutoScript" type="text" spellcheck="false"><div class="hint" data-i18n="auto.scriptHint">Yalnızca buraya açıkça yazdığın komut çalışır; indirilen dosya adından komut üretilmez.</div><span class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</span></div>
+        <div class="grid2"><label class="opt"><input type="checkbox" id="sAutoNotify"> <span data-i18n="auto.notify">Bildirim gönder</span> <em class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</em></label><div><label for="sAutoPower" data-i18n="auto.power">Bitince güç eylemi</label><select id="sAutoPower"><option value="none" data-i18n="auto.none">Kapalı</option><option value="sleep" data-i18n="auto.sleep">Uyut</option><option value="shutdown" data-i18n="auto.shutdown">Kapat</option></select><span class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</span></div></div>
+        <div><label for="sAutoSeconds" data-i18n="auto.seconds">Geri sayım (saniye)</label><input id="sAutoSeconds" type="number" min="5"><span class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</span></div>
+      </div>
       <!-- Seed listeleri (core/tracker_saglik.py) -->
       <div class="seed-kutu">
         <label data-i18n="set.seedListe">Seed listeleri (tracker .txt dosyaları)</label>

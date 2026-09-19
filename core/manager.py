@@ -23,6 +23,7 @@ from video import ytdlp
 from .dosya_adi import resolve_filename
 
 from . import cerez, lang, models, paths, trackers, settings_validation
+from .automation import AutomationWorker
 from . import proxy as P
 from .daemon import Aria2Daemon
 from .db import Store
@@ -84,12 +85,14 @@ class Manager:
         # Oturum cerezleri: kayit kimligi -> cerezler. BILEREK veritabaninda degil
         # (bkz. core/cerez.py); is bitince/silinince birakilir.
         self._cerezler: dict[int, list[dict]] = {}
+        self.automation = AutomationWorker(self.store, self.notify_telegram)
 
     # --- yasam dongusu ----------------------------------------------------
     def start(self) -> None:
         cerez.artiklari_temizle()
         self.rpc = self.daemon.start()
         self.apply_settings()
+        self.automation.start()
         if self.store.get("auto_update_trackers"):
             threading.Thread(target=self._refresh_trackers, daemon=True).start()
         self._poller = threading.Thread(target=self._poll_loop, daemon=True)
@@ -98,6 +101,7 @@ class Manager:
 
     def stop(self) -> None:
         self._stop.set()
+        self.automation.stop()
         for job in list(self.video_jobs.values()):
             if job.status == "active":
                 job.stop()
@@ -1107,6 +1111,7 @@ class Manager:
             # Arayuz hangi dilde yazacagini buradan ogrenir ("auto" cozulmus halde)
             "lang": lang.resolve(str(self.store.get("language", "auto"))),
             "last_error": self.last_error,
+            "automation": self.store.automation_jobs(limit=200),
         }
 
     def _shape_aria2(self, status: dict) -> dict:
@@ -1579,6 +1584,7 @@ class Manager:
     # --- bitis islemleri --------------------------------------------------
     def _on_complete(self, title: str, size: int, gid: str = "") -> None:
         self.store.log("info", f"tamamlandi: {title} ({human_size(size)})", gid=gid or "")
+        self.automation.enqueue_download(gid, self.store.by_gid(gid))
         if self.store.get("notify_telegram"):
             threading.Thread(
                 target=self.notify_telegram,
