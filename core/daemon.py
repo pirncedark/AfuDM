@@ -49,6 +49,9 @@ def _dinleyen_var_mi(port: int) -> bool:
 
 def _args(secret: str, download_dir: str, port: int = RPC_PORT) -> list[str]:
     """IDM'i geride birakan cok parcali indirme + torrent ayarlari."""
+    # Portable: temiz klasore kopyalaninca data/ de YOKTUR. SESSION_FILE'a
+    # dokunmadan once ust klasoru (data/, downloads/) olustur:
+    paths.ensure_dirs()
     paths.SESSION_FILE.touch(exist_ok=True)
     return [
         str(paths.ARIA2C),
