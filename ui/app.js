@@ -1512,6 +1512,17 @@ $("openSettings").onclick = async () => {
   $("sChat").value = s.telegram_chat_id || "";
   $("sToken").value = s.telegram_bot_token || "";
   $("sClip").checked = !!s.clipboard_watch;
+  $("sClipExts").value = s.clipboard_exts ?? "zip,rar,7z,exe,msi,iso,pdf,mp4,mkv,mp3,apk,dmg,torrent";
+  $("sSnailSpeed").value = s.snail_speed_kb ?? 100;
+  // v1.7.5 Bolum 1-2: uzaktan erisim + ag (docs/v175_SOZLESME.md)
+  $("sLanAccess").checked = s.lan_erisimi ?? false;
+  $("sApiPort").value = s.api_port ?? 6811;
+  $("sSystemProxy").checked = s.system_proxy ?? false;
+  $("sProxy").value = s.proxy ?? "";
+  $("sNetLocations").value = s.ag_konumlari ?? "";
+  uzaktanBagimlilik();
+  agBagimlilik();
+  trackerDurumuCiz();
   $("sTrackers").checked = !!s.auto_update_trackers;
   $("sNotify").checked = !!s.notify_telegram;
   $("sShutdown").checked = !!s.shutdown_when_done;
@@ -1587,25 +1598,68 @@ $("sVarsayilan").onclick = async () => {
   } catch (err) { toast(err.message, true); }
 };
 
+/* ---------- v1.7.5 ayar yardimcilari (docs/v175_SOZLESME.md) ----------
+   Port araligi tek yerde: hem kaydetmede hem alan degisince ayni kural. */
+function portSayisi(deger) {
+  const n = Number(deger);
+  return Number.isInteger(n) && n >= 1024 && n <= 65535 ? n : 6811;
+}
+
+/* sApiPort yalnizca LAN acikken duzenlenebilir; kapaliyken adres bos kalir. */
+function uzaktanBagimlilik() {
+  const acik = $("sLanAccess").checked;
+  $("sApiPort").disabled = !acik;
+  if (!acik) $("sLanAddr").value = "";
+}
+
+/* Sistem proxy'si onceliklidir: aciksa elle adres girilemez. */
+function agBagimlilik() {
+  $("sProxy").disabled = $("sSystemProxy").checked;
+}
+
+$("sSystemProxy").onchange = agBagimlilik;
+
+$("sApiPort").onchange = () => { $("sApiPort").value = portSayisi($("sApiPort").value); };
+
+/* Tracker durumu SALT-OKUNUR: kaydetme nesnesine girmez, yalnizca gosterilir. */
+function trackerDurumuCiz() {
+  const s = state.settings || {};
+  const zaman = Number(s.tracker_tarama_zamani || 0);
+  $("sTrackerScanTime").value = zaman > 0
+    ? new Date(zaman * 1000).toLocaleString()
+    : t("set.tracker.never");
+  const tarama = s.tracker_tarama_ozeti || {};
+  const canli = tarama.canli ?? (s.canli_trackerlar || "").split(String.fromCharCode(10)).map((x) => x.trim()).filter(Boolean).length;
+  const toplam = tarama.toplam ?? canli;
+  $("sTrackerSummary").value = zaman > 0 ? canli + " / " + toplam : t("set.tracker.never");
+}
+
 /* ---------- telefon arayuzu (ui/mobil.html) ----------
    Kutu acilinca yerel API 0.0.0.0'a gecer ve adres burada gorunur. Ayar
    ANINDA uygulanir (sunucu yeniden kurulur), yeniden baslatma gerekmez. */
 async function telefonDurumu() {
   try {
     const bilgi = await call("telefon_durumu");
-    $("sTelefon").checked = !!bilgi.acik;
+    $("sLanAccess").checked = !!bilgi.acik;
     $("telefonKutu").style.display = bilgi.acik ? "" : "none";
     $("sTelefonAdres").value = bilgi.adres || "";
+    $("sLanAddr").value = bilgi.adres || "";
+    if (bilgi.port) $("sApiPort").value = bilgi.port;
+    uzaktanBagimlilik();
     $("sTelefonQr").src = bilgi.qr || "";
     if (bilgi.acik && !bilgi.adres) toast(t("err.agYok"), true);
   } catch (_) { /* kopru hazir degil */ }
 }
 
-$("sTelefon").onchange = async () => {
+$("sLanAccess").onchange = async () => {
+  uzaktanBagimlilik();          // RPC yanitini bekleme: alan ANINDA acilsin/kapansin
   try {
-    const bilgi = await call("telefon_ayarla", $("sTelefon").checked);
+    const bilgi = await call("telefon_ayarla", $("sLanAccess").checked);
     $("telefonKutu").style.display = bilgi.acik ? "" : "none";
     $("sTelefonAdres").value = bilgi.adres || "";
+    $("sLanAddr").value = bilgi.adres || "";
+    if (bilgi.port) $("sApiPort").value = bilgi.port;
+    uzaktanBagimlilik();
     $("sTelefonQr").src = bilgi.qr || "";
     if (bilgi.acik && !bilgi.adres) toast(t("err.agYok"), true);
   } catch (err) { toast(err.message, true); }
@@ -1730,6 +1784,14 @@ $("setGo").onclick = async () => {
     telegram_chat_id: $("sChat").value.trim(),
     telegram_bot_token: $("sToken").value.trim(),
     clipboard_watch: $("sClip").checked,
+    clipboard_exts: $("sClipExts").value.trim(),
+    snail_speed_kb: Number($("sSnailSpeed").value) || 100,
+    // v1.7.5: uzaktan erisim + ag. api_port araligi disindaysa varsayilana duser.
+    lan_erisimi: $("sLanAccess").checked,
+    api_port: portSayisi($("sApiPort").value),
+    system_proxy: $("sSystemProxy").checked,
+    proxy: $("sProxy").value.trim(),
+    ag_konumlari: $("sNetLocations").value.trim(),
     auto_update_trackers: $("sTrackers").checked,
     notify_telegram: $("sNotify").checked,
     shutdown_when_done: $("sShutdown").checked,

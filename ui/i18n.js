@@ -429,6 +429,26 @@ const DICT = {
     "err.failed": "işlem başarısız",
     "err.noRetry": "bu kayıt yeniden başlatılamıyor",
     "hint.api": "Tarayıcı uzantısı bağlantısı: 127.0.0.1:{port} — anahtar data/api_endpoint.json içinde.",
+
+    /* v1.7.5 — Uzaktan erisim / Ag / Pano / Hiz / Tracker durumu
+       (docs/v175_SOZLESME.md) */
+    "set.remote.title": "Uzaktan erişim",
+    "set.remote.lan": "Telefondan bağlan (aynı Wi-Fi)",
+    "set.remote.lanHint": "Kutu kapalıyken AfuDM yerel ağa hiç açılmaz; internete zaten hiç açılmaz. Açınca bu bilgisayar aynı Wi-Fi'daki telefondan yönetilir.",
+    "set.remote.port": "API portu",
+    "set.remote.addr": "Bağlantı adresi",
+    "set.net.title": "Ağ",
+    "set.net.systemProxy": "Sistem proxy'sini kullan",
+    "set.net.proxy": "Proxy adresi",
+    "set.net.proxyHint": "Boş bırakırsan proxy kullanılmaz. Sistem proxy'si açıkken bu alan devre dışı kalır.",
+    "set.net.locations": "Ağ konumları",
+    "set.clip.exts": "Yakalanacak uzantılar",
+    "set.clip.extsHint": "Virgülle ayır. Pano izleme açıkken yalnızca bu uzantılarla biten adresler yakalanır.",
+    "set.speed.snail": "Salyangoz hızı (KB/s)",
+    "set.speed.snailHint": "Salyangoz profili seçiliyken kullanılan hız. Düşük tut: internet başkasına kalsın.",
+    "set.tracker.lastScan": "Son tarama",
+    "set.tracker.summary": "Canlı / toplam",
+    "set.tracker.never": "Henüz tarama yapılmadı",
   },
 
   en: {
@@ -843,6 +863,26 @@ const DICT = {
     "err.failed": "the operation failed",
     "err.noRetry": "this entry cannot be restarted",
     "hint.api": "Browser extension endpoint: 127.0.0.1:{port} — the key is in data/api_endpoint.json.",
+
+    /* v1.7.5 — remote access / network / clipboard / speed / tracker status
+       (docs/v175_SOZLESME.md) */
+    "set.remote.title": "Remote access",
+    "set.remote.lan": "Connect from your phone (same Wi-Fi)",
+    "set.remote.lanHint": "While this is off, AfuDM is never exposed to your local network — and never to the internet either. Turn it on to manage this computer from a phone on the same Wi-Fi.",
+    "set.remote.port": "API port",
+    "set.remote.addr": "Connection address",
+    "set.net.title": "Network",
+    "set.net.systemProxy": "Use the system proxy",
+    "set.net.proxy": "Proxy address",
+    "set.net.proxyHint": "Leave empty to use no proxy. This field is disabled while the system proxy is in use.",
+    "set.net.locations": "Network locations",
+    "set.clip.exts": "Extensions to catch",
+    "set.clip.extsHint": "Comma separated. While clipboard watching is on, only links ending in these extensions are picked up.",
+    "set.speed.snail": "Snail speed (KB/s)",
+    "set.speed.snailHint": "The speed used while the Snail profile is selected. Keep it low so the connection stays free for others.",
+    "set.tracker.lastScan": "Last scan",
+    "set.tracker.summary": "Alive / total",
+    "set.tracker.never": "Not scanned yet",
   },
 };
 

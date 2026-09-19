@@ -503,6 +503,15 @@ select:focus-visible, button:focus-visible {
   font-weight: 600;
   border-bottom: 1px solid var(--line);
 }
+.sheet .body h3 {
+  margin: 4px 0 0;
+  font-family: var(--ui-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .3px;
+  color: var(--dim);
+  text-transform: uppercase;
+}
 .sheet .body { padding: 16px 18px; display: flex; flex-direction: column; gap: 13px; }
 .sheet .foot {
   padding: 13px 18px;
