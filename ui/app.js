@@ -8,8 +8,10 @@ const state = {
   filter: "all",
   motorTimer: null,
   seedTimer: null,
+  torTimer: null,
   search: "",
   selected: null,
+  activeDTab: "overview",
   items: [],
   settings: {},
   trace: new Array(TRACE_POINTS).fill(0),
@@ -170,6 +172,10 @@ function renderList() {
     } else {
       right = '<button data-act="pause" data-gid="' + item.gid + '">' + t("row.pause") + "</button>" + kill;
     }
+    // Torrentte dosya secimi / agaci dugmesi
+    if (item.kind === "torrent") {
+      right = '<button data-act="files" data-gid="' + item.gid + '">' + t("tor.files") + "</button>" + right;
+    }
     // Torrentte seed az olabilir: tracker listesini tazeleyen pencere (seedVeil)
     if (item.kind === "torrent" && item.status !== "complete" && item.status !== "error") {
       right = '<button data-act="seed" data-gid="' + item.gid + '">' + t("row.seed") + "</button>" + right;
@@ -222,14 +228,188 @@ function renderCounts() {
 }
 
 /* ---------- detay cekmecesi ---------- */
+async function switchDetailTab(tabName) {
+  state.activeDTab = tabName;
+  document.querySelectorAll("#detailTabs .dtab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.dtab === tabName);
+  });
+  const panels = {
+    overview: $("dPanelOverview"),
+    files: $("dPanelFiles"),
+    trackers: $("dPanelTrackers"),
+    rules: $("dPanelRules"),
+    automation: $("dPanelAutomation"),
+    logs: $("dPanelLogs"),
+  };
+  Object.entries(panels).forEach(([k, panel]) => {
+    if (panel) panel.classList.toggle("active", k === tabName);
+  });
+  if (state.selected) {
+    await renderDetailTabContent(state.selected, tabName);
+  }
+}
+
+async function renderDetailTabContent(gid, tabName) {
+  const item = state.items.find((i) => i.gid === gid);
+  if (!item) return;
+
+  if (tabName === "files") {
+    const fContent = $("dFilesContent");
+    if (!fContent) return;
+    if (item.kind === "torrent") {
+      fContent.innerHTML = '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">' +
+        '<span class="hint">' + escapeHtml(item.title || item.gid) + '</span>' +
+        '<button class="btn primary" id="dOpenTorVeil" style="margin-left:auto;">' + t("tor.btnFiles") + '</button>' +
+        '</div><div id="dFilesSummary"></div>';
+      const btn = $("dOpenTorVeil");
+      if (btn) btn.onclick = () => torrentVeilAc(gid);
+      try {
+        const res = await call("torrent_dosyalari", gid);
+        const sum = $("dFilesSummary");
+        if (sum) {
+          if (res.hazir_degil) {
+            sum.innerHTML = '<div class="hint">' + escapeHtml(res.neden || t("tor.notReady")) + '</div>';
+          } else {
+            const dList = res.dosyalar || [];
+            const seciliSayisi = dList.filter((d) => d.secili).length;
+            sum.innerHTML = '<div class="kv">' +
+              '<div>' + t("tor.count", {
+                secili: seciliSayisi,
+                toplam: dList.length,
+                seciliBoyut: size(dList.reduce((acc, d) => acc + (d.secili ? d.boyut : 0), 0)),
+                toplamBoyut: size(dList.reduce((acc, d) => acc + d.boyut, 0))
+              }) + '</div></div>' +
+              '<div style="max-height:140px;overflow:auto;font-size:11.5px;font-family:var(--mono);color:var(--muted);">' +
+              dList.slice(0, 30).map((d) => '<div style="padding:2px 0;display:flex;justify-content:space-between;"><span>' +
+                (d.secili ? '✓ ' : '✗ ') + escapeHtml(d.ad) + '</span><span>' + size(d.boyut) + '</span></div>').join('') +
+              (dList.length > 30 ? '<div class="hint">+' + (dList.length - 30) + '...</div>' : '') +
+              '</div>';
+          }
+        }
+      } catch (_) {}
+    } else {
+      fContent.innerHTML = '<div class="kv"><div>' + t("kv.file") + '<b>' + escapeHtml(item.filename || "—") + '</b></div>' +
+        '<div>' + t("kv.folder") + '<b>' + escapeHtml(item.dir || "—") + '</b></div></div>';
+    }
+  } else if (tabName === "trackers") {
+    const tContent = $("dTrackersContent");
+    const wrap = $("dPeersWrap");
+    if (item.kind !== "torrent") {
+      if (tContent) tContent.innerHTML = '<div class="hint">' + t("tor.empty") + '</div>';
+      if (wrap) wrap.innerHTML = "";
+      return;
+    }
+    if (tContent) {
+      try {
+        const met = await call("torrent_metrikleri", gid);
+        if (met.ok && !met.hazir_degil) {
+          const m = met.metrikler || {};
+          tContent.innerHTML = '<div class="tor-metrik-bar" style="margin-bottom:10px;">' +
+            '<div class="tor-metrik-kutu"><span class="tor-metrik-lbl">' + t("tor.seed") + '</span><b>' + (m.num_seeders || 0) + '</b></div>' +
+            '<div class="tor-metrik-kutu"><span class="tor-metrik-lbl">' + t("tor.peers") + '</span><b>' + (m.connections || 0) + '</b></div>' +
+            '<div class="tor-metrik-kutu"><span class="tor-metrik-lbl">' + t("tor.ratio") + '</span><b>' + (m.ratio || 0) + '</b></div>' +
+            '<div class="tor-metrik-kutu"><span class="tor-metrik-lbl">' + t("tor.trackers") + '</span><b>' + (m.tracker_sayisi || 0) + ' (' + (m.canli_tracker || 0) + ' ' + t("eng.installed") + ')</b></div>' +
+            '</div>';
+        } else {
+          tContent.innerHTML = '<div class="hint">' + (met.neden || t("tor.metaNotReady")) + '</div>';
+        }
+      } catch (_) {
+        tContent.innerHTML = "";
+      }
+    }
+    if (wrap) {
+      let peers = [];
+      try { peers = (await call("peers", item.gid)).peers || []; } catch (_) { peers = []; }
+      if (!peers.length) {
+        wrap.innerHTML = '<div class="hint">' + t("tor.noPeers") + '</div>';
+      } else {
+        peers.sort((a, b) => b.downloadSpeed - a.downloadSpeed);
+        wrap.innerHTML =
+          '<table class="peers"><thead><tr><th>' + t("peers.addr") + "</th><th>" + t("peers.type") +
+          "</th><th>" + t("peers.down") + "</th><th>" + t("peers.up") + "</th><th>" +
+          t("peers.client") + "</th></tr></thead><tbody>" +
+          peers.slice(0, 40).map((p) =>
+            "<tr><td>" + escapeHtml(p.ip) + ":" + p.port + "</td>" +
+            '<td class="' + (p.seeder ? "s" : "") + '">' + (p.seeder ? "seed" : "peer") + "</td>" +
+            "<td>" + speed(p.downloadSpeed) + "</td><td>" + speed(p.uploadSpeed) + "</td>" +
+            "<td>" + escapeHtml(p.client || "") + "</td></tr>"
+          ).join("") + "</tbody></table>";
+      }
+    }
+  } else if (tabName === "rules") {
+    const rContent = $("dRulesContent");
+    if (rContent) rContent.textContent = t("dtab.rulesEmpty");
+  } else if (tabName === "automation") {
+    const aContent = $("dAutomationContent");
+    if (aContent) aContent.textContent = t("dtab.automationEmpty");
+  } else if (tabName === "logs") {
+    const lContent = $("dLogsContent");
+    if (lContent) {
+      try {
+        const res = await call("loglar", gid);
+        const evts = (res && res.events) || [];
+        if (!evts.length && !item.errorMessage) {
+          lContent.innerHTML = '<div class="hint">' + t("dtab.noLogs") + '</div>';
+        } else {
+          let lines = [];
+          if (item.errorMessage) {
+            lines.push('<div class="log-row"><span class="log-level err">[ERROR]</span>' + escapeHtml(item.errorMessage) + '</div>');
+          }
+          evts.slice(0, 25).forEach((ev) => {
+            const d = ev.at ? new Date(ev.at * 1000).toLocaleTimeString() : "";
+            const lvl = (ev.level || "info").toLowerCase();
+            lines.push('<div class="log-row"><span class="log-time">' + d + '</span><span class="log-level ' + lvl + '">[' + lvl.toUpperCase() + ']</span>' + escapeHtml(ev.message || "") + '</div>');
+          });
+          lContent.innerHTML = lines.join("");
+        }
+      } catch (_) {
+        lContent.innerHTML = '<div class="hint">' + t("dtab.noLogs") + '</div>';
+      }
+    }
+  }
+}
+
 async function renderDrawer() {
   const drawer = $("drawer");
-  if (!state.selected) { drawer.className = "drawer"; return; }
+  const dTorFiles = $("dTorFiles");
+  if (!state.selected) {
+    drawer.className = "drawer";
+    if (dTorFiles) dTorFiles.style.display = "none";
+    return;
+  }
   const item = state.items.find((i) => i.gid === state.selected);
-  if (!item) { drawer.className = "drawer"; return; }
+  if (!item) {
+    drawer.className = "drawer";
+    if (dTorFiles) dTorFiles.style.display = "none";
+    return;
+  }
   drawer.className = "drawer open";
   $("dTitle").textContent = item.title || item.gid;
   $("dGid").textContent = item.gid;
+  if (dTorFiles) {
+    dTorFiles.style.display = item.kind === "torrent" ? "inline-block" : "none";
+    dTorFiles.onclick = () => torrentVeilAc(item.gid);
+  }
+
+  // Tab butonlarini secili taba gore isaretle
+  const activeTab = state.activeDTab || "overview";
+  document.querySelectorAll("#detailTabs .dtab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.dtab === activeTab);
+    btn.onclick = () => switchDetailTab(btn.dataset.dtab);
+  });
+  const panels = {
+    overview: $("dPanelOverview"),
+    files: $("dPanelFiles"),
+    trackers: $("dPanelTrackers"),
+    rules: $("dPanelRules"),
+    automation: $("dPanelAutomation"),
+    logs: $("dPanelLogs"),
+  };
+  Object.entries(panels).forEach(([k, panel]) => {
+    if (panel) panel.classList.toggle("active", k === activeTab);
+  });
+
+  // Overview tabinin icerigini (dKv) doldur
   const cells = [
     [t("kv.status"), item.seeder ? t("state.seeding") : stateLabel(item.status)],
     [t("kv.size"), (item.totalLength ? size(item.totalLength) : t("kv.unknown"))],
@@ -252,25 +432,8 @@ async function renderDrawer() {
     .map(([k, v]) => "<div>" + k + "<b>" + escapeHtml(v) + "</b></div>")
     .join("");
 
-  const wrap = $("dPeersWrap");
-  if (item.kind !== "torrent") { wrap.innerHTML = ""; return; }
-  let peers = [];
-  try { peers = (await call("peers", item.gid)).peers || []; } catch (_) { peers = []; }
-  if (!peers.length) {
-    wrap.innerHTML = '<div class="hint">Peer bulunmadi. DHT ve guncel tracker listesi taramaya devam ediyor.</div>';
-    return;
-  }
-  peers.sort((a, b) => b.downloadSpeed - a.downloadSpeed);
-  wrap.innerHTML =
-    '<table class="peers"><thead><tr><th>' + t("peers.addr") + "</th><th>" + t("peers.type") +
-    "</th><th>" + t("peers.down") + "</th><th>" + t("peers.up") + "</th><th>" +
-    t("peers.client") + "</th></tr></thead><tbody>" +
-    peers.slice(0, 40).map((p) =>
-      "<tr><td>" + escapeHtml(p.ip) + ":" + p.port + "</td>" +
-      '<td class="' + (p.seeder ? "s" : "") + '">' + (p.seeder ? "seed" : "peer") + "</td>" +
-      "<td>" + speed(p.downloadSpeed) + "</td><td>" + speed(p.uploadSpeed) + "</td>" +
-      "<td>" + escapeHtml(p.client || "") + "</td></tr>"
-    ).join("") + "</tbody></table>";
+  // Aktif olan ozel tabin icerigini guncelle
+  await renderDetailTabContent(item.gid, activeTab);
 }
 
 /* ---------- veri dongusu ---------- */
@@ -325,6 +488,7 @@ $("list").addEventListener("click", async (event) => {
     event.stopPropagation();
     const { act, gid } = button.dataset;
     try {
+      if (act === "files") { await torrentVeilAc(gid); return; }
       if (act === "seed") { await seedAc(gid); return; }
       if (act === "open") await call("open_item_folder", gid);
       else if (act === "retry") {
@@ -374,9 +538,20 @@ function closeVeil(id) {
     clearInterval(state.motorTimer);
     state.motorTimer = null;
   }
-  if (id === "seedVeil" && state.seedTimer) {
-    clearInterval(state.seedTimer);
-    state.seedTimer = null;
+   if (id === "seedVeil" && state.seedTimer) {
+     clearInterval(state.seedTimer);
+     state.seedTimer = null;
+   }
+  if (id === "torrentVeil") {
+    torState.acik = false;
+    torState.nonce = (torState.nonce || 0) + 1;
+    // Askida kalan metrik istegi bu pencereyle birlikte terk edilir; kilidi tasimazsak
+    // yeniden acilan pencere hic metrik cekemez
+    torState.metrikInFlight = false;
+    if (state.torTimer) {
+      clearInterval(state.torTimer);
+      state.torTimer = null;
+    }
   }
   // LinkGrabber kapanirsa surunen probe'lari durdur (yeni is yok zaten)
   if (id === "lgVeil") call("linkgrabber_iptal").catch(() => {});
@@ -385,10 +560,10 @@ document.querySelectorAll("[data-close]").forEach((button) => {
   button.onclick = () => closeVeil(button.dataset.close);
 });
 document.querySelectorAll(".veil").forEach((veil) => {
-  veil.addEventListener("click", (event) => { if (event.target === veil) veil.classList.remove("open"); });
+  veil.addEventListener("click", (event) => { if (event.target === veil) closeVeil(veil.id); });
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") document.querySelectorAll(".veil.open").forEach((v) => v.classList.remove("open"));
+  if (event.key === "Escape") document.querySelectorAll(".veil.open").forEach((v) => closeVeil(v.id));
 });
 
 $("addBtn").onclick = () => {
@@ -728,6 +903,452 @@ $("seedTara").onclick = async () => {
 $("seedKlasor").onclick = () => {
   call("tracker_klasoru_ac").catch((err) => { $("seedErr").textContent = err.message; });
 };
+
+/* ---------- Torrent dosya agaci (core/manager.torrent_dosyalari, torrent_secimi_ayarla) ---------- */
+const torState = {
+  gid: "",
+  baslik: "",
+  dosyalar: [],
+  filtre: "",
+  gosterimLimiti: 250,
+  hepsiniGoster: false,
+  secimler: new Set(),
+  katlanmislar: new Set(),
+  sonBasari: null,
+  acik: false,
+  nonce: 0,
+  metrikInFlight: false,
+};
+
+function torMetrikleriSifirla(hazirDegilMesaj) {
+  const bar = $("torMetrikBar");
+  if (bar) bar.style.display = "grid";
+  $("torSeedVal").textContent = "—";
+  $("torPeersVal").textContent = "—";
+  $("torRatioVal").textContent = "—";
+  $("torDownVal").textContent = "—";
+  $("torUpVal").textContent = "—";
+  $("torTrackersVal").textContent = "—";
+  if (hazirDegilMesaj) {
+    $("torSeedVal").textContent = t("tor.metaNotReady");
+  }
+}
+async function torMetrikleriGuncelle(gid) {
+  // Pencere kimligini cagri aninda yakala; await sonrasi degistiyse yanit BAYAT demektir
+  const pencereNonce = torState.nonce;
+  if (!gid || torState.gid !== gid || !torState.acik) return;
+  if (torState.metrikInFlight) return;
+  torState.metrikInFlight = true;
+  try {
+    const out = await call("torrent_metrikleri", gid);
+    if (!torState.acik || torState.gid !== gid || torState.nonce !== pencereNonce) return;
+    if (!out || !out.ok || out.hazir_degil) {
+      torMetrikleriSifirla(Boolean(out && out.hazir_degil));
+      if (out && !out.ok) {
+        const detay = out.error || out.neden || "";
+        $("torBilgi").textContent = detay
+          ? t("tor.metricsFailedDetail", { detay })
+          : t("tor.metricsFailed");
+        $("torBilgi").setAttribute("data-tur", "metrik-hata");
+        $("torBilgi").style.display = "block";
+      }
+      return;
+    }
+    const m = out.metrikler || {};
+    $("torSeedVal").textContent = (m.num_seeders || 0) + (m.seeder ? " (" + t("tor.seeding") + ")" : "");
+    $("torPeersVal").textContent = (m.connections || 0) + " (" + (m.peers_seeders || 0) + "S / " + (m.peers_leechers || 0) + "L)";
+    $("torRatioVal").textContent = String(m.ratio !== undefined ? m.ratio : 0);
+    $("torDownVal").textContent = speed(m.download_speed || 0);
+    $("torUpVal").textContent = speed(m.upload_speed || 0) + " [" + size(m.upload_length || 0) + "]";
+    $("torTrackersVal").textContent = (m.tracker_sayisi || 0) + " (" + (m.canli_tracker || 0) + " " + t("eng.installed") + ")";
+    torState.sonBasari = Date.now();
+    if ($("torBilgi").getAttribute("data-tur") === "metrik-hata" || $("torBilgi").textContent.includes("...")) {
+      $("torBilgi").style.display = "none";
+      $("torBilgi").removeAttribute("data-tur");
+    }
+  } catch (_) {
+    if (!torState.acik || torState.gid !== gid || torState.nonce !== pencereNonce) return;
+    // Ag veya RPC anlik yanitsiz kalirsa metrikleri bozma
+    if (torState.sonBasari) {
+      const sn = Math.floor((Date.now() - torState.sonBasari) / 1000);
+      $("torBilgi").textContent = t("tor.retryMetrics", { sn });
+    } else {
+      $("torBilgi").textContent = t("tor.metricsInitialError");
+    }
+    $("torBilgi").setAttribute("data-tur", "metrik-hata");
+    $("torBilgi").style.display = "block";
+  } finally {
+    // Yalniz KENDI penceremizin kilidini birak; bayat istek taze pencereyi serbest birakmasin
+    if (torState.nonce === pencereNonce) torState.metrikInFlight = false;
+  }
+}
+
+function torAgacKur(dosyalar) {
+  const kok = { ad: "", tamYol: "", klasor: true, cocuklar: {}, dosyalar: [] };
+  for (const d of dosyalar) {
+    const parcalar = d.yol_parcalari && d.yol_parcalari.length
+      ? d.yol_parcalari
+      : (d.ad ? [d.ad] : ["unnamed"]);
+    let cur = kok;
+    for (let i = 0; i < parcalar.length - 1; i++) {
+      const p = parcalar[i];
+      if (!cur.cocuklar[p]) {
+        const altYol = (cur.tamYol ? cur.tamYol + "/" : "") + p;
+        cur.cocuklar[p] = { ad: p, tamYol: altYol, klasor: true, cocuklar: {}, dosyalar: [] };
+      }
+      cur = cur.cocuklar[p];
+    }
+    cur.dosyalar.push(d);
+  }
+  return kok;
+}
+
+function torDugumDosyalari(dugum) {
+  const liste = [...dugum.dosyalar];
+  for (const k in dugum.cocuklar) {
+    liste.push(...torDugumDosyalari(dugum.cocuklar[k]));
+  }
+  return liste;
+}
+
+function torDugumSecimDurumu(dugum, secimler) {
+  const hepsi = torDugumDosyalari(dugum);
+  if (!hepsi.length) return "none";
+  let seciliSayisi = 0;
+  for (const d of hepsi) {
+    if (secimler.has(d.indeks)) seciliSayisi++;
+  }
+  if (seciliSayisi === 0) return "none";
+  if (seciliSayisi === hepsi.length) return "all";
+  return "some";
+}
+
+function torFiltrele(dosyalar, arama) {
+  if (!arama) return dosyalar;
+  const q = arama.trim().toLocaleLowerCase("tr-TR");
+  return dosyalar.filter((d) => {
+    const ad = (d.ad || "").toLocaleLowerCase("tr-TR");
+    const yol = (d.yol || "").toLocaleLowerCase("tr-TR");
+    return ad.includes(q) || yol.includes(q);
+  });
+}
+
+function torSecimSayaclari(dosyalar, secimler) {
+  let seciliSayi = 0;
+  let seciliBoyut = 0;
+  let toplamBoyut = 0;
+  for (const d of dosyalar) {
+    const b = Number(d.boyut || 0);
+    toplamBoyut += b;
+    if (secimler.has(d.indeks)) {
+      seciliSayi++;
+      seciliBoyut += b;
+    }
+  }
+  return {
+    toplam: dosyalar.length,
+    secili: seciliSayi,
+    toplamBoyut,
+    seciliBoyut,
+  };
+}
+
+function torSayacGuncelle(prefix = "tor") {
+  const s = torSecimSayaclari(torState.dosyalar, torState.secimler);
+  $(prefix + "Sayac").textContent = t("tor.count", {
+    secili: s.secili,
+    toplam: s.toplam,
+    seciliBoyut: size(s.seciliBoyut),
+    toplamBoyut: size(s.toplamBoyut),
+  });
+}
+
+function torAgacDugumleriCiz(dugum, derinlik, satirlar, ctx) {
+  const klasorAdlari = Object.keys(dugum.cocuklar).sort((a, b) => a.localeCompare(b));
+  for (const k of klasorAdlari) {
+    if (ctx.kalan <= 0) return;
+    const alt = dugum.cocuklar[k];
+    const altDosyalar = torDugumDosyalari(alt);
+    if (!altDosyalar.length) continue;
+    const katlanmis = torState.katlanmislar.has(alt.tamYol);
+    const secimDurum = torDugumSecimDurumu(alt, torState.secimler);
+    const pad = derinlik * 18;
+
+    let toplamAltBoyut = 0;
+    for (const d of altDosyalar) toplamAltBoyut += Number(d.boyut || 0);
+
+    satirlar.push(
+      '<div class="tor-satir klasor" style="padding-left:' + (10 + pad) + 'px" data-klasor="' + escapeHtml(alt.tamYol) + '">' +
+        '<span class="tor-ok" data-act="katla" data-yol="' + escapeHtml(alt.tamYol) + '">' + (katlanmis ? "▶" : "▼") + "</span>" +
+        '<input type="checkbox" data-act="klasor-sec" data-yol="' + escapeHtml(alt.tamYol) + '"' +
+          (secimDurum === "all" ? " checked" : "") + (secimDurum === "some" ? ' data-indeterminate="1"' : "") + ">" +
+        '<span class="tor-simge">📁</span>' +
+        '<span class="tor-ad" title="' + escapeHtml(alt.ad) + '">' + escapeHtml(alt.ad) + "</span>" +
+        '<span class="tor-boyut">' + size(toplamAltBoyut) + "</span>" +
+        '<span class="tor-yuzde-wrap"></span>' +
+      "</div>"
+    );
+
+    if (!katlanmis) {
+      torAgacDugumleriCiz(alt, derinlik + 1, satirlar, ctx);
+    }
+  }
+
+  const siraliDosyalar = [...dugum.dosyalar].sort((a, b) => (a.ad || "").localeCompare(b.ad || ""));
+  for (const d of siraliDosyalar) {
+    if (ctx.kalan <= 0) return;
+    const pad = derinlik * 18;
+    const secili = torState.secimler.has(d.indeks);
+    const yuzde = Number(d.yuzde || 0);
+    satirlar.push(
+      '<div class="tor-satir dosya" style="padding-left:' + (10 + pad) + 'px" data-indeks="' + d.indeks + '">' +
+        '<span class="tor-ok bos"></span>' +
+        '<input type="checkbox" data-act="dosya-sec" data-indeks="' + d.indeks + '"' + (secili ? " checked" : "") + ">" +
+        '<span class="tor-simge">📄</span>' +
+        '<span class="tor-ad" title="' + escapeHtml(d.ad) + '">' + escapeHtml(d.ad) + "</span>" +
+        '<span class="tor-boyut">' + (d.boyut_insan || size(d.boyut || 0)) + "</span>" +
+        '<div class="tor-yuzde-wrap">' +
+          '<div class="tor-yuzde-bar"><div class="tor-yuzde-dolgu" style="width:' + Math.min(100, Math.max(0, yuzde)) + '%"></div></div>' +
+          '<span class="tor-yuzde-metin">' + yuzde.toFixed(1) + "%</span>" +
+        "</div>" +
+      "</div>"
+    );
+    ctx.kalan--;
+  }
+}
+
+function torAgacCiz(prefix = "tor") {
+  const agacKutu = $(prefix + "Agac");
+  const limitBar = $(prefix + "LimitBar");
+  const limitNot = $(prefix + "LimitNot");
+  const bilgiKutu = $(prefix + "Bilgi");
+
+  if (!torState.dosyalar.length) {
+    agacKutu.innerHTML = "";
+    limitBar.style.display = "none";
+    return;
+  }
+
+  const filtrelenmis = torFiltrele(torState.dosyalar, torState.filtre);
+  if (!filtrelenmis.length) {
+    agacKutu.innerHTML = "";
+    bilgiKutu.textContent = t("tor.empty");
+    bilgiKutu.style.display = "block";
+    limitBar.style.display = "none";
+    return;
+  }
+  bilgiKutu.style.display = "none";
+
+  const kok = torAgacKur(filtrelenmis);
+  const sinir = torState.hepsiniGoster ? 100000 : torState.gosterimLimiti;
+  const ctx = { kalan: sinir };
+  const satirlar = [];
+  torAgacDugumleriCiz(kok, 0, satirlar, ctx);
+
+  agacKutu.innerHTML = satirlar.join("");
+
+  // Indeterminate checkbox'lari DOM'da aktiflestir
+  agacKutu.querySelectorAll('input[data-indeterminate="1"]').forEach((el) => {
+    el.indeterminate = true;
+  });
+
+  if (!torState.hepsiniGoster && filtrelenmis.length > torState.gosterimLimiti) {
+    limitBar.style.display = "flex";
+    limitNot.textContent = t("tor.limitNotice", {
+      gosterilen: Math.min(torState.gosterimLimiti, filtrelenmis.length),
+      toplam: filtrelenmis.length,
+    });
+    $(prefix + "LimitHepsi").textContent = t("tor.showAll", { n: filtrelenmis.length });
+  } else {
+    limitBar.style.display = "none";
+  }
+
+  torSayacGuncelle(prefix);
+}
+
+async function torrentVeilAc(gid) {
+  const pencereNonce = ++torState.nonce;
+  torState.acik = true;
+  torState.gid = gid;
+  torState.filtre = "";
+  torState.hepsiniGoster = false;
+  torState.katlanmislar.clear();
+  torState.sonBasari = null;
+  $("torErr").textContent = "";
+  $("torAra").value = "";
+  $("torGid").textContent = gid;
+  torMetrikleriSifirla(false);
+  if (state.torTimer) {
+    clearInterval(state.torTimer);
+    state.torTimer = null;
+  }
+
+   const oge = state.items.find((i) => i.gid === gid);
+   torState.baslik = oge ? (oge.title || oge.filename || gid) : gid;
+   $("torBaslik").textContent = torState.baslik;
+
+   $("torBilgi").style.display = "none";
+   $("torAgac").innerHTML = "";
+   $("torLimitBar").style.display = "none";
+   $("torUygula").disabled = true;
+   openVeil("torrentVeil");
+  torMetrikleriGuncelle(gid).catch(() => {});
+  let retryCount = 0;
+  let agacHazir = false;
+  let inFlight = false;
+
+  async function dosyalariCek() {
+    if (inFlight) return false;
+    if (!torState.acik || torState.nonce !== pencereNonce) return false;
+    inFlight = true;
+    try {
+      const out = await call("torrent_dosyalari", torState.gid);
+      if (!torState.acik || torState.nonce !== pencereNonce) return false;
+
+      if (!out || !out.ok) throw new Error((out && out.error) || t("err.failed"));
+
+      if (out.hazir_degil) {
+        if (!torState.acik || torState.nonce !== pencereNonce) return false;
+        torState.dosyalar = [];
+        torState.secimler.clear();
+        $("torBilgi").textContent = out.neden || t("tor.notReady");
+        $("torBilgi").style.display = "block";
+        $("torSayac").textContent = "";
+        $("torUygula").disabled = true;
+        if (++retryCount > 30) {
+          $("torErr").textContent = t("tor.timeout");
+        }
+        return false;
+      }
+
+      if (!torState.acik || torState.nonce !== pencereNonce) return false;
+      torState.gid = out.gid || torState.gid; // resolved gid
+      $("torGid").textContent = torState.gid;
+      torState.dosyalar = out.dosyalar || [];
+      torState.secimler = new Set();
+      for (const d of torState.dosyalar) {
+        if (d.secili) torState.secimler.add(d.indeks);
+      }
+
+      $("torUygula").disabled = false;
+      torAgacCiz();
+      agacHazir = true;
+      return true;
+    } catch (err) {
+      if (!torState.acik || torState.nonce !== pencereNonce) return false;
+      $("torErr").textContent = err.message;
+      $("torBilgi").textContent = err.message;
+      $("torBilgi").style.display = "block";
+      agacHazir = true; // stop retrying on fatal error
+      return true;
+    } finally {
+      inFlight = false;
+    }
+  }
+
+  dosyalariCek();
+  state.torTimer = setInterval(() => {
+    if (torState.gid && torState.acik && torState.nonce === pencereNonce) {
+      torMetrikleriGuncelle(torState.gid).catch(() => {});
+      if (!agacHazir && retryCount <= 30 && !inFlight) dosyalariCek();
+    }
+  }, 2000);
+}
+
+/* Torrent dosya agaci etkilesimleri (tests/torrent_ui_test.py bekler: $("torSayac") $("torAra") $("torSecHepsi") $("torSecHicbiri") $("torSecTers") $("torLimitHepsi") $("torLimitBar") $("torLimitNot") $("torBilgi") $("torAgac")) */
+function torOlaylariBagla(prefix) {
+  $(prefix + "Agac").addEventListener("click", (event) => {
+    const hedef = event.target;
+    const ok = hedef.closest('[data-act="katla"]');
+    if (ok) {
+      const yol = ok.dataset.yol;
+      if (torState.katlanmislar.has(yol)) torState.katlanmislar.delete(yol);
+      else torState.katlanmislar.add(yol);
+      torAgacCiz(prefix);
+      return;
+    }
+    if (hedef.dataset.act === "klasor-sec") {
+      const yol = hedef.dataset.yol;
+      const durum = hedef.checked;
+      const altDosyalar = torState.dosyalar.filter((d) => {
+        return d.parent_yol === yol || (d.parent_yol && d.parent_yol.startsWith(yol + "/"));
+      });
+      for (const d of altDosyalar) {
+        if (durum) torState.secimler.add(d.indeks);
+        else torState.secimler.delete(d.indeks);
+      }
+      torAgacCiz(prefix);
+      return;
+    }
+    if (hedef.dataset.act === "dosya-sec") {
+      const indeks = Number(hedef.dataset.indeks);
+      if (hedef.checked) torState.secimler.add(indeks);
+      else torState.secimler.delete(indeks);
+      torAgacCiz(prefix);
+      return;
+    }
+  });
+  $(prefix + "Ara").oninput = () => {
+    torState.filtre = $(prefix + "Ara").value;
+    torAgacCiz(prefix);
+  };
+  $(prefix + "LimitHepsi").onclick = () => {
+    torState.hepsiniGoster = true;
+    torAgacCiz(prefix);
+  };
+  $(prefix + "SecHepsi").onclick = () => {
+    for (const d of torState.dosyalar) torState.secimler.add(d.indeks);
+    torAgacCiz(prefix);
+  };
+  $(prefix + "SecHicbiri").onclick = () => {
+    torState.secimler.clear();
+    torAgacCiz(prefix);
+  };
+  $(prefix + "SecTers").onclick = () => {
+    for (const d of torState.dosyalar) {
+      if (torState.secimler.has(d.indeks)) torState.secimler.delete(d.indeks);
+      else torState.secimler.add(d.indeks);
+    }
+    torAgacCiz(prefix);
+  };
+}
+
+torOlaylariBagla("tor");
+torOlaylariBagla("kayTor");
+
+
+$("torUygula").onclick = async () => {
+  if (!torState.gid) return;
+  $("torErr").textContent = "";
+  const dugme = $("torUygula");
+  const eskiYazi = dugme.textContent;
+  dugme.disabled = true;
+  dugme.textContent = t("tor.applying");
+
+  const seciliIndeksler = Array.from(torState.secimler).sort((a, b) => a - b);
+  // Tum dosyalar secildiyse bos liste gonderilir (aria2 select-file="" tum dosyalar demek)
+  const gonderilecek = seciliIndeksler.length === torState.dosyalar.length ? [] : seciliIndeksler;
+
+  try {
+    const out = await call("torrent_secimi_ayarla", torState.gid, gonderilecek);
+    if (!out.ok) throw new Error(out.error || t("err.failed"));
+    const msg = gonderilecek.length === 0
+      ? t("tor.appliedAll")
+      : t("tor.applied", { n: seciliIndeksler.length });
+    toast(msg);
+    if (state.torTimer) {
+      clearInterval(state.torTimer);
+      state.torTimer = null;
+    }
+    closeVeil("torrentVeil");
+  } catch (err) {
+    $("torErr").textContent = err.message;
+  } finally {
+    dugme.disabled = false;
+    dugme.textContent = eskiYazi;
+  }
+};
+
 
 /* ---------- Ayarlar > Seed listeleri (core/tracker_saglik.py) ----------
    Dosya eklemek icin trackers/ klasorune elle kopyalamak gerekiyordu; burasi
@@ -1327,6 +1948,10 @@ async function kaydetAc(istek) {
   kayit.kind = istek.kind || bilgi.kind;
   kayit.klasorler = bilgi.kategori_klasorleri ? bilgi.klasorler : {};
   kayit.ana = bilgi.ana;
+  kayit.preGid = null;
+  torState.dosyalar = [];
+  $("kayTorWrap").style.display = kayit.kind === "torrent" ? "block" : "none";
+  
   $("kayUrl").textContent = kayit.url;
   $("kayUrl").title = kayit.url;
   $("kayName").value = istek.filename || istek.title || bilgi.dosya_adi || "";
@@ -1345,6 +1970,31 @@ async function kaydetAc(istek) {
   $("kayQueue").textContent = "";
   openVeil("kaydetVeil");
   $("kayName").focus();
+
+  if (kayit.kind === "torrent" && kayit.url) {
+    $("kayTorBilgi").style.display = "block";
+    $("kayTorBilgi").textContent = t("tor.fetchingMeta", "Torrent bilgisi alınıyor...");
+    $("kayTorAgac").innerHTML = "";
+    $("kayTorLimitBar").style.display = "none";
+    $("kayTorSayac").textContent = "";
+    
+    call("torrent_on_ekle", kayit.url).then(out => {
+      if (out.ok) {
+        kayit.preGid = out.gid;
+        torState.gid = out.gid;
+        torState.filtre = "";
+        torState.hepsiniGoster = false;
+        torState.katlanmislar.clear();
+        torState.secimler.clear();
+        kayTorYokla(out.gid);
+      } else {
+        $("kayTorBilgi").textContent = out.error;
+      }
+    }).catch(e => {
+        $("kayTorBilgi").textContent = e.message;
+    });
+  }
+
 
   // dlman v1.12.0 yaklasimi: pencere aninda acilir, arka planda Content-Disposition
   // ve MIME turu yoklanir; kullanici adi degistirmediyse otomatik guncellenir.
@@ -1374,15 +2024,49 @@ $("kayPick").onclick = async () => {
 };
 $("kayAt").onfocus = () => { $("kayLater").checked = true; };
 
-$("kayCancel").onclick = async () => {
-  closeVeil("kaydetVeil");
-  const kimlik = kayit.kimlik;
-  kayit.kimlik = null;
-  if (kimlik !== null) {
-    try { await call("bekleyen_iptal", kimlik); } catch (_) { /* zaten dusmus */ }
+const observer = new MutationObserver((mutations) => {
+  mutations.forEach((m) => {
+    if (m.attributeName === "class" && !$("kaydetVeil").classList.contains("open")) {
+      if (kayit.preGid) {
+        call("torrent_on_iptal", kayit.preGid).catch(()=>{});
+        kayit.preGid = null;
+      }
+      const kimlik = kayit.kimlik;
+      kayit.kimlik = null;
+      if (kimlik !== null) {
+        call("bekleyen_iptal", kimlik).catch(()=>{});
+        bekleyenYokla();
+      }
+    }
+  });
+});
+observer.observe($("kaydetVeil"), { attributes: true });
+
+$("kayCancel").onclick = () => { closeVeil("kaydetVeil"); };
+
+async function kayTorYokla(gid) {
+  if (kayit.preGid !== gid || !$("kaydetVeil").classList.contains("open")) return;
+  try {
+    const out = await call("torrent_dosyalari", gid);
+    if (!out.ok) throw new Error(out.error || t("err.failed"));
+    if (out.hazir_degil) {
+      setTimeout(() => kayTorYokla(gid), 1500);
+      return;
+    }
+    $("kayTorBilgi").style.display = "none";
+    torState.dosyalar = out.dosyalar || [];
+    torState.secimler = new Set();
+    for (const d of torState.dosyalar) {
+      if (d.secili) torState.secimler.add(d.indeks);
+    }
+    if (torState.secimler.size === 0 && torState.dosyalar.length > 0) {
+       for (const d of torState.dosyalar) torState.secimler.add(d.indeks);
+    }
+    torAgacCiz("kayTor");
+  } catch (err) {
+    $("kayTorBilgi").textContent = err.message;
   }
-  bekleyenYokla();
-};
+}
 
 $("kayGo").onclick = async () => {
   const secim = {
@@ -1405,14 +2089,26 @@ $("kayGo").onclick = async () => {
     dosya_sablonu: $("kayVideoDosyaSablonu").value.trim(),
     tarayici_cerezi: $("kayVideoTarayiciCerezi").value.trim(),
   };
+  
+  if (kayit.kind === "torrent" && kayit.preGid && torState.dosyalar.length > 0) {
+    secim.adopt_gid = kayit.preGid;
+    const secili = Array.from(torState.secimler).sort((a, b) => a - b);
+    secim.selected_files = secili.length === torState.dosyalar.length ? [] : secili;
+  } else if (kayit.kind === "torrent" && kayit.preGid) {
+    secim.adopt_gid = kayit.preGid;
+  }
+  
+  kayit.preGid = null;
+  const kimlik = kayit.kimlik;
+  kayit.kimlik = null;
+  
   try {
-    if (kayit.kimlik !== null) {
-      await call("bekleyen_onayla", kayit.kimlik, secim);
+    if (kimlik !== null) {
+      await call("bekleyen_onayla", kimlik, secim);
     } else {
       await call("add_links", { urls: [kayit.url], ...secim });
     }
     closeVeil("kaydetVeil");
-    kayit.kimlik = null;
     toast(secim.start_at ? t("toast.scheduled", { n: 1 }) : t("toast.started", { n: 1 }));
     bekleyenYokla();
   } catch (err) { $("kayErr").textContent = err.message; }

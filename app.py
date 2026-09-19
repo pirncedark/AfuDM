@@ -359,6 +359,7 @@ class Api:
                 "cookies": istek.get("cookies"),
                 "user_agent": istek.get("user_agent"),
                 "title": (ad or istek.get("title")) if kind == "video" else istek.get("title"),
+
                 "altyazi_diller": secim.get("altyazi_diller") or "",
                 "oto_altyazi": bool(secim.get("oto_altyazi")),
                 "altyazi_goem": bool(secim.get("altyazi_goem")),
@@ -426,6 +427,69 @@ class Api:
 
     def seed_tazele(self, gid: str) -> dict:
         return self.manager.seed_tazele(gid)
+    def torrent_on_ekle(self, source: str) -> dict:
+        """Dosya secimi icin torrenti duraklatilmis olarak aria2'ye ekler."""
+        try:
+            gid = self.manager.torrent_on_ekle(source)
+            return {"ok": True, "gid": gid}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+
+    def torrent_on_iptal(self, gid: str) -> dict:
+        """On-eklenmis torrenti kaldirir."""
+        try:
+            self.manager.torrent_on_iptal(gid)
+            return {"ok": True}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+
+    def torrent_dosyalari(self, gid: str) -> dict:
+        """Torrent dosya agaci ve secim bilgisi."""
+        try:
+            dosyalar = self.manager.torrent_dosyalari(gid)
+            hazir_degil = bool(getattr(dosyalar, "hazir_degil", False))
+            neden = str(getattr(dosyalar, "neden", ""))
+            return {
+                "ok": True,
+                "gid": getattr(dosyalar, "gid", gid),
+                "hazir_degil": hazir_degil,
+                "neden": neden,
+                "dosyalar": list(dosyalar),
+            }
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+
+    def torrent_secimi_ayarla(self, gid: str, indeksler: list[int]) -> dict:
+        """Torrent dosya secimini canli uygula ve DB'ye yaz."""
+        try:
+            return self.manager.torrent_secimi_ayarla(gid, indeksler)
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+    def torrent_metrikleri(self, gid: str) -> dict:
+        """Torrent seed/ratio/tracker metrikleri koprusu."""
+        try:
+            sonuc = self.manager.torrent_metrikleri(gid)
+            hazir_degil = bool(sonuc.get("hazir_degil", False))
+            neden = str(sonuc.get("neden", ""))
+            return {
+                "ok": True,
+                "gid": gid,
+                "hazir_degil": hazir_degil,
+                "neden": neden,
+                "metrikler": sonuc if not hazir_degil else {},
+            }
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:300], "hazir_degil": True, "neden": str(exc)[:300]}
+
+    def loglar(self, gid: str = "") -> dict:
+        """Detay paneli icin olay ve hata gunlukleri."""
+        try:
+            events = self.manager.store.recent_events(limit=50, gid=gid)
+            return {"ok": True, "events": events}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:200], "events": []}
+
+
 
     def tracker_tara(self, gid: str = "") -> dict:
         """Klasordeki tracker'lari olc ve canli sonucu hemen uygula."""
@@ -550,6 +614,7 @@ class Api:
                     audio_only=bool(payload.get("audio_only")),
                     playlist=bool(payload.get("playlist")),
                     start_after=start_after,
+
                     altyazi_diller=payload.get("altyazi_diller") or "",
                     oto_altyazi=bool(payload.get("oto_altyazi")),
                     altyazi_goem=bool(payload.get("altyazi_goem")),
