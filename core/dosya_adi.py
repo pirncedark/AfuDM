@@ -380,6 +380,9 @@ def probe_url_info(
     content_length: int | None = None
     resumable = False
     son_url = url
+    # En az bir istek BASARILI olduysa probe basarili sayilir; iki yol da gecerse
+    # (timeout, sunucu yok) ok=False doner ve panel "bilgi yok" gosterir.
+    erisilebildi = False
 
     # 1. Adim: HEAD
     try:
@@ -395,6 +398,7 @@ def probe_url_info(
             accept_ranges = resp_headers.get("Accept-Ranges", "")
             if "bytes" in accept_ranges.lower():
                 resumable = True
+            erisilebildi = True
     except Exception:
         pass
 
@@ -422,13 +426,14 @@ def probe_url_info(
                     cl = resp_headers.get("Content-Length")
                     if cl and cl.isdigit() and int(cl) > 1:
                         content_length = int(cl)
+                erisilebildi = True
         except Exception:
             pass
 
     cozulmus_ad = resolve_filename(son_url, content_disposition, content_type)
 
     return {
-        "ok": True,
+        "ok": erisilebildi,
         "filename": cozulmus_ad,
         "size": content_length,
         "content_type": content_type,

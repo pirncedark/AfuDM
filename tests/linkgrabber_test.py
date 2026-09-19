@@ -281,6 +281,65 @@ try:
 finally:
     httpd.shutdown()
 
+print("7) kabul senaryolari — buyuk liste, steam kliplenir, reddetme, redirect, timeout")
+# 7a: 1000 URL + ayni URL x100 -> tek sonuc, sure sinirli
+kaynak = "\n".join(f"https://kaynak{i}.com/dosya{i}.zip" for i in range(1000))
+basla = time.time()
+ayiklama = lg.ayikla(kaynak)
+check("1000 URL ayiklanir", len(ayiklama) == 1000, str(len(ayiklama)))
+check("1000 URL hicbir noktada tasmaz/tekille",
+      len(lg.tekil_les(ayiklama)) == 1000, "tekil_les")
+gecen = time.time() - basla
+check("1000 URL islem hizi", gecen < 3.0, f"{gecen:.2f}s")
+
+tekrar = ["https://x.com/bir.zip"] * 100
+check("ayni URL x100 tek sonuc", lg.tekil_les(tekrar) == ["https://x.com/bir.zip"],
+      str(lg.tekil_les(tekrar)))
+
+# 7b: http/https ayni model ama farkli URL'dir — karistirilmaz
+check("http vs https ayri tutulur",
+      lg.tekil_les(["http://x.com/bir.zip", "https://x.com/bir.zip"])
+      == ["http://x.com/bir.zip", "https://x.com/bir.zip"],
+      str(lg.tekil_les(["http://x.com/bir.zip", "https://x.com/bir.zip"])))
+
+# 7c: Filename dedupe degil URL dedupe: ayni dosya adi farkli URL ayrilir
+check("Ayni dosya adi iki URL ayri kalir",
+      lg.tekil_les(["https://a.com/dosya.zip", "https://b.com/dosya.zip"])
+      == ["https://a.com/dosya.zip", "https://b.com/dosya.zip"],
+      str(lg.tekil_les(["https://a.com/dosya.zip", "https://b.com/dosya.zip"])))
+
+# 7d: redirect: yonlendiren adres, son adrese isaret eder (probe hedef alir)
+yonayarlar = SunucuAyarlari(veri=veri, yonlendir="/hedef/gercek.mp4")
+yp, yhttpd = baslat(yonayarlar)
+try:
+    yurl = f"http://127.0.0.1:{yp}/eski/yol.mp4"
+    yok = lg.probe_es_zamanli([yurl], es_zamanli=2, timeout=3.0)
+    check("redirect son adresi okur", yok.get(yurl, {}).get("ok") is True,
+          str(yok.get(yurl, {})))
+    check("redirect size dogru", yok.get(yurl, {}).get("size") == len(veri),
+          str(yok.get(yurl, {}).get("size")))
+finally:
+    yhttpd.shutdown()
+
+# 7e: timeout isi tek URL'ye takilir; digerleri yine islenir
+yonavs = SunucuAyarlari(veri=veri, gecikme_sn=2.0)
+yp2, yhttpd2 = baslat(yonavs)
+hizli = SunucuAyarlari(veri=veri)
+hp, hhttpd3 = baslat(hizli)
+try:
+    karisik = [f"http://127.0.0.1:{yp2}/yavas.mp4",
+               f"http://127.0.0.1:{hp}/hizli.mp4"]
+    ksoz = lg.probe_es_zamanli(karisik, es_zamanli=2, timeout=0.8)
+    hizli_snc = ksoz.get(karisik[1], {})
+    yavas_snc = ksoz.get(karisik[0], {})
+    check("yavas URL timeout olur", yavas_snc.get("ok") is not True, str(yavas_snc))
+    check("timeout digerini engellemez", hizli_snc.get("ok") is True, str(hizli_snc))
+    check("hizli URL boyutu gecer", hizli_snc.get("size") == len(veri),
+          str(hizli_snc.get("size")))
+finally:
+    yhttpd2.shutdown()
+    hhttpd3.shutdown()
+
 print()
 if fails:
     print(f"BASARISIZ ({len(fails)}):")
