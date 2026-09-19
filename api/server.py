@@ -234,6 +234,7 @@ class _Handler(BaseHTTPRequestHandler):
                     "scheduler", "hiz_profilleri", "renew", "ozel_basliklar",
                     "cerez", "zamanlama", "cli", "api", "kategori_klasorleri",
                     "proxy", "sistem_proxy", "checksum", "canli_ayar",
+                    "automation", "automation_queue", "automation_retry", "automation_cancel",
                 ],
                 "sinirlar": {
                     "kaynak": models.SOURCE_MAX,

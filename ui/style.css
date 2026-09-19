@@ -984,3 +984,5 @@ input, textarea, code, .kv, .row-title, .kay-url, .hint, .err-note { user-select
   border: 1px solid var(--line);
   border-radius: 3px;
 }
+.automation-job { padding: 10px; margin: 7px 0; border-left: 3px solid var(--dl); background: var(--surface); display: grid; gap: 6px; }
+.automation-job .rozet { width: max-content; }
