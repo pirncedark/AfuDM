@@ -1,10 +1,50 @@
 # AfuDM — Durum & Devam Notu
-Son guncelleme: 2026-09-19 (AfuDM v1.5.0 — LinkGrabber + browser handoff + Release Train planı)
+Son guncelleme: 2026-09-19 (AfuDM v1.6.0 — Video Pro + tamamen yeşil CI/Release Train)
 ## Ne yapiyoruz
 IDM yerine gecen, PORTABLE (tek klasor, kopyala-calistir) Windows masaustu
 indirme yoneticisi. Motor: aria2 + yt-dlp.
 
 Konum: `C:\Users\afuuu\AfuDM\`
+
+## YENI: AfuDM v1.6.0 — Video Pro YAYINLANDI (tag v1.6.0, 2026-09-19 10:17 UTC)
+v1.5.0 (LinkGrabber + Release Train) da yayınlandı; Video Pro ile video işleri
+gelişmiş ve doğrulanmış seçeneklere kavuştu.
+
+- `video/ytdlp.py`: `VideoJob` için 12 alan; alanlar boşken üretilen komut v1.5
+  ile birebir aynı kalır. `afuadm add` bu alanların 12 CLI bayrağını taşır.
+- Ayarlar > Video, `video_*` DB varsayılanlarını; ekleme penceresi de
+  katlanabilir "Gelişmiş video seçenekleri" bölümünü sunar.
+- `core/models.py`: kapsayıcı, ses formatı, küçük resim, bölümler ve tarayıcı
+  çerezi allow-list ile doğrulanır; bölüm aralığı regex'i ve SponsorBlock
+  karakter kısıtı geçersiz girdiyi erken 400 ile durdurur.
+- 403 sonrasındaki çerezsiz tekrar artık tarayıcı çerezini de hesaba katar.
+  ffmpeg yokken `--embed-*` atlanır ve görünür not `core/lang.py` üzerinden
+  kullanıcıya bildirilir. `api/server.py` boolean alanları katı ayrıştırır;
+  JSON `"false"` artık `True` sayılmaz.
+
+### CI / Release Train — ilk kez tamamen yeşil
+- Paketlemeden ÖNCE CI'da `engines.indir('aria2c')` çalışmalıdır; `engine/*.exe`
+  CI çalışma alanında yoktur.
+- gitleaks sığ klonda commit aralığını bulamaz: checkout için `fetch-depth: 0`
+  gerekir. Gömülü `C:\Users\afuuu\AfuDM` test yolu da `__file__` tabanlı oldu.
+- CI konsolu cp1252 olduğundan test job'larında `PYTHONUTF8=1` ve
+  `PYTHONIOENCODING=utf-8` gerekir.
+- TUZAK: BOM'suz UTF-8 `.ps1` içindeki ASCII dışı karakter (özellikle uzun tire),
+  Windows PowerShell 5.1'de tipografik tırnağa dönüşüp betiği kırabilir.
+  `test.ps1 -ParseOnly` artık 5.1 ile ayrıştırır ve ASCII dışı karakteri hata sayar.
+- TUZAK: sürüm kapısı `TrimStart('v')` kullanamaz; tam eşitlik gerekir, yoksa
+  `vv1.5.0` geçer. `release.yml` ilk `# ` sürüm notu satırını release başlığı
+  yapar; `<!-- SHA256-PLACEHOLDER -->` satırını SHA-256 tablosuyla değiştirir.
+  Sürüm notu sırası İngilizce, ardından `## Türkçe`, en sonda SHA-256'dır.
+
+### v1.7 Torrent Pro — başladı (ayrı `v1.7-torrent` worktree)
+- Dilim 1 TAMAM (`77d6499`): `aria2.getFiles`, `torrent_dosyalari()` ve DB
+  migration ile seçim kalıcılığı.
+- Dilim 2 TAMAM (`d4f93c8`): `torrent_secimi_ayarla()` canlı `select-file` yapar;
+  seçim magnet çocuk GID'ine ve `seed_tazele` sonrasına taşınır.
+- TUZAK: magnet çocuk GID'i ile `seed_tazele` sonrası seçim taşınmazsa dosya
+  seçimi sessizce kaybolur.
+- Kalan dilimler: 3 dosya ağacı UI, 4 metrikler, 5 `.torrent` ön-ekleme.
 
 ## LINKGRABBER (v1.5) — BITTI (2026-09-19), tests/linkgrabber_test.py
 Bar'da "Link yakala". Pano/tarayicidan kopyalanmis METIN yapistirilir, "Analiz et":
