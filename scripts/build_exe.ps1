@@ -30,7 +30,7 @@ try {
         $calisan = Get-Process | Where-Object { $_.ProcessName -eq "AfuDM" }
         if ($calisan) {
             Write-Host "GATE HATA: AfuDM su an calisiyor (PID: $($calisan.Id -join ', ')) ve AfuDM.exe dosyasini kilitliyor."
-            Write-Host "Uygulamayi kapatip build'i tekrar calistir — Windows calisan exe'nin uzerine yazilmasina izin vermez."
+            Write-Host "Uygulamayi kapatip build'i tekrar calistir - Windows calisan exe'nin uzerine yazilmasina izin vermez."
         } else {
             Write-Host "GATE HATA: AfuDM.exe kopyalanamadi: $($_.Exception.Message)"
         }

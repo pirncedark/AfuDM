@@ -28,7 +28,7 @@ try {
 
     $argTum = if ($Full) { "--tam" } else { "" }
     if (-not (Test-Path (Join-Path $kok "AfuDM.exe"))) {
-        Write-Host "AfuDM.exe yok — build_exe.ps1 ile uretiliyor..."
+        Write-Host "AfuDM.exe yok - build_exe.ps1 ile uretiliyor..."
         & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "build_exe.ps1")
         if ($LASTEXITCODE -ne 0) { Write-Host "exe uretilemedi"; exit 1 }
     }

@@ -16,8 +16,47 @@ $kok = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Push-Location $kok
 try {
     if ($ParseOnly) {
+        Write-Host "[parse] tum PowerShell betikleri Windows PowerShell 5.1 ile denetleniyor..."
         Write-Host "[parse] tum Python dosyalari derleniyor..."
         $hatalar = 0
+        Get-ChildItem -Filter *.ps1 -Path "scripts" | ForEach-Object {
+            $goreliYol = Join-Path "scripts" $_.Name
+            $baytlar = [System.IO.File]::ReadAllBytes($_.FullName)
+            $baslangic = 0
+            if ($baytlar.Length -ge 3 -and $baytlar[0] -eq 0xEF -and $baytlar[1] -eq 0xBB -and $baytlar[2] -eq 0xBF) {
+                $baslangic = 3
+            }
+            $satir = 1
+            $raporlananSatirlar = @{}
+            for ($i = $baslangic; $i -lt $baytlar.Length; $i++) {
+                if ($baytlar[$i] -eq 0x0A) {
+                    $satir++
+                } elseif ($baytlar[$i] -gt 0x7F -and -not $raporlananSatirlar.ContainsKey($satir)) {
+                    Write-Host ("ASCII disi karakter (BOM'suz dosyada PowerShell 5.1 kirilir): {0}:{1}" -f $goreliYol, $satir)
+                    $raporlananSatirlar[$satir] = $true
+                    $hatalar++
+                }
+            }
+
+            $guvenliYol = $_.FullName.Replace("'", "''")
+            $parseKomutu = @"
+`$tokenler = `$null
+`$parseHatalari = `$null
+[void][System.Management.Automation.Language.Parser]::ParseFile('$guvenliYol', [ref]`$tokenler, [ref]`$parseHatalari)
+if (`$parseHatalari) {
+    foreach (`$parseHatasi in `$parseHatalari) {
+        Write-Output ('{0}:{1}: {2}' -f `$parseHatasi.Extent.File, `$parseHatasi.Extent.StartLineNumber, `$parseHatasi.Message)
+    }
+    exit 1
+}
+"@
+            $out = & powershell -NoProfile -Command $parseKomutu 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "PARSE HATA: $goreliYol"
+                Write-Host $out
+                $hatalar++
+            }
+        }
         Get-ChildItem -Recurse -Filter *.py -Path @("core", "api", "video", "tests") |
             Where-Object { $_.FullName -notmatch "__pycache__" } |
             ForEach-Object {
