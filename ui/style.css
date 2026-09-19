@@ -566,6 +566,13 @@ input, textarea, code, .kv, .row-title, .kay-url, .hint, .err-note { user-select
 .opt input { accent-color: var(--dl); }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
 .hint { font-size: 11px; color: var(--dim); line-height: 1.5; }
+.winint-rows { display: grid; gap: 8px; }
+.winint-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 9px; border: 1px solid var(--line-soft); background: var(--bg-deep); }
+.winint-name { color: var(--text); font-size: 12px; }
+.winint-meta { color: var(--dim); font-size: 10.5px; margin-top: 3px; }
+.winint-actions { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+.winint-state { color: var(--done); }
+.winint-state.off, #winIntError { color: var(--err); }
 
 /* ---------- Chrome'a ekle ---------- */
 .rail-chrome { color: var(--dl) !important; }

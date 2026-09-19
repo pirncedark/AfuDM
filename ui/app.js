@@ -7,6 +7,7 @@ const TRACE_POINTS = 180;
 const state = {
   filter: "all",
   motorTimer: null,
+  winIntTimer: null,
   seedTimer: null,
   torTimer: null,
   search: "",
@@ -161,6 +162,7 @@ function renderList() {
     let right;
     if (item.status === "complete") {
       right = '<button data-act="open" data-gid="' + item.gid + '">' + t("row.folder") + "</button>"
+        + '<button data-act="scan" data-gid="' + item.gid + '">' + t("row.scan") + "</button>"
         + '<button data-act="remove" data-gid="' + item.gid + '">' + t("row.delete") + "</button>";
     } else if (item.status === "error") {
       // Hataya dusen indirme 'unpause' edilemez; kaydi bastan baslatmak gerekir
@@ -490,6 +492,7 @@ $("list").addEventListener("click", async (event) => {
     try {
       if (act === "files") { await torrentVeilAc(gid); return; }
       if (act === "seed") { await seedAc(gid); return; }
+      if (act === "scan") { await call("defender_scan", gid); toast(t("toast.scanStarted")); return; }
       if (act === "open") await call("open_item_folder", gid);
       else if (act === "retry") {
         const rowId = Number(button.dataset.id);
@@ -1514,6 +1517,7 @@ $("openSettings").onclick = async () => {
   $("sClip").checked = !!s.clipboard_watch;
   $("sTrackers").checked = !!s.auto_update_trackers;
   $("sNotify").checked = !!s.notify_telegram;
+  $("sWinNotify").checked = s.windows_notifications !== false;
   $("sShutdown").checked = !!s.shutdown_when_done;
   $("sSleep").checked = !!s.sleep_when_done;
   gucDurumu();
@@ -1522,6 +1526,9 @@ $("openSettings").onclick = async () => {
   $("sTepsi").checked = s.tepsiye_kucult !== false;
   $("sBasTepside").checked = s.baslangicta_tepside !== false;
   sistemDurumu();
+  windowsIntegrationDurumu();
+  if (state.winIntTimer) clearInterval(state.winIntTimer);
+  state.winIntTimer = setInterval(windowsIntegrationDurumu, 1500);
   telefonDurumu();
   seedListeCiz();
   $("sSeedEk").value = s.ek_trackerlar || "";
@@ -1577,6 +1584,45 @@ async function sistemAyarlariniUygula() {
   } catch (err) { hatalar.push(err.message); }
   if (hatalar.length) toast(hatalar[0], true);
 }
+
+/* Windows Integration: UI gercek kaydi RPC uzerinden yeniden OKUR; rozetler
+   varsayimla degil Windows kayit defterindeki mevcut degerle cizilir. */
+const winIntNames = { context: "winint.context", protocol: "winint.protocol", afup: "winint.afup", torrent: "winint.torrent" };
+async function windowsIntegrationDurumu() {
+  const root = $("winIntRows");
+  if (!root) return;
+  root.textContent = t("winint.loading");
+  try {
+    const out = await call("windows_integration_status");
+    const entries = out.integrations || {};
+    root.innerHTML = Object.keys(winIntNames).map((id) => {
+      const row = entries[id] || {};
+      const registered = !!row.registered;
+      return '<div class="winint-row"><div><div class="winint-name">' + escapeHtml(t(winIntNames[id])) +
+        ' <span class="winint-state ' + (registered ? "" : "off") + '">' + escapeHtml(t(registered ? "winint.registered" : "winint.notRegistered")) +
+        '</span></div><div class="winint-meta">' + escapeHtml(t("winint.whenNow")) + '</div></div><div class="winint-actions">' +
+        '<button class="btn" data-winint="apply" data-id="' + id + '">' + escapeHtml(t("winint.apply")) + '</button>' +
+        '<button class="btn" data-winint="test" data-id="' + id + '">' + escapeHtml(t("winint.test")) + '</button>' +
+        '<button class="btn ghost" data-winint="remove" data-id="' + id + '">' + escapeHtml(t("winint.remove")) + '</button></div></div>';
+    }).join("");
+    const scan = out.scan || {};
+    $("winIntError").textContent = scan.state && scan.state !== "idle"
+      ? t("winint.scanStatus", { state: scan.state, detail: scan.detail || "" }) : "";
+  } catch (err) { root.textContent = t("winint.offline"); $("winIntError").textContent = err.message; }
+}
+
+$("winIntRows").addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-winint]");
+  if (!button) return;
+  button.disabled = true;
+  $("winIntError").textContent = "";
+  try {
+    const out = await call("windows_integration_" + button.dataset.winint, button.dataset.id);
+    if (button.dataset.winint === "test") toast(out.registered ? t("winint.testOk") : t("winint.testNo"), !out.registered);
+    else toast(t("winint.updated"));
+    await windowsIntegrationDurumu();
+  } catch (err) { $("winIntError").textContent = err.message; toast(err.message, true); button.disabled = false; }
+});
 
 /* Windows'un varsayilan uygulama ekrani: .torrent secimini YALNIZ kullanici
    yapabilir (UserChoice hash korumali), en fazla dogru ekrani acabiliriz. */
@@ -1732,6 +1778,7 @@ $("setGo").onclick = async () => {
     clipboard_watch: $("sClip").checked,
     auto_update_trackers: $("sTrackers").checked,
     notify_telegram: $("sNotify").checked,
+    windows_notifications: $("sWinNotify").checked,
     shutdown_when_done: $("sShutdown").checked,
     sleep_when_done: $("sSleep").checked,
     kaydetme_penceresi: $("sKaydet").checked,

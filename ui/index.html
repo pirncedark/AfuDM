@@ -228,6 +228,7 @@
         <label class="opt"><input type="checkbox" id="sClip"> <span data-i18n="set.clip">Panoya kopyalanan linki yakala</span></label>
         <label class="opt"><input type="checkbox" id="sTrackers"> <span data-i18n="set.trackers">Tracker listesini günlük güncelle</span></label>
         <label class="opt"><input type="checkbox" id="sNotify"> <span data-i18n="set.notify">Bitince Telegram'a haber ver</span></label>
+        <label class="opt"><input type="checkbox" id="sWinNotify"> <span data-i18n="set.winNotify">Windows bildirimi göster</span></label>
         <label class="opt"><input type="checkbox" id="sShutdown"> <span data-i18n="set.shutdown">Hepsi bitince bilgisayarı kapat</span></label>
         <label class="opt"><input type="checkbox" id="sSleep"> <span data-i18n="set.sleep">Hepsi bitince bilgisayarı uyut</span></label>
         <label class="opt"><input type="checkbox" id="sKaydet"> <span data-i18n="set.kaydet">İndirmeden önce kaydetme penceresini göster</span></label>
@@ -237,6 +238,12 @@
         <label class="opt"><input type="checkbox" id="sTorrent"> <span data-i18n="set.torrent">.torrent ve magnet linklerini AfuDM açsın</span></label>
         <label class="opt"><input type="checkbox" id="sBasTepside"> <span data-i18n="set.basTepside">Açılışta pencere açılmasın, tepside başlasın</span></label>
         <label class="opt"><input type="checkbox" id="sTelefon"> <span data-i18n="set.telefon">Telefondan bağlan (aynı Wi-Fi)</span></label>
+      </div>
+      <div class="seed-kutu" id="windowsIntegration">
+        <label data-i18n="winint.title">Windows Integration</label>
+        <div class="hint" data-i18n="winint.hint">Each action reads the current Windows registration; Apply stores the previous value before changing it.</div>
+        <div id="winIntRows" class="winint-rows"></div>
+        <div class="hint" id="winIntError" aria-live="polite"></div>
       </div>
       <div class="seed-kutu">
         <label data-i18n="vid.title">Video</label>

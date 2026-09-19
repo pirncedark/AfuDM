@@ -243,6 +243,8 @@ class _Handler(BaseHTTPRequestHandler):
                     "proxy": models.PROXY_MAX,
                 },
             })
+        elif parsed.path == "/windows-integration":
+            self._send(200, self.manager.windows.status())
         else:
             self._hata(404, "BILINMEYEN_YOL", "bilinmeyen yol")
 
@@ -324,6 +326,14 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(200, {"ok": True, **sonuc})
             elif parsed.path == "/settings":
                 self._send(200, {"ok": True, "settings": self.manager.update_settings(data)})
+            elif parsed.path == "/windows-integration":
+                ident = str(data.get("id") or "")
+                action = str(data.get("action") or "")
+                if action == "apply": result = self.manager.windows.apply(ident)
+                elif action == "remove": result = self.manager.windows.remove(ident)
+                elif action == "test": result = self.manager.windows.test(ident)
+                else: raise ValueError("action apply, remove veya test olmali")
+                self._send(200, result)
             elif parsed.path == "/renew":
                 # Olen linki yeni adresle devam ettir (afuadm renew <gid> <url>).
                 # headers/cookies/user_agent OPSIYONEL: varliksa ayni atomik

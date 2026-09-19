@@ -64,6 +64,8 @@ DEFAULTS: dict[str, Any] = {
     "clipboard_watch": True,
     "clipboard_exts": "zip,rar,7z,exe,msi,iso,pdf,mp4,mkv,mp3,apk,dmg,torrent",
     "notify_telegram": False,
+    # Windows bildirimleri; tepsi altyapisi varsa tamamlanma/hata durumunu gosterir.
+    "windows_notifications": True,
     "telegram_bot_token": "",
     "telegram_chat_id": "",
     "shutdown_when_done": False,

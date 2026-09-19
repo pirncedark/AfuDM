@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -27,6 +28,7 @@ from core import (baslangic, chrome_kurulum, clipboard, dosya_adi, engines, guc,
                   tracker_saglik,
                   kaydet, lang, linkgrabber, models, paths, pencere)
 from core.manager import Manager  # noqa: E402
+from core.windows_integration import WindowsIntegration  # noqa: E402
 
 # Pencere basligi dile gore secilir (bkz. core/lang.py); ayar okunana kadar bu durur.
 WINDOW_TITLE = "AfuDM"
@@ -37,6 +39,20 @@ def parse_start_at(text: str) -> float | None:
 
     Tek kaynak: core/models.parse_time_spec (v1.4 Foundation)."""
     return models.parse_time_spec(text)
+
+
+def protocol_link(argument: str) -> str:
+    """`afudm://download?url=...` baglantisini gercek indirme kaynagina cevir.
+
+    Protokol yalniz HTTP(S)/FTP/magnet veya yerel .torrent gonderir; diger
+    parametreler yok sayilir, boylece shell argumani ayar enjekte edemez.
+    """
+    if not argument.lower().startswith("afudm:"):
+        return argument
+    parsed = urllib.parse.urlparse(argument)
+    if parsed.netloc.lower() not in ("download", "add"):
+        return ""
+    return urllib.parse.parse_qs(parsed.query).get("url", [""])[0].strip()
 
 
 def open_in_explorer(target: str) -> None:
@@ -69,6 +85,7 @@ class Api:
         self._bekleyenler = kaydet.Bekleyenler()
         self._chrome_baslangic = 0.0
         self._probe_iptal: threading.Event | None = None
+        self.windows = manager.windows
 
     # --- durum ------------------------------------------------------------
     def snapshot(self) -> dict:
@@ -420,6 +437,49 @@ class Api:
         except OSError as exc:
             return {"ok": False, "error": str(exc)[:300]}
         return {"ok": True, "durum": iliskilendir.durum()}
+
+    # --- Windows Integration v2.2 --------------------------------------
+    def windows_integration_status(self) -> dict:
+        try:
+            out = self.windows.status()
+            out["integrations"]["torrent"] = {"registered": iliskilendir.acik_mi(), "scope": "current_user"}
+            return out
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+
+    def windows_integration_apply(self, ident: str) -> dict:
+        try:
+            if ident == "torrent":
+                iliskilendir.ac()
+                return self.windows_integration_status()
+            return self.windows.apply(str(ident))
+        except PermissionError as exc:
+            return {"ok": False, "error": "Windows kaydina yazma izni yok. Uygulamayi uygun kullanici hesabi ile yeniden deneyin: " + str(exc)[:120]}
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+
+    def windows_integration_remove(self, ident: str) -> dict:
+        try:
+            if ident == "torrent":
+                iliskilendir.kapat()
+                return self.windows_integration_status()
+            return self.windows.remove(str(ident))
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+
+    def windows_integration_test(self, ident: str) -> dict:
+        try:
+            if ident == "torrent": return {"ok": iliskilendir.acik_mi(), "registered": iliskilendir.acik_mi()}
+            return self.windows.test(str(ident))
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+
+    def defender_scan(self, gid: str) -> dict:
+        for item in self.manager.snapshot().get("items", []):
+            if item.get("gid") == gid:
+                path = Path(item.get("dir") or self.manager.current_download_dir()) / (item.get("filename") or "")
+                return self.windows.scan_file(str(path))
+        return {"ok": False, "error": "indirme bulunamadi"}
 
     # --- seed penceresi (torrent) ----------------------------------------
     def seed_bilgi(self, gid: str) -> dict:
@@ -941,7 +1001,7 @@ def build_tray(window, manager: Manager, api: Api | None = None):
 
 def main() -> int:
     paths.ensure_dirs()
-    link = argvden_link(sys.argv)
+    link = protocol_link(argvden_link(sys.argv))
     # Tepside basla: Baslangic kisayolu bu bayrakla cagirir (bkz. core/baslangic.py)
     tepside_basla = "--tepside" in sys.argv
     if calisan_ornege_yolla(link):
@@ -1023,6 +1083,7 @@ def main() -> int:
             pass
 
     api._tepsi_bildirimi = tepsi_bildirimi
+    manager.windows_notify = lambda baslik, metin: getattr(api, "_tepsi", None) and api._tepsi.notify(metin, baslik)
 
     def baslik_hazir() -> None:
         try:
