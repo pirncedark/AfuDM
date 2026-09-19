@@ -17,6 +17,22 @@ USER_AGENT_MAX = 512
 HEADER_COUNT_MAX = 40
 PROXY_MAX = 1024
 
+# v1.6 Video Pro — serbest metin alanlari icin makul ust sinirlar.
+KUCUK_RESIM_SECENEKLERI = ("goem", "dosya")
+BOLUMLER_SECENEKLERI = ("goem", "ayir")
+KAPSAYICI_SECENEKLERI = ("mp4", "mkv", "webm")
+SES_FORMATI_SECENEKLERI = ("mp3", "m4a", "aac", "opus", "flac", "wav")
+TARAYICI_CEREZI_SECENEKLERI = (
+    "chrome", "edge", "firefox", "brave", "chromium", "opera", "vivaldi", "safari",
+)
+ALTYAZI_MAX = 200
+SPONSORBLOCK_MAX = 200
+BOLUM_ARALIGI_MAX = 64
+KAPSAYICI_MAX = 32
+SES_FORMATI_MAX = 32
+DOSYA_SABLONU_MAX = 1000
+TARAYICI_CEREZI_MAX = 128
+
 # aria2'nin destekledigi checksum tipleri -> resmi yazimlar (daslarik isimler
 # kullanici rahatligi icin eklendi). Yukarida bagli kalan tip ornegi VERILMEZ.
 CHECKSUM_TURLERI = {
@@ -31,6 +47,10 @@ CHECKSUM_TURLERI = {
     "sha512": "sha-512",
 }
 _CHECKSUM_RE = re.compile(r"^([A-Za-z0-9-]+)[:=]([0-9a-fA-F]+)$")
+_SPONSORBLOCK_RE = re.compile(r"^[A-Za-z0-9_]+(?:,[A-Za-z0-9_]+)*$")
+_BOLUM_ARALIGI_RE = re.compile(
+    r"^(?:\d{2}:\d{2}:\d{2}|\d{2}:\d{2})-(?:\d{2}:\d{2}:\d{2}|\d{2}:\d{2})$"
+)
 
 
 def parse_time_spec(s: object) -> float | None:
@@ -87,6 +107,52 @@ def checksum_ayikla(check: object) -> str | None:
     return "%s=%s" % (tip, m.group(2).lower())
 
 
+def _metin_al(data: Mapping[str, Any], anahtar: str, sinir: int) -> str:
+    """Guvenilmeyen /add girdisinde serbest metin alani: bos -> '', fazlalik RED.
+
+    Ayracli listeler (altyazi "tr,en"), adres/bezlestirici (sponsorblock,
+    bolum araligi) ve sablon gibi alanlarda sessizce KESMEK anlami bozar;
+    o yuzden proxy'deki usul gibi asiri uzun gelen istek RED edilir."""
+    deger = data.get(anahtar)
+    if deger in (None, ""):
+        return ""
+    if not isinstance(deger, str):
+        raise ValueError(f"{anahtar} metin olmali")
+    deger = " ".join(deger.split())
+    if len(deger) > sinir:
+        raise ValueError(f"{anahtar} cok uzun (>{sinir} karakter)")
+    return deger
+
+
+def _secim_al(data: Mapping[str, Any], anahtar: str,
+              secenekler: tuple[str, ...], sinir: int | None = None) -> str:
+    """Ikili secenek alanlari: bos -> '', bilinmeyen deger -> ValueError."""
+    if sinir is not None:
+        deger = _metin_al(data, anahtar, sinir)
+        if not deger:
+            return ""
+    else:
+        deger = data.get(anahtar)
+    if deger in (None, ""):
+        return ""
+    if not isinstance(deger, str):
+        raise ValueError(f"{anahtar} metin olmali")
+    deger = deger.strip().lower()
+    if deger not in secenekler:
+        raise ValueError(
+            f"{anahtar} su degerlerden biri olmali: {', '.join(secenekler)}"
+        )
+    return deger
+
+
+def _desenli_metin_al(data: Mapping[str, Any], anahtar: str, sinir: int,
+                       desen: re.Pattern[str], bicim: str) -> str:
+    deger = _metin_al(data, anahtar, sinir)
+    if deger and not desen.fullmatch(deger):
+        raise ValueError(f"{anahtar} {bicim} biciminde olmali")
+    return deger
+
+
 @dataclass(slots=True)
 class DownloadRequest:
     """Bir indirme isteginin tamamI: /add gövdesi ve manager.add'in girdisi.
@@ -108,6 +174,19 @@ class DownloadRequest:
     start_after: float | None = None
     proxy: str | None = None
     checksum: str | None = None
+    # --- v1.6 Video Pro (tum varsayilanlar BOS/False; videoda islenir) ----
+    altyazi_diller: str = ""
+    oto_altyazi: bool = False
+    altyazi_goem: bool = False
+    kucuk_resim: str = ""
+    ustveri_goem: bool = False
+    bolumler: str = ""
+    sponsorblock: str = ""
+    bolum_araligi: str = ""
+    kapsayici: str = ""
+    ses_formati: str = ""
+    dosya_sablonu: str = ""
+    tarayici_cerezi: str = ""
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "DownloadRequest":
@@ -149,6 +228,16 @@ class DownloadRequest:
         if start_after is None and data.get("start_at") not in (None, ""):
             start_after = parse_time_spec(data["start_at"])
 
+        # v1.6 Video Pro — dogrulama burada TEK kez yasar; /add ve CLI baska
+        # sinir uretmez. Ikili secenekler gecersizse istek daha ekleme aninda
+        # reddedilir (proxy/checksum'daki usul).
+        kucuk_resim = _secim_al(data, "kucuk_resim", KUCUK_RESIM_SECENEKLERI)
+        bolumler = _secim_al(data, "bolumler", BOLUMLER_SECENEKLERI)
+        kapsayici = _secim_al(data, "kapsayici", KAPSAYICI_SECENEKLERI, KAPSAYICI_MAX)
+        ses_formati = _secim_al(data, "ses_formati", SES_FORMATI_SECENEKLERI, SES_FORMATI_MAX)
+        tarayici_cerezi = _secim_al(
+            data, "tarayici_cerezi", TARAYICI_CEREZI_SECENEKLERI, TARAYICI_CEREZI_MAX)
+
         return cls(
             source=kaynak,
             kind=data.get("kind") or None,
@@ -164,4 +253,19 @@ class DownloadRequest:
             start_after=start_after,
             proxy=px,
             checksum=checksum,
+            altyazi_diller=_metin_al(data, "altyazi_diller", ALTYAZI_MAX),
+            oto_altyazi=bool(data.get("oto_altyazi")),
+            altyazi_goem=bool(data.get("altyazi_goem")),
+            kucuk_resim=kucuk_resim,
+            ustveri_goem=bool(data.get("ustveri_goem")),
+            bolumler=bolumler,
+            sponsorblock=_desenli_metin_al(
+                data, "sponsorblock", SPONSORBLOCK_MAX, _SPONSORBLOCK_RE, "kategori listesi"),
+            bolum_araligi=_desenli_metin_al(
+                data, "bolum_araligi", BOLUM_ARALIGI_MAX, _BOLUM_ARALIGI_RE,
+                "SS:DD:SS-SS:DD:SS veya DD:SS-DD:SS"),
+            kapsayici=kapsayici,
+            ses_formati=ses_formati,
+            dosya_sablonu=_metin_al(data, "dosya_sablonu", DOSYA_SABLONU_MAX),
+            tarayici_cerezi=tarayici_cerezi,
         )
