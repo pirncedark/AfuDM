@@ -225,14 +225,20 @@
      adres henuz gecerli. Sayfa bu mesajlari taklit edebilir; en kotu ihtimalle
      kalite listesi yanlis cikar — hicbir yetki/veri disari verilmez. */
   const MAESTRO = "afudm-maestro";
+  // maestro-kanal.js document_start'ta ayni izole dunyada bu kanali kurar.
+  const maestroKanali = globalThis.__afudmMaestroKanali;
+  const MAESTRO_JETONU = maestroKanali?.jeton;
+  const MAESTRO_VERI_OLAYI = maestroKanali?.veri;
+  const MAESTRO_KOMUT_OLAYI = maestroKanali?.komut;
   const yasayanListeler = new Map();   // adres -> metin
   const listeBasliklari = new Map();   // adres -> oynaticinin gonderdigi basliklar
   let drmSebebi = "";
 
-  addEventListener("message", (olay) => {
-    if (olay.source !== window) return;
-    const veri = olay.data;
-    if (!veri || veri.__afudm !== MAESTRO) return;
+  if (typeof MAESTRO_JETONU !== "string" || typeof MAESTRO_VERI_OLAYI !== "string"
+      || typeof MAESTRO_KOMUT_OLAYI !== "string") return;
+  document.addEventListener(MAESTRO_VERI_OLAYI, (olay) => {
+    const veri = olay.detail;
+    if (!veri || veri.__afudm !== MAESTRO || veri.jeton !== MAESTRO_JETONU) return;
     if (veri.tur === "drm") {
       drmSebebi = String(veri.sebep || "drm");
     } else if (veri.tur === "liste" && typeof veri.url === "string"
@@ -248,8 +254,11 @@
       }
     }
   });
-  // Maestro document_start'ta calisti: biz gelmeden once yakaladiklarini iste.
-  postMessage({ __afudm: MAESTRO, tur: "tazele" }, "*");
+  // El sikisma document_start'ta maestro-kanal.js tarafindan tek sefer yapildi.
+  // Maestro biz gelmeden once yakaladiklarini bu tazele komutuyla gonderir.
+  document.dispatchEvent(new CustomEvent(MAESTRO_KOMUT_OLAYI, { detail: {
+    __afudm: MAESTRO, tur: "tazele", jeton: MAESTRO_JETONU,
+  }}));
 
   /* Sifreli akis (Widevine/PlayReady): video elemanina MediaKeys kurulduysa
      parcalar inse bile oynatilamaz. "Bulunamadi" demek yaniltici olur. */

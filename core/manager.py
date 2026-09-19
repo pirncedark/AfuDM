@@ -22,7 +22,7 @@ from video import ytdlp
 
 from .dosya_adi import resolve_filename
 
-from . import cerez, lang, models, paths, trackers
+from . import cerez, lang, models, paths, trackers, settings_validation
 from . import proxy as P
 from .daemon import Aria2Daemon
 from .db import Store
@@ -37,6 +37,13 @@ TRACKER_CHECK_INTERVAL = 3600.0
 #   normal -> kullanicinin max_speed_kb ayari gecerli
 #   snail  -> snail_speed_kb (varsayilan 100 KB/s — oyun/toplantida interneti rahatlatir)
 HIZ_PROFILLERI = ("snail", "normal", "turbo")
+
+
+class AyarGecersiz(ValueError):
+    """UI koprusune alan bazli i18n hatalarini tasir; gizli deger tasimaz."""
+    def __init__(self, hatalar: list[dict]) -> None:
+        super().__init__("settings_invalid")
+        self.hatalar = hatalar
 
 
 class TorrentDosyaListesi(list[dict]):
@@ -201,8 +208,28 @@ class Manager:
         return {"ok": True, "gid": gid, "baglanti": baglanti, "hiz_kb": hiz_kb}
 
     def update_settings(self, changes: dict) -> dict:
+        """Ayarlari DOGRULA ve HEPSI-YA-HICBIRI kaydet.
+
+        Bir alan bile gecersizse hicbiri yazilmaz (kismi kayit yok) ve
+        `AyarGecersiz` ile alan+i18n anahtari listesi yukari tasinir.
+        """
+        hatalar, temiz = settings_validation.ayarlari_dogrula(changes or {})
+        if hatalar:
+            raise AyarGecersiz(hatalar)
+        changes = temiz
+        onceki_snail = int(self.store.get("snail_speed_kb") or 100)
         for key, value in changes.items():
             self.store.set(key, value)
+        # Salyangoz hizi degistiyse ve profil SU AN salyangozsa yeni sinir
+        # aria2'ye CANLI uygulanir (indirmeler kesilmez). apply_settings()
+        # asagida zaten cagriliyor; burada yalnizca gorunurluk/kayit var.
+        if "snail_speed_kb" in changes:
+            yeni_snail = int(changes["snail_speed_kb"])
+            aktif = str(self.store.get("hiz_profili") or "normal").strip().lower()
+            if aktif == "snail" and yeni_snail != onceki_snail:
+                self.store.log(
+                    "info", "salyangoz hizi canli uygulandi: %d KB/s" % yeni_snail
+                )
         if "download_dir" in changes:
             new_dir = changes["download_dir"] or str(paths.default_download_dir())
             Path(new_dir).mkdir(parents=True, exist_ok=True)

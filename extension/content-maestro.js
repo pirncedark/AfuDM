@@ -8,23 +8,26 @@
 
    Bu betik sayfanin ortaminda calisir, yani sayfa onu gorebilir; bu yuzden:
      - hicbir uzanti API'si (chrome.*) KULLANILMAZ,
-     - disari yalniz window.postMessage ile veri gonderilir,
-     - cerez/yetki basligi ASLA gonderilmez (asagida _GIZLI).
+     - disari yalniz rastgele adli CustomEvent kanaliyla veri gonderilir,
+     - yalniz izin listesindeki medya basliklari aktarilir.
 
-   Yakalananlar content.js'e (izole dunya) postMessage ile akar; content.js
+   Yakalananlar content.js'e (izole dunya) ozel olay kanaliyla akar; content.js
    listeleriOku() icinde yeniden indirmek yerine bu metni kullanir.
 */
 (() => {
   if (window.__afudmMaestro) return;
   window.__afudmMaestro = true;
 
+  // Politikayi document_start'ta, sayfa betikleri calismadan ONCE sabitle.
+  // Cagri aninda globalThis'ten okumak, sayfaya suzgeci degistirme firsati
+  // birakir; kapaniste tutulan bu referans onu kapatir.
+  const POLITIKA = globalThis.AfuDMHeaderPolicy;
+
   const IMZA = "afudm-maestro";
   const EN_COK_BAYT = 2 * 1024 * 1024;   // liste govdesi ust siniri (2 MB)
   const LISTE = /\.(m3u8|mpd)(\?|$)/i;
   const LISTE_TURU = /(mpegurl|dash\+xml|vnd\.apple\.mpegurl)/i;
-  // Istek basliklari AfuDM'e aktarilacak: oturum/kimlik tasiyanlar HIC cikmasin.
-  const _GIZLI = /^(cookie|set-cookie|authorization|www-authenticate|user-agent|host|content-length|sec-|proxy-)/i;
-  const EN_COK_BASLIK = 12;
+  let kanal = null;
 
   /* content.js document_idle'da yuklenir; ilk liste ondan ONCE gecebilir.
      Bu yuzden yakalananlar burada da DURUR ve content.js "tazele" dedigi an
@@ -38,22 +41,21 @@
   }
 
   function basliklariSuz(cift) {
-    const temiz = {};
-    let sayi = 0;
-    for (const [ad, deger] of cift) {
-      if (sayi >= EN_COK_BASLIK) break;
-      if (!ad || _GIZLI.test(ad) || typeof deger !== "string") continue;
-      if (/[\r\n]/.test(deger)) continue;            // baslik enjeksiyonu
-      temiz[ad] = deger.slice(0, 1024);
-      sayi++;
-    }
-    return temiz;
+    // Politika yuklenmediyse basliklari HIC gonderme (guvenli varsayilan).
+    return POLITIKA ? POLITIKA.temizle(cift) : {};
+  }
+
+  function olayYolla(tur, veri = {}) {
+    if (!kanal) return;
+    try {
+      document.dispatchEvent(new CustomEvent(kanal.veri, {
+        detail: { __afudm: IMZA, jeton: kanal.jeton, tur, ...veri },
+      }));
+    } catch (_) { /* veri klonlanamadi: onemli degil */ }
   }
 
   function duyur(kayit) {
-    try {
-      window.postMessage({ __afudm: IMZA, tur: "liste", ...kayit }, "*");
-    } catch (_) { /* postMessage klonlayamadi: onemli degil */ }
+    olayYolla("liste", kayit);
   }
 
   function yolla(url, govde, istekBasliklari, yanitBasliklari) {
@@ -73,23 +75,29 @@
 
   function drmBildir(sebep) {
     drmSebebi = String(sebep);
-    try {
-      window.postMessage({ __afudm: IMZA, tur: "drm", sebep: drmSebebi }, "*");
-    } catch (_) { /* yok say */ }
+    olayYolla("drm", { sebep: drmSebebi });
   }
 
   /* content.js yuklenince "tazele" der; o ana kadar birikenler ona akar. */
-  window.addEventListener("message", (olay) => {
-    if (olay.source !== window) return;
-    const veri = olay.data;
-    if (!veri || veri.__afudm !== IMZA || veri.tur !== "tazele") return;
+  function elSikisma(olay) {
+    if (kanal) return;
+    const veri = olay.detail;
+    if (!veri || veri.__afudm !== IMZA || typeof veri.veri !== "string"
+        || typeof veri.komut !== "string" || typeof veri.jeton !== "string"
+        || veri.jeton.length < 32) return;
+    kanal = { veri: veri.veri, komut: veri.komut, jeton: veri.jeton };
+    // Ilk gecerli kabulden sonra ikinci bir denemeyi hic gozlemleme.
+    document.removeEventListener("afudm-maestro-baslat", elSikisma);
+    document.addEventListener(kanal.komut, (komut) => {
+      const istek = komut.detail;
+      if (!istek || istek.__afudm !== IMZA || istek.jeton !== kanal.jeton
+          || istek.tur !== "tazele") return;
+      for (const kayit of depo.values()) duyur(kayit);
+      if (drmSebebi) olayYolla("drm", { sebep: drmSebebi });
+    });
     for (const kayit of depo.values()) duyur(kayit);
-    if (drmSebebi) {
-      try {
-        window.postMessage({ __afudm: IMZA, tur: "drm", sebep: drmSebebi }, "*");
-      } catch (_) { /* yok say */ }
-    }
-  });
+  }
+  document.addEventListener("afudm-maestro-baslat", elSikisma);
 
   /* --- fetch ------------------------------------------------------- */
   const asilFetch = window.fetch;

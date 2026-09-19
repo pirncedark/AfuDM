@@ -167,7 +167,8 @@
 <div class="veil" id="setVeil">
   <div class="sheet">
     <h2 data-i18n="set.title">Ayarlar</h2>
-    <div class="body">
+    <div class="body" id="settingsBody">
+      <div class="settings-tools"><input id="settingsSearch" type="search" data-i18n-ph="set.search" placeholder="Ayarlarda ara" spellcheck="false"><span id="settingsSearchResult" class="hint"></span></div>
       <div>
         <label for="sLang" data-i18n="set.lang">Dil / Language</label>
         <select id="sLang">
@@ -212,6 +213,11 @@
           </select>
         </div>
         <div>
+          <label for="sSnailSpeed" data-i18n="set.speed.snail">Salyangoz hızı (KB/s)</label>
+          <input id="sSnailSpeed" type="number" min="1">
+          <div class="hint" data-i18n="set.speed.snailHint">Salyangoz profili seçiliyken kullanılan hız. Düşük tut: internet başkasına kalsın.</div>
+        </div>
+        <div>
           <label for="sRatio" data-i18n="set.ratio">Seed oranı (torrent)</label>
           <input id="sRatio" type="number" min="0" step="0.1">
         </div>
@@ -236,7 +242,12 @@
         <label class="opt"><input type="checkbox" id="sBaslangic"> <span data-i18n="set.baslangic">Bilgisayar açılınca AfuDM'i başlat</span></label>
         <label class="opt"><input type="checkbox" id="sTorrent"> <span data-i18n="set.torrent">.torrent ve magnet linklerini AfuDM açsın</span></label>
         <label class="opt"><input type="checkbox" id="sBasTepside"> <span data-i18n="set.basTepside">Açılışta pencere açılmasın, tepside başlasın</span></label>
-        <label class="opt"><input type="checkbox" id="sTelefon"> <span data-i18n="set.telefon">Telefondan bağlan (aynı Wi-Fi)</span></label>
+      </div>
+      <!-- v1.7.5 Bolum 3 — pano izleme eki (docs/v175_SOZLESME.md) -->
+      <div>
+        <label for="sClipExts" data-i18n="set.clip.exts">Yakalanacak uzantılar</label>
+        <input id="sClipExts" type="text" spellcheck="false">
+        <div class="hint" data-i18n="set.clip.extsHint">Virgülle ayır. Pano izleme açıkken yalnızca bu uzantılarla biten adresler yakalanır.</div>
       </div>
       <div class="seed-kutu">
         <label data-i18n="vid.title">Video</label>
@@ -271,6 +282,17 @@
         </div>
         <div class="seed-dosyalar" id="sSeedListe"></div>
         <div class="hint" id="sSeedOzet"></div>
+        <!-- v1.7.5 Bolum 5 — tracker durumu (salt-okunur) -->
+        <div class="grid2">
+          <div>
+            <label for="sTrackerScanTime" data-i18n="set.tracker.lastScan">Son tarama</label>
+            <input id="sTrackerScanTime" type="text" spellcheck="false" readonly>
+          </div>
+          <div>
+            <label for="sTrackerSummary" data-i18n="set.tracker.summary">Canlı / toplam</label>
+            <input id="sTrackerSummary" type="text" spellcheck="false" readonly>
+          </div>
+        </div>
         <!-- Elle yapistirma: dosya secmeden, panodaki adresleri dogrudan gir -->
         <label for="sSeedEk" data-i18n="set.seedEk">Kendi tracker'ların — elle yapıştır (her satıra bir adres)</label>
         <textarea id="sSeedEk" spellcheck="false" placeholder="udp://tracker.ornek.org:1337/announce"></textarea>
@@ -290,6 +312,41 @@
         </div>
         <div class="hint" id="wolDurum"></div>
         <div class="hint" data-i18n="set.wolHint">Telefonuna bir Wake-on-LAN uygulaması kur ve bu MAC adresini gir. Bilgisayar uykudayken uyandırır, AfuDM kaldığı yerden devam eder — şifre sorulmaz.</div>
+      </div>
+      <!-- v1.7.5 Bolum 1 — Uzaktan Erisim (docs/v175_SOZLESME.md) -->
+      <div>
+        <h3 data-i18n="set.remote.title">Uzaktan erişim</h3>
+        <div class="opts">
+          <label class="opt"><input type="checkbox" id="sLanAccess"> <span data-i18n="set.remote.lan">Telefondan bağlan (aynı Wi-Fi)</span></label>
+        </div>
+        <div class="hint" data-i18n="set.remote.lanHint">Kutu kapalıyken AfuDM yerel ağa hiç açılmaz; internete zaten hiç açılmaz. Açınca bu bilgisayar aynı Wi-Fi'daki telefondan yönetilir.</div>
+        <div class="grid2">
+          <div>
+            <label for="sApiPort" data-i18n="set.remote.port">API portu</label>
+            <input id="sApiPort" type="number" min="1024" max="65535">
+            <div id="sPortRestart" class="hint"></div>
+          </div>
+          <div>
+            <label for="sLanAddr" data-i18n="set.remote.addr">Bağlantı adresi</label>
+            <input id="sLanAddr" type="text" spellcheck="false" readonly>
+          </div>
+          <div>
+            <label for="sRunningPort" data-i18n="set.remote.runningPort">Calisan port</label>
+            <input id="sRunningPort" type="text" readonly>
+          </div>
+        </div>
+      </div>
+      <!-- v1.7.5 Bolum 2 — Ag -->
+      <div>
+        <h3 data-i18n="set.net.title">Ağ</h3>
+        <div class="opts">
+          <label class="opt"><input type="checkbox" id="sSystemProxy"> <span data-i18n="set.net.systemProxy">Sistem proxy'sini kullan</span></label>
+        </div>
+        <label for="sProxy" data-i18n="set.net.proxy">Proxy adresi</label>
+        <input id="sProxy" type="text" spellcheck="false" placeholder="http://127.0.0.1:8080">
+        <div class="hint" data-i18n="set.net.proxyHint">Boş bırakırsan proxy kullanılmaz. Sistem proxy'si açıkken bu alan devre dışı kalır.</div>
+        <label for="sNetLocations" data-i18n="set.net.locations">Ağ konumları</label>
+        <textarea id="sNetLocations" spellcheck="false" placeholder="\sunucu\paylasim"></textarea>
       </div>
       <div id="telefonKutu" style="display:none">
         <label data-i18n="set.telefonAdres">Telefonun tarayıcısına bu adresi yaz</label>
