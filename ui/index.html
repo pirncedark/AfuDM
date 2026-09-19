@@ -53,6 +53,7 @@
     <div class="rail-foot">
       <button id="openFolder" data-i18n="rail.openFolder">İndirme klasörünü aç</button>
       <button id="openChrome" class="rail-chrome" data-i18n="rail.chrome">Chrome'a ekle</button>
+      <button id="openPlugins" data-i18n="rail.plugins">Eklentiler</button>
       <button id="openSettings" data-i18n="rail.settings">Ayarlar</button>
       <div class="dir-hint" id="dirHint"></div>
     </div>
@@ -609,6 +610,59 @@
       <button class="btn ghost" data-close="torrentVeil" data-i18n="tor.close">Kapat</button>
       <span style="flex:1"></span>
       <button class="btn primary" id="torUygula" data-i18n="tor.apply">Seçilenleri uygula</button>
+    </div>
+  </div>
+</div>
+
+<!-- Eklentiler (v2.0 Plugin Platform) — core/eklenti.py
+     DURUSTLUK: sandbox YOK. Eklenti AfuDM'in tum yetkileriyle calisir;
+     ayri surec yalnizca cokme/takilmayi ana uygulamadan ayirir. -->
+<div class="veil" id="pluginVeil">
+  <div class="sheet">
+    <h2 data-i18n="plg.title">Eklentiler</h2>
+    <div class="body">
+      <div class="err-note plg-guven" data-i18n="plg.trustWarn">Eklentiler AfuDM'in kendi yetkileriyle çalışır: dosyalarına ve ağa erişebilirler. Kum havuzu (sandbox) YOKTUR. Yalnızca güvendiğin eklentileri kur. Ayrı süreç sadece eklenti çökerse veya takılırsa AfuDM'in etkilenmemesini sağlar.</div>
+      <div class="yol-satir">
+        <button class="btn primary" id="plgKur" data-i18n="plg.install">Paket seç ve kur (.afup)</button>
+        <button class="btn" id="plgKlasor" data-i18n="plg.openFolder">Eklenti klasörünü aç</button>
+        <button class="btn" id="plgYenile" data-i18n="plg.refresh">Yenile</button>
+      </div>
+      <div class="plg-islem" id="plgIslem" style="display:none">
+        <span id="plgIslemMetin"></span>
+        <button class="btn ghost" id="plgIslemIptal" data-i18n="plg.cancel">İptal</button>
+      </div>
+      <div class="err-note" id="plgErr" style="display:none"></div>
+      <div class="plg-liste" id="plgListe"></div>
+      <div class="hint" id="plgKlasorYol"></div>
+    </div>
+    <div class="foot">
+      <button class="btn ghost" data-close="pluginVeil" data-i18n="plg.close">Kapat</button>
+    </div>
+  </div>
+</div>
+
+<!-- Kurulum ONAYI: hangi izinler, hangi domainler (BEYAN — zorlanmaz) -->
+<div class="veil" id="pluginOnayVeil">
+  <div class="sheet">
+    <h2 data-i18n="plg.confirmTitle">Kurulumdan önce</h2>
+    <div class="body">
+      <div class="plg-onay-baslik" id="plgOnayBaslik"></div>
+      <div class="hint" id="plgOnayKaynak"></div>
+      <div>
+        <label data-i18n="plg.wantedPerms">İstenen izinler</label>
+        <div class="plg-izinler" id="plgOnayIzinler"></div>
+      </div>
+      <div>
+        <label data-i18n="plg.wantedDomains">Erişeceği bildirilen adresler</label>
+        <div class="plg-domainler" id="plgOnayDomainler"></div>
+      </div>
+      <div class="err-note plg-guven" data-i18n="plg.permHonesty">Bu liste eklentinin KENDİ BEYANIDIR. AfuDM bu listeyi teknik olarak zorlamaz: kurarsan eklenti burada yazmayan bir şeye de erişebilir. Liste, kaynağına güvenip güvenmeyeceğine karar vermen içindir.</div>
+      <div class="err-note" id="plgOnayErr" style="display:none"></div>
+    </div>
+    <div class="foot">
+      <button class="btn ghost" data-close="pluginOnayVeil" data-i18n="plg.cancel">İptal</button>
+      <span style="flex:1"></span>
+      <button class="btn primary" id="plgOnayGo" data-i18n="plg.confirmInstall">Anladım, kur</button>
     </div>
   </div>
 </div>

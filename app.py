@@ -15,6 +15,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+# Eklenti hostu AYRI SUREctir. Paketlenmis (PyInstaller) kopyada yanimizda
+# ayri bir python yok; bu yuzden host kendimizi bu bayrakla acar ve pencere
+# acmadan yalniz host dongusune girer (bkz. core/eklenti_host.py).
+if os.environ.get("AFUDM_EKLENTI_HOST") == "1":
+    from core import eklenti_host  # noqa: E402
+
+    sys.exit(eklenti_host.main())
+
 import urllib.error  # noqa: E402
 import urllib.request  # noqa: E402
 
@@ -529,6 +537,66 @@ class Api:
         temiz = _tr.ayikla(metin)
         self.manager.store.set("ek_trackerlar", "\n".join(temiz))
         return {"ok": True, "sayi": len(temiz), "liste": "\n".join(temiz)}
+
+
+    # --- eklentiler (v2.0 Plugin Platform) -------------------------------
+    # DURUSTLUK: eklentiler AfuDM'in TUM yetkileriyle calisir. Ayri surec
+    # yalnizca COKME/TAKILMA izolasyonu saglar, GUVENLIK sandbox'i DEGILDIR.
+    # Izin ve domain listeleri BEYANDIR; teknik olarak zorlanmaz.
+    def eklenti_listesi(self) -> dict:
+        return self.manager.eklentiler.liste()
+
+    def eklenti_incele(self, yol: str = "") -> dict:
+        """Kurulumdan ONCE manifest + istenen izinler + domainler.
+
+        Yol bossa dosya secici acilir (yerel .afup paketi)."""
+        if not yol:
+            if not self._window:
+                return {"ok": False, "error": "pencere hazir degil"}
+            secim = self._window.create_file_dialog(
+                webview.OPEN_DIALOG, allow_multiple=False,
+                file_types=("AfuDM eklenti paketi (*.afup)", "Tum dosyalar (*.*)"))
+            if not secim:
+                return {"ok": True, "iptal": True}
+            yol = secim[0]
+        return self.manager.eklentiler.incele(yol)
+
+    def eklenti_kur(self, yol: str, onaylanan_izinler: list | None = None) -> dict:
+        """Arka planda kurar; ilerleme `eklenti_islem` ile izlenir."""
+        return self.manager.eklentiler.kur(yol, onaylanan_izinler)
+
+    def eklenti_guncelle(self, ad: str, yol: str) -> dict:
+        """Basarisiz olursa ONCEKI SURUME geri doner (rollback)."""
+        return self.manager.eklentiler.guncelle(ad, yol)
+
+    def eklenti_kaldir(self, ad: str) -> dict:
+        return self.manager.eklentiler.kaldir(ad)
+
+    def eklenti_etkinlestir(self, ad: str, acik: bool) -> dict:
+        return self.manager.eklentiler.etkinlestir(ad, bool(acik))
+
+    def eklenti_yeniden_baslat(self, ad: str) -> dict:
+        return self.manager.eklentiler.yeniden_baslat(ad)
+
+    def eklenti_ayar_kaydet(self, ad: str, ayarlar: dict | None = None) -> dict:
+        return self.manager.eklentiler.ayar_kaydet(ad, ayarlar or {})
+
+    def eklenti_gunluk(self, ad: str) -> dict:
+        return self.manager.eklentiler.gunluk(ad)
+
+    def eklenti_islem(self) -> dict:
+        return self.manager.eklentiler.islem()
+
+    def eklenti_islem_iptal(self) -> dict:
+        return self.manager.eklentiler.islem_iptal()
+
+    def eklenti_klasoru_ac(self) -> dict:
+        try:
+            paths.PLUGINS.mkdir(parents=True, exist_ok=True)
+            os.startfile(str(paths.PLUGINS))          # noqa: S606
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:200]}
+        return {"ok": True}
 
     # --- telefon arayuzu (ui/mobil.html + LocalAPI) ----------------------
     def telefon_durumu(self) -> dict:

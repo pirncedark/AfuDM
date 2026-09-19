@@ -22,7 +22,7 @@ from video import ytdlp
 
 from .dosya_adi import resolve_filename
 
-from . import cerez, lang, models, paths, trackers
+from . import cerez, eklenti, lang, models, paths, trackers
 from . import proxy as P
 from .daemon import Aria2Daemon
 from .db import Store
@@ -77,6 +77,9 @@ class Manager:
         # Oturum cerezleri: kayit kimligi -> cerezler. BILEREK veritabaninda degil
         # (bkz. core/cerez.py); is bitince/silinince birakilir.
         self._cerezler: dict[int, list[dict]] = {}
+        # v2.0 Plugin Platform: eklenti servisi TEK kaynak — pywebview koprusu
+        # ve HTTP API ayni nesneyi kullanir (ayri durum tutulmaz).
+        self.eklentiler = eklenti.EklentiServisi(self.store)
 
     # --- yasam dongusu ----------------------------------------------------
     def start(self) -> None:
@@ -87,6 +90,9 @@ class Manager:
             threading.Thread(target=self._refresh_trackers, daemon=True).start()
         self._poller = threading.Thread(target=self._poll_loop, daemon=True)
         self._poller.start()
+        # Etkin eklentiler AYRI SUREClerde acilir; biri patlasa da buraya
+        # dusmez — servis her eklentinin hatasini kendi kaydina yazar.
+        threading.Thread(target=self.eklentiler.basla, daemon=True).start()
         self.store.log("info", "AfuDM basladi")
 
     def stop(self) -> None:
@@ -94,6 +100,10 @@ class Manager:
         for job in list(self.video_jobs.values()):
             if job.status == "active":
                 job.stop()
+        try:
+            self.eklentiler.kapat()
+        except Exception:
+            pass
         self.daemon.stop()
         self.store.log("info", "AfuDM kapandi")
 
