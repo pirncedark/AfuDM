@@ -61,6 +61,7 @@
   <main class="main">
     <div class="bar">
       <button class="btn primary" id="addBtn" data-i18n="bar.add">Link ekle</button>
+      <button class="btn" id="lgBtn" data-i18n="bar.lg">Link yakala</button>
       <button class="btn" id="pauseAll" data-i18n="bar.pauseAll">Tümünü duraklat</button>
       <button class="btn" id="resumeAll" data-i18n="bar.resumeAll">Tümünü sürdür</button>
       <span class="spacer"></span>
@@ -409,6 +410,71 @@
       <span style="flex:1"></span>
       <button class="btn" id="seedKaydet" data-i18n="seed.kaydet">Tracker'ları kaydet</button>
       <button class="btn primary" id="seedGo" data-i18n="seed.go">Şimdi güncelle</button>
+    </div>
+  </div>
+</div>
+
+<!-- LinkGrabber (v1.5): pano/tarayici/elle gelen metinden toplu link yakalama.
+     Akis: metin -> analiz -> liste -> sec -> toplu indir (app.js lgState). -->
+<div class="veil" id="lgVeil">
+  <div class="sheet sheet-genis">
+    <h2 data-i18n="lg.title">Link yakalayıcı</h2>
+    <div class="body">
+      <div>
+        <label for="lgMetin" data-i18n="lg.metin">Bağlantı metni (bir sayfadan kopyaladığın her şeyi yapıştır — URL'ler otomatik çıkarılır)</label>
+        <textarea id="lgMetin" spellcheck="false" placeholder="https://ornek.com/dosya.zip&#10;Bir metin içinde https://ornek.com/video.mp4 gibi gömülü link...</textarea>
+      </div>
+      <div class="lg-filtre">
+        <div class="lg-filtre-ara">
+          <label for="lgAra" data-i18n="lg.araLabel">Ara (joker: *)</label>
+          <input id="lgAra" type="text" placeholder="*.zip" spellcheck="false">
+        </div>
+        <div class="grid3">
+          <div>
+            <label data-i18n="lg.turLabel">Yalnızca tür</label>
+            <select id="lgSadece">
+              <option value="all" data-i18n="lg.tum">Tümü</option>
+              <option value="video" data-i18n="lg.video">Video</option>
+              <option value="arsiv" data-i18n="lg.arsiv">Arşiv</option>
+              <option value="torrent" data-i18n="lg.torrent">Torrent / magnet</option>
+              <option value="http" data-i18n="lg.http">Diğer dosyalar</option>
+            </select>
+          </div>
+          <div>
+            <label for="lgDomain" data-i18n="lg.domainLabel">Alan adı</label>
+            <select id="lgDomain">
+              <option value="" data-i18n="lg.tum">Tümü</option>
+            </select>
+          </div>
+          <div>
+            <label for="lgBoyut" data-i18n="lg.boyutLabel">Boyut</label>
+            <select id="lgBoyut">
+              <option value="">—</option>
+              <option value=">1GB">&gt; 1 GB</option>
+              <option value=">100MB">&gt; 100 MB</option>
+              <option value=">10MB">&gt; 10 MB</option>
+              <option value="<10MB">&lt; 10 MB</option>
+              <option value="<100MB">&lt; 100 MB</option>
+            </select>
+          </div>
+        </div>
+        <div class="lg-filtre-ara" style="margin-top:8px">
+          <label for="lgDest" data-i18n="lg.dest">Hedef klasör (boş = varsayılan)</label>
+          <input id="lgDest" type="text" spellcheck="false">
+        </div>
+      </div>
+      <div class="lg-aktif">
+        <button class="btn primary" id="lgAnaliz" data-i18n="lg.analiz">Analiz et</button>
+        <button class="btn" id="lgProbe" data-i18n="lg.probe">Boyutları tara</button>
+        <span class="lg-durum" id="lgDurum"></span>
+      </div>
+      <div class="err-note" id="lgErr"></div>
+    </div>
+    <div class="lg-liste" id="lgListe"></div>
+    <div class="foot">
+      <button class="btn ghost" data-close="lgVeil" data-i18n="lg.cancel">Vazgeç</button>
+      <span style="flex:1"></span>
+      <button class="btn primary" id="lgGo" data-i18n="lg.go">Seçilenleri indir</button>
     </div>
   </div>
 </div>

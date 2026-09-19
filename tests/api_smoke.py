@@ -98,6 +98,31 @@ def main() -> int:
         record("Bos link anlasilir hata veriyor",
                status == 400 and "bos" in (body.get("error", "").lower()),
                body.get("error", "")[:50])
+
+        # Browser -> LinkGrabber handoff: uzanti ham metni panele devreder.
+        # Hook yokken istek reddedilir; hook ayarlaninca metin iletilir.
+        from api.server import _Handler
+        status, body = request(port, "/linkgrabber", token=api.token,
+                               body={"metin": "https://ornek.com/a.zip"})
+        record("LinkGrabber hook yokken reddedilir",
+               status == 503 and body.get("code") == "UI_YOK", body.get("code", ""))
+
+        _Handler.on_linkgrabber = lambda metin, dosya: _Handler._son_handoff.append((metin, dosya))
+        _Handler._son_handoff = []
+        status, body = request(port, "/linkgrabber", token=api.token,
+                               body={"metin": "https://ornek.com/a.zip\nhttps://ornek.com/b.zip",
+                                     "dosya": True})
+        record("LinkGrabber handoff metni iletiyor",
+               status == 200 and body.get("ok")
+               and _Handler._son_handoff[0][0].count("\n") == 1
+               and _Handler._son_handoff[0][1] is True,
+               f"adet {len(_Handler._son_handoff[0][0].splitlines()) if _Handler._son_handoff else 0}")
+
+        status, body = request(port, "/linkgrabber", token=api.token, body={"metin": "  "})
+        record("Bos LinkGrabber metni reddedilir",
+               status == 400 and "metin" in (body.get("error", "").lower()),
+               body.get("error", "")[:50])
+        _Handler.on_linkgrabber = None
     finally:
         api.stop()
         manager.stop()

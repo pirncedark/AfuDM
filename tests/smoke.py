@@ -19,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core import paths  # noqa: E402
+from core.hata import KayitYok  # noqa: E402
 from core.manager import Manager, human_size  # noqa: E402
 
 # Range (kismi istek) destekleyen kaynak sart: parcalama ancak oyle kanitlanir.
@@ -175,7 +176,13 @@ def test_torrent(manager: Manager) -> None:
 
     manager.remove(child, delete_files=True)
     if child != magnet["gid"]:
-        manager.remove(magnet["gid"], delete_files=True)
+        # Magnet ustverisi gercek torrenti dogurunca kayit TEK satir olarak
+        # cocuk GID'e tasinir (manager._sync followedBy). Cocugu silince eski
+        # magnet GID'i artik yoktur; bu beklenen durum, hata degil.
+        try:
+            manager.remove(magnet["gid"], delete_files=True)
+        except KayitYok:
+            pass
     leftovers = list(Path(manager.current_download_dir()).glob("*.aria2"))
     record("Iptal sonrasi kontrol dosyasi kalmadi", not leftovers,
            ", ".join(p.name for p in leftovers) or "temiz")

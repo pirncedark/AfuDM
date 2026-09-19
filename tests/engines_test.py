@@ -11,7 +11,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, r"C:\Users\afuuu\AfuDM")
+KOK = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(KOK))
 
 from core import engines  # noqa: E402
 
@@ -37,7 +38,12 @@ kontrol("yt-dlp dogrudan exe", engines.MOTORLAR["yt-dlp"].zip_icinde is None)
 print("2) Mevcut kurulum")
 d = engines.durum()
 kontrol("durum() her motoru bildiriyor", set(d) == set(engines.MOTORLAR), ", ".join(d))
-kontrol("aria2c kurulu", d["aria2c"]["var"], f'{d["aria2c"]["boyut_mb"]} MB')
+if d["aria2c"]["var"]:
+    kontrol("aria2c kurulu", True, f'{d["aria2c"]["boyut_mb"]} MB')
+else:
+    # Offline CI job'i motorlari INDIRMIYOR (indirme yalniz build job'inda var);
+    # engine/aria2c.exe yoksa bu denetim ORTAMA bagli olur, atlanir.
+    print("  [ATLANDI] engine/aria2c.exe yok (CI) — kurulu motor dogrulamasi atlandi")
 for ad in ("yt-dlp", "ffmpeg"):
     if d[ad]["var"]:
         kontrol(f"{ad} kurulu", True, f'{d[ad]["boyut_mb"]} MB')

@@ -406,3 +406,93 @@ class TorrentBoost:
 ### Sınır (önemli)
 Torrent ağında gerçekten seed yoksa AfuDM **seed üretemez**; özellik mevcut
 seed/peer'ları daha iyi keşfeder. UI yanlış vaat vermemeli.
+
+---
+
+## ✅ v1.5 — LinkGrabber: KAPANDI (2026-09-19)
+
+P0 hedefine ulaşıldı. Akış **uçtan uca çalışıyor**:
+
+```text
+Clipboard / Browser (uzantı) / Manuel URL
+        ↓
+URL çıkarma (ayikla) → normalize → tekil_les
+        ↓
+tür/domain/arama/boyut filtresi (ogeleri_filtrele)
+        ↓
+"daha önce indirildi" işareti (onceki_eslesen, geçmiş DB'den)
+        ↓
+lazy probe (cache'li, iptal edilebilir, eszamanlılık sınırlı)
+        ↓
+LinkGrabber Panel (filtre çubuğu + durum satırı + rozetler)
+        ↓
+toplu indirme (Batch Add)
+```
+
+### Tamamlanan parçalar
+- **Core** (`core/linkgrabber.py`): ayıkla → normalize → tekil_les → tur_bul →
+  filtrele → ogeleri_filtrele (wildcard/arama/tür/domain/boyut) →
+  onceki_eslesen (magnet infohash dahil) → probe_es_zamanli
+  (ThreadPoolExecutor, hard limit 16, RAM cache TTL/cap, iptal event'i).
+- **App köprüsü** (`app.py`): `linkgrabber_analiz / _suz / _onceki / _probe /
+  _ekle / _iptal`. `_iptal` panel kapanınca çalışan probe'ları durdurur.
+- **UI** (`ui/`): panel, filtre çubuğu (160 ms debounce), "önceden indirildi"
+  rozeti, durum satırı (klik → önceden eklenenleri bırak), TR+EN i18n.
+- **Browser handoff**: uzantıya "Sayfadaki/Seçili bağlantıları AfuDM
+  LinkGrabber'a gönder" context menüsü; `/linkgrabber` Local API ucu; panel
+  sayfa yüklenmeden gelen isteği de yerine ulaştırır.
+- **Testler** (`tests/linkgrabber_test.py`): 100 kontrol, tamamı çevrimdışı
+  (fake_http). API smoke: handoff ucu (501→503/UI_YOK→aktarım→400).
+
+### Kabul kriterleri (hepsi geçti)
+- 1000 URL → 3 sn altında toplu analiz; aynı URL ×100 → tek sonuç
+- `File.zip` / `file.zip` → **farklı** kayıt (path case korunur)
+- http / https aynı yol → **farklı** kayıt; aynı dosya adı farklı URL → ayrı
+- magnet infohash büyük/küçük harf → tek kayıt
+- redirect → son adresin bilgisi okunur; timeout → **diğer adresleri durdurmaz**
+- cancel probe → istek atılmaz; batch add → kayıtlar sırayla girer
+
+## 🚂 AfuDM Release Train — CI/release altyapısı (sıradaki teknik iş)
+
+Yeni özellik yerine **önce süreç**: her sürüm el ile paketlenip sınamak yerine
+tek komutla, doğrulanabilir biçimde yayınlanacak. Amaç: v1.6+ hızlanan
+yayınların (Video Pro, Torrent Pro) kalite kapısını otomasyona bağlamak.
+
+### Pipeline
+```text
+push → CI (test + build) → release tag vX.Y.Z
+        ↓                          ↓
+   unit testler       tag == origin/main HEAD? core/surum.py == tag?
+                          ↓ hayır  ↓
+                     BUILD FAIL (gate) — elle sürüm kazası engellenir
+```
+
+### GitHub Actions (`.github/workflows/`)
+| Dosya | İş |
+|---|---|
+| `ci.yml` | her push: `scripts/test.ps1` (tüm çevrimdışı testler) + build (paketle) |
+| `release.yml` | `v*` tag'inde: gate kontrolü → `build_release.ps1` → `verify_release.ps1` → `make_checksums.ps1` → artifact `AfuDM-vX.Y.Z-win64.zip(.sha256)` |
+| `security.yml` | token/parola sızar mı (ör. `secrets/gitleaks` benzeri tarama) |
+
+### Betikler (`scripts/`)
+`test.ps1` (tüm testler, çevrimdışı) · `surum_oku.py` (sürümü tek yerden okur —
+inline regex yok) · `build_exe.ps1` (AfuDM.spec → PyInstaller → dist → kök) ·
+`build_release.ps1` (exe gerekirse üretir → temp klasör → paket) ·
+`verify_release.ps1` (zip gerekli dosyaları içeriyor mu, attığında çalışıyor mu) ·
+`smoke_test.ps1` (paketlenen exe'yi gerçekten koşturur) · `make_checksums.ps1`.
+
+### GitHub Actions klasörü
+Kökteki `AfuDM.spec` (PyInstaller spec) CI'da exe üretimini sağlar;
+`build_out/AfuDM.spec` yalnızca yerel tarihsel bir kopyadır (gitignore'da).
+
+### Kurallar
+1. **main koruması:** `main`'e doğrudan veya force-push **YOK**; PR + CI zorunlu.
+2. **Release gate:** tag `vX.Y.Z` yalnız `origin/main HEAD` ile aynıysa ve
+   `core/surum.py == X.Y.Z` ise BUILD. Yanlış tag → FAIL (otomatik yakalanır).
+3. **DB migrasyonları** yol haritası: her versiyon kendi migration'ını taşır
+   (`core/db.py` user_version), geriye dönük uyum bundan geçecek.
+4. **API uyumu:** `/capabilities` her sürümde büyür; mevcut alanlar kırılmaz,
+   yeni özellik önce orada duyurulur (uzantı/mobil buna göre davranır).
+5. **Kapanış prosedürü** her sürüm için sabittir (bkz. sürüm çıkış sırası):
+   testleri koştur → sürümü artır (`core/surum.py`) → dokümanları kapat →
+   tag → release workflow → kullanıcıya rapor.

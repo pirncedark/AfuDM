@@ -17,7 +17,7 @@ import pathlib
 import re
 import sys
 
-KOK = pathlib.Path(r"C:\Users\afuuu\AfuDM")
+KOK = pathlib.Path(__file__).resolve().parents[1]
 hatalar: list[str] = []
 
 

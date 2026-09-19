@@ -82,8 +82,29 @@
   "menuSelection": {
     "message": "Download selected links with AfuDM"
   },
+  "menuGrabberPage": {
+    "message": "Send page links to AfuDM LinkGrabber"
+  },
+  "menuGrabberSelection": {
+    "message": "Send selected links to AfuDM LinkGrabber"
+  },
+  "msgGrabberSent": {
+    "message": "$count$ links sent to the AfuDM LinkGrabber panel",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
   "msgToastSent": {
-    "message": "$COUNT$ links sent to AfuDM"
+    "message": "$count$ links sent to AfuDM",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
   },
   "msgToastSingle": {
     "message": "Download sent to AfuDM"

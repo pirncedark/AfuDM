@@ -15,9 +15,12 @@
   --dl: #5b9dff;        /* indirme */
   --dl-soft: #5b9dff2e;
   --seed: #a78bfa;      /* paylasim / seed */
+  --seed-soft: #a78bfa2e;
   --hold: #f6c445;      /* durdurulmus / zamanlanmis */
+  --hold-soft: #f6c4452e;
   --err: #f2678a;       /* hata */
   --done: #46c98b;      /* tamamlandi */
+  --done-soft: #46c98b2e;
 
   --mono: "Cascadia Mono", Consolas, "Courier New", monospace;
   --ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
@@ -653,3 +656,93 @@ input, textarea, code, .kv, .row-title, .kay-url, .hint, .err-note { user-select
 }
 .seed-sayi { font-size: 11px; color: var(--dim); white-space: nowrap; }
 .seed-dosya .seed-sil { padding: 3px 9px; font-size: 11px; }
+
+/* ---------- LinkGrabber (v1.5) ---------- */
+.sheet-genis { width: min(860px, 94vw); max-height: 88vh; overflow-y: auto; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.lg-filtre { margin-top: 10px; }
+.lg-filtre label { font-size: 11px; color: var(--muted); }
+.lg-filtre select,
+.lg-filtre input[type="text"] {
+  width: 100%;
+  margin-top: 2px;
+  background: var(--bg-deep);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 5px 7px;
+  font-size: 12.5px;
+}
+.lg-filtre-ara label { display: block; font-size: 11px; color: var(--muted); }
+.lg-filtre-ara input[type="text"] { font-family: var(--mono); }
+.lg-aktif { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.lg-durum { font-size: 12px; color: var(--muted); }
+.lg-liste {
+  margin-top: 10px;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--bg-deep);
+}
+.lg-bos { padding: 18px; text-align: center; color: var(--dim); font-size: 13px; }
+.lg-satir {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  font-size: 12.5px;
+}
+.lg-satir:last-child { border-bottom: none; }
+.lg-satir:hover { background: var(--surface); }
+.lg-satir.secili { background: var(--dl-soft); }
+.lg-satir.onceki { background: var(--hold-soft); }
+.lg-onceki {
+  font-size: 10.5px;
+  color: var(--hold);
+  font-weight: 500;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+.lg-satir input[type="checkbox"] { accent-color: var(--dl); flex: none; }
+.lg-tur {
+  flex: none;
+  width: 70px;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 2px 4px;
+  border-radius: 2px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.lg-tur.torrent { background: var(--seed-soft); color: var(--seed); }
+.lg-tur.video { background: var(--hold-soft); color: var(--hold); }
+.lg-tur.arsiv { background: var(--done-soft); color: var(--done); }
+.lg-ad {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lg-boyut {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  width: 70px;
+  text-align: right;
+}
+.lg-url {
+  flex: none;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10.5px;
+}

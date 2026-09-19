@@ -77,16 +77,22 @@ with tempfile.TemporaryDirectory() as gecici:
 print("7) Acilis bayragi (--tepside)")
 # Kullanici "bilgisayar acilinca tepside baslasin" dedi: kisayol bu bayrakla
 # yazilir ve AYAR DEGISINCE kisayol yeniden yazilmali (eskisi kalmamali).
+# Beklenen arguman hedef()'ten alinir: paketli AfuDM.exe varsa yalnizca
+# "--tepside", kaynaktan calisirken "<kok>\app.py --tepside". CI'da exe
+# build edilmedigi icin ikinci bicim gecerli — test her iki modda da
+# kisayolun hedef() ile TUTARLI oldugunu dogrular.
 baslangic.kapat()
 baslangic.ac("--tepside")
 check("bayrakli kisayol olustu", baslangic.acik_mi())
-check("kisayolun argumani --tepside", baslangic._kisayol_argumani() == "--tepside",
+beklenen_bayrak = baslangic.hedef("--tepside")[1]
+check("kisayolun argumani --tepside", baslangic._kisayol_argumani() == beklenen_bayrak,
       repr(baslangic._kisayol_argumani()))
 baslangic.ac("")                       # ayar kapatildi: pencereli acilis
-check("arguman temizlendi", baslangic._kisayol_argumani() == "",
+beklenen_bos = baslangic.hedef("")[1]
+check("arguman temizlendi", baslangic._kisayol_argumani() == beklenen_bos,
       repr(baslangic._kisayol_argumani()))
 baslangic.ac("--tepside")
-check("tekrar bayraga donuyor", baslangic._kisayol_argumani() == "--tepside")
+check("tekrar bayraga donuyor", baslangic._kisayol_argumani() == beklenen_bayrak)
 baslangic.kapat()
 check("temizlik: kisayol silindi", not baslangic.acik_mi())
 

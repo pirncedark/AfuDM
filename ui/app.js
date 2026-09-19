@@ -378,6 +378,8 @@ function closeVeil(id) {
     clearInterval(state.seedTimer);
     state.seedTimer = null;
   }
+  // LinkGrabber kapanirsa surunen probe'lari durdur (yeni is yok zaten)
+  if (id === "lgVeil") call("linkgrabber_iptal").catch(() => {});
 }
 document.querySelectorAll("[data-close]").forEach((button) => {
   button.onclick = () => closeVeil(button.dataset.close);
@@ -420,6 +422,217 @@ $("addGo").onclick = async () => {
     }
   } catch (err) { $("addErr").textContent = err.message; }
 };
+
+/* ---------- LinkGrabber (v1.5) ----------
+   Akis: metin yapistir -> analiz (ayikla+normalize+tekil) ->
+   liste -> canli filtre (ara/joker + tur + domain + boyut) ->
+   "+ boyutlari tara" -> sec -> toplu ekle.
+   Filtre kurali YALNIZCA core'da (linkgrabber.ogeleri_filtrele); panel
+   yalnizca linkgrabber_suz'u cagirir ve gosterilen indeksleri cizer. */
+const lgState = { ogeler: [], gosterim: [], filtre: { sadece: [], domain: "", ara: "" } };
+
+function lgTurEtiketi(tur) {
+  const anahtar = "lg.tur." + tur;
+  const metin = t(anahtar);
+  return metin === anahtar ? escapeHtml(tur) : metin;
+}
+
+let lgSuzTimer = null;
+function lgSuzGecikmeli() {
+  clearTimeout(lgSuzTimer);
+  lgSuzTimer = setTimeout(lgSuz, 160);
+}
+
+async function lgSuz() {
+  if (!lgState.ogeler.length) { lgRender(); return; }
+  const filtre = {
+    sadece: Array.from($("lgSadece").selectedOptions)
+      .map((o) => o.value).filter((v) => v !== "all"),
+    domain: $("lgDomain").value || "",
+    ara: $("lgAra").value.trim(),
+    min_boyut: bsBoyutMin($("lgBoyut").value),
+    max_boyut: bsBoyutMax($("lgBoyut").value),
+  };
+  lgState.filtre = filtre;
+  const gosterilenler = lgState.ogeler.filter((o) => o.secili).length;
+  try {
+    const out = await call("linkgrabber_suz", lgState.ogeler, filtre);
+    if (out.ok) {
+      lgState.gosterim = out.indeks || [];
+      const secili = out.indeks.filter((i) => lgState.ogeler[i] && lgState.ogeler[i].secili).length;
+      $("lgDurum").textContent = t("lg.listCount", {
+        g: out.gosterilen,
+        n: out.toplam,
+      }) + " · " + t("lg.sonuc", { n: out.toplam, m: secili || gosterilenler });
+      $("lgGo").disabled = secili === 0;
+      $("lgGo").textContent = t("lg.go", { n: secili });
+      lgDomainDoldur(out.domainler || []);
+      lgRender();
+    }
+  } catch (err) { /* bridge yoksa liste eski haliyle kalsin */ }
+}
+
+function lgDomainDoldur(domainler) {
+  const guncel = $("lgDomain").value;
+  const hepsiBir = domainler.length === 0 || (domainler.length === 1 && domainler[0] === "");
+  $("lgDomain").innerHTML = '<option value="">' + t("lg.tum") + "</option>" +
+    domainler.filter(Boolean).map((d) =>
+      `<option value="${escapeHtml(d)}"${d === guncel ? " selected" : ""}>${escapeHtml(d)}</option>`).join("");
+  if (hepsiBir) $("lgDomain").value = "";
+}
+
+function bsBoyutMin(deger) {
+  if (deger === ">1GB") return 1 << 30;
+  if (deger === ">100MB") return 100 * (1 << 20);
+  if (deger === ">10MB") return 10 * (1 << 20);
+  return null;
+}
+
+function bsBoyutMax(deger) {
+  if (deger === "<10MB") return 10 * (1 << 20);
+  if (deger === "<100MB") return 100 * (1 << 20);
+  return null;
+}
+
+function lgRender() {
+  const liste = $("lgListe");
+  const durum = $("lgDurum");
+  if (!lgState.ogeler.length) {
+    liste.innerHTML = '<div class="lg-bos">' + t("lg.bos") + "</div>";
+    durum.textContent = t("lg.durumBos");
+    $("lgGo").disabled = true;
+    return;
+  }
+  const indeks = lgState.gosterim && lgState.gosterim.length
+    ? lgState.gosterim : lgState.ogeler.map((_, i) => i);
+  const secili = lgState.ogeler.filter((o) => o.secili).length;
+  durum.textContent = t("lg.listCount", { g: indeks.length, n: lgState.ogeler.length }) +
+    " · " + t("lg.sonuc", { n: lgState.ogeler.length, m: secili });
+  $("lgGo").disabled = secili === 0;
+  $("lgGo").textContent = t("lg.go", { n: secili });
+  liste.innerHTML = indeks.map((i) => {
+    const o = lgState.ogeler[i];
+    const boyut = o.probed ? (o.size ? size(Number(o.size)) : t("lg.boyutYok")) : "…";
+    const ad = o.filename || "—";
+    const onceki = o.oncekiIndirme ? ` <span class="lg-onceki">⚠ ${t("lg.uyariOnceki")}</span>` : "";
+    return `<label class="lg-satir${o.secili ? " secili" : ""}${o.oncekiIndirme ? " onceki" : ""}">
+      <input type="checkbox" data-i="${i}" ${o.secili ? "checked" : ""}>
+      <span class="lg-tur ${o.tur}">${lgTurEtiketi(o.tur)}</span>
+      <span class="lg-ad">${escapeHtml(ad)}${onceki}</span>
+      <span class="lg-boyut">${o.probed ? boyut : "…"}</span>
+      <span class="lg-url">${escapeHtml(o.url)}</span>
+    </label>`;
+  }).join("");
+  liste.querySelectorAll("input[type=checkbox]").forEach((cb) => {
+    cb.onchange = () => {
+      lgState.ogeler[Number(cb.dataset.i)].secili = cb.checked;
+      lgRender();
+    };
+  });
+  const eskiSayisi = lgState.ogeler.filter((o) => o.oncekiIndirme && o.secili).length;
+  if (eskiSayisi) {
+    durum.textContent += " · " + t("lg.oncekiKaldir");
+    durum.style.cursor = "pointer";
+    durum.onclick = () => {
+      for (const o of lgState.ogeler) if (o.oncekiIndirme) o.secili = false;
+      lgRender();
+    };
+  } else {
+    durum.style.cursor = "";
+    durum.onclick = null;
+  }
+}
+
+async function linkgrabberAnaliz() {
+  const metin = $("lgMetin").value || "";
+  if (!metin.trim()) { toast(t("err.noLink"), true); return; }
+  $("lgDurum").textContent = t("lg.analizDurum");
+  try {
+    const out = await call("linkgrabber_analiz", metin, {});
+    const ogeler = (out.ogeler || []).map((o) => ({
+      ...o, secili: true, probed: false, filename: "", size: null,
+    }));
+    const onceki = await call("linkgrabber_onceki", ogeler.map((o) => o.url));
+    if (onceki && onceki.ok && onceki.onceki) {
+      const set = new Set(onceki.onceki);
+      for (const o of ogeler) o.oncekiIndirme = set.has(o.url);
+    } else {
+      for (const o of ogeler) o.oncekiIndirme = false;
+    }
+    lgState.ogeler = ogeler;
+    lgState.gosterim = lgState.ogeler.map((_, i) => i);
+    lgSuz();
+    const eski = ogeler.filter((o) => o.oncekiIndirme).length;
+    toast(t("lg.bulundu", { n: lgState.ogeler.length })
+      + (eski ? " · " + t("lg.oncekiUyari", { n: eski }) : ""));
+  } catch (err) { toast(err.message, true); }
+}
+
+async function linkgrabberProbe() {
+  const secili = lgState.ogeler.filter((o) => o.secili);
+  if (!secili.length) { toast(t("err.noLink"), true); return; }
+  $("lgDurum").textContent = t("lg.probeDurum");
+  try {
+    const out = await call("linkgrabber_probe", secili.map((o) => o.url), 8);
+    if (out.ogeler) {
+      for (const bilgi of out.ogeler) {
+        const hedef = lgState.ogeler.find((o) => o.url === bilgi.url);
+        if (hedef) {
+          hedef.probed = true;
+          hedef.filename = bilgi.filename && bilgi.filename !== "download" ? bilgi.filename : "";
+          hedef.size = bilgi.size;
+          if (bilgi.kategori) hedef.kategori = bilgi.kategori;
+        }
+      }
+    }
+    lgSuz();
+    toast(t("lg.probeBitti"));
+  } catch (err) { toast(err.message, true); }
+}
+
+async function linkgrabberEkle() {
+  const secili = lgState.ogeler.filter((o) => o.secili);
+  if (!secili.length) { toast(t("err.noLink"), true); return; }
+  const secim = {
+    dest_dir: $("lgDest").value.trim(),
+    quality: $("quality").value,
+  };
+  try {
+    const out = await call("linkgrabber_ekle", secili.map((o) => o.url), secim);
+    closeVeil("lgVeil");
+    $("lgMetin").value = "";
+    lgState.ogeler = [];
+    lgState.gosterim = [];
+    lgRender();
+    let message = t("toast.started", { n: out.added });
+    if (out.scheduled) message = t("toast.scheduled", { n: out.scheduled });
+    if (out.failed && out.failed.length) toast(message + ": " + out.failed[0], true);
+    else toast(message);
+  } catch (err) { toast(err.message, true); }
+}
+
+/* ---------- LinkGrabber paneli (browser handoff dahil) ----------
+   Paneli acip filtreleri sifirlayan ortak yardimci. `lgBtn` tiklamasi ve
+   uzantidan gelen handoff (`window.afudmLinkgrabber`) bunu kullanir. */
+function lgPanelAc() {
+  $("lgDomain").value = lgState.filtre.domain || "";
+  $("lgSadece").value = "all";
+  $("lgAra").value = "";
+  $("lgBoyut").value = "";
+  $("quality").value = state.settings.video_quality || "best";
+  openVeil("lgVeil");
+  lgRender();
+  $("lgMetin").focus();
+}
+
+$("lgBtn").onclick = lgPanelAc;
+$("lgAnaliz").onclick = linkgrabberAnaliz;
+$("lgProbe").onclick = linkgrabberProbe;
+$("lgGo").onclick = linkgrabberEkle;
+$("lgSadece").onchange = lgSuz;
+$("lgDomain").onchange = lgSuz;
+$("lgBoyut").onchange = lgSuz;
+$("lgAra").oninput = lgSuzGecikmeli;
 
 /* ---------- seed penceresi (core/manager.seed_tazele) ----------
    aria2 CALISAN torrente tracker EKLEMEZ (olculdu); tazeleme, isi kaldirip
@@ -1199,6 +1412,16 @@ window.afudmClipboard = async (url) => {
   try {
     await kaydetAc({ url });
   } catch (err) { toast(err.message, true); }
+};
+
+/* ---------- browser handoff (Python cagirir) ----------
+   Uzanti "Sayfadaki linkleri LinkGrabber'a gönder" dediginde buraya ham metin
+   duser: panel acilir, metin analiz kutusuna konur ve analiz hemen calisir. */
+window.afudmLinkgrabber = async (metin, dosya) => {
+  lgPanelAc();
+  $("lgMetin").value = metin || "";
+  lgRender();
+  await linkgrabberAnaliz();
 };
 
 /* ---------- ozel baslik cubugu (core/pencere.py) ---------- */

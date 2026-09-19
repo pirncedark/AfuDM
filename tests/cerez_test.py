@@ -67,8 +67,10 @@ try:
     # (Python'un MozillaCookieJar'i ise suresi dolmus sayip gondermez).
     from yt_dlp.cookies import YoutubeDLCookieJar
     jar = YoutubeDLCookieJar(str(dosya))
+    yt_dlp_okuyucu = True
 except ImportError:
     jar = http.cookiejar.MozillaCookieJar(str(dosya))
+    yt_dlp_okuyucu = False
 jar.load(ignore_discard=True, ignore_expires=True)
 print(f"  okuyucu: {type(jar).__name__}")
 
@@ -79,8 +81,15 @@ def gonderilen(url: str) -> str:
     return istek.get_header("Cookie") or ""
 
 
-check("drive.example.com'a iki cerez de gider",
-      GIZLI in gonderilen("https://drive.example.com/f") and "tercih" in gonderilen("https://drive.example.com/f"))
+if yt_dlp_okuyucu:
+    # Oturum cerezi (expires=0) gonderimi YALNIZ yt-dlp'nin okuyucusuyla
+    # dogrulanabilir; stdlib cookiejar onu "suresi dolmus" sayip gondermez.
+    # CI'da yt_dlp pip paketi YOK (AfuDM yt-dlp'yi gomulu exe olarak tasir),
+    # o yuzden bu kontrol orada anlamsiz — atlanir, kalan kontroller kosar.
+    check("drive.example.com'a iki cerez de gider",
+          GIZLI in gonderilen("https://drive.example.com/f") and "tercih" in gonderilen("https://drive.example.com/f"))
+else:
+    print("  ATLANDI: oturum cerezi (expires=0) gonderimi yalniz yt-dlp okuyucusuyla dogrulanir — CI'da yt_dlp yok, gercek tuketici gomulu yt-dlp.exe")
 satir = next(s for s in dosya.read_text("utf-8").splitlines() if "\tsid\t" in s)
 check("hostOnly cerez dosyada alt alan KAPALI yaziliyor",
       satir.split("\t")[:2] == ["drive.example.com", "FALSE"], satir.split("\t")[:2])

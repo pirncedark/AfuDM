@@ -255,6 +255,11 @@ class Manager:
 
     ACTIVE_STATES = ("queued", "active", "waiting", "paused", "scheduled")
 
+    def gecmis_sources(self, limit: int = 3000) -> list[str]:
+        """DB'de kayitli tum kaynak adresleri (gecmis + kuyruk). LinkGrabber
+        "daha once eklendi" uyari cizgisi icin kullanilir; engellemez."""
+        return [r["source"] for r in self.store.list(limit=limit)]
+
     def _live_statuses(self) -> list[dict] | None:
         """Motorun su an tuttugu isler; motor cevap vermiyorsa None (BILINMIYOR).
         Bos liste ile None'i ayirmak sart: bos liste "motorda is yok" demek."""

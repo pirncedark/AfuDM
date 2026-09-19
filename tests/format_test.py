@@ -9,7 +9,8 @@ ffmpeg VARSA eski davranis surer: en iyi video + en iyi ses, mp4'e birlestir.
 import pathlib
 import sys
 
-sys.path.insert(0, r"C:\Users\afuuu\AfuDM")
+KOK = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(KOK))
 
 from video import ytdlp  # noqa: E402
 
@@ -51,7 +52,9 @@ kontrol("ffmpeg yokken de ses indirilir", "bestaudio" in f, f)
 
 print("4) Komut kurulumu")
 job = ytdlp.VideoJob(job_id="t", url="https://ornek.com/v", dest_dir=".", quality="best")
-cmd_var = " ".join(job.build_cmd())
+# ffmpeg VAR dalini ORTAMA bagimadan dogrula (CI'da engine/ indirilmiyor,
+# ffmpeg_hazir() False doner ve bu kontrol yanlis dustu): bayrak aciktan girilir.
+cmd_var = " ".join(job.build_cmd(ffmpeg_var=True))
 kontrol("ffmpeg varken mp4'e birlestir denir", "--merge-output-format" in cmd_var)
 
 job2 = ytdlp.VideoJob(job_id="t2", url="https://ornek.com/v", dest_dir=".", quality="best")

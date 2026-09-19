@@ -137,6 +137,23 @@ function sayfaToast(tabId, baslik, mesaj) {
   chrome.tabs.sendMessage(tabId, { type: "afudmToast", baslik, mesaj }).catch(() => {});
 }
 
+/* Sekme/sayfadaki linkleri dogrudan indirme AKISINA degil, masaustundeki
+   LinkGrabber paneline devreder: kullanici panelde filtreleyip topluca
+   indirir. /add'tan farkli olarak istegi SONLANDIRMAZ — panel onayini bekler. */
+async function sendGrabber(cfg, metin) {
+  if (!(await ping(cfg.port))) await portTara(cfg);
+  const response = await fetch(endpoint(cfg, "/linkgrabber"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-AfuDM-Token": cfg.token },
+    body: JSON.stringify({ metin }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error || chrome.i18n.getMessage("msgNoResponse", [String(response.status)]));
+  }
+  return data;
+}
+
 
 function extensionOf(url) {
   try {
@@ -177,6 +194,7 @@ chrome.downloads.onCreated.addListener(async (item) => {
         sayfaToast(tabs[0].id, "AfuDM", ad);
       }
     }).catch(() => {});
+  } catch (error) {
     notify(chrome.i18n.getMessage("notifyHandoffFailed") + error.message);
   }
 });
@@ -317,6 +335,16 @@ chrome.runtime.onInstalled.addListener(() => {
     title: chrome.i18n.getMessage("menuPageVideo"),
     contexts: ["page", "video"],
   });
+  chrome.contextMenus.create({
+    id: "afudm-grabber-page",
+    title: chrome.i18n.getMessage("menuGrabberPage"),
+    contexts: ["page"],
+  });
+  chrome.contextMenus.create({
+    id: "afudm-grabber-selection",
+    title: chrome.i18n.getMessage("menuGrabberSelection"),
+    contexts: ["selection"],
+  });
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
@@ -329,6 +357,40 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     notify(chrome.i18n.getMessage("notifyNotRunning"));
     return;
   }
+  if (info.menuItemId === "afudm-grabber-selection" || info.menuItemId === "afudm-grabber-page") {
+    // Sayfa/sekme linklerini LinkGrabber paneline devret: toplu inceleme +
+    // filtre + tek onay. Izgaradaki 500 satiri asan sayfalar kirpilir;
+    // kullanici gerekeni panelde secer.
+    let metin = "";
+    try {
+      if (info.menuItemId === "afudm-grabber-selection") {
+        const resp = await chrome.tabs.sendMessage(tab?.id ?? -1, { type: "seciliLinkleriAl" })
+          .catch(() => null);
+        metin = (resp?.links || []).join("\n");
+      } else {
+        const resp = await chrome.tabs.sendMessage(tab?.id ?? -1, { type: "sayfaLinkleriAl" })
+          .catch(() => null);
+        metin = (resp?.links || []).join("\n");
+      }
+    } catch (_) {
+      metin = "";
+    }
+    if (!metin.trim()) {
+      notify(chrome.i18n.getMessage("notifyNoAddress"));
+      return;
+    }
+    try {
+      await sendGrabber(cfg, metin);
+      const n = metin.split("\n").filter((s) => s.trim()).length;
+      const msg = chrome.i18n.getMessage("msgGrabberSent", [String(n)]);
+      notify(msg);
+      sayfaToast(tab?.id, "AfuDM", msg);
+    } catch (error) {
+      notify(chrome.i18n.getMessage("notifyAddFailed") + error.message);
+    }
+    return;
+  }
+
   if (info.menuItemId === "afudm-selection") {
     try {
       const resp = await chrome.tabs.sendMessage(tab?.id ?? -1, { type: "seciliLinkleriAl" }).catch(() => null);

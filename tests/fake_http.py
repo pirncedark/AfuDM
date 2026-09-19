@@ -29,6 +29,7 @@ class SunucuAyarlari:
     yonlendir: str | None = None               # -> 302 Location
     drop_sonrasi_bayt: int | None = None       # N bayt sonra baglantiyi kes
     log: list[dict[str, Any]] = field(default_factory=list)  # gelen istekler
+    gecikme_sn: float = 0.0                    # her istege verilen gecikme
 
 
 def rastgele_bytes(n: int = 200_000, tohum: int = 42) -> bytes:
@@ -61,6 +62,9 @@ class _FakeHandler(BaseHTTPRequestHandler):
         if ay is None:
             self._kisa(500, b"ayar yok", {})
             return
+        if ay.gecikme_sn > 0:
+            import time
+            time.sleep(ay.gecikme_sn)
         ay.log.append({"path": self.path, "headers": dict(self.headers)})
 
         if ay.yasakli:
@@ -124,8 +128,16 @@ class _FakeHandler(BaseHTTPRequestHandler):
 
 
 def baslat(ayarlar: SunucuAyarlari) -> tuple[int, ThreadingHTTPServer]:
-    """Sunucuyu 127.0.0.1 uzerinde baslatir; (port, httpd) dondurur."""
-    _FakeHandler.ayarlar = ayarlar
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), _FakeHandler)
+    """Sunucuyu 127.0.0.1 uzerinde baslatir; (port, httpd) dondurur.
+
+    Her cagriya AYRI bir handler sinifi turer: birden cok sunucu AYNI ANDA
+    calisabilir (paralel firebase testleri), sinif-attir olan ayarlar iki
+    sunucu arasinda karismaz.
+    """
+    class _TekHandler(_FakeHandler):  # type: ignore[misc]
+        pass
+
+    _TekHandler.ayarlar = ayarlar
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), _TekHandler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd.server_port, httpd

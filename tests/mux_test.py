@@ -7,16 +7,21 @@ yazmamizin sebebi zaten ffmpeg'i paketten cikarmak; dogrulugu olcmek icin
 kullanmak baska sey. ffmpeg yoksa o kontroller ATLANIR, yapisal kontroller
 yine kosar.
 """
+import os
 import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, r"C:\Users\afuuu\AfuDM")
+KOK = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(KOK))
 
 from video import mp4mux  # noqa: E402
 
-KAYNAK = Path(r"C:\Users\afuuu\AppData\Local\Temp\claude"
-              r"\C--Users-afuuu\2cbfe70b-e0aa-4fda-9596-9e9c6b90b619\scratchpad\izler")
+KAYNAK = Path(os.environ.get(
+    "AFUDM_IZ_KLASORU",
+    r"C:\Users\afuuu\AppData\Local\Temp\claude"
+    r"\C--Users-afuuu\2cbfe70b-e0aa-4fda-9596-9e9c6b90b619\scratchpad\izler",
+))
 VIDEO = KAYNAK / "video.mp4"
 SES = KAYNAK / "ses.m4a"
 HEDEF = KAYNAK / "test_birlesik.mp4"
@@ -36,7 +41,7 @@ def arac_var(ad: str) -> bool:
 
 
 if not VIDEO.exists() or not SES.exists():
-    print("ATLANDI — test izleri yok:", KAYNAK)
+    print(f"ATLANDI: ornek iz dosyalari yok ({KAYNAK})")
     sys.exit(0)
 
 print("1) Birlestirme")

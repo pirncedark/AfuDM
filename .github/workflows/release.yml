@@ -1,0 +1,125 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  gate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: TEMEL GATE - tag + surum.py + origin/main HEAD ayni olmali
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $surum = & python scripts\surum_oku.py
+          Write-Host "tag: $tag   surum.py: $surum"
+          if ($tag -ne "v$surum") {
+            Write-Host "GATE HATA: beklenen: v$surum, gelen: $tag"
+            exit 1
+          }
+          git fetch origin main
+          $head = git rev-parse HEAD
+          $mainHead = git rev-parse origin/main
+          if ($head -ne $mainHead) {
+            Write-Host "GATE HATA: tag, origin/main HEAD'inde degil (head=$head main=$mainHead)"
+            exit 1
+          }
+          Write-Host "gate OK"
+
+  build:
+    runs-on: windows-latest
+    needs: gate
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cevrimdisi kutuphaneler
+        run: python -m pip install --quiet pywebview pystray pillow qrcode pyinstaller
+
+      - name: Cevrimdisi testler
+        run: powershell -ExecutionPolicy Bypass -File scripts/test.ps1
+
+      - name: Motorlari indir
+        run: python -c "from core import engines; engines.indir('aria2c')"
+
+      - name: Surum kapisi + paket
+        shell: pwsh
+        run: |
+          $surum = & python scripts\surum_oku.py
+          powershell -ExecutionPolicy Bypass -File scripts\build_release.ps1 -Tag "v$surum"
+
+      - name: Zip + dogrulama + duman + checksum
+        shell: pwsh
+        run: |
+          $surum = & python scripts\surum_oku.py
+          $zip = "build_out\AfuDM-v$surum-win64.zip"
+          Compress-Archive -Path build_out\paket\AfuDM -DestinationPath $zip -Force
+          powershell -ExecutionPolicy Bypass -File scripts\verify_release.ps1 $zip
+          powershell -ExecutionPolicy Bypass -File scripts\smoke_test.ps1 $zip
+          powershell -ExecutionPolicy Bypass -File scripts\make_checksums.ps1 $zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: afudm-release
+          path: |
+            build_out/AfuDM-v*-win64.zip
+            build_out/*.sha256
+          if-no-files-found: error
+
+      - name: Not dosyasina SHA-256 ekle
+        shell: pwsh
+        run: |
+          $surum = & python scripts\surum_oku.py
+          $zip = (Resolve-Path "build_out\AfuDM-v$surum-win64.zip").Path
+          $not = "docs/RELEASE_NOTES/${{ github.ref_name }}.md"
+          if (-not (Test-Path (Split-Path $not) -PathType Container)) {
+            New-Item -ItemType Directory -Force -Path (Split-Path $not) | Out-Null
+          }
+          if (-not (Test-Path $not -PathType Leaf)) {
+            Write-Host "UYARI: $not yok — olusturuluyor"
+            "# ${{ github.ref_name }}" | Set-Content -Path $not -Encoding UTF8
+          }
+          $zipHash = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash
+          $exe = "build_out\paket\AfuDM\AfuDM.exe"
+          $exeHash = if (Test-Path $exe) { (Get-FileHash -Algorithm SHA256 -Path $exe).Hash } else { "yok" }
+          $tabloSatirlar = @(
+            "| Dosya | SHA-256 |",
+            "|---|---|",
+            "| $([IO.Path]::GetFileName($zip)) | $zipHash |",
+            "| AfuDM.exe | $exeHash |"
+          )
+          $icerik = Get-Content -Path $not -Raw
+          $placeholder = '<!-- SHA256-PLACEHOLDER -->'
+          if ($icerik.Contains($placeholder)) {
+            $nl = if ($icerik.Contains("`r`n")) { "`r`n" } else { "`n" }
+            $icerik.Replace($placeholder, ($tabloSatirlar -join $nl)) | Set-Content -Path $not -Encoding utf8 -NoNewline
+            Write-Host "SHA-256 placeholder guncellendi: $not"
+          } else {
+            $bolum = @("", "## SHA-256") + $tabloSatirlar
+            Add-Content -Path $not -Value $bolum -Encoding utf8
+            Write-Host "SHA-256 eklendi: $not"
+          }
+
+      - name: Github Release yayinla
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build_out/AfuDM-v*-win64.zip
+            build_out/*.sha256
+          body_path: docs/RELEASE_NOTES/${{ github.ref_name }}.md

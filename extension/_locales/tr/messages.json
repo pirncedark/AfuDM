@@ -82,8 +82,29 @@
   "menuSelection": {
     "message": "AfuDM ile seçili bağlantıları indir"
   },
+  "menuGrabberPage": {
+    "message": "Sayfadaki bağlantıları AfuDM LinkGrabber'a gönder"
+  },
+  "menuGrabberSelection": {
+    "message": "Seçili bağlantıları AfuDM LinkGrabber'a gönder"
+  },
+  "msgGrabberSent": {
+    "message": "$count$ bağlantı AfuDM LinkGrabber paneline gönderildi",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
   "msgToastSent": {
-    "message": "$COUNT$ bağlantı AfuDM'e gönderildi"
+    "message": "$count$ bağlantı AfuDM'e gönderildi",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
   },
   "msgToastSingle": {
     "message": "İndirme AfuDM'e aktarıldı"
