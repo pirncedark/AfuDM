@@ -6,6 +6,8 @@
 <meta name="theme-color" content="#14181f">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/ikon.png">
 <title>AfuDM</title>
 <style>
 /* Telefon arayuzu: tek dosya (API sadece bunu servis eder, ek istek yok).
@@ -101,6 +103,20 @@ input[type="text"], select {
 }
 .bildirim.goster { opacity: 1; transform: none; }
 .bildirim.kotu { border-color: #f2678a66; color: #ffc9d6; }
+#pwaKur { font-size: 11px; min-height: 32px; padding: 6px 8px; }
+.katman { position: fixed; inset: 0; z-index: 8; display: flex; align-items: flex-end; background: #0008; }
+.katman[hidden] { display: none; }
+.katman-icerik { width: 100%; max-height: min(78vh, 680px); overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 16px 16px 0 0; padding: 16px 14px calc(16px + env(safe-area-inset-bottom)); }
+.katman-baslik { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.katman-baslik h2 { margin: 0; font-size: 16px; }
+.seed-ozet { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font: 12px var(--mono); color: var(--muted); }
+.seed-ozet span { background: var(--bg-deep); border-radius: 6px; padding: 7px 8px; }
+.torrent-dosyalar { border-top: 1px solid var(--line); }
+.torrent-dosya { display: flex; align-items: center; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--line); min-width: 0; }
+.torrent-dosya input { flex: 0 0 auto; width: 18px; height: 18px; }
+.torrent-dosya b { display: block; font-size: 13px; overflow-wrap: anywhere; }
+.torrent-dosya small { display: block; margin-top: 3px; color: var(--muted); font: 11px var(--mono); }
+.katman-eylem { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 </style>
 </head>
 <body>
@@ -108,6 +124,7 @@ input[type="text"], select {
 <header>
   <div class="ust">
     <div class="marka">Afu<span>DM</span></div>
+    <button class="sessiz" id="pwaKur" hidden>Ana ekrana ekle</button>
     <div class="hiz"><span id="hiz">0.0</span><small>MB/s</small></div>
   </div>
   <div class="durum">
@@ -127,6 +144,21 @@ input[type="text"], select {
 </main>
 
 <div class="bildirim" id="bildirim"></div>
+
+<div class="katman" id="torrentKatman" hidden>
+  <div class="katman-icerik" role="dialog" aria-modal="true" aria-labelledby="torrentBaslik">
+    <div class="katman-baslik">
+      <h2 id="torrentBaslik">Torrent dosyalari</h2>
+      <button class="sessiz" id="trackerTara">Tracker tara</button>
+    </div>
+    <div class="seed-ozet" id="seedOzet"></div>
+    <div class="torrent-dosyalar" id="torrentDosyalar"></div>
+    <div class="katman-eylem">
+      <button class="sessiz" id="torrentVazgec">Vazgec</button>
+      <button class="ana" id="torrentKaydet">Kaydet</button>
+    </div>
+  </div>
+</div>
 
 <div class="ekle">
   <div class="ekle-satir">
@@ -233,9 +265,85 @@ function satir(is) {
       (is.downloadSpeed > 0 ? "<span>" + sure(is.eta) + "</span>" : "") +
       (durumYazi ? "<span>" + durumYazi + "</span>" : "") +
       '<span class="sag">' + durakla +
+        (is.kind === "torrent" ? '<button data-eylem="dosyalar" data-gid="' + kacir(is.gid) + '">Dosyalar</button>' : "") +
         '<button class="sessiz" data-eylem="remove" data-gid="' + kacir(is.gid) + '">Kaldır</button>' +
       "</span>" +
     "</div></div>";
+}
+
+let acikTorrentGid = "";
+let torrentMetrikZamanlayici = null;
+
+function torrentKatmanKapat() {
+  if (torrentMetrikZamanlayici) {
+    clearInterval(torrentMetrikZamanlayici);
+    torrentMetrikZamanlayici = null;
+  }
+  $("torrentKatman").hidden = true;
+  acikTorrentGid = "";
+}
+
+function seedOzetGoster(veri) {
+  $("seedOzet").innerHTML = [
+    "Seed: " + (veri.seed || 0), "Baglanti: " + (veri.baglanti || 0),
+    "Tracker: " + (veri.tracker || 0), "Havuz: " + (veri.havuz || 0),
+  ].map((metin) => "<span>" + metin + "</span>").join("");
+}
+
+async function torrentMetrikTazele(gid) {
+  try {
+    const veri = await api("/torrent/metrik?gid=" + encodeURIComponent(gid));
+    if (acikTorrentGid !== gid || $("torrentKatman").hidden) return;
+    // Magnet ustverisi henuz gelmediyse metrik alanlari YOK; sifir gostermek
+    // yerine durumu yaz, bir sonraki turda gercek deger gelir.
+    if (veri.hazir_degil) {
+      $("seedOzet").innerHTML = "<span>" +
+        kacir(veri.neden || "Magnet ustverisi bekleniyor...") + "</span>";
+      return;
+    }
+    seedOzetGoster({
+      seed: veri.num_seeders,
+      baglanti: veri.connections,
+      tracker: veri.tracker_sayisi,
+      havuz: veri.havuz_sayisi,
+    });
+  } catch (err) {
+    if (acikTorrentGid !== gid || $("torrentKatman").hidden) return;
+    torrentKatmanKapat();
+    bildir(err.message, true);
+  }
+}
+
+async function torrentKatmanAc(gid) {
+  torrentKatmanKapat();
+  acikTorrentGid = gid;
+  $("torrentBaslik").textContent = "Torrent dosyalari";
+  $("torrentDosyalar").textContent = "Yukleniyor...";
+  $("seedOzet").innerHTML = "";
+  $("torrentKaydet").disabled = false;
+  $("torrentKatman").hidden = false;
+  torrentMetrikZamanlayici = setInterval(() => { torrentMetrikTazele(gid); }, 3000);
+  try {
+    const [dosyaVeri, seedVeri] = await Promise.all([
+      api("/torrent/dosyalar?gid=" + encodeURIComponent(gid)),
+      api("/seed?gid=" + encodeURIComponent(gid)),
+    ]);
+    $("torrentBaslik").textContent = seedVeri.baslik || "Torrent dosyalari";
+    seedOzetGoster(seedVeri);
+    const dosyalar = dosyaVeri.dosyalar || [];
+    if (dosyaVeri.hazir_degil) {
+      $("torrentDosyalar").textContent = dosyaVeri.neden || "Dosya listesi henuz hazir degil.";
+      $("torrentKaydet").disabled = true;
+      return;
+    }
+    $("torrentDosyalar").innerHTML = dosyalar.map((dosya) =>
+      '<label class="torrent-dosya"><input type="checkbox" value="' + Number(dosya.indeks) + '"' +
+      (dosya.secili ? " checked" : "") + '><span><b>' + kacir(dosya.ad) + "</b><small>" +
+      boyut(dosya.boyut) + "</small></span></label>").join("") || "Dosya bulunamadi.";
+  } catch (err) {
+    $("torrentDosyalar").textContent = "Dosyalar alinamadi.";
+    bildir(err.message, true);
+  }
 }
 
 async function yenile() {
@@ -266,11 +374,63 @@ async function yenile() {
 $("liste").addEventListener("click", async (olay) => {
   const dugme = olay.target.closest("button[data-eylem]");
   if (!dugme) return;
+  if (dugme.dataset.eylem === "dosyalar") {
+    torrentKatmanAc(dugme.dataset.gid);
+    return;
+  }
   try {
     await api("/control", { method: "POST",
       body: JSON.stringify({ action: dugme.dataset.eylem, gid: dugme.dataset.gid }) });
     yenile();
   } catch (err) { bildir(err.message, true); }
+});
+
+$("torrentVazgec").addEventListener("click", torrentKatmanKapat);
+$("torrentKatman").addEventListener("click", (olay) => {
+  if (olay.target === $("torrentKatman")) torrentKatmanKapat();
+});
+document.addEventListener("keydown", (olay) => {
+  if (olay.key === "Escape" && !$("torrentKatman").hidden) torrentKatmanKapat();
+});
+
+$("torrentKaydet").addEventListener("click", async () => {
+  const indeksler = Array.from($("torrentDosyalar").querySelectorAll('input[type="checkbox"]:checked'))
+    .map((kutu) => Number(kutu.value));
+  if (!indeksler.length) {
+    bildir("En az bir dosya sec.", true);
+    return;
+  }
+  const dugme = $("torrentKaydet");
+  dugme.disabled = true;
+  try {
+    await api("/torrent/secim", { method: "POST",
+      body: JSON.stringify({ gid: acikTorrentGid, indeksler }) });
+    bildir("Secim kaydedildi.");
+    torrentKatmanKapat();
+    yenile();
+  } catch (err) {
+    bildir(err.message, true);
+  } finally {
+    if (!$("torrentKatman").hidden) dugme.disabled = false;
+  }
+});
+
+$("trackerTara").addEventListener("click", async () => {
+  const dugme = $("trackerTara");
+  const eskiYazi = dugme.textContent;
+  dugme.disabled = true;
+  dugme.textContent = "Taraniyor...";
+  try {
+    await api("/tracker/tara", { method: "POST",
+      body: JSON.stringify({ gid: acikTorrentGid }) });
+    const veri = await api("/seed?gid=" + encodeURIComponent(acikTorrentGid));
+    seedOzetGoster(veri);
+  } catch (err) {
+    bildir(err.message, true);
+  } finally {
+    dugme.disabled = false;
+    dugme.textContent = eskiYazi;
+  }
 });
 
 async function klasorleriDoldur() {
@@ -306,6 +466,28 @@ $("gonder").onclick = async () => {
 $("link").addEventListener("keydown", (olay) => {
   if (olay.key === "Enter") $("gonder").click();
 });
+
+/* Tarayici kurulum secenegini verirse dugmeyi gorunur yapar. */
+let kurulumIstegi;
+const pwaKur = $("pwaKur");
+window.addEventListener("beforeinstallprompt", (olay) => {
+  olay.preventDefault();
+  kurulumIstegi = olay;
+  pwaKur.hidden = false;
+});
+pwaKur.addEventListener("click", async () => {
+  if (!kurulumIstegi) return;
+  await kurulumIstegi.prompt();
+  kurulumIstegi = null;
+  pwaKur.hidden = true;
+});
+
+/* Worker kaydi basarisiz olsa bile telefon arayuzu normal calismaya devam eder. */
+if ("serviceWorker" in navigator) {
+  (async () => {
+    try { await navigator.serviceWorker.register("/sw.js", { scope: "/" }); } catch (_) {}
+  })();
+}
 
 yenile();
 klasorleriDoldur();
