@@ -92,3 +92,161 @@ Yeni dosya: `tests/v175_ayar_test.py`, projenin `check("...", kosul)` + sonda
 3. Her ayar anahtarı `ui/app.js` içinde hem yükleme hem kaydetme tarafında geçiyor.
 4. `api_port` aralık kontrolü (1024–65535) kodda mevcut.
 5. `core/db.py` varsayılanlarıyla UI varsayılanları tutuyor.
+
+## Telefon arayüzü — torrent paneli
+
+Mobil arayüzde (`ui/mobil.html`) torrent indirmeleri için dosya seçimi, anlık seed/bağlantı takibi ve tracker taraması bu sözleşmeye göre çalışır.
+
+### Element id listesi
+
+| Element id | Tip / Etiket | Açıklama |
+|---|---|---|
+| `torrentKatman` | `div.katman` | Torrent yönetim modal katmanı (`hidden` ile açılır/kapanır) |
+| `torrentBaslik` | `h2` | Modal başlığı ("Torrent dosyaları") |
+| `trackerTara` | `button.sessiz` | Aktif torrent için tracker taramasını tetikleyen buton |
+| `seedOzet` | `div.seed-ozet` | Anlık seed, peer ve bağlantı özet bilgisi |
+| `torrentDosyalar` | `div.torrent-dosyalar` | Dosya listesi ve seçim onay kutuları kapsayıcısı |
+| `torrentVazgec` | `button.sessiz` | Değişiklikleri iptal edip modalı kapatan buton |
+| `torrentKaydet` | `button.ana` | Seçilen dosya indekslerini sunucuya gönderip kaydeden buton |
+
+### REST uçlarının TAM sözleşmesi
+
+Telefon arayüzünün torrent paneli tarafından tüketilen uçlar, HTTP yöntemleri, parametreleri, yanıt yapıları ve hata kodları aşağıda listelenmiştir. Yetkilendirme gerektiren uçlarda geçerli token bulunmazsa `401 Unauthorized` ile `{"ok": false, "kod": "ANAHTAR_GEREKLI", "mesaj": "anahtar gerekli"}` veya `{"ok": false, "kod": "GECERSIZ_TOKEN", "mesaj": "gecersiz token"}` döner.
+
+#### 1. `GET /torrent/dosyalar`
+- **Yöntem:** `GET`
+- **Sorgu parametreleri:** `gid` (zorunlu string)
+- **İstek gövdesi:** Yok
+- **Hata kodları:**
+  - `400 Bad Request` → `{"ok": false, "kod": "GID_GEREKLI", "mesaj": "gid gerekli"}` (gid verilmediğinde)
+  - `401 Unauthorized` → `{"ok": false, "kod": "GECERSIZ_TOKEN", "mesaj": "gecersiz token"}`
+- **Yanıt anahtarları (`200 OK`):**
+  ```json
+  {
+    "ok": true,
+    "gid": "2089b05e0a3d5014",
+    "hazir_degil": false,
+    "neden": "",
+    "dosyalar": [
+      {
+        "index": 1,
+        "path": "film/video.mkv",
+        "length": 1073741824,
+        "completedLength": 52428800,
+        "selected": true
+      }
+    ]
+  }
+  ```
+
+#### 2. `GET /torrent/metrik`
+- **Yöntem:** `GET`
+- **Sorgu parametreleri:** `gid` (zorunlu string)
+- **İstek gövdesi:** Yok
+- **Hata kodları:**
+  - `400 Bad Request` → `{"ok": false, "kod": "GID_GEREKLI", "mesaj": "gid gerekli"}`
+  - `401 Unauthorized` → `{"ok": false, "kod": "GECERSIZ_TOKEN", "mesaj": "gecersiz token"}`
+- **Yanıt anahtarları (`200 OK`):**
+  ```json
+  {
+    "ok": true,
+    "gid": "2089b05e0a3d5014",
+    "num_seeders": 12,
+    "connections": 25,
+    "upload_speed": 1048576,
+    "download_speed": 5242880,
+    "seeder": false
+  }
+  ```
+
+#### 3. `GET /seed`
+- **Yöntem:** `GET`
+- **Sorgu parametreleri:** `gid` (zorunlu string)
+- **İstek gövdesi:** Yok
+- **Hata kodları:**
+  - `400 Bad Request` → `{"ok": false, "kod": "GID_GEREKLI", "mesaj": "gid gerekli"}`
+  - `401 Unauthorized` → `{"ok": false, "kod": "GECERSIZ_TOKEN", "mesaj": "gecersiz token"}`
+- **Yanıt anahtarları (`200 OK`):**
+  ```json
+  {
+    "ok": true,
+    "seed": 12,
+    "baglanti": 25,
+    "seeder": false
+  }
+  ```
+
+#### 4. `POST /torrent/secim`
+- **Yöntem:** `POST`
+- **İstek gövdesi:** JSON
+  ```json
+  {
+    "gid": "2089b05e0a3d5014",
+    "indeksler": [1, 2, 4]
+  }
+  ```
+- **Hata kodları:**
+  - `400 Bad Request` → `{"ok": false, "kod": "GID_GEREKLI", "mesaj": "gid gerekli"}` (gid boş/yoksa)
+  - `400 Bad Request` → `{"ok": false, "kod": "GECERSIZ_SECIM", "mesaj": "indeksler liste olmali"}` (liste değilse)
+  - `400 Bad Request` → `{"ok": false, "kod": "GECERSIZ_SECIM", "mesaj": "indeksler tam sayi olmali"}` (elemanlar tam sayı değilse veya bool/float ise)
+  - `401 Unauthorized` → `{"ok": false, "kod": "GECERSIZ_TOKEN", "mesaj": "gecersiz token"}`
+- **Yanıt anahtarları (`200 OK`):**
+  ```json
+  {
+    "ok": true,
+    "gid": "2089b05e0a3d5014",
+    "secilenler": [1, 2, 4]
+  }
+  ```
+
+#### 5. `POST /seed/tazele`
+- **Yöntem:** `POST`
+- **İstek gövdesi:** JSON
+  ```json
+  {
+    "gid": "2089b05e0a3d5014"
+  }
+  ```
+- **Hata kodları:**
+  - `400 Bad Request` → `{"ok": false, "kod": "GID_GEREKLI", "mesaj": "gid gerekli"}`
+  - `401 Unauthorized` → `{"ok": false, "kod": "GECERSIZ_TOKEN", "mesaj": "gecersiz token"}`
+- **Yanıt anahtarları (`200 OK`):**
+  ```json
+  {
+    "ok": true,
+    "gid": "2089b05e0a3d5014",
+    "seed": 12,
+    "baglanti": 25,
+    "seeder": false
+  }
+  ```
+
+#### 6. `POST /tracker/tara`
+- **Yöntem:** `POST`
+- **İstek gövdesi:** JSON
+  ```json
+  {
+    "gid": "2089b05e0a3d5014"
+  }
+  ```
+- **Hata kodları:**
+  - `401 Unauthorized` → `{"ok": false, "kod": "GECERSIZ_TOKEN", "mesaj": "gecersiz token"}`
+- **Yanıt anahtarları (`200 OK`):**
+  ```json
+  {
+    "ok": true,
+    "gid": "2089b05e0a3d5014",
+    "taranan": 15,
+    "canli": 9
+  }
+  ```
+
+### `/torrent/dosyalar` yanıtı DÜZ olmalı kuralı
+
+Sunucu tarafında `GET /torrent/dosyalar` yanıtı mutlaka düz sözlük yapısında dönmelidir:
+`{"ok": true, "gid": gid, "hazir_degil": bool, "neden": str, "dosyalar": list}`.
+
+**Gerekçe:**
+`core/manager.py` içindeki `TorrentDosyaListesi` sınıfı `list[dict]` alt sınıfıdır (`class TorrentDosyaListesi(list[dict])`). Python `json.dumps()` bu nesneyi serileştirirken nesneyi doğrudan ham bir JSON dizisi (`[...]`) olarak dışa aktarır; nesne örneğine atanmış olan `hazir_degil`, `neden` ve `gid` özel öznitelikleri JSON çıktısına dahil edilmez ve **DÜŞER**.
+
+Telefon arayüzü (`ui/mobil.html`) magnet indirmelerinde "üstveri henüz çözümlenmedi / hazır değil" durumunu `veri.hazir_degil` ve `veri.neden` alanlarına bakarak tespit eder. Eğer yanıt düz sözlük olarak sarılmazsa telefon bu alanları okuyamaz ve kullanıcıya yanıltıcı biçimde boş liste veya hata gösterir. Bu nedenle `api/server.py` endpoint'i `dosyalar` nesnesini listeye dönüştürerek kök sözlük içinde `{"ok": true, "gid": ..., "hazir_degil": ..., "neden": ..., "dosyalar": list(dosyalar)}` biçiminde göndermekle yükümlüdür.

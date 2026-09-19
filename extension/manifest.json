@@ -28,11 +28,23 @@
         "https://*/*"
       ],
       "js": [
+        "header-policy.js",
         "content-maestro.js"
       ],
       "all_frames": true,
       "run_at": "document_start",
       "world": "MAIN"
+    },
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "maestro-kanal.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_start"
     },
     {
       "matches": [

@@ -239,6 +239,45 @@ class _Handler(BaseHTTPRequestHandler):
         elif parsed.path == "/peers":
             gid = query.get("gid", [""])[0]
             self._send(200, {"ok": True, "peers": self.manager.peers(gid)})
+        elif parsed.path == "/torrent/dosyalar":
+            gid = query.get("gid", [""])[0]
+            if not gid:
+                self._hata(400, "GID_GEREKLI", "gid gerekli")
+                return
+            try:
+                dosyalar = self.manager.torrent_dosyalari(gid)
+            except Exception as exc:
+                self._send(400, hata_json(exc))
+                return
+            # TorrentDosyaListesi bir list alt sinifi: JSON'a cevrilince
+            # hazir_degil/neden alanlari DUSER. Telefon arayuzu "magnet
+            # ustverisi gelmedi" durumunu bu alanlardan ayirdigi icin
+            # masaustu koprusuyle (app.py) ayni duz sozlesmeyi gonderiyoruz.
+            self._send(200, {
+                "ok": True,
+                "gid": getattr(dosyalar, "gid", gid),
+                "hazir_degil": bool(getattr(dosyalar, "hazir_degil", False)),
+                "neden": str(getattr(dosyalar, "neden", "")),
+                "dosyalar": list(dosyalar),
+            })
+        elif parsed.path == "/torrent/metrik":
+            gid = query.get("gid", [""])[0]
+            if not gid:
+                self._hata(400, "GID_GEREKLI", "gid gerekli")
+                return
+            try:
+                self._send(200, {"ok": True, **self.manager.torrent_metrikleri(gid)})
+            except Exception as exc:
+                self._send(400, hata_json(exc))
+        elif parsed.path == "/seed":
+            gid = query.get("gid", [""])[0]
+            if not gid:
+                self._hata(400, "GID_GEREKLI", "gid gerekli")
+                return
+            try:
+                self._send(200, {"ok": True, **self.manager.seed_bilgi(gid)})
+            except Exception as exc:
+                self._send(400, hata_json(exc))
         elif parsed.path == "/capabilities":
             from core import engines, surum
             self._send(200, {
@@ -254,6 +293,7 @@ class _Handler(BaseHTTPRequestHandler):
                     "scheduler", "hiz_profilleri", "renew", "ozel_basliklar",
                     "cerez", "zamanlama", "cli", "api", "kategori_klasorleri",
                     "proxy", "sistem_proxy", "checksum", "canli_ayar",
+                    "torrent_dosya_secimi", "seed_durumu", "tracker_tarama",
                 ],
                 "sinirlar": {
                     "kaynak": models.SOURCE_MAX,
@@ -344,6 +384,40 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(200, {"ok": True, **sonuc})
             elif parsed.path == "/settings":
                 self._send(200, {"ok": True, "settings": self.manager.update_settings(data)})
+            elif parsed.path == "/torrent/secim":
+                gid = data.get("gid", "")
+                indeksler = data.get("indeksler")
+                if not gid:
+                    self._hata(400, "GID_GEREKLI", "gid gerekli")
+                    return
+                if not isinstance(indeksler, list):
+                    self._hata(400, "GECERSIZ_SECIM", "indeksler liste olmali")
+                    return
+                temiz = []
+                for indeks in indeksler:
+                    if isinstance(indeks, bool):
+                        self._hata(400, "GECERSIZ_SECIM", "indeksler tam sayi olmali")
+                        return
+                    try:
+                        sayi = int(indeks)
+                    except (TypeError, ValueError):
+                        self._hata(400, "GECERSIZ_SECIM", "indeksler tam sayi olmali")
+                        return
+                    if isinstance(indeks, float) and not indeks.is_integer():
+                        self._hata(400, "GECERSIZ_SECIM", "indeksler tam sayi olmali")
+                        return
+                    temiz.append(sayi)
+                # Aria2 indeksleri 1-tabanlidir; negatifleri istemci girdisinden ayikla.
+                temiz = [indeks for indeks in temiz if indeks > 0]
+                self._send(200, {"ok": True, **self.manager.torrent_secimi_ayarla(gid, temiz)})
+            elif parsed.path == "/seed/tazele":
+                gid = data.get("gid", "")
+                if not gid:
+                    self._hata(400, "GID_GEREKLI", "gid gerekli")
+                    return
+                self._send(200, {"ok": True, **self.manager.seed_tazele(gid)})
+            elif parsed.path == "/tracker/tara":
+                self._send(200, {"ok": True, **self.manager.tracker_tara(data.get("gid", ""))})
             elif parsed.path == "/renew":
                 # Olen linki yeni adresle devam ettir (afuadm renew <gid> <url>).
                 # headers/cookies/user_agent OPSIYONEL: varliksa ayni atomik
