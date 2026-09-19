@@ -79,6 +79,9 @@ class _Handler(BaseHTTPRequestHandler):
     on_ask = None
     # Ikinci kez acilan AfuDM, acik olan pencereyi one getirsin diye cagirir.
     on_show = None
+    # Uzanti "Sayfadaki linkleri gönder" dediginde ham metni LinkGrabber
+    # paneline iletmek icin. None ise istek reddedilir (panel kapali/UI yok).
+    on_linkgrabber = None
 
     # --- yardimcilar ------------------------------------------------------
     def log_message(self, fmt: str, *args) -> None:  # konsolu kirletmesin
@@ -318,6 +321,20 @@ class _Handler(BaseHTTPRequestHandler):
                     self._hata(400, "BAD_REQUEST", "profil gerekli (snail|normal|turbo)")
                     return
                 self._send(200, {"ok": True, **self.manager.set_mode(ad)})
+            elif parsed.path == "/linkgrabber":
+                # Uzanti handoff'u: kopylanamayan/sayfa linkleri LinkGrabber
+                # paneline duser. Tehlikesizdir: cabuk kurutma/indirme YOKTUR,
+                # is canli UI'da kullanicinindir. Analiz JS tarafinda yapilir.
+                metin = (data.get("metin") or "").strip()
+                uyari = data.get("dosya") or False
+                if not metin:
+                    self._hata(400, "BAD_REQUEST", "metin gerekli")
+                    return
+                if _Handler.on_linkgrabber is None:
+                    self._hata(503, "UI_YOK", "LinkGrabber paneli kullanilamiyor")
+                    return
+                _Handler.on_linkgrabber(metin, bool(uyari))
+                self._send(200, {"ok": True, "pending": True})
             else:
                 self._hata(404, "BILINMEYEN_YOL", "bilinmeyen yol")
         except Exception as exc:

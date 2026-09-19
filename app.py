@@ -899,6 +899,23 @@ def main() -> int:
     _ApiHandler.on_ask = api.tarayicidan_sor
     _ApiHandler.on_show = lambda: pencere.one_getir(window)
 
+    # Uzanti "Sayfadaki linkleri gönder": pencere one getirilir; UI hazirsa
+    # panel acilip metin konur, hazir degilse sayfa yuklenince islenir.
+    _bekleyen_linkgrabber: list = [None]  # [metin, dosya] | None
+
+    def linkgrabber_devret(metin: str, dosya: bool) -> None:
+        _bekleyen_linkgrabber[0] = {"metin": metin, "dosya": dosya}
+        try:
+            pencere.one_getir(window)
+            window.evaluate_js(
+                "window.afudmLinkgrabber(%s, %s)"
+                % (json.dumps(metin), "true" if dosya else "false")
+            )
+        except Exception:
+            pass  # UI henuz yuklenmemis; sayfa_hazir devralir
+
+    _ApiHandler.on_linkgrabber = linkgrabber_devret
+
     def tepsi_bildirimi() -> None:
         # Windows 11 YENI bir uygulamanin tepsi simgesini varsayilan olarak
         # "gizli simgeler" (^) altina koyar ve bu disaridan degistirilemez.
@@ -947,6 +964,14 @@ def main() -> int:
         # Cift tiklanan .torrent / magnet: kaydetme penceresinde acilsin
         if link:
             api.tarayicidan_sor({"url": link})
+        # UI yuklenmeden gelen LinkGrabber handoff'u da simdi islenir
+        bekleyen = _bekleyen_linkgrabber[0]
+        if bekleyen:
+            _bekleyen_linkgrabber[0] = None
+            window.evaluate_js(
+                "window.afudmLinkgrabber(%s, %s)"
+                % (json.dumps(bekleyen["metin"]), "true" if bekleyen["dosya"] else "false")
+            )
 
     window.events.shown += baslik_hazir
     window.events.loaded += sayfa_hazir

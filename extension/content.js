@@ -486,12 +486,46 @@
     return Array.from(bulunanlar);
   }
 
+  // --- Sayfadaki tum baglantilari ayiklama (LinkGrabber devri) ---
+  // Ana cerceve + <a href> adresleri; isaret/sayfa ici cipalari atlanir,
+  // ayni sayfaya donen adresler de LinkGrabber'da ise yaramaz.
+  function sayfaBaglantilariniBul() {
+    if (window.top !== window) return [];
+    const bulunanlar = new Set();
+    const urlRegex = /(?:https?:\/\/[^\s<>"']+|magnet:\?[^\s<>"']+)/gi;
+    for (const a of document.querySelectorAll("a[href]")) {
+      const h = a.href;
+      if (!h) continue;
+      if (/^(mailto:|tel:|javascript:|data:|blob:)/i.test(h)) continue;
+      try {
+        const u = new URL(h);
+        if (u.hash) u.hash = "";
+        if (u.protocol === "http:" || u.protocol === "https:" || u.protocol === "magnet:") {
+          if (u.href === location.href.replace(location.hash, "")) continue;
+          bulunanlar.add(u.href);
+        }
+      } catch (_) {}
+    }
+    if (bulunanlar.size < 3) {
+      // <a> azdir: sayfa metni icindeki adresler de toplansin
+      const govde = document.body ? document.body.innerText : "";
+      let m;
+      while ((m = urlRegex.exec(govde)) !== null) {
+        if (bulunanlar.size >= 400) break;
+        bulunanlar.add(m[0]);
+      }
+    }
+    return Array.from(bulunanlar).slice(0, 400);
+  }
+
   chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     if (msg.type === "afudmToast") {
       toastGoster(msg.baslik, msg.mesaj);
       reply({ ok: true });
     } else if (msg.type === "seciliLinkleriAl") {
       reply({ links: seciliBaglantilariBul() });
+    } else if (msg.type === "sayfaLinkleriAl") {
+      reply({ links: sayfaBaglantilariniBul() });
     }
   });
   // Betik video zaten oynarken yuklenmis olabilir

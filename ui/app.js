@@ -611,7 +611,10 @@ async function linkgrabberEkle() {
   } catch (err) { toast(err.message, true); }
 }
 
-$("lgBtn").onclick = () => {
+/* ---------- LinkGrabber paneli (browser handoff dahil) ----------
+   Paneli acip filtreleri sifirlayan ortak yardimci. `lgBtn` tiklamasi ve
+   uzantidan gelen handoff (`window.afudmLinkgrabber`) bunu kullanir. */
+function lgPanelAc() {
   $("lgDomain").value = lgState.filtre.domain || "";
   $("lgSadece").value = "all";
   $("lgAra").value = "";
@@ -620,7 +623,9 @@ $("lgBtn").onclick = () => {
   openVeil("lgVeil");
   lgRender();
   $("lgMetin").focus();
-};
+}
+
+$("lgBtn").onclick = lgPanelAc;
 $("lgAnaliz").onclick = linkgrabberAnaliz;
 $("lgProbe").onclick = linkgrabberProbe;
 $("lgGo").onclick = linkgrabberEkle;
@@ -1407,6 +1412,16 @@ window.afudmClipboard = async (url) => {
   try {
     await kaydetAc({ url });
   } catch (err) { toast(err.message, true); }
+};
+
+/* ---------- browser handoff (Python cagirir) ----------
+   Uzanti "Sayfadaki linkleri LinkGrabber'a gönder" dediginde buraya ham metin
+   duser: panel acilir, metin analiz kutusuna konur ve analiz hemen calisir. */
+window.afudmLinkgrabber = async (metin, dosya) => {
+  lgPanelAc();
+  $("lgMetin").value = metin || "";
+  lgRender();
+  await linkgrabberAnaliz();
 };
 
 /* ---------- ozel baslik cubugu (core/pencere.py) ---------- */

@@ -82,6 +82,15 @@
   "menuSelection": {
     "message": "Download selected links with AfuDM"
   },
+  "menuGrabberPage": {
+    "message": "Send page links to AfuDM LinkGrabber"
+  },
+  "menuGrabberSelection": {
+    "message": "Send selected links to AfuDM LinkGrabber"
+  },
+  "msgGrabberSent": {
+    "message": "$COUNT$ links sent to the AfuDM LinkGrabber panel"
+  },
   "msgToastSent": {
     "message": "$COUNT$ links sent to AfuDM"
   },
