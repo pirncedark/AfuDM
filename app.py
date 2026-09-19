@@ -68,6 +68,7 @@ class Api:
         self._tepsi_bildirimi = lambda: None
         self._bekleyenler = kaydet.Bekleyenler()
         self._chrome_baslangic = 0.0
+        self._probe_iptal: threading.Event | None = None
 
     # --- durum ------------------------------------------------------------
     def snapshot(self) -> dict:
@@ -218,6 +219,12 @@ class Api:
             "domainler": linkgrabber.domainler(ogeler or []),
         }
 
+    def linkgrabber_iptal(self) -> dict:
+        """Devam eden lazy probe'u oldugu yere kadar durdur (yeni is gerekmez)."""
+        if self._probe_iptal is not None:
+            self._probe_iptal.set()
+        return {"ok": True}
+
     def linkgrabber_onceki(self, urller: list[str]) -> dict:
         """Paneldeki adreslerden DB'de daha once kayitli olanlar (uyari).
 
@@ -229,9 +236,17 @@ class Api:
         return {"ok": True, "onceki": eslesen, "sayi": len(eslesen)}
 
     def linkgrabber_probe(self, urller: list[str], es_zamanli: int = 8) -> dict:
-        """Seçilen URL'ler icin toplu lazy probe (sinirli eszamanlilik)."""
+        """Seçilen URL'ler icin toplu lazy probe (sinirli eszamanlilik).
+
+        Calisan bir probe varken yenisi istenirse eskisi iptal edilir (isleme
+        devam eder ama yeni is yok), hepsi ise ilerler.
+        """
         urller = urller or []
-        sonuclar = linkgrabber.probe_es_zamanli(urller, es_zamanli=es_zamanli)
+        if self._probe_iptal is not None:
+            self._probe_iptal.set()
+        self._probe_iptal = threading.Event()
+        sonuclar = linkgrabber.probe_es_zamanli(
+            urller, es_zamanli=es_zamanli, iptal=self._probe_iptal)
         ogeler = []
         for url in urller:
             bilgi = sonuclar.get(url, {"ok": False})

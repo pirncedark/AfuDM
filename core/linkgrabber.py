@@ -25,6 +25,8 @@ https://github.com/afuuu/AfuDM — ROADMAP.md v1.5 (LinkGrabber)
 from __future__ import annotations
 
 import re
+import threading
+import time
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -303,20 +305,55 @@ def domainler(ogeler: list[dict]) -> list[str]:
 
 # --- Probe olcutleri -----------------------------------------------------
 PROBE_MAKS_WORKER = 16  # eszamanli HEAD/Range sondajinin hard limiti
+# Kisa omurlu RAM onbellegi: ayni URL ardisik taramalarda network'e gitmez.
+# Sadece ok=True sonuclar saklanir (hata bir dahaki taramada tekrar denenir).
+PROBE_CACHE_TTL = 300.0       # saniye
+PROBE_CACHE_CAP = 2000        # en fazla tutulan sonuc sayisi
+
+_probe_onbellek: dict[str, tuple[float, dict]] = {}
+_probe_kilit = threading.Lock()
+
+
+def _onbellege_yaz(url: str, sonuc: dict) -> None:
+    if not sonuc.get("ok"):
+        return
+    with _probe_kilit:
+        _probe_onbellek[url] = (time.time(), sonuc)
+        if len(_probe_onbellek) > PROBE_CACHE_CAP:
+            # cap asildiginda en eski yariyi at (buyume sinirli)
+            eskimis = sorted(_probe_onbellek, key=lambda k: _probe_onbellek[k][0])
+            for k in eskimis[: PROBE_CACHE_CAP // 2]:
+                _probe_onbellek.pop(k, None)
+
+
+def _onbellege_oku(url: str) -> dict | None:
+    with _probe_kilit:
+        kayit = _probe_onbellek.get(url)
+        if not kayit:
+            return None
+        if time.time() - kayit[0] > PROBE_CACHE_TTL:
+            _probe_onbellek.pop(url, None)
+            return None
+        return kayit[1]
 
 
 def probe_es_zamanli(
     urller: list[str],
     es_zamanli: int = 8,
     timeout: float = 3.0,
+    iptal: threading.Event | None = None,
 ) -> dict[str, dict]:
     """Toplu lazy probe: her URL icin dosya adi/boyut/tip, eszamanliligi
     sinirli (ThreadPoolExecutor). Sonuc sozlugu: {url: probe_dict}.
     http/https olmayanlar (magnet, .torrent dosyasi) atlanmaz — probe_url_info
     onlar icin ok=False dondurur, panel \"bilgi yok\" gosterir.
 
-    Hard limit: es_zamanli PROBE_MAKS_WORKER (16) ile sinirlanir; 0/negatif
-    deger 1'e, metinsel deger varsayilana (8) iner.
+    - Kisa omurlu RAM onbellegi: TTL icinde ayni URL tekrar sorulursa network'e
+      cikilmaz (PROBE_CACHE_TTL / PROBE_CACHE_CAP sinirlar).
+    - iptal (threading.Event): set edilirse YENI probe'lar baslatilmaz; zaten
+      calisanlar sonuclarini bitirir. Yalnizca UI "vazgec" durumu icin.
+    - Hard limit: es_zamanli PROBE_MAKS_WORKER (16) ile sinirlanir; 0/negatif
+      deger 1'e, metinsel deger varsayilana (8) iner.
     """
     try:
         cap = max(1, min(int(es_zamanli), PROBE_MAKS_WORKER))
@@ -325,13 +362,25 @@ def probe_es_zamanli(
     sonuclar: dict[str, dict] = {}
 
     def _probe(url: str) -> tuple[str, dict]:
+        cached = _onbellege_oku(url)
+        if cached is not None:
+            return url, cached
+        if iptal is not None and iptal.is_set():
+            return url, {"ok": False, "iptal": True}
         try:
-            return url, dosya_adi.probe_url_info(url, timeout=timeout)
+            sonuc = dosya_adi.probe_url_info(url, timeout=timeout)
         except Exception as exc:  # beklenmedik hata paneli kilitlemesin
-            return url, {"ok": False, "error": str(exc)[:120]}
+            sonuc = {"ok": False, "error": str(exc)[:120]}
+        _onbellege_yaz(url, sonuc)
+        return url, sonuc
 
+    gelecekler = {}
     with ThreadPoolExecutor(max_workers=cap) as havuz:
-        gelecekler = {havuz.submit(_probe, u): u for u in urller}
+        for u in urller:
+            if iptal is not None and iptal.is_set():
+                sonuclar[u] = {"ok": False, "iptal": True}
+                continue
+            gelecekler[havuz.submit(_probe, u)] = u
         for gelecek in as_completed(gelecekler):
             url, sonuc = gelecek.result()
             sonuclar[url] = sonuc

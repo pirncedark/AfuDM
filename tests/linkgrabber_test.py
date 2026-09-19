@@ -254,6 +254,30 @@ try:
     hatali = lg.probe_es_zamanli([url], es_zamanli="asci", timeout=3.0)
     check("es_zamanli metin varsayilana duser", hatali.get(url, {}).get("ok") is True,
           str(hatali.get(url, {})))
+
+    # onbelleg: ayni URL ardisik taramalarda sunucuya TEKRAR istek gitmez
+    oncesi = len(ayarlar.log)
+    tekrar = lg.probe_es_zamanli([url], es_zamanli=2, timeout=3.0)
+    check("onbelleg sonucu ayni", tekrar.get(url, {}).get("ok") is True,
+          str(tekrar.get(url, {})))
+    check("network'e cikilmadi (cache)", len(ayarlar.log) == oncesi,
+          f"log {len(ayarlar.log)} -> {oncesi}")
+    check("cache TTL/doluluk limitleri tanimli",
+          0 < lg.PROBE_CACHE_TTL and 0 < lg.PROBE_CACHE_CAP <= 5000,
+          f"TTL={lg.PROBE_CACHE_TTL} CAP={lg.PROBE_CACHE_CAP}")
+
+    # ipTAL: event set edilirse o adreslere istek ATILMAZ, sonuc iptal damgali
+    import threading
+    yavas = [f"http://127.0.0.1:{port}/yavas{i}.bin" for i in range(3)]
+    iptal = threading.Event()
+    iptal.set()
+    log_once = len(ayarlar.log)
+    iptal_sonuc = lg.probe_es_zamanli(yavas, es_zamanli=2, timeout=3.0, iptal=iptal)
+    check("iptal sonuclari isaretlenir", all(
+        (s.get("ok") is False and s.get("iptal")) for s in iptal_sonuc.values()),
+        str(iptal_sonuc))
+    check("iptal dogru URL'lere istek ATILMADI", len(ayarlar.log) == log_once,
+          f"log {len(ayarlar.log)} -> {log_once}")
 finally:
     httpd.shutdown()
 

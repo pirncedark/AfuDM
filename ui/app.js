@@ -378,6 +378,8 @@ function closeVeil(id) {
     clearInterval(state.seedTimer);
     state.seedTimer = null;
   }
+  // LinkGrabber kapanirsa surunen probe'lari durdur (yeni is yok zaten)
+  if (id === "lgVeil") call("linkgrabber_iptal").catch(() => {});
 }
 document.querySelectorAll("[data-close]").forEach((button) => {
   button.onclick = () => closeVeil(button.dataset.close);
