@@ -27,6 +27,8 @@ from core import (baslangic, chrome_kurulum, clipboard, dosya_adi, engines, guc,
                   tracker_saglik,
                   kaydet, lang, linkgrabber, models, paths, pencere)
 from core.manager import Manager  # noqa: E402
+from core.manager import AyarGecersiz  # noqa: E402
+from core import settings_validation  # noqa: E402
 
 # Pencere basligi dile gore secilir (bkz. core/lang.py); ayar okunana kadar bu durur.
 WINDOW_TITLE = "AfuDM"
@@ -599,14 +601,11 @@ class Api:
         Baglanacak adres soket acilirken seciliyor; ayarin hemen gecerli olmasi
         icin sunucu yeniden kuruluyor (yeniden baslatma beklenmesin).
         """
+        sonuc = self.local_api.lan_ayarla(bool(acik))
+        if not sonuc.get("ok"):
+            return {"ok": False, "error": "lan_bind_failed", "acik": bool(sonuc.get("acik"))}
         self.manager.store.set("lan_erisimi", bool(acik))
-        try:
-            self.local_api.stop()
-            self.local_api.lan = bool(acik)
-            port = self.local_api.start()
-            self.manager.store.set("api_port", port)
-        except Exception as exc:
-            return {"ok": False, "error": str(exc)[:200]}
+        self.manager.store.set("api_port", int(sonuc.get("port") or 0))
         return self.telefon_durumu()
 
     # --- uyku / telefondan uyandirma (core/guc.py) -----------------------
@@ -694,13 +693,55 @@ class Api:
     def clear_finished(self) -> dict:
         return {"ok": True, "removed": self.manager.store.clear_finished()}
 
+    # --- v1.8 Automation -------------------------------------------------
+    def automation_jobs(self, gid: str = "") -> dict:
+        return {"ok": True, "jobs": self.manager.store.automation_jobs(str(gid))}
+
+    def automation_retry(self, job_id: int) -> dict:
+        try: return {"ok": True, "job": self.manager.automation.retry(int(job_id))}
+        except Exception as exc: return {"ok": False, "error": str(exc)[:300]}
+
+    def automation_cancel(self, job_id: int) -> dict:
+        try: return {"ok": True, "job": self.manager.automation.cancel(int(job_id))}
+        except Exception as exc: return {"ok": False, "error": str(exc)[:300]}
+
     # --- ayarlar ----------------------------------------------------------
     def settings_save(self, payload: dict) -> dict:
+        return self.ayarlari_dogrula_kaydet(payload)
+
+    def ayarlari_dogrula_kaydet(self, ayarlar: dict) -> dict:
+        """Atomik ayar RPC'si: hata metni degil i18n anahtari tasir."""
         try:
-            ayarlar = self.manager.update_settings(payload)
-            return {"ok": True, "settings": ayarlar}
-        except Exception as exc:
-            return {"ok": False, "error": str(exc)[:300]}
+            kayit = self.manager.update_settings(ayarlar)
+            return {"ok": True, "hatalar": [], "ayarlar": kayit, "settings": kayit}
+        except AyarGecersiz as exc:
+            return {"ok": False, "hatalar": exc.hatalar, "ayarlar": self.manager.store.all_settings()}
+        except Exception:
+            return {"ok": False, "hatalar": [{"alan": "_genel", "mesaj_anahtari": "err.invalidValue"}], "ayarlar": self.manager.store.all_settings()}
+
+    def proxy_testi(self, proxy: str) -> dict:
+        try:
+            temiz = settings_validation.dogrula_proxy(proxy)
+        except settings_validation.AyarHatasi as exc:
+            return {"ok": False, "gecikme_ms": 0, "mesaj_anahtari": exc.mesaj_anahtari}
+        if not temiz:
+            return {"ok": False, "gecikme_ms": 0, "mesaj_anahtari": "err.proxyRequired"}
+        import socket
+        try:
+            _, hostport = settings_validation._proxy_parcala(temiz)
+            host, port = hostport.rsplit(":", 1)
+            basla = time.monotonic(); sock = socket.create_connection((host, int(port)), timeout=4)
+            sock.close()
+            return {"ok": True, "gecikme_ms": round((time.monotonic()-basla)*1000), "mesaj_anahtari": ""}
+        except OSError:
+            return {"ok": False, "gecikme_ms": 0, "mesaj_anahtari": "err.proxyUnreachable"}
+
+    def port_durumu(self) -> dict:
+        return self.local_api.durum()
+
+    def ag_konumlari_listele(self) -> dict:
+        ham = str(self.manager.store.get("ag_konumlari") or "")
+        return {"ok": True, "konumlar": [x for x in ham.splitlines() if x.strip()]}
 
     # --- klasor -----------------------------------------------------------
     def open_download_dir(self) -> dict:
@@ -990,10 +1031,11 @@ def main() -> int:
     # 6812'ye dusulmusse bu DEGER KAYDEDILIP kalici olurdu: uygulama hep
     # 6812'de acilir, uzanti ise 6811'i denerdi ve "AfuDM kapali" derdi.
     # Kayit artik yalnizca "su an hangi port" bilgisi; baslangic noktasi degil.
-    local_api = LocalAPI(manager, port=VARSAYILAN_API_PORT,
+    local_api = LocalAPI(manager, port=int(manager.store.get("api_listen_port") or VARSAYILAN_API_PORT),
                          lan=bool(manager.store.get("lan_erisimi")))
     try:
         port = local_api.start()
+        manager.store.set("api_port", port)
         manager.store.set("api_port", port)
     except Exception as exc:
         print(f"UYARI: yerel API acilamadi: {exc}")

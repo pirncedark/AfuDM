@@ -71,3 +71,6 @@ v1.8 ve v1.9 bu panelleri doldurarak ilerleyecek.
 `s.max_concurrent` gibi tırnaksız erişiyor, arama ise tırnaklı kalıbı arıyordu.
 Kelime sınırlı (`\b`) aramayla tekrarlandı ve liste 32'den 10'a indi. Yukarıdaki
 satırların her biri tek tek koddan doğrulandı.
+# UI Eksikleri
+
+Bu liste `UI_UX_STANDARDI.md` ile birlikte okunur. Bir madde sadece backend veya sadece gorunur kontrol ile kapatilamaz; bulunabilirlik, yapilandirma, canli izleme, hata cozumu ve kalicilik kaniti gerekir.

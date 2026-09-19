@@ -128,17 +128,20 @@ class _Handler(BaseHTTPRequestHandler):
         supplied = header or (query.get("token", [""])[0])
         return bool(self.token) and secrets.compare_digest(supplied, self.token)
 
-    def _sayfa_gonder(self, yol) -> None:
-        """Tek dosyalik arayuzu gonder (telefon icin; CSS/JS iceride gomulu)."""
+    def _sayfa_gonder(self, yol, icerik_turu="text/html; charset=utf-8",
+                      onbellek="no-store", ek_basliklar=None) -> None:
+        """Telefon arayuzu ve PWA dosyalarini dogru basliklarla gonder."""
         try:
             govde = yol.read_bytes()
         except OSError:
             self._hata(404, "SAYFA_YOK", "sayfa bulunamadi")
             return
         self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Type", icerik_turu)
         self.send_header("Content-Length", str(len(govde)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", onbellek)
+        for ad, deger in (ek_basliklar or {}).items():
+            self.send_header(ad, deger)
         self.end_headers()
         self.wfile.write(govde)
 
@@ -186,6 +189,23 @@ class _Handler(BaseHTTPRequestHandler):
             # cubugundan (?k=) gelir ve telefonda saklanir.
             self._sayfa_gonder(paths.UI / "mobil.html")
             return
+        if parsed.path == "/manifest.webmanifest":
+            # Manifest yeni kurulumlarda hemen yenilensin.
+            self._sayfa_gonder(
+                paths.UI / "manifest.webmanifest",
+                "application/manifest+json; charset=utf-8", "no-cache",
+            )
+            return
+        if parsed.path == "/sw.js":
+            # Worker tum kok yolu kapsayabilsin ve her acilista kontrol edilsin.
+            self._sayfa_gonder(
+                paths.UI / "sw.js", "text/javascript; charset=utf-8", "no-cache",
+                {"Service-Worker-Allowed": "/"},
+            )
+            return
+        if parsed.path == "/ikon.png":
+            self._sayfa_gonder(paths.UI / "icon.png", "image/png", "public, max-age=31536000")
+            return
         if parsed.path == "/show":
             # Ikinci kopya: kendi penceresini acmak yerine bunu cagirir.
             if _Handler.on_show:
@@ -221,6 +241,45 @@ class _Handler(BaseHTTPRequestHandler):
         elif parsed.path == "/peers":
             gid = query.get("gid", [""])[0]
             self._send(200, {"ok": True, "peers": self.manager.peers(gid)})
+        elif parsed.path == "/torrent/dosyalar":
+            gid = query.get("gid", [""])[0]
+            if not gid:
+                self._hata(400, "GID_GEREKLI", "gid gerekli")
+                return
+            try:
+                dosyalar = self.manager.torrent_dosyalari(gid)
+            except Exception as exc:
+                self._send(400, hata_json(exc))
+                return
+            # TorrentDosyaListesi bir list alt sinifi: JSON'a cevrilince
+            # hazir_degil/neden alanlari DUSER. Telefon arayuzu "magnet
+            # ustverisi gelmedi" durumunu bu alanlardan ayirdigi icin
+            # masaustu koprusuyle (app.py) ayni duz sozlesmeyi gonderiyoruz.
+            self._send(200, {
+                "ok": True,
+                "gid": getattr(dosyalar, "gid", gid),
+                "hazir_degil": bool(getattr(dosyalar, "hazir_degil", False)),
+                "neden": str(getattr(dosyalar, "neden", "")),
+                "dosyalar": list(dosyalar),
+            })
+        elif parsed.path == "/torrent/metrik":
+            gid = query.get("gid", [""])[0]
+            if not gid:
+                self._hata(400, "GID_GEREKLI", "gid gerekli")
+                return
+            try:
+                self._send(200, {"ok": True, **self.manager.torrent_metrikleri(gid)})
+            except Exception as exc:
+                self._send(400, hata_json(exc))
+        elif parsed.path == "/seed":
+            gid = query.get("gid", [""])[0]
+            if not gid:
+                self._hata(400, "GID_GEREKLI", "gid gerekli")
+                return
+            try:
+                self._send(200, {"ok": True, **self.manager.seed_bilgi(gid)})
+            except Exception as exc:
+                self._send(400, hata_json(exc))
         elif parsed.path == "/capabilities":
             from core import engines, surum
             self._send(200, {
@@ -237,6 +296,8 @@ class _Handler(BaseHTTPRequestHandler):
                     "cerez", "zamanlama", "cli", "api", "kategori_klasorleri",
                     "proxy", "sistem_proxy", "checksum", "canli_ayar",
                     "rules_engine",
+                    "automation", "automation_queue", "automation_retry", "automation_cancel",
+                    "torrent_dosya_secimi", "seed_durumu", "tracker_tarama",
                 ],
                 "sinirlar": {
                     "kaynak": models.SOURCE_MAX,
@@ -341,6 +402,40 @@ class _Handler(BaseHTTPRequestHandler):
                     normalized.append({"id": str(rule.get("id") or f"api-rule-{index}"), "name": str(rule["name"]).strip()[:100], "active": bool(rule.get("active", True)), "match_type": rule.get("match_type") if rule.get("match_type") in ("all", "any") else "all", "conditions": rule.get("conditions") if isinstance(rule.get("conditions"), list) else [], "actions": rule.get("actions") if isinstance(rule.get("actions"), dict) else {}})
                 self.manager.store.rules_save(normalized)
                 self._send(200, {"ok": True, "rules": self.manager.store.rules_list()})
+            elif parsed.path == "/torrent/secim":
+                gid = data.get("gid", "")
+                indeksler = data.get("indeksler")
+                if not gid:
+                    self._hata(400, "GID_GEREKLI", "gid gerekli")
+                    return
+                if not isinstance(indeksler, list):
+                    self._hata(400, "GECERSIZ_SECIM", "indeksler liste olmali")
+                    return
+                temiz = []
+                for indeks in indeksler:
+                    if isinstance(indeks, bool):
+                        self._hata(400, "GECERSIZ_SECIM", "indeksler tam sayi olmali")
+                        return
+                    try:
+                        sayi = int(indeks)
+                    except (TypeError, ValueError):
+                        self._hata(400, "GECERSIZ_SECIM", "indeksler tam sayi olmali")
+                        return
+                    if isinstance(indeks, float) and not indeks.is_integer():
+                        self._hata(400, "GECERSIZ_SECIM", "indeksler tam sayi olmali")
+                        return
+                    temiz.append(sayi)
+                # Aria2 indeksleri 1-tabanlidir; negatifleri istemci girdisinden ayikla.
+                temiz = [indeks for indeks in temiz if indeks > 0]
+                self._send(200, {"ok": True, **self.manager.torrent_secimi_ayarla(gid, temiz)})
+            elif parsed.path == "/seed/tazele":
+                gid = data.get("gid", "")
+                if not gid:
+                    self._hata(400, "GID_GEREKLI", "gid gerekli")
+                    return
+                self._send(200, {"ok": True, **self.manager.seed_tazele(gid)})
+            elif parsed.path == "/tracker/tara":
+                self._send(200, {"ok": True, **self.manager.tracker_tara(data.get("gid", ""))})
             elif parsed.path == "/renew":
                 # Olen linki yeni adresle devam ettir (afuadm renew <gid> <url>).
                 # headers/cookies/user_agent OPSIYONEL: varliksa ayni atomik
@@ -412,34 +507,126 @@ class LocalAPI:
         self.token = load_or_create_token()
         _Handler.manager = manager
         _Handler.token = self.token
-        self.port = port
+        # tercih_edilen: kullanicinin/uygulamanin ISTEDIGI port (degismez).
+        # port: GERCEKTEN baglanilan calisan port (dolulukta +1..+9 kayabilir).
+        self.tercih_edilen = int(port)
+        self.port = int(port)
         # lan=True: telefon baglanabilsin diye yerel aga ac (bkz. modul basligi)
         self.lan = lan
         self.httpd: ThreadingHTTPServer | None = None
         self.thread: threading.Thread | None = None
 
-    def start(self) -> int:
-        last_error: Exception | None = None
-        adres = "0.0.0.0" if self.lan else "127.0.0.1"
-        for port in range(self.port, self.port + 10):
-            try:
-                self.httpd = _ExclusiveServer((adres, port), _Handler)
-                self.port = port
+    # --- durum ------------------------------------------------------------
+    @property
+    def calisiyor(self) -> bool:
+        return self.httpd is not None
+
+    def durum(self) -> dict:
+        """UI kopru sozlesmesi: tercih vs calisan port."""
+        return {
+            "ok": True,
+            "tercih_edilen": int(self.tercih_edilen),
+            "calisan": int(self.port) if self.calisiyor else 0,
+            "yeniden_baslatma_gerekli": bool(
+                self.calisiyor and int(self.port) != int(self.tercih_edilen)
+            ),
+        }
+
+    # --- yasam dongusu ----------------------------------------------------
+    def _baslat(self, adres: str, ilk_port: int) -> ThreadingHTTPServer:
+        """Portu (ve dolu ise sonraki 9'u) dene; hicbiri olmazsa hata ver."""
+        son_hata: Exception | None = None
+        for port in range(int(ilk_port), int(ilk_port) + 10):
+            if port > 65535:
                 break
+            try:
+                httpd = _ExclusiveServer((adres, port), _Handler)
             except OSError as exc:
-                last_error = exc
-        if self.httpd is None:
-            raise RuntimeError(f"API portu acilamadi: {last_error}")
-        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+                son_hata = exc
+                continue
+            self.port = port
+            return httpd
+        raise RuntimeError("API portu acilamadi: %s" % (son_hata,))
+
+    def start(self) -> int:
+        adres = "0.0.0.0" if self.lan else "127.0.0.1"
+        httpd = self._baslat(adres, self.tercih_edilen)
+        self.httpd = httpd
+        self.thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         self.thread.start()
-        # Uzantinin okuyabilmesi icin port + token'i dosyaya yaz.
+        self._endpoint_yaz()
+        return self.port
+
+    def _endpoint_yaz(self) -> None:
+        """Uzantinin okuyabilmesi icin port + token'i dosyaya yaz.
+
+        Token dosyaya YAZILIR ama ASLA loglanmaz; dosya izni kisitlanir.
+        """
         endpoint = paths.DATA / "api_endpoint.json"
         endpoint.write_text(
             json.dumps({"port": self.port, "token": self.token}, indent=1),
             encoding="utf-8",
         )
         _dosya_iznini_kisitla(endpoint)
-        return self.port
+
+    def stop(self) -> None:
+        """Sunucuyu kapat ve REFERANSLARI TEMIZLE.
+
+        Eskiden `httpd`/`thread` kapandiktan sonra da duruyordu; `calisiyor`
+        yanlis pozitif veriyor, ikinci bir `stop()` kapali sokete
+        `shutdown()` cagirip patlayabiliyordu."""
+        httpd, thread = self.httpd, self.thread
+        self.httpd = None
+        self.thread = None
+        if httpd is None:
+            return
+        try:
+            httpd.shutdown()
+        except Exception:
+            pass
+        try:
+            httpd.server_close()
+        except Exception:
+            pass
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=5)
+
+    def lan_ayarla(self, acik: bool) -> dict:
+        """LAN'i ac/kapat — BASARISIZLIKTA ESKI DURUMA GERI DON.
+
+        Yerel aga baglanma (0.0.0.0) guvenlik yazilimi ya da baska bir surec
+        yuzunden basarisiz olabilir. O zaman:
+          * eski `lan` degeri geri alinir,
+          * sunucu onceki adres/portta YENIDEN ayaga kaldirilir,
+          * doner sozlukte `acik` GERCEK durumu gosterir — cagiran taraf
+            ayari yanlislikla "acik" diye kaydetmesin.
+        """
+        istenen = bool(acik)
+        eski_lan = bool(self.lan)
+        eski_port = int(self.port)
+        if istenen == eski_lan and self.calisiyor:
+            return {"ok": True, "acik": eski_lan, "port": self.port, "geri_alindi": False}
+        self.stop()
+        self.lan = istenen
+        try:
+            self.start()
+        except Exception as exc:
+            hata = str(exc)[:200]
+            # --- rollback: eski calisma durumu ---
+            self.lan = eski_lan
+            self.port = eski_port
+            try:
+                self.start()
+            except Exception:
+                self.stop()
+            return {
+                "ok": False,
+                "acik": bool(self.lan) and self.calisiyor,
+                "port": self.port if self.calisiyor else 0,
+                "geri_alindi": True,
+                "hata": hata,
+            }
+        return {"ok": True, "acik": self.lan, "port": self.port, "geri_alindi": False}
 
     def lan_adresi(self) -> str:
         """Telefonun yazacagi adres. Makinenin LAN IP'si UDP rota secimiyle
@@ -466,8 +653,3 @@ class LocalAPI:
     @property
     def son_eslesme(self) -> float:
         return _Handler.son_eslesme
-
-    def stop(self) -> None:
-        if self.httpd:
-            self.httpd.shutdown()
-            self.httpd.server_close()

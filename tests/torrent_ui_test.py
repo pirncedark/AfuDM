@@ -62,8 +62,8 @@ def sozluk(blok: str) -> dict[str, str]:
     return {m.group(1): m.group(2) for m in ANAHTAR_RE.finditer(blok)}
 
 
-tr_sozluk = sozluk(blok_ayikla(js_i18n, "tr: {"))
-en_sozluk = sozluk(blok_ayikla(js_i18n, "en: {"))
+tr_sozluk = sozluk(blok_ayikla(js_i18n, "  tr: {"))
+en_sozluk = sozluk(blok_ayikla(js_i18n, "  en: {"))
 
 # Torrent agacina ozgu tum "tor." anahtarlarinin listesi
 tor_anahtarlar = [

@@ -68,7 +68,9 @@ class DummyStore:
         self.kayitlar = {}
         self._id = 1
         self.secimler = {}
-        
+    def rules_list(self):
+        return []
+
     def get(self, key, default=None):
         return default
         
