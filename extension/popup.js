@@ -20,6 +20,9 @@ async function refresh() {
   $("port").value = status.cfg.port;
   $("token").value = status.cfg.token;
   $("minSize").value = status.cfg.minSizeMB;
+  $("uzantiAcik").checked = status.cfg.uzantiAcik !== false;
+  $("kapaliNot").hidden = status.cfg.uzantiAcik !== false;
+  $("panelKonum").value = status.cfg.panelKonum || "ust-sag";
   $("enabled").checked = status.cfg.enabled;
   $("sendCookies").checked = status.cfg.sendCookies;
   $("videoCatch").checked = status.cfg.videoCatch;
@@ -107,6 +110,27 @@ async function send(url, kind) {
   }
 }
 
+/* Ana anahtar ve konum ANINDA kaydedilir: "Ayarlari kaydet"e basmak
+   gerekseydi kullanici uzantiyi kapattim sanip acik birakirdi. */
+$("uzantiAcik").onchange = async () => {
+  await ask({ type: "save", cfg: { uzantiAcik: $("uzantiAcik").checked } });
+  $("kapaliNot").hidden = $("uzantiAcik").checked;
+  say(chrome.i18n.getMessage($("uzantiAcik").checked ? "msgUzantiAcildi" : "msgUzantiKapandi"),
+      $("uzantiAcik").checked ? "ok" : "");
+};
+
+$("panelKonum").onchange = async () => {
+  await ask({ type: "save", cfg: { panelKonum: $("panelKonum").value } });
+  say(chrome.i18n.getMessage("msgKonumKaydedildi"), "ok");
+};
+
+/* Surukleyip birakilan yer hazir konumu EZER: sifirlamadan liste secimi
+   gorunmez olurdu. Tek sitenin degil, hepsinin kaydi silinir. */
+$("konumSifirla").onclick = async () => {
+  await ask({ type: "save", cfg: { panelOzel: {} } });
+  say(chrome.i18n.getMessage("msgKonumSifirlandi"), "ok");
+};
+
 $("add").onclick = () => send($("url").value.trim(), undefined);
 $("probe").onclick = () => kaliteleriGetir(false);
 // Adres degisince eski kalite listesi yaniltmasin
@@ -126,6 +150,8 @@ $("save").onclick = async () => {
       enabled: $("enabled").checked,
       sendCookies: $("sendCookies").checked,
       videoCatch: $("videoCatch").checked,
+      uzantiAcik: $("uzantiAcik").checked,
+      panelKonum: $("panelKonum").value,
     },
   });
   say(chrome.i18n.getMessage("msgSaved"), "ok");

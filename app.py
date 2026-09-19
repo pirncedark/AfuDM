@@ -23,7 +23,7 @@ import webview  # noqa: E402
 from api.server import LocalAPI  # noqa: E402
 
 VARSAYILAN_API_PORT = 6811   # uzantinin da ilk denedigi port
-from core import (baslangic, chrome_kurulum, clipboard, engines, guc, iliskilendir,  # noqa: E402
+from core import (baslangic, chrome_kurulum, clipboard, dosya_adi, engines, guc, iliskilendir,  # noqa: E402
                   tracker_saglik,
                   kaydet, lang, paths, pencere)
 from core.manager import Manager  # noqa: E402
@@ -169,6 +169,23 @@ class Api:
             "ana": ana,
             "kategori_klasorleri": bool(self.manager.store.get("kategori_klasorleri")),
             "klasorler": {k: kaydet.kategori_klasoru(ana, k) for k in kaydet.KATEGORI_KLASORU},
+        }
+
+    def probe_link(self, url: str) -> dict:
+        """Arka planda HEAD + Range 0-0 GET ile dosya adi, boyut ve MIME sondajlar."""
+        url = (url or "").strip()
+        if not url or not url.lower().startswith(("http://", "https://")):
+            return {"ok": False}
+        sonuc = dosya_adi.probe_url_info(url, timeout=3.0)
+        cozulmus_ad = sonuc.get("filename", "")
+        kategori = kaydet.kategori_tahmin(url, "http", cozulmus_ad)
+        return {
+            "ok": True,
+            "filename": cozulmus_ad,
+            "size": sonuc.get("size"),
+            "content_type": sonuc.get("content_type"),
+            "kategori": kategori,
+            "resumable": sonuc.get("resumable", False),
         }
 
     def klasor_kisayollar(self) -> dict:
@@ -490,6 +507,57 @@ class Api:
                 open_in_explorer(str(Path(folder) / name) if name else folder)
                 return {"ok": True}
         return {"ok": False, "error": lang.t("err.notFound", str(self.manager.store.get("language", "auto")))}
+
+    def dosya_ac(self, gid: str) -> dict:
+        """Inen dosyayi kendi programiyla ac (klasoru degil dosyayi).
+
+        Dosya adi bilinmiyorsa ya da henuz diskte yoksa klasore duseriz:
+        kullanici bos bir hata yerine en azindan yerini gorur."""
+        for item in self.manager.snapshot()["items"]:
+            if item["gid"] != gid:
+                continue
+            klasor = item.get("dir") or self.manager.current_download_dir()
+            ad = item.get("filename") or ""
+            hedef = Path(klasor) / ad if ad else Path(klasor)
+            if hedef.is_file():
+                os.startfile(str(hedef))  # noqa: S606 — Windows kabugu
+            else:
+                open_in_explorer(str(klasor))
+            return {"ok": True}
+        return {"ok": False, "error": lang.t("err.notFound", str(self.manager.store.get("language", "auto")))}
+
+    def item_yolu(self, gid: str) -> dict:
+        """Satirin kaynak adresi ve diskteki tam yolu (sag tik menusu icin)."""
+        for item in self.manager.snapshot()["items"]:
+            if item["gid"] != gid:
+                continue
+            klasor = item.get("dir") or self.manager.current_download_dir()
+            ad = item.get("filename") or ""
+            return {"ok": True, "url": item.get("source") or "", "klasor": str(klasor),
+                    "ad": ad, "yol": str(Path(klasor) / ad) if ad else str(klasor)}
+        return {"ok": False, "error": lang.t("err.notFound", str(self.manager.store.get("language", "auto")))}
+
+    def panoya_kopyala(self, metin: str = "") -> dict:
+        """Arayuzden gelen metni panoya yaz.
+
+        WebView2 icinde navigator.clipboard kullanici hareketi olmadan ya da
+        guvenli baglam disinda SESSIZCE dusuyor; Windows'un kendi `clip`
+        komutu her kosulda calisir (core/chrome_kurulum.panoya_kopyala)."""
+        metin = str(metin or "")
+        if not metin:
+            return {"ok": False}
+        return {"ok": chrome_kurulum.panoya_kopyala(metin)}
+
+    def panodan_oku(self) -> dict:
+        """Panodaki metin (sag tik > Yapistir icin).
+
+        Tarayici tarafinda navigator.clipboard.readText() WebView2'de izin
+        istiyor ve gomulu pencerede sessizce dusuyor; Windows panosunu dogrudan
+        okuyoruz (core/clipboard.py)."""
+        try:
+            return {"ok": True, "metin": clipboard.read_text()}
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:200]}
 
     # --- ozel baslik cubugu (bkz. core/pencere.py) ------------------------
     def pencere_kucult(self) -> dict:

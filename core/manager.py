@@ -20,13 +20,22 @@ from pathlib import Path
 
 from video import ytdlp
 
+from .dosya_adi import resolve_filename
+
 from . import cerez, lang, paths, trackers
 from .daemon import Aria2Daemon
 from .db import Store
+from .hata import BadSource, KayitYok, RenewDesteklenmez
 from .rpc import Aria2Error
 
 POLL_INTERVAL = 0.5
 TRACKER_CHECK_INTERVAL = 3600.0
+
+# Hiz profilleri (FDM'nin "Snail Mode" esinlenmesi): TBK sinirini CANLI degistirir.
+#   turbo  -> sinirsiz (0)
+#   normal -> kullanicinin max_speed_kb ayari gecerli
+#   snail  -> snail_speed_kb (varsayilan 100 KB/s — oyun/toplantida interneti rahatlatir)
+HIZ_PROFILLERI = ("snail", "normal", "turbo")
 
 
 def human_size(num: float) -> str:
@@ -87,9 +96,19 @@ class Manager:
             self.store.log("warn", f"tracker guncellenemedi: {exc}")
 
     # --- ayarlar ----------------------------------------------------------
+    def hiz_limiti_kb(self, settings: dict | None = None) -> int:
+        """Gecerli profil icin toplam indirme hiz siniri (KB/s; 0 = sinirsiz)."""
+        settings = settings or self.store.all_settings()
+        profil = str(settings.get("hiz_profili") or "normal").strip().lower()
+        if profil == "turbo":
+            return 0
+        if profil == "snail":
+            return max(int(settings.get("snail_speed_kb") or 100), 0)
+        return max(int(settings.get("max_speed_kb") or 0), 0)
+
     def apply_settings(self) -> None:
         settings = self.store.all_settings()
-        limit = int(settings.get("max_speed_kb") or 0)
+        limit = self.hiz_limiti_kb(settings)
         options = {
             "max-concurrent-downloads": str(int(settings.get("max_concurrent", 5))),
             "split": str(int(settings.get("split", 64))),
@@ -101,6 +120,31 @@ class Manager:
             self.rpc.change_global_option(options)
         except Aria2Error as exc:
             self.last_error = str(exc)
+
+    def set_mode(self, ad: str) -> dict:
+        """Hiz profilini CANLI degistir: `afuadm mode snail|normal|turbo`.
+
+        aria2 changeGlobalOption max-overall-download-limit'i calisan
+        indirmeleri KESMEDEN uygular (FDM Snail Mode'un aynisi).
+
+        Sozlesme/Kararlilik: PROFIL AKTIF sinir kaynagidir — `normal` her
+        zaman Ayarlar'daki `max_speed_kb`'yi okur (profiller arasi beklenmedik
+        kalinti deger yoktur). Yani `turbo` → `normal` donusu kullanicinin
+        en son kayitli normal sinirina DONER; turbo'nun "sinirsiz" olgusu
+        normal profile tasmaz."""
+        ad = (ad or "").strip().lower()
+        if ad not in HIZ_PROFILLERI:
+            raise ValueError(
+                "gecersiz hiz profili: %s (snail|normal|turbo olmali)" % ad
+            )
+        self.store.set("hiz_profili", ad)
+        self.apply_settings()
+        return {
+            "ok": True,
+            "profil": ad,
+            "limit_kb": self.hiz_limiti_kb(),
+            "durum": "degisti",
+        }
 
     def update_settings(self, changes: dict) -> dict:
         for key, value in changes.items():
@@ -223,12 +267,7 @@ class Manager:
 
     @staticmethod
     def guess_name(source: str) -> str:
-        if source.lower().startswith("magnet:"):
-            query = urllib.parse.parse_qs(urllib.parse.urlparse(source).query)
-            name = query.get("dn", [""])[0]
-            return name or "magnet baglantisi"
-        path = urllib.parse.urlparse(source).path
-        return urllib.parse.unquote(Path(path).name) or source[:60]
+        return resolve_filename(source)
 
     @staticmethod
     def clean_title(title: str) -> str:
@@ -407,6 +446,8 @@ class Manager:
 
     # --- kontrol ----------------------------------------------------------
     def pause(self, gid: str) -> bool:
+        if not self.store.by_gid(gid):
+            raise KayitYok("kayit bulunamadi: %s" % gid)
         if gid.startswith("yt:"):
             # yt-dlp duraklatmayi desteklemez; durdurup kaldigi yerden
             # devam edilecek sekilde isaretliyoruz (--continue ile surdurur).
@@ -422,10 +463,10 @@ class Manager:
         return True
 
     def resume(self, gid: str) -> bool:
+        if not self.store.by_gid(gid):
+            raise KayitYok("kayit bulunamadi: %s" % gid)
         if gid.startswith("yt:"):
             row = self.store.by_gid(gid)
-            if not row:
-                return False
             self.store.update_by_id(row["id"], status="queued", gid=None)
             self._launch(self.store.by_id(row["id"]))  # type: ignore[arg-type]
             return True
@@ -435,6 +476,8 @@ class Manager:
 
     def remove(self, gid: str, delete_files: bool = False) -> bool:
         row = self.store.by_gid(gid)
+        if not row:
+            raise KayitYok("kayit bulunamadi: %s" % gid)
         targets: list[Path] = []
         if gid.startswith("yt:"):
             job = self.video_jobs.pop(gid, None)
@@ -498,12 +541,18 @@ class Manager:
                 pass
 
     def pause_all(self) -> None:
+        # aria2.pauseAll yalnizca waiting/paused/active islere uygulanir;
+        # stopped (bitti/error) işlere engine tarafinda zaten dokunulmaz.
+        # Video (yt-dlp) islerinde ayni semantigi biz koruruz: tamamlanan/
+        # hatali/removed işleri tekrar durdurup durumunu bozmayiz.
         try:
             self.rpc.pause_all()
         except Aria2Error:
             pass
-        for gid in list(self.video_jobs):
-            self.pause(gid)
+        bitmis = ("complete", "error", "removed")
+        for gid, job in list(self.video_jobs.items()):
+            if getattr(job, "status", "") not in bitmis:
+                self.pause(gid)
 
     def resume_all(self) -> None:
         try:
@@ -520,6 +569,120 @@ class Manager:
             raise ValueError("kayit bulunamadi")
         self.store.update_by_id(row_id, status="queued", gid=None, error=None)
         return self._launch(self.store.by_id(row_id))  # type: ignore[arg-type]
+
+    # --- olen linki yenileme (NDM'nin "Renew expired link" mantigi) ----------
+    # Sozlesme: yalnizca http(s)/ftp isleri; torrent/magnet/video renew
+    # istemez (changeUri'siz coclar). Hatalar makine-okur kod tasir:
+    #   RENEW_UNSUPPORTED — yanlis is turu  |  KAYIT_YOK — gid yok
+    def renew(
+        self,
+        gid: str,
+        yeni_url: str,
+        headers: dict | None = None,
+        cookies: list[dict] | None = None,
+        user_agent: str | None = None,
+    ) -> dict:
+        """Suresi dolan linki SIFIRLAMADAN yeni adresle devam ettirir.
+
+        Google Drive, upload siteleri veya imzali linkler saatler sonra olur.
+        `aria2.changeUri` eski URI'yi listeden cikarip yeniyi ekler; `.aria2`
+        kontrol dosyasi sayesinde INEN BAYTLAR KORUNUR. changeUri yalnizca
+        waiting/paused/error durumlarinda calisir — aktif is ise once duraklatir,
+        degisimle birlikte devam ettiririz.
+
+        `headers`, `cookies` ve `user_agent` verilirse ayni atomik adimda
+        o indirmenin aria2 seceneklerine yazilir (mevcut basliklar korunur,
+        yeniler kazanir) ve DB'ye islenir. Sozlesme, gelecekteki istemcilerin
+        (ornek. CLI `renew <gid> <url>`) imzayi genisletmeden ilerlemesine
+        izin verecek sekilde esnek birakilir."""
+        yeni_url = (yeni_url or "").strip()
+        if not yeni_url.lower().startswith(("http://", "https://", "ftp://")):
+            raise BadSource("yeni adres http(s) veya ftp olmali")
+        row = self.store.by_gid(gid)
+        if not row:
+            raise KayitYok("kayit bulunamadi: %s" % gid)
+        if row["kind"] not in ("http", "ftp"):
+            raise RenewDesteklenmez(
+                "%s isleri yenilenemez — yalnizca http(s)/ftp indirmeleri"
+                % row["kind"]
+            )
+        try:
+            status = self.rpc.tell_status(gid, ["status", "files"])
+        except Aria2Error as exc:
+            raise ValueError("motor o isi bilmiyor: %s" % str(exc)[:120]) from exc
+        dosyalar = status.get("files") or []
+        if not dosyalar:
+            raise ValueError("dosya bilgisi yok")
+        uriler = dosyalar[0].get("uris") or []
+        eski = ""
+        for u in uriler:
+            if u.get("status") == "used":
+                eski = u.get("uri", "")
+                break
+        if not eski:
+            eski = uriler[0].get("uri", "") if uriler else ""
+        if not eski:
+            eski = row.get("source") or ""
+
+        durum = status.get("status", "")
+        aktif = durum == "active"
+        hatali = durum == "error"
+
+        # Yeni secenekler (verildiyse) mevcutlarin UZERINE bindirilir.
+        options = json.loads(row["options"] or "{}")
+        sec = dict(options.get("headers") or {})
+        if headers:
+            sec.update({k: v for k, v in headers.items() if k and v})
+        cerez_temiz = cerez.temizle(cookies) if cookies else None
+        if user_agent:
+            options["user_agent"] = user_agent
+        options["headers"] = sec
+        basliklar = [f"{k}: {v}" for k, v in sec.items()]
+        if cerez_temiz:
+            basliklar.append("Cookie: " + cerez.baslik(cerez_temiz))
+            self._cerezler[row["id"]] = cerez_temiz
+
+        if aktif:
+            try:
+                self.rpc.pause(gid)
+            except Aria2Error:
+                pass
+        try:
+            degisen = int(self.rpc.change_uri(gid, 1, [eski], [yeni_url]) or 0)
+            aria_opt: dict[str, object] = {}
+            if basliklar:
+                aria_opt["header"] = basliklar
+            if options.get("user_agent"):
+                aria_opt["user-agent"] = options["user_agent"]
+            if aria_opt:
+                self.rpc.change_option(gid, aria_opt)
+        except Aria2Error as exc:
+            if aktif:
+                try:
+                    self.rpc.unpause(gid)
+                except Aria2Error:
+                    pass
+            raise ValueError("adres degistirilemedi: %s" % str(exc)[:180]) from exc
+        self.store.update_by_id(
+            row["id"],
+            source=yeni_url,
+            options=json.dumps(options, ensure_ascii=False),
+            error=None,
+            status="active" if (aktif or hatali) else durum,
+        )
+        if aktif or hatali:
+            try:
+                self.rpc.unpause(gid)
+            except Aria2Error:
+                pass
+        self.store.log("info", "adres yenilendi: %s" % row["title"])
+        return {
+            "ok": True,
+            "gid": gid,
+            "eski": eski,
+            "yeni": yeni_url,
+            "degisen": degisen,
+        }
 
     # --- seed / tracker tazeleme --------------------------------------------
     def seed_bilgi(self, gid: str) -> dict:

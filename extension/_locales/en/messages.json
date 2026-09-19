@@ -79,6 +79,15 @@
   "menuPageVideo": {
     "message": "Download this page's video with AfuDM"
   },
+  "menuSelection": {
+    "message": "Download selected links with AfuDM"
+  },
+  "msgToastSent": {
+    "message": "$COUNT$ links sent to AfuDM"
+  },
+  "msgToastSingle": {
+    "message": "Download sent to AfuDM"
+  },
   "notifyResumed": {
     "message": "AfuDM is continuing the download."
   },
@@ -181,5 +190,50 @@
   },
   "msgPending": {
     "message": "Pick the folder in the AfuDM window."
+  },
+  "optUzantiAcik": {
+    "message": "AfuDM extension on"
+  },
+  "msgKapaliNot": {
+    "message": "Extension is off: downloads are not taken over and the video button is hidden."
+  },
+  "msgKapali": {
+    "message": "The AfuDM extension is off. Click the extension icon to turn it on."
+  },
+  "msgUzantiAcildi": {
+    "message": "Extension turned on."
+  },
+  "msgUzantiKapandi": {
+    "message": "Extension turned off."
+  },
+  "labelPanelKonum": {
+    "message": "Video button position"
+  },
+  "konumUstSag": {
+    "message": "Above the video, right"
+  },
+  "konumIcUstSag": {
+    "message": "Inside video, top right"
+  },
+  "konumIcUstSol": {
+    "message": "Inside video, top left"
+  },
+  "konumIcAltSag": {
+    "message": "Inside video, bottom right"
+  },
+  "konumIcAltSol": {
+    "message": "Inside video, bottom left"
+  },
+  "btnKonumSifirla": {
+    "message": "Reset dragged position"
+  },
+  "msgKonumKaydedildi": {
+    "message": "Button position saved."
+  },
+  "msgKonumSifirlandi": {
+    "message": "Dragged positions cleared; the chosen position applies."
+  },
+  "msgSurukleIpucu": {
+    "message": "You can drag the button wherever you like; it is remembered for that site."
   }
 }

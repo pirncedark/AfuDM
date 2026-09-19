@@ -46,6 +46,11 @@
   .note { font-size: 11px; color: var(--dim); margin-top: 9px; min-height: 15px; }
   .note.bad { color: var(--err); }
   .note.ok { color: var(--done); }
+  .ana-anahtar { margin: 0 0 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+  .anahtar { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 12.5px; color: var(--text); }
+  .anahtar input { width: 15px; height: 15px; accent-color: var(--dl); }
+  .note-min { font-size: 11px; color: var(--dim); margin-top: 6px; }
+  .note-min[hidden] { display: none; }
   details { margin-top: 10px; }
   summary { font-size: 11.5px; color: var(--dim); cursor: pointer; }
 </style>
@@ -56,6 +61,29 @@
   <span id="state" data-i18n="stateConnecting">bağlanıyor</span>
   <span class="dot" id="dot"></span>
 </header>
+
+<!-- ANA ANAHTAR: kapaliyken uzanti hicbir seye dokunmaz. Ayarlarin icinde
+     degil, EN USTTE: "eklentiyi kapat" tek tikla ulasilabilir olmali. -->
+<div class="ana-anahtar">
+  <label class="anahtar">
+    <input type="checkbox" id="uzantiAcik">
+    <span data-i18n="optUzantiAcik">AfuDM uzantısı açık</span>
+  </label>
+  <div class="note-min" id="kapaliNot" data-i18n="msgKapaliNot" hidden>Uzantı kapalı: indirmeler devralınmıyor, video düğmesi gösterilmiyor.</div>
+</div>
+
+<label for="panelKonum" data-i18n="labelPanelKonum">Video düğmesinin yeri</label>
+<select id="panelKonum">
+  <option value="ust-sag" data-i18n="konumUstSag">Videonun üstünde, sağda</option>
+  <option value="ic-ust-sag" data-i18n="konumIcUstSag">Video içinde, sağ üst</option>
+  <option value="ic-ust-sol" data-i18n="konumIcUstSol">Video içinde, sol üst</option>
+  <option value="ic-alt-sag" data-i18n="konumIcAltSag">Video içinde, sağ alt</option>
+  <option value="ic-alt-sol" data-i18n="konumIcAltSol">Video içinde, sol alt</option>
+</select>
+<div class="row" style="margin-top:6px">
+  <button class="ghost" id="konumSifirla" data-i18n="btnKonumSifirla">Sürüklenen yeri sıfırla</button>
+</div>
+<div class="note-min" data-i18n="msgSurukleIpucu">Düğmeyi fareyle sürükleyip istediğin yere bırakabilirsin; o site için hatırlanır.</div>
 
 <label for="url" data-i18n="labelUrl">Bağlantı</label>
 <input id="url" type="text" spellcheck="false" placeholder="https:// veya magnet:">

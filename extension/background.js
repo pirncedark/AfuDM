@@ -20,7 +20,25 @@ const DEFAULTS = {
   skipExtensions: "html,htm,css,js,json,xml,svg,ico,woff,woff2,txt",
   videoCatch: true,
   sendCookies: true,
+  /* ANA ANAHTAR: kapaliyken uzanti HICBIR SEYE dokunmaz — indirme devralmaz,
+     medya izlemez, video dugmesi cizmez. `enabled` yalniz DEVRALMAYI kapatir;
+     kullanici "eklentiyi kapat" deyince kastettigi bu. */
+  uzantiAcik: true,
+  /* Video dugmesinin yeri. Varsayilan "ust-sag": videonun USTUNDE, disarida,
+     saga dayali — oynaticinin kendi dugmelerinin hicbirini kapatmaz. */
+  panelKonum: "ust-sag",
+  /* Kullanicinin surukleyip biraktigi yer, SITE BAZINDA:
+     {"https://ornek.com": {x: 0.82, y: -0.08}} — video kutusuna oranli. */
+  panelOzel: {},
 };
+
+/* webRequest dinleyicileri SENKRON calisir: storage'i orada bekleyemeyiz.
+   Ana anahtar bu yuzden bellekte tutulur ve degisince tazelenir. */
+let uzantiAcik = true;
+chrome.storage.local.get({ uzantiAcik: true }, (c) => { uzantiAcik = c.uzantiAcik !== false; });
+chrome.storage.onChanged.addListener((degisen) => {
+  if (degisen.uzantiAcik) uzantiAcik = degisen.uzantiAcik.newValue !== false;
+});
 
 
 async function config() {
@@ -114,6 +132,11 @@ function notify(message, title = "AfuDM") {
     message,
   });
 }
+function sayfaToast(tabId, baslik, mesaj) {
+  if (!tabId || tabId < 0) return;
+  chrome.tabs.sendMessage(tabId, { type: "afudmToast", baslik, mesaj }).catch(() => {});
+}
+
 
 function extensionOf(url) {
   try {
@@ -131,7 +154,7 @@ chrome.downloads.onCreated.addListener(async (item) => {
   // Yonlendirmelerden SONRAKI adres: cerezler de bu adrese gore secilir,
   // boylece aria2 yonlendirme zincirinde cerezi baska alana tasimaz.
   const url = item.finalUrl || item.url;
-  if (!cfg.enabled || !url || url.startsWith("blob:") || url.startsWith("data:")) {
+  if (!cfg.uzantiAcik || !cfg.enabled || !url || url.startsWith("blob:") || url.startsWith("data:")) {
     return;
   }
   const skip = cfg.skipExtensions.split(",").map((s) => s.trim()).filter(Boolean);
@@ -148,7 +171,12 @@ chrome.downloads.onCreated.addListener(async (item) => {
     });
     chrome.downloads.cancel(item.id, () => chrome.downloads.erase({ id: item.id }));
     notify(chrome.i18n.getMessage(sonuc.pending ? "msgPending" : "notifyResumed"));
-  } catch (error) {
+    chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
+      if (tabs.length && tabs[0].id) {
+        const ad = item.filename ? item.filename.split(/[\\/]/).pop() : chrome.i18n.getMessage("msgToastSingle");
+        sayfaToast(tabs[0].id, "AfuDM", ad);
+      }
+    }).catch(() => {});
     notify(chrome.i18n.getMessage("notifyHandoffFailed") + error.message);
   }
 });
@@ -193,7 +221,7 @@ function medyaKaydet(details, tur, boyut = 0) {
 
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
-    if (details.tabId < 0 || PARCA.test(details.url)) return;
+    if (!uzantiAcik || details.tabId < 0 || PARCA.test(details.url)) return;
     const tur = medyaTuru(details.url);
     if (tur) medyaKaydet(details, tur);
   },
@@ -203,7 +231,7 @@ chrome.webRequest.onBeforeRequest.addListener(
 // Uzantisi olmayan adresler (ornegin /playlist?id=3) icerik turunden taninir.
 chrome.webRequest.onHeadersReceived.addListener(
   (details) => {
-    if (details.tabId < 0 || PARCA.test(details.url)) return;
+    if (!uzantiAcik || details.tabId < 0 || PARCA.test(details.url)) return;
     const baslik = (ad) => (details.responseHeaders || [])
       .find((h) => h.name.toLowerCase() === ad)?.value || "";
     // Aralik istegi (206) toplam boyutu Content-Range'de tasir.
@@ -280,6 +308,11 @@ chrome.runtime.onInstalled.addListener(() => {
     contexts: ["link", "image", "video", "audio"],
   });
   chrome.contextMenus.create({
+    id: "afudm-selection",
+    title: chrome.i18n.getMessage("menuSelection"),
+    contexts: ["selection"],
+  });
+  chrome.contextMenus.create({
     id: "afudm-page-video",
     title: chrome.i18n.getMessage("menuPageVideo"),
     contexts: ["page", "video"],
@@ -288,10 +321,38 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const cfg = await config();
+  if (!cfg.uzantiAcik) {
+    notify(chrome.i18n.getMessage("msgKapali"));
+    return;
+  }
   if (!(await afudmAlive(cfg))) {
     notify(chrome.i18n.getMessage("notifyNotRunning"));
     return;
   }
+  if (info.menuItemId === "afudm-selection") {
+    try {
+      const resp = await chrome.tabs.sendMessage(tab?.id ?? -1, { type: "seciliLinkleriAl" }).catch(() => null);
+      const links = resp?.links || [];
+      if (!links.length) {
+        notify(chrome.i18n.getMessage("notifyNoAddress"));
+        return;
+      }
+      let eklenen = 0;
+      for (const link of links) {
+        try {
+          await sendToAfudm(cfg, { url: link, kind: "http", headers: tab?.url ? { Referer: tab.url } : {} });
+          eklenen++;
+        } catch (_) {}
+      }
+      const msg = chrome.i18n.getMessage("msgToastSent", [String(eklenen)]);
+      notify(msg);
+      sayfaToast(tab?.id, "AfuDM", msg);
+    } catch (error) {
+      notify(chrome.i18n.getMessage("notifyAddFailed") + error.message);
+    }
+    return;
+  }
+
   let target = "";
   let kind;
   if (info.menuItemId === "afudm-link") {
@@ -308,6 +369,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   try {
     const sonuc = await sendToAfudm(cfg, { url: target, kind, headers: tab?.url ? { Referer: tab.url } : {} });
     notify(chrome.i18n.getMessage(sonuc.pending ? "msgPending" : "msgQueued"));
+    sayfaToast(tab?.id, "AfuDM", chrome.i18n.getMessage("msgToastSingle"));
   } catch (error) {
     notify(chrome.i18n.getMessage("notifyAddFailed") + error.message);
   }
@@ -444,6 +506,9 @@ async function listeMetni(kayit, metinler) {
 }
 
 async function videoSecenekleri(cfg, sender, frameUrl, metinler, oynaticiBasliklari) {
+  if (!cfg.uzantiAcik) {
+    return { ok: false, error: chrome.i18n.getMessage("msgKapali") };
+  }
   if (!(await afudmAlive(cfg))) {
     return { ok: false, error: chrome.i18n.getMessage("notifyNotRunning") };
   }
@@ -626,6 +691,30 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
           reply({ ok: false, error: error.message });
         }
       }
+    } else if (message.type === "panelAyar") {
+      /* content.js her cercevede calisir; dugmeyi cizmeden once ANA ANAHTARI,
+         konumu ve bu sitenin kaydedilmis ozel yerini buradan alir. */
+      reply({
+        acik: cfg.uzantiAcik !== false && cfg.videoCatch !== false,
+        konum: cfg.panelKonum || "ust-sag",
+        ozel: (cfg.panelOzel || {})[message.origin] || null,
+      });
+    } else if (message.type === "panelYer") {
+      // Surukleyip birakilan yer: SITE BAZINDA saklanir (her sitenin oynaticisi ayri).
+      const kaynak = String(message.origin || "");
+      const yerler = { ...(cfg.panelOzel || {}) };
+      if (message.sil || !kaynak) {
+        delete yerler[kaynak];
+      } else {
+        yerler[kaynak] = { x: Number(message.x) || 0, y: Number(message.y) || 0 };
+      }
+      // Sinirsiz buyumesin: en eski kayitlar dusurulur.
+      const anahtarlar = Object.keys(yerler);
+      for (const eski of anahtarlar.slice(0, Math.max(0, anahtarlar.length - 50))) {
+        delete yerler[eski];
+      }
+      await chrome.storage.local.set({ panelOzel: yerler });
+      reply({ ok: true });
     } else if (message.type === "videoPlaylists") {
       reply({ playlists: (await siraliMedya(sender))
         .filter((m) => m.kind === "hls" || m.kind === "dash").slice(0, 6).map((m) => m.url) });

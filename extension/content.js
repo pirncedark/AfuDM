@@ -16,15 +16,33 @@
   const GIZLEME_MS = 5000;
   const t = (anahtar, ...yer) => chrome.i18n.getMessage(anahtar, yer) || anahtar;
 
+  /* etkin: ANA ANAHTAR (uzantiAcik) ve video dugmesi ayari (videoCatch)
+     birlikte. Ikisinden biri kapaliysa dugme hic cizilmez. */
   let etkin = true;
-  chrome.storage.local.get({ videoCatch: true }, (cfg) => { etkin = cfg.videoCatch !== false; });
+  let konum = "ust-sag";          // hazir konum (bkz. YERLESIM)
+  let ozelYer = null;             // kullanicinin surukleyip biraktigi yer {x, y}
+  const KAYNAK = location.origin;
+
+  async function ayarlariOku() {
+    try {
+      const a = await chrome.runtime.sendMessage({ type: "panelAyar", origin: KAYNAK });
+      if (!a) return;
+      etkin = a.acik !== false;
+      konum = a.konum || "ust-sag";
+      ozelYer = a.ozel || null;
+      if (!etkin) gizle(true); else konumla();
+    } catch (_) { /* arka plan uykuda: varsayilanlarla devam */ }
+  }
+  ayarlariOku();
   chrome.storage.onChanged.addListener((degisen) => {
-    if (degisen.videoCatch) etkin = degisen.videoCatch.newValue !== false;
-    if (!etkin) gizle(true);
+    if (degisen.videoCatch || degisen.uzantiAcik || degisen.panelKonum || degisen.panelOzel) {
+      ayarlariOku();
+    }
   });
 
   let host = null;
   let kok = null;
+  let surukleniyor = false;
   let hedefVideo = null;
   let gizlemeZamani = 0;
   let menuAcik = false;
@@ -42,7 +60,10 @@
           background: #0f131aee; color: #e6eaf0; border: 1px solid #5b9dff;
           border-radius: 6px; padding: 6px 11px; font: inherit; font-weight: 600;
           box-shadow: 0 4px 16px #0008;
+          /* Surukleme: tarayicinin kendi kaydirma/secim jesti araya girmesin */
+          touch-action: none; user-select: none; cursor: grab;
         }
+        .ana:active { cursor: grabbing; }
         .ana:hover { background: #1c2a3f; }
         .ana svg { width: 14px; height: 14px; stroke: #5b9dff; fill: none; stroke-width: 2; }
         .menu {
@@ -68,11 +89,14 @@
         </button>
         <div class="menu" hidden></div>
       </div>`;
-    kok.querySelector(".ana").addEventListener("click", (olay) => {
+    const ana = kok.querySelector(".ana");
+    ana.addEventListener("click", (olay) => {
       olay.preventDefault();
       olay.stopPropagation();
+      if (surukleBirakildi) { surukleBirakildi = false; return; }  // surukleme sonu, tiklama degil
       menuAcik ? menuyuKapat() : menuyuAc();
     });
+    suruklemeyiKur(ana);
     host.addEventListener("mouseenter", () => { gizlemeZamani = 0; });
     host.addEventListener("mouseleave", () => { gizlemeZamani = Date.now() + GIZLEME_MS; });
     yerlestirKok();
@@ -99,6 +123,55 @@
     menuAcik = false;
     menu().hidden = true;
     gizlemeZamani = Date.now() + GIZLEME_MS;
+  }
+
+  /* Surukleyip birakma: kullanici dugmeyi istedigi yere tasir, yeri SITE
+     BAZINDA hatirlanir. Esik olmadan surukleme yapilirsa her tiklama kayma
+     sayilir ve menu acilmaz; 4 piksel gecilmeden tiklama tiklamadir. */
+  const SURUKLEME_ESIGI = 4;
+  let surukleBirakildi = false;
+
+  function suruklemeyiKur(dugme) {
+    let bas = null;
+    dugme.addEventListener("pointerdown", (olay) => {
+      if (olay.button !== 0 || !hedefVideo) return;
+      const kutu = host.getBoundingClientRect();
+      bas = { x: olay.clientX, y: olay.clientY, ust: kutu.top, sol: kutu.left, tasindi: false };
+      dugme.setPointerCapture(olay.pointerId);
+    });
+    dugme.addEventListener("pointermove", (olay) => {
+      if (!bas) return;
+      const dx = olay.clientX - bas.x;
+      const dy = olay.clientY - bas.y;
+      if (!bas.tasindi && Math.abs(dx) + Math.abs(dy) < SURUKLEME_ESIGI) return;
+      bas.tasindi = true;
+      surukleniyor = true;                       // konumla() araya girmesin
+      if (menuAcik) menuyuKapat();
+      gizlemeZamani = 0;                         // surukleme sirasinda kaybolmasin
+      host.style.top = Math.max(4, bas.ust + dy) + "px";
+      host.style.left = Math.max(4, bas.sol + dx) + "px";
+    });
+    const birak = (olay) => {
+      if (!bas) return;
+      const tasindi = bas.tasindi;
+      bas = null;
+      surukleniyor = false;
+      if (!tasindi) return;
+      surukleBirakildi = true;                   // hemen ardindan gelen click yutulur
+      gizlemeZamani = Date.now() + GIZLEME_MS;
+      const kutu = hedefVideo && hedefVideo.getBoundingClientRect();
+      if (!kutu || !kutu.width || !kutu.height) return;
+      const yer = host.getBoundingClientRect();
+      ozelYer = { x: (yer.left - kutu.left) / kutu.width,
+                  y: (yer.top - kutu.top) / kutu.height };
+      chrome.runtime.sendMessage({ type: "panelYer", origin: KAYNAK, x: ozelYer.x, y: ozelYer.y })
+        .catch(() => { /* arka plan uykuda: yer bu oturumda gecerli */ });
+      if (olay && olay.pointerId !== undefined && dugme.hasPointerCapture(olay.pointerId)) {
+        dugme.releasePointerCapture(olay.pointerId);
+      }
+    };
+    dugme.addEventListener("pointerup", birak);
+    dugme.addEventListener("pointercancel", birak);
   }
 
   async function menuyuAc() {
@@ -253,16 +326,41 @@
     host.style.display = "none";
   }
 
+  /* Hazir konumlar. "ust-sag" VARSAYILAN: dugme videonun USTUNDE, disarida
+     durur — oynaticinin kendi dugmelerinin (ayarlar, tam ekran, altyazi)
+     hicbirini kapatmaz. Digerleri videonun ICINDEKI koseler. */
+  const YERLESIM = {
+    "ust-sag":  (k, g, y) => [k.top - y - 6, k.right - g],
+    "ic-ust-sag": (k, g) => [k.top + 10, k.right - g - 10],
+    "ic-ust-sol": (k) => [k.top + 10, k.left + 10],
+    "ic-alt-sag": (k, g, y) => [k.bottom - y - 10, k.right - g - 10],
+    "ic-alt-sol": (k, g, y) => [k.bottom - y - 10, k.left + 10],
+  };
+
   function konumla() {
-    if (!host || !hedefVideo || host.style.display === "none") return;
+    if (!host || !hedefVideo || host.style.display === "none" || surukleniyor) return;
     const kutu = hedefVideo.getBoundingClientRect();
     if (!hedefVideo.isConnected || kutu.width < EN_KUCUK_EN || kutu.bottom < 0 || kutu.top > innerHeight) {
       gizle(true);
       return;
     }
-    const genislik = host.getBoundingClientRect().width || 150;
-    host.style.top = Math.max(4, kutu.top + 10) + "px";
-    host.style.left = Math.max(4, Math.min(kutu.right - genislik - 10, innerWidth - genislik - 4)) + "px";
+    const olcu = host.getBoundingClientRect();
+    const genislik = olcu.width || 150;
+    const yukseklik = olcu.height || 30;
+    let ust;
+    let sol;
+    if (ozelYer) {
+      // Oranli saklanir: video buyuyup kuculse de dugme ayni yerde kalir.
+      ust = kutu.top + ozelYer.y * kutu.height;
+      sol = kutu.left + ozelYer.x * kutu.width;
+    } else {
+      const yerlesim = YERLESIM[konum] || YERLESIM["ust-sag"];
+      [ust, sol] = yerlesim(kutu, genislik, yukseklik);
+      // Video sayfanin en ustundeyse "ustunde" yer kalmaz: icine al.
+      if (konum === "ust-sag" && ust < 4) ust = kutu.top + 10;
+    }
+    host.style.top = Math.max(4, Math.min(ust, innerHeight - yukseklik - 4)) + "px";
+    host.style.left = Math.max(4, Math.min(sol, innerWidth - genislik - 4)) + "px";
   }
 
   // "play" kabarmaz; yakalama asamasinda belgeye takilan dinleyici tum videolari gorur.
@@ -285,6 +383,117 @@
     }
   }, 400);
 
+  // --- Sayfa ici Toast Bildirimi (dlman v1.9.1 esinlenmesi) ---
+  let toastHost = null;
+  let toastKok = null;
+  let toastZamanlayici = null;
+
+  function toastKur() {
+    if (toastHost) return;
+    toastHost = document.createElement("afudm-toast");
+    toastHost.style.cssText = "all:initial;position:fixed;z-index:2147483647;top:20px;right:20px;pointer-events:none;";
+    toastKok = toastHost.attachShadow({ mode: "open" });
+    const stil = document.createElement("style");
+    stil.textContent = `
+      .toast {
+        display: flex; align-items: center; gap: 10px;
+        background: rgba(15, 23, 42, 0.95);
+        color: #f1f5f9; border: 1px solid rgba(59, 130, 246, 0.4);
+        border-radius: 10px; padding: 10px 16px;
+        box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5), 0 8px 10px -6px rgba(0,0,0,0.4);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 13px; line-height: 1.4;
+        opacity: 0; transform: translateY(-12px) scale(0.96);
+        transition: opacity 0.25s ease, transform 0.25s ease;
+        max-width: 360px; pointer-events: auto; backdrop-filter: blur(8px);
+      }
+      .toast.acik { opacity: 1; transform: translateY(0) scale(1); }
+      .icon {
+        width: 24px; height: 24px; flex-shrink: 0;
+        background: #2563eb; border-radius: 6px;
+        display: flex; align-items: center; justify-content: center;
+        color: #fff; font-weight: bold; font-size: 12px;
+      }
+      .govde { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      .baslik { font-weight: 600; font-size: 13px; color: #fff; }
+      .mesaj { font-size: 12px; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+    `;
+    const kutu = document.createElement("div");
+    kutu.className = "toast";
+    const icon = document.createElement("div");
+    icon.className = "icon";
+    icon.textContent = "A";
+    const govde = document.createElement("div");
+    govde.className = "govde";
+    const baslik = document.createElement("div");
+    baslik.className = "baslik";
+    baslik.id = "tBaslik";
+    baslik.textContent = "AfuDM";
+    const mesaj = document.createElement("div");
+    mesaj.className = "mesaj";
+    mesaj.id = "tMesaj";
+    govde.appendChild(baslik);
+    govde.appendChild(mesaj);
+    kutu.appendChild(icon);
+    kutu.appendChild(govde);
+    toastKok.appendChild(stil);
+    toastKok.appendChild(kutu);
+    (document.body || document.documentElement).appendChild(toastHost);
+  }
+
+  function toastGoster(baslikMetni, mesajMetni) {
+    toastKur();
+    if (!toastKok) return;
+    const kutu = toastKok.querySelector(".toast");
+    const b = toastKok.getElementById("tBaslik");
+    const m = toastKok.getElementById("tMesaj");
+    if (b) b.textContent = baslikMetni || "AfuDM";
+    if (m) m.textContent = mesajMetni || "";
+    if (kutu) kutu.classList.add("acik");
+    clearTimeout(toastZamanlayici);
+    toastZamanlayici = setTimeout(() => {
+      if (kutu) kutu.classList.remove("acik");
+    }, 3500);
+  }
+
+  // --- Secili alandaki baglantilari ayiklama ---
+  function seciliBaglantilariBul() {
+    const secim = window.getSelection();
+    if (!secim || secim.isCollapsed || secim.rangeCount === 0) return [];
+    const bulunanlar = new Set();
+
+    try {
+      const range = secim.getRangeAt(0);
+      const container = range.commonAncestorContainer;
+      const parent = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
+      if (parent) {
+        const linkler = parent.querySelectorAll("a[href]");
+        for (const a of linkler) {
+          if (secim.containsNode(a, true)) {
+            const h = a.href;
+            if (h && /^(https?|magnet):/i.test(h)) bulunanlar.add(h);
+          }
+        }
+      }
+    } catch (_) {}
+
+    const metin = secim.toString();
+    const urlRegex = /(?:https?:\/\/[^\s<>"']+|magnet:\?[^\s<>"']+)/gi;
+    let match;
+    while ((match = urlRegex.exec(metin)) !== null) {
+      bulunanlar.add(match[0]);
+    }
+    return Array.from(bulunanlar);
+  }
+
+  chrome.runtime.onMessage.addListener((msg, sender, reply) => {
+    if (msg.type === "afudmToast") {
+      toastGoster(msg.baslik, msg.mesaj);
+      reply({ ok: true });
+    } else if (msg.type === "seciliLinkleriAl") {
+      reply({ links: seciliBaglantilariBul() });
+    }
+  });
   // Betik video zaten oynarken yuklenmis olabilir
   for (const video of document.querySelectorAll("video")) {
     if (!video.paused) goster(video);

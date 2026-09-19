@@ -11,14 +11,70 @@ anahtarsiz hicbir sey yapilamaz.
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import socket
+import subprocess
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from core import paths
+from core.hata import hata_json
+
+
+def _dosya_iznini_kisitla(yol) -> None:
+    """Windows'ta dosyayi yalniz gecerli kullaniciya acan (icacls).
+
+    Mirasi kapatir: ara klasorlerden 'Everyone' vb. devri gecmesin. TANIMLI
+    BEST-EFFORT: herhangi bir basarisizlik startup'i/API'yi ASLA engellemez —
+    token'in loglanmamasi asil guvenlik garantisidir, ACL ikincildir."""
+    if os.name != "nt":
+        return
+    try:
+        kullanici = os.environ.get("USERNAME", "").strip()
+        if not kullanici:
+            return
+        subprocess.run(
+            ["icacls", str(yol), "/inheritance:r", "/grant:r", f"{kullanici}:F"],
+            capture_output=True,
+            timeout=10,
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except Exception:
+        pass
+
+
+def _zamanla(s) -> float | None:
+    """'23:30' / '2026-09-19 23:30' bicimindeki zamanlamayi epoch'a cevirir.
+    Sadece saat:dakika verilirse, o an gecmisiyse yarina planlar."""
+
+    s = str(s).strip()
+    if not s:
+        return None
+    if s.isdigit():
+        return float(s)
+    now = time.time()
+    for fmt in ("%H:%M", "%Y-%m-%d %H:%M"):
+        try:
+            cal = time.strptime(s, fmt)
+        except ValueError:
+            continue
+        if fmt == "%H:%M":
+            # strptime "%H:%M" 1900-01-01 doner; gunumuze tasi (yoksa mktime
+            # Windows'ta tasar dısı doner)
+            bugun = time.localtime()
+            cal = time.struct_time((
+                bugun.tm_year, bugun.tm_mon, bugun.tm_mday,
+                cal.tm_hour, cal.tm_min, cal.tm_sec, -1, -1, -1
+            ))
+        t = time.mktime(cal)
+        if fmt == "%H:%M" and t <= now:
+            t += 86400.0
+        return t
+    raise ValueError(f"zamanlama anlasilamadi: {s!r} ('23:30' veya 'YYYY-AA-GG SS:DD')")
 
 
 def load_or_create_token() -> str:
@@ -29,6 +85,7 @@ def load_or_create_token() -> str:
             return token
     token = secrets.token_urlsafe(24)
     paths.API_TOKEN_FILE.write_text(token, encoding="utf-8")
+    _dosya_iznini_kisitla(paths.API_TOKEN_FILE)
     return token
 
 
@@ -66,6 +123,12 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _hata(self, durum: int, kod: str, mesaj: str) -> None:
+        """Sozlesme hata yaniti: makine `code`, insan `message`, geriye-donuk
+        uyumluluk `error` alanlarini BIRLIKTE tasimasi zorunludur (UI/mobil
+        `error`'u okur, CLI `code`'u)."""
+        self._send(durum, {"ok": False, "code": kod, "message": mesaj, "error": mesaj})
+
     def _authorized(self, query: dict) -> bool:
         header = self.headers.get("X-AfuDM-Token", "")
         supplied = header or (query.get("token", [""])[0])
@@ -76,7 +139,7 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             govde = yol.read_bytes()
         except OSError:
-            self._send(404, {"ok": False, "error": "sayfa bulunamadi"})
+            self._hata(404, "SAYFA_YOK", "sayfa bulunamadi")
             return
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -105,12 +168,14 @@ class _Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
         if parsed.path == "/ping":
+            # Kimlik sagligi: CLI/uzanti endpoint'in bu surece ait oldugunu
+            # app alanindan dogrular. Anahtarsizdir (yalnizca bilgi).
             self._send(200, {"ok": True, "app": "AfuDM"})
             return
         if parsed.path == "/klasorler":
             # Telefon arayuzu kategori listesini buradan doldurur.
             if not self._authorized(query):
-                self._send(401, {"ok": False, "error": "anahtar gerekli"})
+                self._hata(401, "ANAHTAR_GEREKLI", "anahtar gerekli")
                 return
             from core import kaydet
             ana = self.manager.current_download_dir()
@@ -139,14 +204,14 @@ class _Handler(BaseHTTPRequestHandler):
                 _Handler.son_eslesme = time.time()
                 self._send(200, {"ok": True, "token": self.token})
             else:
-                self._send(
+                self._hata(
                     403,
-                    {"ok": False, "error": "eslestirme kapali — AfuDM'de "
-                                           "Ayarlar > Uzantiyi bagla'ya bas"},
+                    "ESLESME_KAPALI",
+                    "eslestirme kapali — AfuDM'de Ayarlar > Uzantiyi bagla'ya bas",
                 )
             return
         if not self._authorized(query):
-            self._send(401, {"ok": False, "error": "gecersiz token"})
+            self._hata(401, "GECERSIZ_TOKEN", "gecersiz token")
             return
         if parsed.path == "/snapshot":
             self._send(200, {"ok": True, **self.manager.snapshot()})
@@ -155,18 +220,19 @@ class _Handler(BaseHTTPRequestHandler):
             try:
                 self._send(200, {"ok": True, "info": self.manager.probe_video(url)})
             except Exception as exc:
-                self._send(400, {"ok": False, "error": str(exc)[:400]})
+                govde = hata_json(exc)
+                self._send(400, govde)
         elif parsed.path == "/peers":
             gid = query.get("gid", [""])[0]
             self._send(200, {"ok": True, "peers": self.manager.peers(gid)})
         else:
-            self._send(404, {"ok": False, "error": "bilinmeyen yol"})
+            self._hata(404, "BILINMEYEN_YOL", "bilinmeyen yol")
 
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
         if not self._authorized(query):
-            self._send(401, {"ok": False, "error": "gecersiz token"})
+            self._hata(401, "GECERSIZ_TOKEN", "gecersiz token")
             return
         data = self._body()
         try:
@@ -195,6 +261,7 @@ class _Handler(BaseHTTPRequestHandler):
                     cookies=data.get("cookies"),
                     user_agent=data.get("user_agent") or None,
                     title=data.get("title") or None,
+                    start_after=_zamanla(data.get("start_at")),
                 )
                 self._send(200, {"ok": True, **result})
             elif parsed.path == "/control":
@@ -211,15 +278,44 @@ class _Handler(BaseHTTPRequestHandler):
                 elif action == "resume_all":
                     self.manager.resume_all()
                 else:
-                    self._send(400, {"ok": False, "error": "bilinmeyen eylem"})
+                    self._hata(400, "BILINMEYEN_EYLEM", "bilinmeyen eylem")
                     return
                 self._send(200, {"ok": True})
             elif parsed.path == "/settings":
                 self._send(200, {"ok": True, "settings": self.manager.update_settings(data)})
+            elif parsed.path == "/renew":
+                # Olen linki yeni adresle devam ettir (afuadm renew <gid> <url>).
+                # headers/cookies/user_agent OPSIYONEL: varliksa ayni atomik
+                # adimda aria2 seceneklerine ve DB'ye islenir.
+                gid = data.get("gid", "")
+                yeni_url = data.get("url") or data.get("new_url") or ""
+                if not gid or not yeni_url:
+                    self._hata(400, "BAD_REQUEST", "gid ve url gerekli")
+                    return
+                self._send(200, {
+                    "ok": True,
+                    **self.manager.renew(
+                        gid,
+                        yeni_url,
+                        headers=data.get("headers"),
+                        cookies=data.get("cookies"),
+                        user_agent=data.get("user_agent"),
+                    ),
+                })
+            elif parsed.path == "/mode":
+                # Hiz profili: snail | normal | turbo (canli uygulanir)
+                ad = data.get("profil") or data.get("mode") or ""
+                if not ad:
+                    self._hata(400, "BAD_REQUEST", "profil gerekli (snail|normal|turbo)")
+                    return
+                self._send(200, {"ok": True, **self.manager.set_mode(ad)})
             else:
-                self._send(404, {"ok": False, "error": "bilinmeyen yol"})
+                self._hata(404, "BILINMEYEN_YOL", "bilinmeyen yol")
         except Exception as exc:
-            self._send(400, {"ok": False, "error": str(exc)[:400]})
+            govde = hata_json(exc)
+            # Icin-de kodlar 400, INTERNAL 500 ile doner
+            durum = 400 if govde.get("code") != "INTERNAL" else 500
+            self._send(durum, govde)
 
 
 class _ExclusiveServer(ThreadingHTTPServer):
@@ -265,10 +361,12 @@ class LocalAPI:
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
         # Uzantinin okuyabilmesi icin port + token'i dosyaya yaz.
-        (paths.DATA / "api_endpoint.json").write_text(
+        endpoint = paths.DATA / "api_endpoint.json"
+        endpoint.write_text(
             json.dumps({"port": self.port, "token": self.token}, indent=1),
             encoding="utf-8",
         )
+        _dosya_iznini_kisitla(endpoint)
         return self.port
 
     def lan_adresi(self) -> str:

@@ -56,6 +56,11 @@ DEFAULTS: dict[str, Any] = {
     "split": 64,
     "max_conn_per_server": 16,
     "max_speed_kb": 0,
+    # Hiz profili: "normal" = max_speed_kb uygulanir,
+    #               "turbo"  = sinirsiz (0),
+    #               "snail"  = snail_speed_kb (arka planda hissettirmez)
+    "hiz_profili": "normal",
+    "snail_speed_kb": 100,
     "clipboard_watch": True,
     "clipboard_exts": "zip,rar,7z,exe,msi,iso,pdf,mp4,mkv,mp3,apk,dmg,torrent",
     "notify_telegram": False,

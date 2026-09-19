@@ -153,6 +153,18 @@ class Aria2RPC:
     def change_global_option(self, options: dict) -> str:
         return self.call("aria2.changeGlobalOption", options)
 
+    def change_uri(
+        self, gid: str, file_index: int,
+        del_uris: list[str], add_uris: list[str], position: int = -1,
+    ) -> int:
+        """aria2.changeUri — yalnizca waiting/paused/error durumunda calisir.
+        Olen (suresi dolan) linki yenilemek icin kullanilir (bkz. renew):
+        eski URL listeden cikar, yeni URL sona eklenir, inen baytlar korunur.
+        Donus degeri kaldirilan URI sayisidir (0 da basarili olabilir)."""
+        return self.call(
+            "aria2.changeUri", gid, file_index, del_uris, add_uris, position
+        )
+
     def get_global_option(self) -> dict:
         return self.call("aria2.getGlobalOption")
 

@@ -22,8 +22,10 @@ KOK = Path(__file__).resolve().parent
 CIKTI = KOK / "build_out" / "paket"
 
 # Paketin icine giren dosyalar. engine/ ozel: hangi motorun gireceği secime bagli.
-KOPYALANACAK_DOSYALAR = ("AfuDM.exe", "README.md", "THIRD_PARTY_NOTICES.md")
-KOPYALANACAK_KLASORLER = ("ui", "extension", "trackers")
+# afuadm.py/.bat: komut satiri araci (core/ + api/ Python kaynagi da gerekli).
+KOPYALANACAK_DOSYALAR = ("AfuDM.exe", "README.md", "THIRD_PARTY_NOTICES.md",
+                         "afuadm.py", "afuadm.bat")
+KOPYALANACAK_KLASORLER = ("ui", "extension", "trackers", "core", "api")
 
 CEKIRDEK_MOTORLAR = ("aria2c.exe",)
 TAM_MOTORLAR = ("aria2c.exe", "yt-dlp.exe", "ffmpeg.exe")

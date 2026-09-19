@@ -57,10 +57,18 @@ def _kenar_kalinligi(hwnd) -> int:
 
 
 def webview2_hazirligini_yama() -> None:
-    """CSS app-region destegini, pywebview ILK SAYFAYI yuklemeden once ac.
+    """CSS app-region destegi + KOPYALA/YAPISTIR kisayollari.
 
     Ayar gezinme basladiktan sonra verilirse bir SONRAKI gezinmeye kadar
     etkisizdir; bu yuzden pywebview'in hazir olay isleyicisinin basina eklenir.
+
+    KOPYALA/YAPISTIR: pywebview `AreBrowserAcceleratorKeysEnabled` degerini
+    DEBUG bayragina bagliyor (webview/platforms/edgechromium.py), yani surumde
+    Ctrl+C / Ctrl+V / Ctrl+X / Ctrl+A HIC calismiyordu — kullanicinin
+    bildirdigi kusur bu. Bayragi aciyoruz. Gelistirici araclari AYRI bir ayar
+    (`AreDevToolsEnabled`) oldugu icin F12 yine kapali kalir; istenmeyen
+    kisayollar (Ctrl+R yeniden yukleme, Ctrl+P yazdirma) arayuz tarafinda
+    engellenir (ui/app.js).
     """
     if not _ETKIN:
         return
@@ -78,7 +86,15 @@ def webview2_hazirligini_yama() -> None:
                 sender.CoreWebView2.Settings.IsNonClientRegionSupportEnabled = True
         except Exception:
             pass  # eski WebView2: surukleme olmaz ama uygulama calisir
-        return asil(self, sender, args)
+        sonuc = asil(self, sender, args)
+        # SIRA ONEMLI: pywebview kendi isleyicisinde bu bayragi debug degerine
+        # (yani False'a) YAZIYOR. Once onu calistirip SONRA aciyoruz.
+        try:
+            if args.IsSuccess:
+                sender.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = True
+        except Exception:
+            pass  # eski WebView2: kisayol yok ama sag tik menusu calisir
+        return sonuc
 
     hazir._afudm = True
     edgechromium.EdgeChrome.on_webview_ready = hazir

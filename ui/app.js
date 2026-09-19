@@ -673,6 +673,7 @@ $("openSettings").onclick = async () => {
   $("sConn").value = s.max_conn_per_server ?? 16;
   $("sConc").value = s.max_concurrent ?? 5;
   $("sSpeed").value = s.max_speed_kb ?? 0;
+  $("sMode").value = s.hiz_profili || "normal";
   $("sRatio").value = s.seed_ratio ?? 1;
   $("sChat").value = s.telegram_chat_id || "";
   $("sToken").value = s.telegram_bot_token || "";
@@ -689,6 +690,9 @@ $("openSettings").onclick = async () => {
   sistemDurumu();
   telefonDurumu();
   seedListeCiz();
+  $("sSeedEk").value = s.ek_trackerlar || "";
+  $("sSeedEkOzet").textContent = "";
+  surumuCiz();
   try {
     const info = await call("api_info");
     $("apiHint").textContent =
@@ -875,6 +879,7 @@ $("setGo").onclick = async () => {
     max_conn_per_server: Number($("sConn").value) || 16,
     max_concurrent: Number($("sConc").value) || 5,
     max_speed_kb: Number($("sSpeed").value) || 0,
+    hiz_profili: $("sMode").value || "normal",
     seed_ratio: Number($("sRatio").value) || 0,
     telegram_chat_id: $("sChat").value.trim(),
     telegram_bot_token: $("sToken").value.trim(),
@@ -1098,6 +1103,26 @@ async function kaydetAc(istek) {
   $("kayQueue").textContent = "";
   openVeil("kaydetVeil");
   $("kayName").focus();
+
+  // dlman v1.12.0 yaklasimi: pencere aninda acilir, arka planda Content-Disposition
+  // ve MIME turu yoklanir; kullanici adi degistirmediyse otomatik guncellenir.
+  if (kayit.kind === "http" && kayit.url && /^https?:\/\//i.test(kayit.url)) {
+    const baslangicAd = $("kayName").value;
+    call("probe_link", kayit.url).then((probe) => {
+      if (!probe || !probe.ok) return;
+      if ($("kayName").value === baslangicAd && probe.filename) {
+        $("kayName").value = probe.filename;
+        if (probe.kategori && probe.kategori !== "genel") {
+          $("kayCat").value = probe.kategori;
+          kayHedefYaz();
+        }
+      }
+      if (probe.size) {
+        const devam = probe.resumable ? " · devam edebilir" : "";
+        $("kayQueue").textContent = size(probe.size) + devam;
+      }
+    }).catch(() => {});
+  }
 }
 
 $("kayCat").onchange = kayHedefYaz;
@@ -1199,6 +1224,198 @@ window.addEventListener("resize", () => {
   pencereZamanlayici = setTimeout(() => window.afudmPencere(), 120);
 });
 
-window.addEventListener("pywebviewready", () => { state.ready = true; window.afudmPencere(); });
+window.addEventListener("pywebviewready", () => {
+  state.ready = true;
+  window.afudmPencere();
+  surumuYukle();
+});
 tick();
 drawTrace();
+
+/* ---------- Sag tik menusu + pano ------------------------------------
+   WebView2'de pywebview varsayilan sag tik menusunu ve tarayici kisayollarini
+   DEBUG bayragina bagli aciyor (edgechromium.py): surumde ikisi de kapaliydi,
+   yani ne "bagliyi kopyala" vardi ne de Ctrl+C. Kisayollari core/pencere.py
+   geri actik; menuyu burada kendimiz ciziyoruz.
+
+   Pano islemleri Python uzerinden (Windows `clip` + panoyu dogrudan okuma):
+   navigator.clipboard gomulu pencerede izin isteyip sessizce dusuyor. */
+const ctxKutu = $("ctx");  // canvas baglami (ctx) ile karismasin
+
+async function panoyaYaz(metin) {
+  if (!metin) return false;
+  try {
+    const out = await call("panoya_kopyala", metin);
+    return !!out.ok;
+  } catch (_) { return false; }
+}
+
+async function panodanOku() {
+  try {
+    const out = await call("panodan_oku");
+    return out.metin || "";
+  } catch (_) { return ""; }
+}
+
+function ctxKapat() { ctxKutu.hidden = true; ctxKutu.innerHTML = ""; }
+
+/* ogeler: {etiket, calis, pasif} | "ayrac" | {baslik: "..."} */
+function ctxAc(x, y, ogeler) {
+  ctxKutu.innerHTML = "";
+  for (const oge of ogeler) {
+    if (oge === "ayrac") { ctxKutu.appendChild(document.createElement("hr")); continue; }
+    if (oge.baslik !== undefined) {
+      const ust = document.createElement("div");
+      ust.className = "ctx-url";
+      ust.textContent = oge.baslik;         // adres kullanicidan gelir: metin olarak bas
+      ust.title = oge.baslik;
+      ctxKutu.appendChild(ust);
+      continue;
+    }
+    const dugme = document.createElement("button");
+    dugme.type = "button";
+    dugme.textContent = oge.etiket;
+    dugme.disabled = !!oge.pasif;
+    dugme.onclick = async () => {
+      ctxKapat();
+      try { await oge.calis(); } catch (err) { toast(err.message, true); }
+    };
+    ctxKutu.appendChild(dugme);
+  }
+  ctxKutu.hidden = false;
+  // Once goster, SONRA olc: gizliyken genislik/yukseklik 0 gelir ve menu
+  // ekranin disina tasardi.
+  const kutu = ctxKutu.getBoundingClientRect();
+  ctxKutu.style.left = Math.max(4, Math.min(x, innerWidth - kutu.width - 6)) + "px";
+  ctxKutu.style.top = Math.max(4, Math.min(y, innerHeight - kutu.height - 6)) + "px";
+}
+
+addEventListener("click", (event) => { if (!ctxKutu.contains(event.target)) ctxKapat(); }, true);
+addEventListener("blur", ctxKapat);
+addEventListener("resize", ctxKapat);
+document.addEventListener("keydown", (event) => { if (event.key === "Escape") ctxKapat(); });
+
+/* Metin kutulari: kes/kopyala/yapistir/tumunu sec.
+   Yapistirma Python'dan gelir, boylece izin penceresi cikmaz. */
+function metinMenusu(alan) {
+  const secili = alan.value.slice(alan.selectionStart, alan.selectionEnd);
+  const yaz = (metin) => {
+    const bas = alan.selectionStart;
+    const son = alan.selectionEnd;
+    alan.value = alan.value.slice(0, bas) + metin + alan.value.slice(son);
+    alan.selectionStart = alan.selectionEnd = bas + metin.length;
+    // oninput dinleyicileri (ornegin "kirli" isareti) calissin
+    alan.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+  return [
+    { etiket: t("ctx.cut"), pasif: !secili || alan.readOnly,
+      calis: async () => { if (await panoyaYaz(secili)) yaz(""); } },
+    { etiket: t("ctx.copy"), pasif: !secili,
+      calis: async () => { if (await panoyaYaz(secili)) toast(t("ctx.copied")); } },
+    { etiket: t("ctx.paste"), pasif: alan.readOnly,
+      calis: async () => { const m = await panodanOku(); if (m) yaz(m); } },
+    "ayrac",
+    { etiket: t("ctx.selectAll"), calis: async () => alan.select() },
+  ];
+}
+
+document.addEventListener("contextmenu", async (event) => {
+  const alan = event.target.closest("input[type=text], input:not([type]), input[type=search], textarea");
+  if (alan) {
+    event.preventDefault();
+    ctxAc(event.clientX, event.clientY, metinMenusu(alan));
+    return;
+  }
+  const satir = event.target.closest("#list .row");
+  if (!satir) return;
+  event.preventDefault();
+  const gid = satir.dataset.gid;
+  const oge = state.items.find((i) => i.gid === gid);
+  if (!oge) return;
+  const adres = oge.source || "";
+  const ad = oge.filename || "";
+  const yol = ad ? (oge.dir ? oge.dir.replace(/[\/]+$/, "") + "\\" + ad : ad) : (oge.dir || "");
+  ctxAc(event.clientX, event.clientY, [
+    { baslik: adres || oge.title || gid },
+    { etiket: t("ctx.copyLink"), pasif: !adres,
+      calis: async () => { if (await panoyaYaz(adres)) toast(t("ctx.copied")); } },
+    { etiket: t("ctx.copyPath"), pasif: !yol,
+      calis: async () => { if (await panoyaYaz(yol)) toast(t("ctx.copied")); } },
+    { etiket: t("ctx.copyName"), pasif: !ad,
+      calis: async () => { if (await panoyaYaz(ad)) toast(t("ctx.copied")); } },
+    "ayrac",
+    { etiket: t("ctx.openFile"), pasif: oge.status !== "complete",
+      calis: () => call("dosya_ac", gid) },
+    { etiket: t("ctx.openFolder"), calis: () => call("open_item_folder", gid) },
+    "ayrac",
+    { etiket: t("ctx.again"), pasif: !adres,
+      calis: async () => {
+        $("urls").value = adres;
+        $("addErr").textContent = "";
+        $("quality").value = state.settings.video_quality || "best";
+        openVeil("addVeil");
+        $("urls").focus();
+      } },
+  ]);
+});
+
+/* Kisayollar acilinca Ctrl+R / F5 / Ctrl+P de geliyor: yeniden yukleme
+   arayuzu sifirlar, yazdirma anlamsiz. Kopyala/yapistir kalsin, bunlar gitsin. */
+document.addEventListener("keydown", (event) => {
+  const k = (event.key || "").toLowerCase();
+  if (event.key === "F5" || ((event.ctrlKey || event.metaKey) && (k === "r" || k === "p"))) {
+    event.preventDefault();
+  }
+});
+
+/* ---------- Surum (core/surum.py) ----------------------------------
+   Kullanici hangi kopyayi calistirdigini gorebilmeli: sol seritte kisa,
+   Ayarlar'da uzanti surumuyle birlikte. Kopru hazir olmadan cagrilirsa
+   sessizce bos kalir — surum gostergesi yuzunden arayuz patlamasin. */
+let surumBilgisi = null;
+
+async function surumuYukle() {
+  if (surumBilgisi) return surumBilgisi;
+  try {
+    surumBilgisi = await call("surum_bilgi");
+  } catch (_) { return null; }
+  $("brandSurum").textContent = "v" + surumBilgisi.surum;
+  return surumBilgisi;
+}
+
+async function surumuCiz() {
+  const bilgi = await surumuYukle();
+  const kutu = $("sSurum");
+  kutu.innerHTML = "";
+  if (!bilgi) { kutu.textContent = t("set.surumYok"); return; }
+  const satir = (etiket, deger) => {
+    const d = document.createElement("div");
+    d.textContent = etiket + " ";
+    const b = document.createElement("b");
+    b.textContent = deger;
+    d.appendChild(b);
+    kutu.appendChild(d);
+  };
+  satir(t("set.surumUygulama"), bilgi.surum);
+  if (bilgi.uzanti) satir(t("set.surumUzanti"), bilgi.uzanti);
+}
+
+/* ---------- Ayarlar > kendi tracker'larin (elle yapistirma) ---------- */
+$("sSeedEkYapistir").onclick = async () => {
+  const metin = await panodanOku();
+  if (!metin) { $("sSeedEkOzet").textContent = t("set.seedEkPanoBos"); return; }
+  const alan = $("sSeedEk");
+  alan.value = (alan.value.trim() ? alan.value.replace(/\s*$/, "") + "\n" : "") + metin.trim();
+  $("sSeedEkOzet").textContent = "";
+};
+
+$("sSeedEkKaydet").onclick = async () => {
+  try {
+    // seed_tracker_kaydet gecersiz satirlari ayiklar ve TEMIZ listeyi geri verir
+    const out = await call("seed_tracker_kaydet", $("sSeedEk").value);
+    $("sSeedEk").value = out.liste || "";
+    state.settings.ek_trackerlar = out.liste || "";
+    $("sSeedEkOzet").textContent = t("set.seedEkKayitli", { n: out.sayi || 0 });
+    toast(t("set.seedEkKayitli", { n: out.sayi || 0 }));
+  } catch (err) { $("sSeedEkOzet").textContent = err.message; }
+};

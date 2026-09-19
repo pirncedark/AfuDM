@@ -120,6 +120,45 @@ What it does:
 When AfuDM is closed the extension stays out of the way and the browser
 downloads normally. DRM-protected streams (Netflix etc.) cannot be downloaded.
 
+## Command line
+
+`afuadm.bat` (a thin wrapper to `afuadm.py`, needs Python) talks to the running
+AfuDM through its local HTTP API — it reads the port+token from
+`data/api_endpoint.json`, so nothing is ever sent unauthenticated. If AfuDM is
+closed it starts it in the background (`--tepside`) and waits; `--no-start`
+disables that.
+
+```
+afuadm list                                   show queue
+afuadm status --json                          engine / total speed (raw JSON)
+afuadm add https://site.com/file.zip
+afuadm add "https://youtube.com/watch?v=..." --quality 1080p --audio-only
+afuadm add URL --start-at "23:30"             schedule
+afuadm mode snail|normal|turbo                live speed profile (100 KB/s / your limit / unlimited)
+afuadm renew <gid> "https://new-valid-link"   swap expired URL, keep downloaded bytes
+afuadm watch --json                           live NDJSON stream (poll every 0.5s)
+afuadm info                                   version + service state
+```
+
+Every subcommand accepts `--json`; `--json` and `--no-start` work on either
+side of the command (`afuadm status --json` == `afuadm --json status`). In
+`--json` mode stdout carries **only** the raw JSON / NDJSON; every human
+message and error goes to stderr, and the API token never appears in any
+output. Exit codes: `0` ok, `2` AfuDM missing/unreachable, `3` record not
+found (KAYIT_YOK), `4` API error, `130` interrupted. If two `afuadm` calls
+race to start AfuDM, a lock file (`data/afuadm_baslat.lock`) lets only one of
+them spawn it; the other connects through `/ping` without starting anything.
+
+`mode` (Snail/inspiration from FDM) calls `aria2.changeGlobalOption` so running
+downloads are not interrupted. `renew` (inspiration from Neat DM) uses
+`aria2.changeUri` — the old URI leaves the list, the new one joins it, and the
+`.aria2` control file keeps every downloaded byte, so an expired Google-Drive or
+signed link picks up exactly where it dropped. `renew` is HTTP(S)/FTP only and
+accepts optional `--headers`, `--cookies`, `--user-agent`; torrent/video jobs
+are rejected. Trackers from the seed lists are normalized (glued-URL split,
+dedupe, scheme whitelist, local/blocked-host filtering) when a torrent refresh
+runs — a larger list is not a faster download, a clean one is.
+
 ## Tests
 
 ```
@@ -142,6 +181,9 @@ python tests/seed_test.py              # seed refresh + your own trackers
 python tests/cerez_test.py             # session cookies
 python tests/baslangic_test.py         # startup shortcut
 python tests/iliskilendir_test.py      # .torrent / magnet registration
+python tests/cli_test.py               # speed profiles, link renewal, scheduling
+python tests/cli_surum_test.py         # stale endpoint, double auto-start lock, JSON purity, exit codes, token leak
+python tests/trackerlar_test.py        # tracker list normalization
 ```
 
 `smoke.py` performs real downloads: multi-connection HTTP, pause/resume, magnet
@@ -162,6 +204,7 @@ is generated randomly on every install.
 AfuDM/
   AfuDM.exe      single-file build (no Python needed)
   AfuDM.bat      launcher for running from source
+  afuadm.py      command-line tool (afuadm.bat wrapper; needs Python)
   kur.bat        one-time package install
   paketle.py     builds the shippable package
   app.py         window + tray + clipboard watch
@@ -294,6 +337,44 @@ Ne yapar:
 AfuDM kapalıysa uzantı hiçbir şeye karışmaz. DRM korumalı yayınlar (Netflix vb.)
 indirilemez.
 
+## Komut satırı
+
+`afuadm.bat` (Python ister) çalışan AfuDM'e yerel HTTP API üzerinden iş verir —
+port+token'i `data/api_endpoint.json`'dan okur, bu yüzden hiçbir istek
+kimliksiz gitmez. AfuDM kapalıysa arka planda (`--tepside`) başlatıp bağlanmayı
+bekler; `--no-start` bunu kapatır.
+
+```
+afuadm list                                   kuyruğu göster
+afuadm status --json                          motor / toplam hız (ham JSON)
+afuadm add https://site.com/dosya.zip
+afuadm add "https://youtube.com/watch?v=..." --quality 1080p --audio-only
+afuadm add URL --start-at "23:30"             zamanla
+afuadm mode snail|normal|turbo                canlı hız profili (100 KB/s / limitin / sınırsız)
+afuadm renew <gid> "https://yeni-gecerli-link"  ölen linki değiştir, inen baytları koru
+afuadm watch --json                           canlı NDJSON akışı (0.5 sn'de bir)
+afuadm info                                   sürüm + servis durumu
+```
+
+Her alt komut `--json` kabul eder; `--json` ve `--no-start` komutun iki
+yanında da geçerli (`afuadm status --json` = `afuadm --json status`). `--json`
+modunda stdout **yalnızca** ham JSON/NDJSON taşır; tüm kullanıcı mesajı ve
+hata stderr'e gider, API token'ı hiçbir çıktıda görünmez. Exit kodları: `0` tamam,
+`2` AfuDM yok/erişilemez, `3` kayıt bulunamadı (KAYIT_YOK), `4` API hatası,
+`130` kullanıcı durdurdu. İki `afuadm` çağrısı aynı anda AfuDM'i başlatmaya
+kalkarsa `data/afuadm_baslat.lock` kilit dosyası yalnız birinin spawn etmesine
+izin verir; diğeri `/ping` üzerinden başlatmadan bağlanır.
+
+`mode` (FDM'in Snail Mode'u) `aria2.changeGlobalOption` çağırır; çalışan
+indirmeler kesilmez. `renew` (Neat DM'in Renew expired link'i) `aria2.changeUri`
+kullanır — eski URI listeden çıkar, yenisi girer; `.aria2` kontrol dosyası inen
+her baytı korur, böylece süresi dolan Google Drive / imzalı link tam kaldığı
+yerden sürer. `renew` yalnız HTTP(S)/FTP içindir ve `--headers`, `--cookies`,
+`--user-agent` alır; torrent/video işleri reddedilir. Seed listelerinden gelen
+tracker'lar torrent yenilenmesinde normalleştirilir (yapışık URL bölme, dedupe,
+şema beyaz listesi, yerel/engelli sunucu süzme) — daha uzun liste daha hızlı
+torrent demek değildir, temiz liste daha hızlıdır.
+
 ## Test
 
 ```
@@ -315,6 +396,7 @@ python tests/seed_test.py              # seed tazeleme + kendi tracker'ların
 python tests/cerez_test.py             # oturum çerezleri
 python tests/baslangic_test.py         # başlangıç kısayolu
 python tests/iliskilendir_test.py      # .torrent / magnet kaydı
+python tests/cli_test.py               # hız profilleri, link yenileme, zamanlama
 ```
 
 `smoke.py` gerçekten indirir: çok bağlantılı HTTP, duraklat/sürdür, magnet seed

@@ -79,6 +79,15 @@
   "menuPageVideo": {
     "message": "Bu sayfadaki videoyu AfuDM ile indir"
   },
+  "menuSelection": {
+    "message": "AfuDM ile seçili bağlantıları indir"
+  },
+  "msgToastSent": {
+    "message": "$COUNT$ bağlantı AfuDM'e gönderildi"
+  },
+  "msgToastSingle": {
+    "message": "İndirme AfuDM'e aktarıldı"
+  },
   "notifyResumed": {
     "message": "AfuDM indirmeye devam ediyor."
   },
@@ -181,5 +190,50 @@
   },
   "msgPending": {
     "message": "AfuDM penceresinde klasörü seç."
+  },
+  "optUzantiAcik": {
+    "message": "AfuDM uzantısı açık"
+  },
+  "msgKapaliNot": {
+    "message": "Uzantı kapalı: indirmeler devralınmıyor, video düğmesi gösterilmiyor."
+  },
+  "msgKapali": {
+    "message": "AfuDM uzantısı kapalı. Açmak için uzantı simgesine tıkla."
+  },
+  "msgUzantiAcildi": {
+    "message": "Uzantı açıldı."
+  },
+  "msgUzantiKapandi": {
+    "message": "Uzantı kapatıldı."
+  },
+  "labelPanelKonum": {
+    "message": "Video düğmesinin yeri"
+  },
+  "konumUstSag": {
+    "message": "Videonun üstünde, sağda"
+  },
+  "konumIcUstSag": {
+    "message": "Video içinde, sağ üst"
+  },
+  "konumIcUstSol": {
+    "message": "Video içinde, sol üst"
+  },
+  "konumIcAltSag": {
+    "message": "Video içinde, sağ alt"
+  },
+  "konumIcAltSol": {
+    "message": "Video içinde, sol alt"
+  },
+  "btnKonumSifirla": {
+    "message": "Sürüklenen yeri sıfırla"
+  },
+  "msgKonumKaydedildi": {
+    "message": "Düğme konumu kaydedildi."
+  },
+  "msgKonumSifirlandi": {
+    "message": "Sürüklenen yerler silindi; seçilen konum geçerli."
+  },
+  "msgSurukleIpucu": {
+    "message": "Düğmeyi fareyle sürükleyip istediğin yere bırakabilirsin; o site için hatırlanır."
   }
 }

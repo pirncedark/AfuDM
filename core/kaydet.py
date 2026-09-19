@@ -23,6 +23,9 @@ import time
 import urllib.parse
 import winreg
 from pathlib import Path
+from . import dosya_adi as _dosya_mod
+from .dosya_adi import guvenli_dosya_adi, resolve_filename, split_stem_ext
+
 
 KATEGORILER: dict[str, tuple[str, ...]] = {
     "video": ("mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "ts", "mpg", "mpeg", "3gp", "m3u8"),
@@ -36,14 +39,22 @@ KATEGORI_KLASORU = {
     "video": "Video", "muzik": "Müzik", "belge": "Belgeler", "program": "Programlar",
     "arsiv": "Arşiv", "resim": "Resimler", "torrent": "Torrent", "genel": "Genel",
 }
-_YASAK = set('<>:"/\\|?*')
-
-
-def kategori_tahmin(url: str, tur: str = "") -> str:
+def kategori_tahmin(url: str, tur: str = "", dosya_adi: str = "") -> str:
     if tur == "torrent" or url.lower().startswith("magnet:"):
         return "torrent"
-    yol = urllib.parse.urlparse(url).path.lower()
-    uzanti = yol.rsplit(".", 1)[-1] if "." in yol.rsplit("/", 1)[-1] else ""
+    uzanti = ""
+    if dosya_adi:
+        _, ext = split_stem_ext(dosya_adi)
+        if ext:
+            uzanti = ext.lower()
+    if not uzanti:
+        yol = urllib.parse.urlparse(url).path.lower()
+        parca = yol.rsplit("/", 1)[-1] if "/" in yol else yol
+        _, ext = split_stem_ext(parca)
+        if ext:
+            uzanti = ext.lower()
+        elif "." in parca:
+            uzanti = parca.rsplit(".", 1)[-1]
     for kategori, uzantilar in KATEGORILER.items():
         if uzanti in uzantilar:
             return kategori
@@ -54,12 +65,6 @@ def kategori_tahmin(url: str, tur: str = "") -> str:
 
 def kategori_klasoru(ana: str, kategori: str) -> str:
     return str(Path(ana) / KATEGORI_KLASORU.get(kategori, "Genel"))
-
-
-def guvenli_dosya_adi(ad: str) -> str:
-    temiz = "".join("_" if ch in _YASAK or ord(ch) < 32 else ch for ch in (ad or ""))
-    return " ".join(temiz.split()).rstrip(". ")[:200]
-
 
 # --- klasor agaci ------------------------------------------------------------
 def _kabuk_klasoru(ad: str, yedek: str) -> Path:
