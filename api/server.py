@@ -52,6 +52,22 @@ def _zamanla(s) -> float | None:
     return models.parse_time_spec(s)
 
 
+def _boolean_al(data: dict, anahtar: str) -> bool:
+    """JSON booleanini okur; uyumlu true/false metinleri disinda tahmin etmez."""
+    deger = data.get(anahtar, False)
+    if isinstance(deger, bool):
+        return deger
+    if deger is None:
+        return False
+    if isinstance(deger, str):
+        normal = deger.strip().lower()
+        if normal in ("true", "1"):
+            return True
+        if normal in ("false", "0"):
+            return False
+    raise ValueError(f"{anahtar} boolean olmali (true/false/1/0)")
+
+
 def load_or_create_token() -> str:
     paths.ensure_dirs()
     if paths.API_TOKEN_FILE.exists():
@@ -240,7 +256,7 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             if parsed.path == "/add":
                 url = data.get("url") or data.get("source") or ""
-                if (data.get("interactive") and _Handler.on_ask and url.strip()
+                if (_boolean_al(data, "interactive") and _Handler.on_ask and url.strip()
                         and self.manager.store.get("kaydetme_penceresi")):
                     kimlik = _Handler.on_ask(data)
                     self._send(200, {"ok": True, "pending": True, "id": kimlik})
@@ -256,8 +272,8 @@ class _Handler(BaseHTTPRequestHandler):
                     "kind": data.get("kind"),
                     "dest_dir": hedef,
                     "quality": data.get("quality"),
-                    "audio_only": bool(data.get("audio_only")),
-                    "playlist": bool(data.get("playlist")),
+                    "audio_only": _boolean_al(data, "audio_only"),
+                    "playlist": _boolean_al(data, "playlist"),
                     "headers": data.get("headers") or {},
                     "filename": data.get("filename") or None,
                     "cookies": data.get("cookies"),
@@ -268,10 +284,10 @@ class _Handler(BaseHTTPRequestHandler):
                     "checksum": data.get("checksum"),
                     # v1.6 Video Pro — sinirlar/dogrulama from_mapping'de tek yerde.
                     "altyazi_diller": data.get("altyazi_diller") or None,
-                    "oto_altyazi": bool(data.get("oto_altyazi")),
-                    "altyazi_goem": bool(data.get("altyazi_goem")),
+                    "oto_altyazi": _boolean_al(data, "oto_altyazi"),
+                    "altyazi_goem": _boolean_al(data, "altyazi_goem"),
                     "kucuk_resim": data.get("kucuk_resim") or None,
-                    "ustveri_goem": bool(data.get("ustveri_goem")),
+                    "ustveri_goem": _boolean_al(data, "ustveri_goem"),
                     "bolumler": data.get("bolumler") or None,
                     "sponsorblock": data.get("sponsorblock") or None,
                     "bolum_araligi": data.get("bolum_araligi") or None,
@@ -290,7 +306,7 @@ class _Handler(BaseHTTPRequestHandler):
                 elif action == "resume":
                     self.manager.resume(gid)
                 elif action == "remove":
-                    self.manager.remove(gid, bool(data.get("delete_files")))
+                    self.manager.remove(gid, _boolean_al(data, "delete_files"))
                 elif action == "pause_all":
                     self.manager.pause_all()
                 elif action == "resume_all":
@@ -339,14 +355,14 @@ class _Handler(BaseHTTPRequestHandler):
                 # paneline duser. Tehlikesizdir: cabuk kurutma/indirme YOKTUR,
                 # is canli UI'da kullanicinindir. Analiz JS tarafinda yapilir.
                 metin = (data.get("metin") or "").strip()
-                uyari = data.get("dosya") or False
+                uyari = _boolean_al(data, "dosya")
                 if not metin:
                     self._hata(400, "BAD_REQUEST", "metin gerekli")
                     return
                 if _Handler.on_linkgrabber is None:
                     self._hata(503, "UI_YOK", "LinkGrabber paneli kullanilamiyor")
                     return
-                _Handler.on_linkgrabber(metin, bool(uyari))
+                _Handler.on_linkgrabber(metin, uyari)
                 self._send(200, {"ok": True, "pending": True})
             else:
                 self._hata(404, "BILINMEYEN_YOL", "bilinmeyen yol")

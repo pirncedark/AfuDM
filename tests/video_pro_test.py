@@ -163,13 +163,14 @@ kd = _komut(_isin(dosya_sablonu="Video/%(title)s.%(ext)s"))
 check("dosya sablonu -o degerine yazilir",
       kd[kd.index("-o") + 1] == "Video/%(title)s.%(ext)s", str(kd))
 
-print("3) ffmpeg YOKKEN --embed-* bayraklari sessizce ATLANIR")
+print("3) ffmpeg YOKKEN --embed-* bayraklari atlanir ama not dusulur")
 j7 = _isin(
     altyazi_diller="tr", oto_altyazi=True, altyazi_goem=True,
     kucuk_resim="goem", ustveri_goem=True, bolumler="goem",
     sponsorblock="sponsor", bolum_araligi="00:00:01-00:00:02",
 )
 k7 = _komut(j7, ffmpeg_var=False)
+check("ffmpeg'siz gomme istegi gorunur not birakir", bool(j7.error), j7.error)
 for bayrak in ("--embed-subs", "--embed-thumbnail", "--embed-metadata",
                "--embed-chapters"):
     check(f"ffmpeg'siz {bayrak} eklenmez", bayrak not in k7, str(k7))
@@ -253,6 +254,23 @@ try:
     check("metin olmayan altyazi RED", False)
 except ValueError:
     check("metin olmayan altyazi RED", True)
+
+for alan, deger in (
+    ("kapsayici", "avi"), ("ses_formati", "ogg"),
+    ("tarayici_cerezi", "bilinmeyen"), ("sponsorblock", "sponsor;intro"),
+    ("bolum_araligi", "01:02:03"),
+):
+    try:
+        models.DownloadRequest.from_mapping({"source": "x", alan: deger})
+        check(f"gecersiz {alan} RED", False)
+    except ValueError:
+        check(f"gecersiz {alan} RED", True)
+
+try:
+    models.DownloadRequest.from_mapping({"source": "x", "kapsayici": "m" * 33})
+    check("kapsayici uzunluk siniri korunur", False)
+except ValueError as exc:
+    check("kapsayici uzunluk siniri korunur", "cok uzun" in str(exc), str(exc))
 
 print("\nvideo pro: %d kontrol, %d hata" % (_toplam, len(fails)))
 if fails:

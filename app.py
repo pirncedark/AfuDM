@@ -359,6 +359,18 @@ class Api:
                 "cookies": istek.get("cookies"),
                 "user_agent": istek.get("user_agent"),
                 "title": (ad or istek.get("title")) if kind == "video" else istek.get("title"),
+                "altyazi_diller": secim.get("altyazi_diller") or "",
+                "oto_altyazi": bool(secim.get("oto_altyazi")),
+                "altyazi_goem": bool(secim.get("altyazi_goem")),
+                "kucuk_resim": secim.get("kucuk_resim") or "",
+                "ustveri_goem": bool(secim.get("ustveri_goem")),
+                "bolumler": secim.get("bolumler") or "",
+                "sponsorblock": secim.get("sponsorblock") or "",
+                "bolum_araligi": secim.get("bolum_araligi") or "",
+                "kapsayici": secim.get("kapsayici") or "",
+                "ses_formati": secim.get("ses_formati") or "",
+                "dosya_sablonu": secim.get("dosya_sablonu") or "",
+                "tarayici_cerezi": secim.get("tarayici_cerezi") or "",
             })
             sonuc = self.manager.add(istek_req)
         except Exception as exc:
@@ -538,6 +550,18 @@ class Api:
                     audio_only=bool(payload.get("audio_only")),
                     playlist=bool(payload.get("playlist")),
                     start_after=start_after,
+                    altyazi_diller=payload.get("altyazi_diller") or "",
+                    oto_altyazi=bool(payload.get("oto_altyazi")),
+                    altyazi_goem=bool(payload.get("altyazi_goem")),
+                    kucuk_resim=payload.get("kucuk_resim") or "",
+                    ustveri_goem=bool(payload.get("ustveri_goem")),
+                    bolumler=payload.get("bolumler") or "",
+                    sponsorblock=payload.get("sponsorblock") or "",
+                    bolum_araligi=payload.get("bolum_araligi") or "",
+                    kapsayici=payload.get("kapsayici") or "",
+                    ses_formati=payload.get("ses_formati") or "",
+                    dosya_sablonu=payload.get("dosya_sablonu") or "",
+                    tarayici_cerezi=payload.get("tarayici_cerezi") or "",
                 )
                 if start_after:
                     scheduled += 1

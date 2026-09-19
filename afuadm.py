@@ -616,7 +616,7 @@ def komutlar_ayirici() -> argparse.ArgumentParser:
     ik.add_argument("--bolum-araligi", help="yalniz araligi indir (orn. '00:01:00-00:02:30')")
     ik.add_argument("--kapsayici", help="birlesik kapsayici (varsayilan mp4)")
     ik.add_argument("--ses-formati", help="ses bicimi (--audio-only ile; varsayilan mp3)")
-    ik.add_argument("--sablon", help="dosya adi sablonu (-o); orn. 'Video/%(title)s.%(ext)s'")
+    ik.add_argument("--sablon", help="dosya adi sablonu (-o); orn. 'Video/%%(title)s.%%(ext)s'")
     ik.add_argument("--tarayici-cerezi", help="tarayici cerezi profili (orn. 'chrome')")
     ik.set_defaults(func=komut_add)
 

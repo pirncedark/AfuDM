@@ -20,6 +20,11 @@ PROXY_MAX = 1024
 # v1.6 Video Pro — serbest metin alanlari icin makul ust sinirlar.
 KUCUK_RESIM_SECENEKLERI = ("goem", "dosya")
 BOLUMLER_SECENEKLERI = ("goem", "ayir")
+KAPSAYICI_SECENEKLERI = ("mp4", "mkv", "webm")
+SES_FORMATI_SECENEKLERI = ("mp3", "m4a", "aac", "opus", "flac", "wav")
+TARAYICI_CEREZI_SECENEKLERI = (
+    "chrome", "edge", "firefox", "brave", "chromium", "opera", "vivaldi", "safari",
+)
 ALTYAZI_MAX = 200
 SPONSORBLOCK_MAX = 200
 BOLUM_ARALIGI_MAX = 64
@@ -42,6 +47,10 @@ CHECKSUM_TURLERI = {
     "sha512": "sha-512",
 }
 _CHECKSUM_RE = re.compile(r"^([A-Za-z0-9-]+)[:=]([0-9a-fA-F]+)$")
+_SPONSORBLOCK_RE = re.compile(r"^[A-Za-z0-9_]+(?:,[A-Za-z0-9_]+)*$")
+_BOLUM_ARALIGI_RE = re.compile(
+    r"^(?:\d{2}:\d{2}:\d{2}|\d{2}:\d{2})-(?:\d{2}:\d{2}:\d{2}|\d{2}:\d{2})$"
+)
 
 
 def parse_time_spec(s: object) -> float | None:
@@ -116,9 +125,14 @@ def _metin_al(data: Mapping[str, Any], anahtar: str, sinir: int) -> str:
 
 
 def _secim_al(data: Mapping[str, Any], anahtar: str,
-              secenekler: tuple[str, ...]) -> str:
+              secenekler: tuple[str, ...], sinir: int | None = None) -> str:
     """Ikili secenek alanlari: bos -> '', bilinmeyen deger -> ValueError."""
-    deger = data.get(anahtar)
+    if sinir is not None:
+        deger = _metin_al(data, anahtar, sinir)
+        if not deger:
+            return ""
+    else:
+        deger = data.get(anahtar)
     if deger in (None, ""):
         return ""
     if not isinstance(deger, str):
@@ -128,6 +142,14 @@ def _secim_al(data: Mapping[str, Any], anahtar: str,
         raise ValueError(
             f"{anahtar} su degerlerden biri olmali: {', '.join(secenekler)}"
         )
+    return deger
+
+
+def _desenli_metin_al(data: Mapping[str, Any], anahtar: str, sinir: int,
+                       desen: re.Pattern[str], bicim: str) -> str:
+    deger = _metin_al(data, anahtar, sinir)
+    if deger and not desen.fullmatch(deger):
+        raise ValueError(f"{anahtar} {bicim} biciminde olmali")
     return deger
 
 
@@ -211,6 +233,10 @@ class DownloadRequest:
         # reddedilir (proxy/checksum'daki usul).
         kucuk_resim = _secim_al(data, "kucuk_resim", KUCUK_RESIM_SECENEKLERI)
         bolumler = _secim_al(data, "bolumler", BOLUMLER_SECENEKLERI)
+        kapsayici = _secim_al(data, "kapsayici", KAPSAYICI_SECENEKLERI, KAPSAYICI_MAX)
+        ses_formati = _secim_al(data, "ses_formati", SES_FORMATI_SECENEKLERI, SES_FORMATI_MAX)
+        tarayici_cerezi = _secim_al(
+            data, "tarayici_cerezi", TARAYICI_CEREZI_SECENEKLERI, TARAYICI_CEREZI_MAX)
 
         return cls(
             source=kaynak,
@@ -233,10 +259,13 @@ class DownloadRequest:
             kucuk_resim=kucuk_resim,
             ustveri_goem=bool(data.get("ustveri_goem")),
             bolumler=bolumler,
-            sponsorblock=_metin_al(data, "sponsorblock", SPONSORBLOCK_MAX),
-            bolum_araligi=_metin_al(data, "bolum_araligi", BOLUM_ARALIGI_MAX),
-            kapsayici=_metin_al(data, "kapsayici", KAPSAYICI_MAX),
-            ses_formati=_metin_al(data, "ses_formati", SES_FORMATI_MAX),
+            sponsorblock=_desenli_metin_al(
+                data, "sponsorblock", SPONSORBLOCK_MAX, _SPONSORBLOCK_RE, "kategori listesi"),
+            bolum_araligi=_desenli_metin_al(
+                data, "bolum_araligi", BOLUM_ARALIGI_MAX, _BOLUM_ARALIGI_RE,
+                "SS:DD:SS-SS:DD:SS veya DD:SS-DD:SS"),
+            kapsayici=kapsayici,
+            ses_formati=ses_formati,
             dosya_sablonu=_metin_al(data, "dosya_sablonu", DOSYA_SABLONU_MAX),
-            tarayici_cerezi=_metin_al(data, "tarayici_cerezi", TARAYICI_CEREZI_MAX),
+            tarayici_cerezi=tarayici_cerezi,
         )

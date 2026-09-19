@@ -294,7 +294,12 @@ class VideoJob:
             cmd += ["--write-subs", "--sub-langs", self.altyazi_diller]
         if self.oto_altyazi:
             cmd += ["--write-auto-subs"]
-        # --embed-* ffmpeg ister: yoksa SESSIZCE atlanir (cokme yok).
+        # --embed-* ffmpeg ister; is basarili kalsin ama kayda gorunur not dus.
+        if not ffmpeg_var and (
+            self.altyazi_goem or self.kucuk_resim == "goem"
+            or self.ustveri_goem or self.bolumler == "goem"
+        ):
+            self.error = lang.t("note.ffmpegEmbedSkipped", self.dil)
         if ffmpeg_var and self.altyazi_goem:
             cmd += ["--embed-subs"]
         if ffmpeg_var and self.kucuk_resim == "goem":
@@ -436,7 +441,7 @@ class VideoJob:
             karar = self.yedek_karari(
                 " ".join(tail[-6:]),
                 aria2c_var=self._dis_indirici_vardi(),
-                cerez_var=bool(self.cookie_file),
+                cerez_var=bool(self.cookie_file or self.tarayici_cerezi),
                 aria_denendi=self._yedek_denendi,
                 cerezsiz_denendi=self._cerezsiz_denendi,
             )
