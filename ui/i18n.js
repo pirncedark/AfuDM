@@ -429,6 +429,7 @@ const DICT = {
     "err.failed": "işlem başarısız",
     "err.noRetry": "bu kayıt yeniden başlatılamıyor",
     "hint.api": "Tarayıcı uzantısı bağlantısı: 127.0.0.1:{port} — anahtar data/api_endpoint.json içinde.",
+    "rel.title": "Güvenilirlik ve güvenlik", "rel.hint": "Durumu denetle, yedekle ve destek paketini güvenle hazırla.", "rel.integrity": "Bütünlüğü denetle", "rel.backup": "Şimdi yedekle", "rel.health": "Motor sağlığı", "rel.restart": "Motoru yeniden başlat", "rel.preview": "Maskelenmiş önizleme", "rel.export": "Tanı paketini kaydet", "rel.backups": "Yedekleri göster", "rel.restore": "Geri yükle", "rel.restoreAsk": "Geri yüklemeden önce mevcut durum yedeklenecek. Devam edilsin mi?", "rel.noBackups": "Yedek bulunamadı.", "rel.rotate": "API anahtarını yenile", "rel.backupDone": "Yedek oluşturuldu", "rel.rotateDone": "Yeni anahtar etkin; eski anahtar geçersiz.", "rel.offline": "Güvenilirlik servisine bağlanılamadı.", "apply.now": "hemen",
   },
 
   en: {
@@ -843,6 +844,7 @@ const DICT = {
     "err.failed": "the operation failed",
     "err.noRetry": "this entry cannot be restarted",
     "hint.api": "Browser extension endpoint: 127.0.0.1:{port} — the key is in data/api_endpoint.json.",
+    "rel.title": "Reliability and security", "rel.hint": "Check status, back up, and prepare a safe support package.", "rel.integrity": "Check integrity", "rel.backup": "Back up now", "rel.health": "Engine health", "rel.restart": "Restart engine", "rel.preview": "Masked preview", "rel.export": "Save diagnostics package", "rel.backups": "Show backups", "rel.restore": "Restore", "rel.restoreAsk": "The current state will be backed up before restore. Continue?", "rel.noBackups": "No backups found.", "rel.rotate": "Rotate API key", "rel.backupDone": "Backup created", "rel.rotateDone": "New key active; old key invalid.", "rel.offline": "Cannot connect to reliability service.", "apply.now": "immediate",
   },
 };
 

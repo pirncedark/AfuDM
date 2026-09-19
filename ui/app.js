@@ -1545,10 +1545,22 @@ $("openSettings").onclick = async () => {
       t("hint.api", { port: info.port });
   } catch (_) { $("apiHint").textContent = ""; }
   renderEngines();
+  reliabilityStatus();
   if (state.motorTimer) clearInterval(state.motorTimer);
   state.motorTimer = setInterval(renderEngines, 1000);
   openVeil("setVeil");
 };
+
+function reliabilityShow(value) { $("relStatus").textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2); }
+async function reliabilityStatus() { try { reliabilityShow(await call("reliability_integrity")); } catch (_) { reliabilityShow(t("rel.offline")); } }
+$("relIntegrity").onclick = async () => { try { reliabilityShow(await call("reliability_integrity")); } catch (e) { toast(e.message, true); } };
+$("relBackup").onclick = async () => { try { reliabilityShow(await call("reliability_backup")); toast(t("rel.backupDone")); } catch (e) { toast(e.message, true); } };
+$("relHealth").onclick = async () => { try { reliabilityShow(await call("reliability_health")); } catch (e) { toast(e.message, true); } };
+$("relRestart").onclick = async () => { try { reliabilityShow(await call("reliability_restart_engine")); } catch (e) { toast(e.message, true); } };
+$("relDiagnostic").onclick = async () => { try { reliabilityShow(await call("reliability_diagnostics_preview")); } catch (e) { toast(e.message, true); } };
+$("relExport").onclick = async () => { try { reliabilityShow(await call("reliability_diagnostics_export")); } catch (e) { toast(e.message, true); } };
+$("relBackups").onclick = async () => { try { const out = await call("reliability_backups"), box = $("relBackupsList"); box.replaceChildren(); out.items.forEach((item) => { const b = document.createElement("button"); b.className = "btn ghost"; b.textContent = t("rel.restore") + ": " + item.name; b.onclick = async () => { if (!confirm(t("rel.restoreAsk"))) return; try { reliabilityShow(await call("reliability_restore", item.path)); } catch (e) { toast(e.message, true); } }; box.appendChild(b); }); if (!out.items.length) box.textContent = t("rel.noBackups"); } catch (e) { toast(e.message, true); } };
+$("relToken").onclick = async () => { try { reliabilityShow(await call("security_rotate_token")); toast(t("rel.rotateDone")); } catch (e) { toast(e.message, true); } };
 
 /* ---------- sistem ayarlari: baslangic + .torrent/magnet (core/baslangic.py,
    core/iliskilendir.py) ---------- */

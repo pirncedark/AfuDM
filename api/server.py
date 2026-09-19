@@ -98,6 +98,9 @@ class _Handler(BaseHTTPRequestHandler):
     # Uzanti "Sayfadaki linkleri gönder" dediginde ham metni LinkGrabber
     # paneline iletmek icin. None ise istek reddedilir (panel kapali/UI yok).
     on_linkgrabber = None
+    reliability = None
+    rotate_token = None
+    _rate: dict[str, list[float]] = {}
 
     # --- yardimcilar ------------------------------------------------------
     def log_message(self, fmt: str, *args) -> None:  # konsolu kirletmesin
@@ -127,6 +130,13 @@ class _Handler(BaseHTTPRequestHandler):
         header = self.headers.get("X-AfuDM-Token", "")
         supplied = header or (query.get("token", [""])[0])
         return bool(self.token) and secrets.compare_digest(supplied, self.token)
+
+    def _rate_allowed(self) -> bool:
+        """Small in-memory per-client limit; no token/IP is written to disk/logs."""
+        key = self.client_address[0]; now = time.monotonic()
+        hits = [t for t in self._rate.get(key, []) if now - t < 60]
+        if len(hits) >= 120: self._rate[key] = hits; return False
+        hits.append(now); self._rate[key] = hits; return True
 
     def _sayfa_gonder(self, yol) -> None:
         """Tek dosyalik arayuzu gonder (telefon icin; CSS/JS iceride gomulu)."""
@@ -161,6 +171,7 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
+        if not self._rate_allowed(): self._hata(429, "RATE_LIMIT", "cok fazla istek; bir dakika sonra yeniden dene"); return
         if parsed.path == "/ping":
             # Kimlik sagligi: CLI/uzanti endpoint'in bu surece ait oldugunu
             # app alanindan dogrular. Anahtarsizdir (yalnizca bilgi).
@@ -234,6 +245,7 @@ class _Handler(BaseHTTPRequestHandler):
                     "scheduler", "hiz_profilleri", "renew", "ozel_basliklar",
                     "cerez", "zamanlama", "cli", "api", "kategori_klasorleri",
                     "proxy", "sistem_proxy", "checksum", "canli_ayar",
+                    "reliability",
                 ],
                 "sinirlar": {
                     "kaynak": models.SOURCE_MAX,
@@ -249,6 +261,7 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
+        if not self._rate_allowed(): self._hata(429, "RATE_LIMIT", "cok fazla istek; bir dakika sonra yeniden dene"); return
         if not self._authorized(query):
             self._hata(401, "GECERSIZ_TOKEN", "gecersiz token")
             return
@@ -350,6 +363,13 @@ class _Handler(BaseHTTPRequestHandler):
                     self._hata(400, "BAD_REQUEST", "profil gerekli (snail|normal|turbo)")
                     return
                 self._send(200, {"ok": True, **self.manager.set_mode(ad)})
+            elif parsed.path == "/reliability/integrity": self._send(200, self.reliability.integrity())
+            elif parsed.path == "/reliability/backup": self._send(200, self.reliability.backup())
+            elif parsed.path == "/reliability/diagnostics-preview": self._send(200, self.reliability.diagnostics_preview())
+            elif parsed.path == "/reliability/diagnostics-export": self._send(200, self.reliability.diagnostics_export())
+            elif parsed.path == "/token/rotate":
+                if not self.rotate_token: self._hata(503, "KULLANILAMIYOR", "token rotasyonu kullanilamiyor"); return
+                self.rotate_token(); self._send(200, {"ok": True, "rotated": True})
             elif parsed.path == "/linkgrabber":
                 # Uzanti handoff'u: kopylanamayan/sayfa linkleri LinkGrabber
                 # paneline duser. Tehlikesizdir: cabuk kurutma/indirme YOKTUR,
@@ -394,6 +414,9 @@ class LocalAPI:
     def __init__(self, manager, port: int = 6811, lan: bool = False) -> None:
         self.token = load_or_create_token()
         _Handler.manager = manager
+        from core.reliability import Reliability
+        _Handler.reliability = Reliability(manager)
+        _Handler.rotate_token = self.rotate_token
         _Handler.token = self.token
         self.port = port
         # lan=True: telefon baglanabilsin diye yerel aga ac (bkz. modul basligi)
@@ -423,6 +446,15 @@ class LocalAPI:
         )
         _dosya_iznini_kisitla(endpoint)
         return self.port
+
+    def rotate_token(self) -> str:
+        """Replaces the only accepted token immediately; old callers receive 401."""
+        self.token = secrets.token_urlsafe(24); _Handler.token = self.token
+        paths.API_TOKEN_FILE.write_text(self.token, encoding="utf-8"); _dosya_iznini_kisitla(paths.API_TOKEN_FILE)
+        if self.httpd:
+            (paths.DATA / "api_endpoint.json").write_text(json.dumps({"port": self.port, "token": self.token}), encoding="utf-8")
+            _dosya_iznini_kisitla(paths.DATA / "api_endpoint.json")
+        return self.token
 
     def lan_adresi(self) -> str:
         """Telefonun yazacagi adres. Makinenin LAN IP'si UDP rota secimiyle

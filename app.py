@@ -27,6 +27,7 @@ from core import (baslangic, chrome_kurulum, clipboard, dosya_adi, engines, guc,
                   tracker_saglik,
                   kaydet, lang, linkgrabber, models, paths, pencere)
 from core.manager import Manager  # noqa: E402
+from core.reliability import Reliability  # noqa: E402
 
 # Pencere basligi dile gore secilir (bkz. core/lang.py); ayar okunana kadar bu durur.
 WINDOW_TITLE = "AfuDM"
@@ -55,6 +56,21 @@ class Api:
     def __init__(self, manager: Manager, local_api: LocalAPI) -> None:
         self.manager = manager
         self.local_api = local_api
+        self.reliability = Reliability(manager)
+
+    # v2.3 Reliability & Security: desktop and HTTP use this shared service.
+    def reliability_integrity(self) -> dict: return self.reliability.integrity()
+    def reliability_backup(self) -> dict: return self.reliability.backup()
+    def reliability_backups(self) -> dict: return self.reliability.backups()
+    def reliability_restore(self, archive: str) -> dict: return self.reliability.restore(archive)
+    def reliability_diagnostics_preview(self) -> dict: return self.reliability.diagnostics_preview()
+    def reliability_diagnostics_export(self) -> dict: return self.reliability.diagnostics_export()
+    def reliability_health(self) -> dict: return self.reliability.health()
+    def reliability_restart_engine(self) -> dict: return self.reliability.restart_engine()
+    def reliability_recovery_preview(self, row_id: int) -> dict: return self.reliability.recovery_preview(row_id)
+    def security_rotate_token(self) -> dict:
+        self.local_api.rotate_token()
+        return {"ok": True, "message": "Yeni anahtar etkin; eski anahtar aninda gecersiz."}
         # Alt cizgili: pywebview js_api'nin ozelliklerini DOLASIR; `window.native`
         # (.NET formu) sonsuz derinlige inip gunlugu "Empty.Empty..." ile dolduruyordu.
         self._window: webview.Window | None = None
