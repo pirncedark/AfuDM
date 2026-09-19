@@ -189,6 +189,35 @@ class Api:
         ogeler = [{"url": u, "tur": linkgrabber.tur_bul(u)} for u in urller]
         return {"ok": True, "toplam": len(ogeler), "ogeler": ogeler, "filtre": filtre}
 
+    def linkgrabber_suz(self, ogeler: list[dict], filtre: dict | None = None) -> dict:
+        """Paneldeki canli filtre: arama (wildcard), tur, domain, boyut araligi.
+
+        Tek mantik core/linkgrabber.ogeleri_filtrele'dedir — UI'da kural
+        kopyasi YOKTUR. Donus: eslesen ogelerin indeksleri + toplam/gosterim.
+        """
+        filtre = filtre or {}
+        sadece = {t for t in (filtre.get("sadece") or []) if t and t != "all"}
+        try:
+            min_bayt = int(filtre.get("min_boyut")) if filtre.get("min_boyut") not in (None, "") else None
+            max_bayt = int(filtre.get("max_boyut")) if filtre.get("max_boyut") not in (None, "") else None
+        except (TypeError, ValueError):
+            min_bayt = max_bayt = None
+        indeks = linkgrabber.ogeleri_filtrele(
+            ogeler or [],
+            ara=filtre.get("ara") or "",
+            sadece=sadece,
+            domain=filtre.get("domain") or "",
+            min_boyut=min_bayt,
+            max_boyut=max_bayt,
+        )
+        return {
+            "ok": True,
+            "toplam": len(ogeler or []),
+            "gosterilen": len(indeks),
+            "indeks": indeks,
+            "domainler": linkgrabber.domainler(ogeler or []),
+        }
+
     def linkgrabber_probe(self, urller: list[str], es_zamanli: int = 8) -> dict:
         """Seçilen URL'ler icin toplu lazy probe (sinirli eszamanlilik)."""
         urller = urller or []

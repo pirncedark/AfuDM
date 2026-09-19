@@ -662,6 +662,19 @@ input, textarea, code, .kv, .row-title, .kay-url, .hint, .err-note { user-select
 .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
 .lg-filtre { margin-top: 10px; }
 .lg-filtre label { font-size: 11px; color: var(--muted); }
+.lg-filtre select,
+.lg-filtre input[type="text"] {
+  width: 100%;
+  margin-top: 2px;
+  background: var(--bg-deep);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 5px 7px;
+  font-size: 12.5px;
+}
+.lg-filtre-ara label { display: block; font-size: 11px; color: var(--muted); }
+.lg-filtre-ara input[type="text"] { font-family: var(--mono); }
 .lg-aktif { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .lg-durum { font-size: 12px; color: var(--muted); }
 .lg-liste {

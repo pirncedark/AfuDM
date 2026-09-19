@@ -422,14 +422,74 @@ $("addGo").onclick = async () => {
 };
 
 /* ---------- LinkGrabber (v1.5) ----------
-   Akis: metin yapistir -> analiz (ayikla+normalize+tekil+filtre) ->
-   liste (onay kutusu, tur, ad, boyut) -> sec -> toplu ekle. */
-const lgState = { ogeler: [], filtre: { sadece: [], domain: "" } };
+   Akis: metin yapistir -> analiz (ayikla+normalize+tekil) ->
+   liste -> canli filtre (ara/joker + tur + domain + boyut) ->
+   "+ boyutlari tara" -> sec -> toplu ekle.
+   Filtre kurali YALNIZCA core'da (linkgrabber.ogeleri_filtrele); panel
+   yalnizca linkgrabber_suz'u cagirir ve gosterilen indeksleri cizer. */
+const lgState = { ogeler: [], gosterim: [], filtre: { sadece: [], domain: "", ara: "" } };
 
 function lgTurEtiketi(tur) {
   const anahtar = "lg.tur." + tur;
   const metin = t(anahtar);
   return metin === anahtar ? escapeHtml(tur) : metin;
+}
+
+let lgSuzTimer = null;
+function lgSuzGecikmeli() {
+  clearTimeout(lgSuzTimer);
+  lgSuzTimer = setTimeout(lgSuz, 160);
+}
+
+async function lgSuz() {
+  if (!lgState.ogeler.length) { lgRender(); return; }
+  const filtre = {
+    sadece: Array.from($("lgSadece").selectedOptions)
+      .map((o) => o.value).filter((v) => v !== "all"),
+    domain: $("lgDomain").value || "",
+    ara: $("lgAra").value.trim(),
+    min_boyut: bsBoyutMin($("lgBoyut").value),
+    max_boyut: bsBoyutMax($("lgBoyut").value),
+  };
+  lgState.filtre = filtre;
+  const gosterilenler = lgState.ogeler.filter((o) => o.secili).length;
+  try {
+    const out = await call("linkgrabber_suz", lgState.ogeler, filtre);
+    if (out.ok) {
+      lgState.gosterim = out.indeks || [];
+      const secili = out.indeks.filter((i) => lgState.ogeler[i] && lgState.ogeler[i].secili).length;
+      $("lgDurum").textContent = t("lg.listCount", {
+        g: out.gosterilen,
+        n: out.toplam,
+      }) + " · " + t("lg.sonuc", { n: out.toplam, m: secili || gosterilenler });
+      $("lgGo").disabled = secili === 0;
+      $("lgGo").textContent = t("lg.go", { n: secili });
+      lgDomainDoldur(out.domainler || []);
+      lgRender();
+    }
+  } catch (err) { /* bridge yoksa liste eski haliyle kalsin */ }
+}
+
+function lgDomainDoldur(domainler) {
+  const guncel = $("lgDomain").value;
+  const hepsiBir = domainler.length === 0 || (domainler.length === 1 && domainler[0] === "");
+  $("lgDomain").innerHTML = '<option value="">' + t("lg.tum") + "</option>" +
+    domainler.filter(Boolean).map((d) =>
+      `<option value="${escapeHtml(d)}"${d === guncel ? " selected" : ""}>${escapeHtml(d)}</option>`).join("");
+  if (hepsiBir) $("lgDomain").value = "";
+}
+
+function bsBoyutMin(deger) {
+  if (deger === ">1GB") return 1 << 30;
+  if (deger === ">100MB") return 100 * (1 << 20);
+  if (deger === ">10MB") return 10 * (1 << 20);
+  return null;
+}
+
+function bsBoyutMax(deger) {
+  if (deger === "<10MB") return 10 * (1 << 20);
+  if (deger === "<100MB") return 100 * (1 << 20);
+  return null;
 }
 
 function lgRender() {
@@ -441,12 +501,16 @@ function lgRender() {
     $("lgGo").disabled = true;
     return;
   }
+  const indeks = lgState.gosterim && lgState.gosterim.length
+    ? lgState.gosterim : lgState.ogeler.map((_, i) => i);
   const secili = lgState.ogeler.filter((o) => o.secili).length;
-  durum.textContent = t("lg.sonuc", { n: lgState.ogeler.length, m: secili });
+  durum.textContent = t("lg.listCount", { g: indeks.length, n: lgState.ogeler.length }) +
+    " · " + t("lg.sonuc", { n: lgState.ogeler.length, m: secili });
   $("lgGo").disabled = secili === 0;
   $("lgGo").textContent = t("lg.go", { n: secili });
-  liste.innerHTML = lgState.ogeler.map((o, i) => {
-    const boyut = o.probed ? size(Number(o.size) || 0) : "…";
+  liste.innerHTML = indeks.map((i) => {
+    const o = lgState.ogeler[i];
+    const boyut = o.probed ? (o.size ? size(Number(o.size)) : t("lg.boyutYok")) : "…";
     const ad = o.filename || "—";
     return `<label class="lg-satir${o.secili ? " secili" : ""}">
       <input type="checkbox" data-i="${i}" ${o.secili ? "checked" : ""}>
@@ -467,18 +531,15 @@ function lgRender() {
 async function linkgrabberAnaliz() {
   const metin = $("lgMetin").value || "";
   if (!metin.trim()) { toast(t("err.noLink"), true); return; }
-  const filtre = { ...lgState.filtre };
-  filtre.sadece = Array.from($("lgSadece").selectedOptions)
-    .map((o) => o.value).filter((v) => v !== "all");
-  filtre.domain = $("lgDomain").value.trim();
-  lgState.filtre = filtre;
   $("lgDurum").textContent = t("lg.analizDurum");
   try {
-    const out = await call("linkgrabber_analiz", metin, filtre);
-    lgState.ogeler = (out.ogeler || []).map((o) => ({
+    const out = await call("linkgrabber_analiz", metin, {});
+    const ogeler = (out.ogeler || []).map((o) => ({
       ...o, secili: true, probed: false, filename: "", size: null,
     }));
-    lgRender();
+    lgState.ogeler = ogeler;
+    lgState.gosterim = lgState.ogeler.map((_, i) => i);
+    lgSuz();
     toast(t("lg.bulundu", { n: lgState.ogeler.length }));
   } catch (err) { toast(err.message, true); }
 }
@@ -500,7 +561,7 @@ async function linkgrabberProbe() {
         }
       }
     }
-    lgRender();
+    lgSuz();
     toast(t("lg.probeBitti"));
   } catch (err) { toast(err.message, true); }
 }
@@ -517,6 +578,7 @@ async function linkgrabberEkle() {
     closeVeil("lgVeil");
     $("lgMetin").value = "";
     lgState.ogeler = [];
+    lgState.gosterim = [];
     lgRender();
     let message = t("toast.started", { n: out.added });
     if (out.scheduled) message = t("toast.scheduled", { n: out.scheduled });
@@ -528,6 +590,8 @@ async function linkgrabberEkle() {
 $("lgBtn").onclick = () => {
   $("lgDomain").value = lgState.filtre.domain || "";
   $("lgSadece").value = "all";
+  $("lgAra").value = "";
+  $("lgBoyut").value = "";
   $("quality").value = state.settings.video_quality || "best";
   openVeil("lgVeil");
   lgRender();
@@ -536,6 +600,10 @@ $("lgBtn").onclick = () => {
 $("lgAnaliz").onclick = linkgrabberAnaliz;
 $("lgProbe").onclick = linkgrabberProbe;
 $("lgGo").onclick = linkgrabberEkle;
+$("lgSadece").onchange = lgSuz;
+$("lgDomain").onchange = lgSuz;
+$("lgBoyut").onchange = lgSuz;
+$("lgAra").oninput = lgSuzGecikmeli;
 
 /* ---------- seed penceresi (core/manager.seed_tazele) ----------
    aria2 CALISAN torrente tracker EKLEMEZ (olculdu); tazeleme, isi kaldirip

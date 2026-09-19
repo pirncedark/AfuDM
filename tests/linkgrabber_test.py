@@ -153,6 +153,35 @@ check("www.example.com domain, host dropsuz dahil",
       lg.filtrele(["https://example.com/a.zip"], domain="www.example.com") == ["https://example.com/a.zip"],
       str(lg.filtrele(["https://example.com/a.zip"], domain="www.example.com")))
 
+print("5c) ogeleri_filtrele — arama/wildcard + tur + domain + boyut BIRLIKTE")
+_ogeler = [
+    {"url": "https://cdn.com/file1.zip", "tur": "arsiv", "filename": "file1.zip", "size": 850 * (1 << 20)},
+    {"url": "https://cdn.com/file2.zip", "tur": "arsiv", "filename": "file2.zip", "size": 1400 * (1 << 20)},
+    {"url": "https://cdn.com/image.jpg", "tur": "http", "filename": "image.jpg", "size": 420 * (1 << 10)},
+    {"url": "https://video.example.com/wp.mp4", "tur": "video", "filename": "wp.mp4", "size": 5 * (1 << 30)},
+    {"url": "magnet:?xt=urn:btih:abc", "tur": "torrent", "filename": "", "size": None},
+]
+check("filtresiz hepsi", lg.ogeleri_filtrele(_ogeler) == [0, 1, 2, 3, 4], "bos filtre")
+check("wildcard *.zip", lg.ogeleri_filtrele(_ogeler, ara="*.zip") == [0, 1], str(lg.ogeleri_filtrele(_ogeler, ara="*.zip")))
+check("basit arama (parca)", lg.ogeleri_filtrele(_ogeler, ara="image") == [2], "image")
+check("buyuk kucuk harf duyarsiz", lg.ogeleri_filtrele(_ogeler, ara="*IMAGE*") == [2], "*IMAGE*")
+check("soru isareti joker", lg.ogeleri_filtrele(_ogeler, ara="file?.zip") == [0, 1], "file?.zip")
+check("tur filtre", lg.ogeleri_filtrele(_ogeler, sadece={"video"}) == [3], "video")
+check("domain filtre (subdomain dahil)",
+      lg.ogeleri_filtrele(_ogeler, domain="example.com") == [3], "example.com -> wp.mp4")
+check("domain filtre taklit haric",
+      lg.ogeleri_filtrele(_ogeler, domain="cdn.com") == [0, 1, 2], "cdn.com")
+check("min_boyut 1 GB", lg.ogeleri_filtrele(_ogeler, min_boyut=1 << 30) == [1, 3], "1GB+")
+check("max_boyut 1 GB", lg.ogeleri_filtrele(_ogeler, max_boyut=1 << 30) == [0, 2], "1GB alti")
+check("boyut araligi", lg.ogeleri_filtrele(_ogeler, min_boyut=1 << 20, max_boyut=1 << 30) == [0], "1MB..1GB")
+check("boyut filtresi sondasiz bilinmeyeni eler",
+      lg.ogeleri_filtrele(_ogeler, min_boyut=1) == [0, 1, 2, 3], "magnet bilinmeyen elendi")
+check("hepsi birlikte", lg.ogeleri_filtrele(
+    _ogeler, ara="*.zip", sadece={"arsiv"}, domain="cdn.com", min_boyut=100 * (1 << 20)) == [0, 1],
+    "*.zip + arsiv + cdn.com + 100MB")
+check("eslesmeyen bos liste", lg.ogeleri_filtrele(_ogeler, ara="cisim") == [], "cisim")
+check("ogeler bos ise bos", lg.ogeleri_filtrele([], ara="x") == [], "bos")
+
 print("6) probe_es_zamanli — fake_http ile boyut/ad, eszamanlilik siniri")
 veri = hashlib.sha256(b"LinkGrabber").digest() * 5  # 160 bayt deterministic
 ayarlar = SunucuAyarlari(veri=veri)

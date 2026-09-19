@@ -207,6 +207,78 @@ def filtrele(
     return sonuc
 
 
+# --- Panel filtreleme (TEK mantik) ----------------------------------------
+def _joker_esles(metin: str, desen: str) -> bool:
+    """Alt-metin + wildcard aramasi. Desende * ve ? varsa joker olarak
+    arama regex'ine cevrilir (orn. `*.zip`, `dosya?.txt`) ve metnin HERHANGI
+    bir yerinde eslesir; yoksa parca aramasi yapilir. Buyuk/kucuk harf
+    duyarsizdir."""
+    metin = (metin or "").casefold()
+    desen = (desen or "").strip().casefold()
+    if not desen:
+        return True
+    if "*" in desen or "?" in desen:
+        rx = re.escape(desen).replace(r"\*", ".*").replace(r"\?", ".")
+        return re.search(rx, metin) is not None
+    return desen in metin
+
+
+def ogeleri_filtrele(
+    ogeler: list[dict],
+    ara: str = "",
+    sadece: set[str] | None = None,
+    domain: str = "",
+    min_boyut: int | None = None,
+    max_boyut: int | None = None,
+) -> list[int]:
+    """Panelin TEK filtre mantigi. `ogeler`: {"url", "tur", "filename", "size"}
+    sozlukleri. Alt-metin/wildcard arama, tur, domain (alt alan adi dahil) ve
+    boyut araligi BIRLIKTE calisir; eslesenlerin orijinal INDEXLERI donulur.
+    UI kurali kopyalamaz, yalnizca bu sonucu goruntuler.
+
+    - ara: filename + url uzerinde `_joker_esles` (orn. `*.zip`)
+    - sadece: tur seti; bos = tum turler
+    - domain: `_domain_eslesir` (subdomain dahil, taklit haric)
+    - min_boyut/max_boyut: bayt; boyutu bilinmeyen (size=None) ogeler boyut
+      filtresi aktifken ELEMEZ (uyari: once probe).
+    """
+    eslesen: list[int] = []
+    for i, o in enumerate(ogeler or []):
+        if not isinstance(o, dict):
+            continue
+        url = (o.get("url") or "").strip()
+        if not url:
+            continue
+        if sadece:
+            tur = o.get("tur") or tur_bul(url)
+            if tur not in sadece:
+                continue
+        if domain:
+            if not _domain_eslesir(_host(url), domain):
+                continue
+        if min_boyut is not None or max_boyut is not None:
+            boyut = o.get("size")
+            if boyut is None:
+                continue
+            if min_boyut is not None and boyut < int(min_boyut):
+                continue
+            if max_boyut is not None and boyut > int(max_boyut):
+                continue
+        if str(ara or "").strip():
+            hedef = f"{o.get('filename') or ''} {url}"
+            if not _joker_esles(hedef, str(ara)):
+                continue
+        eslesen.append(i)
+    return eslesen
+
+
+def domainler(ogeler: list[dict]) -> list[str]:
+    """Panelin domain acilir kutusu icin benzersiz host listesi (sirali)."""
+    tum = {_host((o.get("url") or "").strip())
+           for o in ogeler if isinstance(o, dict) and o.get("url")}
+    return sorted(h for h in tum if h)
+
+
 # --- Probe olcutleri -----------------------------------------------------
 PROBE_MAKS_WORKER = 16  # eszamanli HEAD/Range sondajinin hard limiti
 
