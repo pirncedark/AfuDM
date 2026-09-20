@@ -12,6 +12,8 @@
         veritabanina yazmaz (core/cerez.py).
 */
 
+importScripts("header-policy.js");
+
 const DEFAULTS = {
   enabled: true,
   port: 6811,
@@ -683,23 +685,9 @@ async function videoSecenekleri(cfg, sender, frameUrl, metinler, oynaticiBaslikl
   }
 }
 
-/* Icerik betiginden gelen baslik torbasi guvenilmez: sayfa da yazabilir.
-   Cerez/kimlik tasiyanlar ve satir sonu iceren degerler ELENIR. */
-const BASLIK_YASAK = /^(cookie|authorization|user-agent|host|content-length|referer)$/i;
-
 function temizBaslik(torba) {
-  const temiz = {};
-  if (!torba || typeof torba !== "object") return temiz;
-  let sayi = 0;
-  for (const ad of Object.keys(torba)) {
-    if (sayi >= 8) break;
-    const deger = torba[ad];
-    if (typeof deger !== "string" || /[\r\n]/.test(deger)) continue;
-    if (BASLIK_YASAK.test(ad) || /[^\w-]/.test(ad)) continue;
-    temiz[ad] = deger.slice(0, 1024);
-    sayi++;
-  }
-  return temiz;
+  if (!torba || typeof torba !== "object") return {};
+  return AfuDMHeaderPolicy.temizle(Object.entries(torba));
 }
 
 async function videoIndir(cfg, sender, secenek, frameUrl) {

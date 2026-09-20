@@ -126,7 +126,7 @@ function segbar(item) {
   return html + "</div>";
 }
 function visible() {
-  const q = state.search.toLowerCase();
+  const q = state.search.toLocaleLowerCase("tr-TR");
   return state.items.filter((item) => {
     if (item.status === "removed") return false;
     const f = state.filter;
@@ -136,7 +136,7 @@ function visible() {
     if (f === "torrent" && item.kind !== "torrent") return false;
     if (f === "complete" && item.status !== "complete") return false;
     if (f === "error" && item.status !== "error") return false;
-    if (q && !(item.title || "").toLowerCase().includes(q)) return false;
+    if (q && !(item.title || "").toLocaleLowerCase("tr-TR").includes(q)) return false;
     return true;
   });
 }
@@ -338,10 +338,28 @@ async function renderDetailTabContent(gid, tabName) {
     }
   } else if (tabName === "rules") {
     const rContent = $("dRulesContent");
-    if (rContent) rContent.textContent = t("dtab.rulesEmpty");
+    if (rContent) {
+      try {
+        const out = await call("download_rules", gid), trace = out.trace || {};
+        const rows = Object.entries(trace).map(([key, info]) => '<div class="kv"><div>' + escapeHtml(key) + '<b>' + escapeHtml(t("rules.source", {name: info.source_name || "?"})) + '</b></div></div>');
+        rContent.innerHTML = rows.length ? rows.join("") : '<div class="hint">' + escapeHtml(t("dtab.rulesEmpty")) + '</div>';
+      } catch (_) { rContent.textContent = t("dtab.rulesEmpty"); }
+    }
   } else if (tabName === "automation") {
     const aContent = $("dAutomationContent");
-    if (aContent) aContent.textContent = t("dtab.automationEmpty");
+    if (aContent) {
+      try {
+        const jobs = (await call("automation_jobs", gid)).jobs || [];
+        if (!jobs.length) aContent.innerHTML = '<div class="hint">' + t("auto.empty") + '</div>';
+        else aContent.innerHTML = jobs.map((job) => {
+          const err = job.error ? '<div class="err-note">' + escapeHtml(job.error) + '</div>' : '';
+          const actions = (job.status === "error" ? '<button class="btn" data-auto-retry="' + job.id + '">' + t("auto.retry") + '</button>' : '') + ((job.status === "queued" || job.status === "running") ? '<button class="btn ghost" data-auto-cancel="' + job.id + '">' + t("auto.cancel") + '</button>' : '');
+          return '<div class="automation-job"><b>' + escapeHtml(t("auto.step." + job.action)) + '</b><span class="rozet">' + escapeHtml(t("auto.status." + job.status)) + ' · ' + (job.progress || 0) + '%</span>' + (job.action === "power" && job.status === "running" ? '<div class="hint">' + t("auto.countdown") + '</div>' : '') + err + '<div>' + actions + '</div></div>';
+        }).join("");
+        aContent.querySelectorAll("[data-auto-retry]").forEach((b) => b.onclick = async () => { await call("automation_retry", Number(b.dataset.autoRetry)); renderDetailTabContent(gid, "automation"); });
+        aContent.querySelectorAll("[data-auto-cancel]").forEach((b) => b.onclick = async () => { await call("automation_cancel", Number(b.dataset.autoCancel)); renderDetailTabContent(gid, "automation"); });
+      } catch (err) { aContent.innerHTML = '<div class="err-note">' + escapeHtml(err.message) + '</div>'; }
+    }
   } else if (tabName === "logs") {
     const lContent = $("dLogsContent");
     if (lContent) {
@@ -1517,6 +1535,17 @@ $("openSettings").onclick = async () => {
   $("sChat").value = s.telegram_chat_id || "";
   $("sToken").value = s.telegram_bot_token || "";
   $("sClip").checked = !!s.clipboard_watch;
+  $("sClipExts").value = s.clipboard_exts ?? "zip,rar,7z,exe,msi,iso,pdf,mp4,mkv,mp3,apk,dmg,torrent";
+  $("sSnailSpeed").value = s.snail_speed_kb ?? 100;
+  // v1.7.5 Bolum 1-2: uzaktan erisim + ag (docs/v175_SOZLESME.md)
+  $("sLanAccess").checked = s.lan_erisimi ?? false;
+  $("sApiPort").value = s.api_listen_port ?? s.api_port ?? 6811;
+  $("sSystemProxy").checked = s.system_proxy ?? false;
+  $("sProxy").value = s.proxy ?? "";
+  $("sNetLocations").value = s.ag_konumlari ?? "";
+  uzaktanBagimlilik();
+  agBagimlilik();
+  trackerDurumuCiz();
   $("sTrackers").checked = !!s.auto_update_trackers;
   $("sNotify").checked = !!s.notify_telegram;
   $("sShutdown").checked = !!s.shutdown_when_done;
@@ -1542,9 +1571,22 @@ $("openSettings").onclick = async () => {
   $("sVideoSesFormati").value = s.video_ses_formati || "";
   $("sVideoDosyaSablonu").value = s.video_dosya_sablonu || "";
   $("sVideoTarayiciCerezi").value = s.video_tarayici_cerezi || "";
+  $("sAutoEnabled").checked = s.automation_enabled !== false;
+  $("sAutoSteps").value = (s.automation_steps || []).join(", ");
+  $("sAutoChecksum").checked = !!s.automation_checksum;
+  $("sAutoExtract").checked = !!s.automation_extract;
+  $("sAutoMove").value = s.automation_move_to || "";
+  $("sAutoRename").value = s.automation_rename_to || "";
+  $("sAutoScript").value = s.automation_script || "";
+  $("sAutoNotify").checked = s.automation_notify !== false;
+  $("sAutoPower").value = s.automation_power || "none";
+  $("sAutoSeconds").value = s.automation_power_seconds || 60;
   $("sSeedEkOzet").textContent = "";
   surumuCiz();
   try {
+    const port = await call("port_durumu");
+    $("sRunningPort").value = port.calisan || "-";
+    $("sPortRestart").textContent = port.yeniden_baslatma_gerekli ? t("set.remote.restart") : "";
     const info = await call("api_info");
     $("apiHint").textContent =
       t("hint.api", { port: info.port });
@@ -1554,6 +1596,23 @@ $("openSettings").onclick = async () => {
   state.motorTimer = setInterval(renderEngines, 1000);
   openVeil("setVeil");
 };
+
+/* Rules Engine: editor state is local until the explicit save action. */
+let rulesDraft = [];
+const ruleFields = ["domain","extension","filename","size_mb","protocol","category"];
+const ruleOps = ["eq","neq","contains","ends_with","regex","in","gt","lt"];
+const ruleActions = ["dest_dir","proxy","max_speed_kb","split","start_after","automation_script"];
+const ruleId = () => "rule-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+function rulesRender() {
+  const root=$("rulesList"); if(!rulesDraft.length){root.innerHTML='<div class="empty">'+escapeHtml(t("rules.empty"))+'</div>';return;}
+  root.innerHTML=rulesDraft.map((r,i)=>{const cs=(r.conditions||[]).map((c,j)=>'<div class="rule-row"><select data-f="'+i+'" data-j="'+j+'">'+ruleFields.map(v=>'<option '+(c.field===v?'selected':'')+'>'+v+'</option>').join('')+'</select><select data-o="'+i+'" data-j="'+j+'">'+ruleOps.map(v=>'<option '+(c.op===v?'selected':'')+'>'+v+'</option>').join('')+'</select><input data-v="'+i+'" data-j="'+j+'" value="'+escapeHtml(Array.isArray(c.value)?c.value.join(','):c.value||'')+'"><button data-cdel="'+i+'" data-j="'+j+'">×</button></div>').join('');const as=Object.entries(r.actions||{}).map(([k,v])=>'<div class="rule-row"><select data-a="'+i+'" data-k="'+k+'">'+ruleActions.map(x=>'<option '+(x===k?'selected':'')+'>'+x+'</option>').join('')+'</select><input data-av="'+i+'" data-k="'+k+'" value="'+escapeHtml(v)+'"><button data-adel="'+i+'" data-k="'+k+'">×</button></div>').join('');return '<div class="rule-card"><div class="rule-head"><input type="checkbox" data-active="'+i+'" '+(r.active?'checked':'')+'><input data-name="'+i+'" value="'+escapeHtml(r.name||'')+'" placeholder="'+escapeHtml(t("rules.name"))+'"><select data-match="'+i+'"><option value="all">'+escapeHtml(t("rules.all"))+'</option><option value="any" '+(r.match_type==='any'?'selected':'')+'>'+escapeHtml(t("rules.any"))+'</option></select><button data-up="'+i+'">↑</button><button data-down="'+i+'">↓</button><button data-copy="'+i+'">'+escapeHtml(t("rules.copy"))+'</button><button data-del="'+i+'">'+escapeHtml(t("rules.delete"))+'</button></div><div class="rule-rows">'+cs+'<button data-addc="'+i+'">'+escapeHtml(t("rules.addCondition"))+'</button></div><div class="rule-rows">'+as+'<button data-adda="'+i+'">'+escapeHtml(t("rules.addAction"))+'</button></div></div>';}).join('');
+}
+$("rulesOpen").onclick=async()=>{try{rulesDraft=(await call("rules_list")).rules||[];rulesRender();openVeil("rulesVeil");}catch(e){toast(e.message,true);}};
+$("rulesNew").onclick=()=>{rulesDraft.push({id:ruleId(),name:"",active:true,match_type:"all",conditions:[],actions:{}});rulesRender();};
+$("rulesList").onchange=e=>{const x=e.target,i=Number(x.dataset.f??x.dataset.o??x.dataset.v??x.dataset.a??x.dataset.av??x.dataset.active??x.dataset.name??x.dataset.match),r=rulesDraft[i],j=Number(x.dataset.j);if(!r)return;if(x.dataset.active!==undefined)r.active=x.checked;else if(x.dataset.name!==undefined)r.name=x.value;else if(x.dataset.match!==undefined)r.match_type=x.value;else if(x.dataset.f!==undefined)r.conditions[j].field=x.value;else if(x.dataset.o!==undefined)r.conditions[j].op=x.value;else if(x.dataset.v!==undefined)r.conditions[j].value=x.value.includes(',')?x.value.split(',').map(v=>v.trim()):x.value;else if(x.dataset.a!==undefined){const v=r.actions[x.dataset.k];delete r.actions[x.dataset.k];r.actions[x.value]=v;rulesRender();}else if(x.dataset.av!==undefined)r.actions[x.dataset.k]=x.value;};
+$("rulesList").onclick=e=>{const x=e.target,i=Number(x.dataset.up??x.dataset.down??x.dataset.copy??x.dataset.del??x.dataset.addc??x.dataset.adda??x.dataset.cdel??x.dataset.adel),r=rulesDraft[i];if(!r)return;if(x.dataset.up!==undefined&&i)[rulesDraft[i-1],rulesDraft[i]]=[r,rulesDraft[i-1]];else if(x.dataset.down!==undefined&&i<rulesDraft.length-1)[rulesDraft[i+1],rulesDraft[i]]=[r,rulesDraft[i+1]];else if(x.dataset.copy!==undefined)rulesDraft.splice(i+1,0,{...r,id:ruleId(),conditions:r.conditions.map(c=>({...c})),actions:{...r.actions}});else if(x.dataset.del!==undefined)rulesDraft.splice(i,1);else if(x.dataset.addc!==undefined)r.conditions.push({field:"domain",op:"eq",value:""});else if(x.dataset.adda!==undefined)r.actions.max_speed_kb="";else if(x.dataset.cdel!==undefined)r.conditions.splice(Number(x.dataset.j),1);else if(x.dataset.adel!==undefined)delete r.actions[x.dataset.k];rulesRender();};
+$("rulesSave").onclick=async()=>{try{const out=await call("rules_save",rulesDraft);if(!out.ok)throw new Error(out.error);closeVeil("rulesVeil");toast(t("toast.saved"));}catch(e){$("rulesErr").textContent=e.message;}};
+$("rulesRun").onclick=async()=>{try{const out=await call("rules_simulate",$("rulesUrl").value.trim()),names=(out.matched_rules||[]).map(r=>r.name).join(', ');$("rulesResult").textContent=names?t("rules.match",{n:names}):t("rules.noMatch");if((out.conflicts||[]).length)$("rulesResult").textContent+=" · "+t("rules.conflict",{items:out.conflicts.join(', ')});}catch(e){$("rulesResult").textContent=e.message;}};
 
 /* ---------- sistem ayarlari: baslangic + .torrent/magnet (core/baslangic.py,
    core/iliskilendir.py) ---------- */
@@ -1592,25 +1651,68 @@ $("sVarsayilan").onclick = async () => {
   } catch (err) { toast(err.message, true); }
 };
 
+/* ---------- v1.7.5 ayar yardimcilari (docs/v175_SOZLESME.md) ----------
+   Port araligi tek yerde: hem kaydetmede hem alan degisince ayni kural. */
+function portSayisi(deger) {
+  const n = Number(deger);
+  return Number.isInteger(n) && n >= 1024 && n <= 65535 ? n : 6811;
+}
+
+/* sApiPort yalnizca LAN acikken duzenlenebilir; kapaliyken adres bos kalir. */
+function uzaktanBagimlilik() {
+  const acik = $("sLanAccess").checked;
+  $("sApiPort").disabled = !acik;
+  if (!acik) $("sLanAddr").value = "";
+}
+
+/* Sistem proxy'si onceliklidir: aciksa elle adres girilemez. */
+function agBagimlilik() {
+  $("sProxy").disabled = $("sSystemProxy").checked;
+}
+
+$("sSystemProxy").onchange = agBagimlilik;
+
+$("sApiPort").onchange = () => { $("sApiPort").value = portSayisi($("sApiPort").value); };
+
+/* Tracker durumu SALT-OKUNUR: kaydetme nesnesine girmez, yalnizca gosterilir. */
+function trackerDurumuCiz() {
+  const s = state.settings || {};
+  const zaman = Number(s.tracker_tarama_zamani || 0);
+  $("sTrackerScanTime").value = zaman > 0
+    ? new Date(zaman * 1000).toLocaleString()
+    : t("set.tracker.never");
+  const tarama = s.tracker_tarama_ozeti || {};
+  const canli = tarama.canli ?? (s.canli_trackerlar || "").split(String.fromCharCode(10)).map((x) => x.trim()).filter(Boolean).length;
+  const toplam = tarama.toplam ?? canli;
+  $("sTrackerSummary").value = zaman > 0 ? canli + " / " + toplam : t("set.tracker.never");
+}
+
 /* ---------- telefon arayuzu (ui/mobil.html) ----------
    Kutu acilinca yerel API 0.0.0.0'a gecer ve adres burada gorunur. Ayar
    ANINDA uygulanir (sunucu yeniden kurulur), yeniden baslatma gerekmez. */
 async function telefonDurumu() {
   try {
     const bilgi = await call("telefon_durumu");
-    $("sTelefon").checked = !!bilgi.acik;
+    $("sLanAccess").checked = !!bilgi.acik;
     $("telefonKutu").style.display = bilgi.acik ? "" : "none";
     $("sTelefonAdres").value = bilgi.adres || "";
+    $("sLanAddr").value = bilgi.adres || "";
+    if (bilgi.port) $("sApiPort").value = bilgi.port;
+    uzaktanBagimlilik();
     $("sTelefonQr").src = bilgi.qr || "";
     if (bilgi.acik && !bilgi.adres) toast(t("err.agYok"), true);
   } catch (_) { /* kopru hazir degil */ }
 }
 
-$("sTelefon").onchange = async () => {
+$("sLanAccess").onchange = async () => {
+  uzaktanBagimlilik();          // RPC yanitini bekleme: alan ANINDA acilsin/kapansin
   try {
-    const bilgi = await call("telefon_ayarla", $("sTelefon").checked);
+    const bilgi = await call("telefon_ayarla", $("sLanAccess").checked);
     $("telefonKutu").style.display = bilgi.acik ? "" : "none";
     $("sTelefonAdres").value = bilgi.adres || "";
+    $("sLanAddr").value = bilgi.adres || "";
+    if (bilgi.port) $("sApiPort").value = bilgi.port;
+    uzaktanBagimlilik();
     $("sTelefonQr").src = bilgi.qr || "";
     if (bilgi.acik && !bilgi.adres) toast(t("err.agYok"), true);
   } catch (err) { toast(err.message, true); }
@@ -1735,6 +1837,14 @@ $("setGo").onclick = async () => {
     telegram_chat_id: $("sChat").value.trim(),
     telegram_bot_token: $("sToken").value.trim(),
     clipboard_watch: $("sClip").checked,
+    clipboard_exts: $("sClipExts").value.trim(),
+    snail_speed_kb: Number($("sSnailSpeed").value) || 100,
+    // v1.7.5: uzaktan erisim + ag. api_port araligi disindaysa varsayilana duser.
+    lan_erisimi: $("sLanAccess").checked,
+    api_listen_port: portSayisi($("sApiPort").value),
+    system_proxy: $("sSystemProxy").checked,
+    proxy: $("sProxy").value.trim(),
+    ag_konumlari: $("sNetLocations").value.trim(),
     auto_update_trackers: $("sTrackers").checked,
     notify_telegram: $("sNotify").checked,
     shutdown_when_done: $("sShutdown").checked,
@@ -1756,15 +1866,42 @@ $("setGo").onclick = async () => {
     video_ses_formati: $("sVideoSesFormati").value,
     video_dosya_sablonu: $("sVideoDosyaSablonu").value.trim(),
     video_tarayici_cerezi: $("sVideoTarayiciCerezi").value,
+    automation_enabled: $("sAutoEnabled").checked,
+    automation_steps: $("sAutoSteps").value.split(",").map((x) => x.trim()).filter((x) => ["checksum", "extract", "move", "rename", "script", "notify", "power"].includes(x)),
+    automation_checksum: $("sAutoChecksum").checked,
+    automation_extract: $("sAutoExtract").checked,
+    automation_move_to: $("sAutoMove").value.trim(),
+    automation_rename_to: $("sAutoRename").value.trim(),
+    automation_script: $("sAutoScript").value.trim(),
+    automation_notify: $("sAutoNotify").checked,
+    automation_power: $("sAutoPower").value,
+    automation_power_seconds: Math.max(5, Number($("sAutoSeconds").value) || 60),
   };
   try {
-    await call("settings_save", payload);
+    $("setGo").disabled = true;
+    const sonuc = await call("ayarlari_dogrula_kaydet", payload);
+    if (!sonuc.ok) {
+      const ilk = (sonuc.hatalar || [])[0];
+      const alan = ilk && ilk.alan;
+      const map = {api_port:"sApiPort", api_listen_port:"sApiPort", snail_speed_kb:"sSnailSpeed", proxy:"sProxy", clipboard_exts:"sClipExts", ag_konumlari:"sNetLocations"};
+      const hedef = $(map[alan]);
+      if (hedef) { hedef.focus(); toast(t(ilk.mesaj_anahtari), true); }
+      return;
+    }
+    state.settings = sonuc.ayarlar || state.settings;
     // Windows'a dokunan iki ayar (Baslangic klasoru / kayit defteri) ayri
     // gider: biri patlarsa digerleri ve ayarlar yine de kaydedilmis olsun.
     await sistemAyarlariniUygula();
     closeVeil("setVeil");
     toast(t("toast.saved"));
-  } catch (err) { toast(err.message, true); }
+  } catch (err) { toast(err.message, true); } finally { $("setGo").disabled = false; }
+};
+
+$("settingsSearch").oninput = () => {
+  const q = $("settingsSearch").value.trim().toLocaleLowerCase();
+  const fields = [...$("settingsBody").querySelectorAll("label, .hint")];
+  const match = !q || fields.some((x) => (x.textContent || "").toLocaleLowerCase().includes(q));
+  $("settingsSearchResult").textContent = q ? (match ? t("set.searchFound") : t("set.searchNone")) : "";
 };
 
 /* ---------- klasor agaci (core/kaydet.py) ----------

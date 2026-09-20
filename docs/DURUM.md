@@ -46,6 +46,12 @@ gelişmiş ve doğrulanmış seçeneklere kavuştu.
   seçimi sessizce kaybolur.
 - Kalan dilimler: 3 dosya ağacı UI, 4 metrikler, 5 `.torrent` ön-ekleme.
 
+### v1.7.5 Mobile & PWA — ilerleme
+- PWA kurulabilir hale geldi (`manifest.webmanifest` + `sw.js` service worker altyapısı).
+- Telefondan (`/m`) torrent dosya seçimi yapılabiliyor (`/torrent/dosyalar`, `/torrent/secim`).
+- Telefondan seed özeti anlık izlenebiliyor ve tazelenebiliyor (`/torrent/metrik`, `/seed`, `/seed/tazele`).
+- Telefondan tracker taraması tetiklenebiliyor (`/tracker/tara`).
+
 ## LINKGRABBER (v1.5) — BITTI (2026-09-19), tests/linkgrabber_test.py
 Bar'da "Link yakala". Pano/tarayicidan kopyalanmis METIN yapistirilir, "Analiz et":
 `core/linkgrabber.py` ayikla -> normalize -> tekil_les -> tur_bul -> filtrele.
