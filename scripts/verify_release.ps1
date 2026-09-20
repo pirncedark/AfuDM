@@ -33,8 +33,7 @@ try {
     )
     $eksik = @()
     foreach ($g in $gerekli) {
-        $gAr = $g.Replace("/", "\")
-        $eSiz = $adlar | Where-Object { $_ -like "*$gAr" }
+        $eSiz = $adlar | Where-Object { $_ -like "*$g" }
         if (-not $eSiz) { $eksik += $g }
     }
     if ($eksik.Count -gt 0) {
