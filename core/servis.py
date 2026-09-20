@@ -20,6 +20,7 @@ import threading
 import time
 
 from . import erisim, kaydet, models, paths, surum
+from .hata import AfuHata
 from .erisim import ErisimDeposu, HizSinirlayici
 
 # Bir ayarin ne zaman etkili oldugu. Arayuz bunu ROZET olarak gosterir;
@@ -42,8 +43,8 @@ UYGULAMA_ZAMANI: dict[str, str] = {
     "sunucu_istek_limiti": "hemen",
     "sunucu_hatali_limit": "hemen",
     "sunucu_kilit_saniye": "hemen",
-    "sunucu_izinli_originler": "hemen",
     "sunucu_istemci_kaydi": "hemen",
+    "sunucu_proxy_guven": "hemen",
     # yeni indirmelerde
     "download_dir": "yeni_indirmelerde",
     "kategori_klasorleri": "yeni_indirmelerde",
@@ -130,9 +131,19 @@ class AfuDMServis:
             return tur == f
         return True
 
-    def hedef_klasor(self, secilen: str, url: str, kind: str, kategori: str) -> str | None:
+    def hedef_klasor(self, secilen: str, url: str, kind: str, kategori: str, uzaktan: bool = False) -> str | None:
         """Ayar onceligi: ise ozel secim -> kategori kurali -> genel varsayilan."""
         if secilen:
+            if uzaktan:
+                import os
+                from pathlib import Path
+                try:
+                    secilen_path = Path(secilen).resolve()
+                    kok_path = Path(self.manager.current_download_dir()).resolve()
+                    if not secilen_path.is_relative_to(kok_path):
+                        raise AfuHata("hedef klasor izinli kok dizin disinda", code="HEDEF_DISARIDA")
+                except ValueError:
+                    raise AfuHata("gecersiz hedef klasor yolu", code="HEDEF_DISARIDA")
             return secilen
         if not self.store.get("kategori_klasorleri"):
             return None
@@ -167,7 +178,7 @@ class AfuDMServis:
                     url,
                     dest_dir=self.hedef_klasor(
                         payload.get("dest_dir") or "", url, kind,
-                        payload.get("kategori") or ""),
+                        payload.get("kategori") or "", bool(payload.get("_uzaktan"))),
                     filename=tek_ad if tek_ad and kind == "http" else None,
                     title=tek_ad if tek_ad and kind == "video" else None,
                     quality=payload.get("quality") or None,

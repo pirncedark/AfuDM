@@ -3190,6 +3190,11 @@ $("openServer").onclick = async () => {
   const ayar = state.settings || {};
   $("srvAdres").value = ayar.sunucu_adres || "yerel";
   $("srvPort").value = ayar.sunucu_port || 6821;
+  $("srvIstekLimiti").value = ayar.sunucu_istek_limiti !== undefined ? ayar.sunucu_istek_limiti : 120;
+  $("srvHataliLimit").value = ayar.sunucu_hatali_limit !== undefined ? ayar.sunucu_hatali_limit : 10;
+  $("srvKilitSaniye").value = ayar.sunucu_kilit_saniye !== undefined ? ayar.sunucu_kilit_saniye : 1800;
+  $("srvIstemciKaydi").checked = !!ayar.sunucu_istemci_kaydi;
+  $("srvIzinliOriginler").value = ayar.sunucu_izinli_originler || "";
   srvBosSatir($("srvKListe"), t("pnl.loading"));
   srvBosSatir($("srvIListe"), t("pnl.loading"));
   srvBosSatir($("srvPListe"), t("pnl.loading"));
@@ -3222,6 +3227,11 @@ $("srvAcik").onchange = async (ev) => {
     await call("settings_save", {
       sunucu_adres: $("srvAdres").value,
       sunucu_port: parseInt($("srvPort").value, 10) || 6821,
+      sunucu_istek_limiti: parseInt($("srvIstekLimiti").value, 10) || 0,
+      sunucu_hatali_limit: parseInt($("srvHataliLimit").value, 10) || 0,
+      sunucu_kilit_saniye: parseInt($("srvKilitSaniye").value, 10) || 0,
+      sunucu_istemci_kaydi: $("srvIstemciKaydi").checked,
+      sunucu_izinli_originler: $("srvIzinliOriginler").value,
     });
     const out = await call("sunucu_ayarla", acik);
     toast(acik ? t("srv.started") : t("srv.stopped"));
@@ -3241,6 +3251,11 @@ $("srvYeniden").onclick = async () => {
     await call("settings_save", {
       sunucu_adres: $("srvAdres").value,
       sunucu_port: parseInt($("srvPort").value, 10) || 6821,
+      sunucu_istek_limiti: parseInt($("srvIstekLimiti").value, 10) || 0,
+      sunucu_hatali_limit: parseInt($("srvHataliLimit").value, 10) || 0,
+      sunucu_kilit_saniye: parseInt($("srvKilitSaniye").value, 10) || 0,
+      sunucu_istemci_kaydi: $("srvIstemciKaydi").checked,
+      sunucu_izinli_originler: $("srvIzinliOriginler").value,
     });
     await call("sunucu_yeniden");
     toast(t("srv.started"));
@@ -3260,7 +3275,11 @@ $("srvPort").oninput = () => { $("srvNot").textContent = t("srv.restartNeeded");
 $("srvPanelAc").onclick = async () => {
   try { await call("sunucu_panel_ac"); } catch (err) { toast(err.message, true); }
 };
-
+$("srvIstekLimiti").oninput = () => { $("srvNot").textContent = t("srv.restartNeeded"); };
+$("srvHataliLimit").oninput = () => { $("srvNot").textContent = t("srv.restartNeeded"); };
+$("srvKilitSaniye").oninput = () => { $("srvNot").textContent = t("srv.restartNeeded"); };
+$("srvIstemciKaydi").onchange = () => { $("srvNot").textContent = t("srv.restartNeeded"); };
+$("srvIzinliOriginler").oninput = () => { $("srvNot").textContent = t("srv.restartNeeded"); };
 $("srvUrlKopya").onclick = async () => {
   if (!$("srvUrl").value) return;
   try {

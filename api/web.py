@@ -135,7 +135,14 @@ class _Handler(BaseHTTPRequestHandler):
         return self.sunucu.servis
 
     def _ip(self) -> str:
-        return self.client_address[0] if self.client_address else "?"
+        ip = self.client_address[0] if self.client_address else "?"
+        if self._servis.store.get("sunucu_proxy_guven"):
+            xff = self.headers.get("X-Forwarded-For")
+            if xff:
+                parts = [p.strip() for p in xff.split(",")]
+                if parts:
+                    ip = parts[-1]
+        return ip
 
     def _izinli_originler(self) -> set[str]:
         """Bos ayar = EN SIKI: yalnizca sunucunun kendi adresleri."""
@@ -318,6 +325,7 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             self._send(200, self._get_calistir(yol, sorgu, kayit))
         except Exception as exc:
+            self._servis.store.log("error", "API hatasi (%s): %s" % (yol, exc))
             govde = hata_json(exc)
             self._send(400 if govde.get("code") != "INTERNAL" else 500, govde)
 
@@ -358,6 +366,7 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             self._send(200, self._post_calistir(yol, veri, kayit))
         except Exception as exc:
+            self._servis.store.log("error", "API hatasi (%s): %s" % (yol, exc))
             govde = hata_json(exc)
             self._send(400 if govde.get("code") != "INTERNAL" else 500, govde)
 
@@ -379,6 +388,7 @@ class _Handler(BaseHTTPRequestHandler):
                 s.erisim.oturum_iptal(kayitli["id"])
             return {"ok": True}
         if yol == "/api/ekle":
+            veri["_uzaktan"] = True
             return s.ekle(veri)
         if yol == "/api/kontrol":
             return s.kontrol(veri.get("action") or veri.get("eylem") or "",

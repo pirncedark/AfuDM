@@ -150,6 +150,7 @@ DEFAULTS: dict[str, Any] = {
     "sunucu_istemci_kaydi": True,
     # Etkin sunucu profili (server_profiles.id); 0 = profil yok
     "sunucu_profil_id": 0,
+    "sunucu_proxy_guven": False,
 }
 
 

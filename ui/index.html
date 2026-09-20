@@ -422,6 +422,28 @@
         <label data-i18n="srv.port">Port</label>
         <input id="srvPort" type="number" min="1024" max="65535" value="6821">
       </div>
+      <div class="grid2">
+        <div>
+          <label for="srvIstekLimiti" data-i18n="srv.rateLimit">Dakikada en fazla istek</label>
+          <input id="srvIstekLimiti" type="number" min="1" max="10000" value="120">
+        </div>
+        <div>
+          <label for="srvHataliLimit" data-i18n="srv.rateFails">Üst üste hatalı anahtar sınırı</label>
+          <input id="srvHataliLimit" type="number" min="1" max="1000" value="10">
+        </div>
+        <div>
+          <label for="srvKilitSaniye" data-i18n="srv.rateLock">Kilit süresi (saniye)</label>
+          <input id="srvKilitSaniye" type="number" min="1" max="86400" value="1800">
+        </div>
+      </div>
+      <div class="opts">
+        <label class="opt"><input type="checkbox" id="srvIstemciKaydi"> <span data-i18n="srv.clientLog">İstemci kaydı tutulsun</span></label>
+      </div>
+      <div>
+        <label for="srvIzinliOriginler" data-i18n="srv.origins">İzinli kaynak adresler (origin)</label>
+        <textarea id="srvIzinliOriginler" spellcheck="false" placeholder="http://192.168.1.100"></textarea>
+        <div class="hint" data-i18n="srv.originsHint">Her satıra bir adres. Boş bırakırsan en sıkı mod aktiftir; yalnızca panelin kendi adresi kabul edilir.</div>
+      </div>
       <div>
         <label data-i18n="srv.url">Panel adresi</label>
         <div class="yol-satir">
