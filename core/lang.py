@@ -42,6 +42,25 @@ _TEXTS = {
         "note.ffmpegEmbedSkipped": (
             "ffmpeg bulunamadigi icin istenen video gomme islemleri uygulanamadi."
         ),
+        # --- v2.1 Headless Server: tek ornek / cakisma ---
+        "ornek.zatenAcik": (
+            "AfuDM bu klasorde zaten acik — acik pencere one getirildi."
+        ),
+        "ornek.headlessCalisiyor": (
+            "Bu klasorde AfuDM sunucu kipinde calisiyor. Masaustu penceresi "
+            "acilmadi; panel icin: afuadm server status"
+        ),
+        "ornek.masaustuAcik": (
+            "Masaustu AfuDM acik. Sunucu ayri bir surec olarak acilamaz; "
+            "sunucuyu AfuDM penceresindeki Sunucu sekmesinden ac."
+        ),
+        "ornek.sunucuZatenAcik": (
+            "AfuDM sunucusu bu klasorde zaten calisiyor. Durum icin: "
+            "afuadm server status"
+        ),
+        "srv.started": "Sunucu acildi",
+        "srv.stopped": "Sunucu kapatildi",
+        "srv.notRunning": "Sunucu calismiyor",
     },
     "en": {
         "window.title": "AfuDM — download manager",
@@ -69,6 +88,26 @@ _TEXTS = {
         "note.ffmpegEmbedSkipped": (
             "ffmpeg was not found, so the requested video embedding operations were skipped."
         ),
+        # --- v2.1 Headless Server: single instance / conflict ---
+        "ornek.zatenAcik": (
+            "AfuDM is already open in this folder — the existing window was "
+            "brought to front."
+        ),
+        "ornek.headlessCalisiyor": (
+            "AfuDM is running in server mode in this folder. The desktop window "
+            "was not opened; for the panel: afuadm server status"
+        ),
+        "ornek.masaustuAcik": (
+            "Desktop AfuDM is open. The server cannot start as a separate "
+            "process; start it from the Server tab inside AfuDM."
+        ),
+        "ornek.sunucuZatenAcik": (
+            "The AfuDM server is already running in this folder. For status: "
+            "afuadm server status"
+        ),
+        "srv.started": "Server started",
+        "srv.stopped": "Server stopped",
+        "srv.notRunning": "Server is not running",
     },
 }
 

@@ -98,6 +98,10 @@ class _Handler(BaseHTTPRequestHandler):
     # Uzanti "Sayfadaki linkleri gönder" dediginde ham metni LinkGrabber
     # paneline iletmek icin. None ise istek reddedilir (panel kapali/UI yok).
     on_linkgrabber = None
+    # v2.1: ortak servis katmani (core/servis.AfuDMServis). Atanmissa
+    # /capabilities yetenek listesini ORADAN alir — iki ayri liste tutup
+    # birinin bayatlamasi diye bir sey olmaz.
+    servis = None
 
     # --- yardimcilar ------------------------------------------------------
     def log_message(self, fmt: str, *args) -> None:  # konsolu kirletmesin
@@ -290,6 +294,10 @@ class _Handler(BaseHTTPRequestHandler):
         elif parsed.path == "/eklenti/islem":
             self._send(200, self.manager.eklentiler.islem())
         elif parsed.path == "/capabilities":
+            if _Handler.servis is not None:
+                # TEK KAYNAK: yalnizca gercekten calisan ozellikler bildirilir.
+                self._send(200, _Handler.servis.yetenekler())
+                return
             from core import engines, surum
             self._send(200, {
                 "ok": True,

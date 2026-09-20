@@ -23,8 +23,10 @@ CIKTI = KOK / "build_out" / "paket"
 
 # Paketin icine giren dosyalar. engine/ ozel: hangi motorun gireceği secime bagli.
 # afuadm.py/.bat: komut satiri araci (core/ + api/ Python kaynagi da gerekli).
+# headless.py: `afuadm server start` arayuzsuz servisi bununla acar
+# (webview'i hic import etmez; bkz. headless.py modul basligi).
 KOPYALANACAK_DOSYALAR = ("AfuDM.exe", "README.md", "THIRD_PARTY_NOTICES.md",
-                         "afuadm.py", "afuadm.bat")
+                         "afuadm.py", "afuadm.bat", "headless.py")
 KOPYALANACAK_KLASORLER = ("ui", "extension", "trackers", "core", "api")
 
 CEKIRDEK_MOTORLAR = ("aria2c.exe",)
