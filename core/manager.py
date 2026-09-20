@@ -93,6 +93,7 @@ class Manager:
         self.eklentiler = eklenti.EklentiServisi(self.store)
         self.windows_notify = None
 
+
     # --- yasam dongusu ----------------------------------------------------
     def start(self) -> None:
         cerez.artiklari_temizle()
@@ -1609,6 +1610,7 @@ class Manager:
         if self.store.get("windows_notifications") and callable(self.windows_notify):
             try: self.windows_notify("AfuDM", f"Indirme tamamlandi: {title}")
             except Exception: pass
+
         if self.store.get("notify_telegram"):
             threading.Thread(
                 target=self.notify_telegram,

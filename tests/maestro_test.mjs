@@ -93,12 +93,27 @@ dogrula("sayfanin sahte el sikismasi reddedildi", sahteAkis === 0);
 // 1) fetch ile gelen m3u8 yakalanmali
 await pencere.fetch("https://ornek.test/master.m3u8", { headers: {
   Referer: "https://oynatici.test/", Authorization: "Bearer gizli", "X-Api-Key": "gizli", Cookie: "a=b",
+  Referer: "https://oynatici.test/", 
+  Authorization: "Bearer gizli", 
+  "X-Api-Key": "gizli", 
+  Cookie: "a=b",
+  "x-csrf-token": "1",
+  "x-auth-test": "1",
+  "apikey": "1",
+  "token": "1",
+  "session": "1",
+  "bearer": "1",
+  "refresh-token": "1",
+  "x-amz-security-token": "1",
+  "x-goog-api-key": "1"
 }});
 await new Promise((r) => setTimeout(r, 10));
 const liste = gelen.find((m) => m.tur === "liste");
 dogrula("fetch listesi yakalandi", !!liste);
 dogrula("govde tasindi", liste && liste.metin.includes("EXT-X-STREAM-INF"));
 dogrula("gizli basliklar disari sizmadi", liste && !["authorization", "x-api-key", "cookie", "set-cookie"].some((ad) => ad in liste.istek || ad in liste.yanit));
+const gizli_olanlar = ["authorization", "x-api-key", "cookie", "set-cookie", "x-csrf-token", "x-auth-test", "apikey", "token", "session", "bearer", "refresh-token", "x-amz-security-token", "x-goog-api-key"];
+dogrula("gizli basliklar disari sizmadi", liste && !gizli_olanlar.some((ad) => ad in liste.istek || (liste.yanit && ad in liste.yanit)));
 dogrula("izinli referer basligi tasindi", liste && liste.istek.referer === "https://oynatici.test/");
 
 // 2) m3u8 olmayan istek yakalanmamali

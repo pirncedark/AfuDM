@@ -12,8 +12,8 @@ jobs:
       PYTHONUTF8: "1"
       PYTHONIOENCODING: "utf-8"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - name: Sozdizimi kapisi
@@ -26,8 +26,8 @@ jobs:
       PYTHONUTF8: "1"
       PYTHONIOENCODING: "utf-8"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - name: Cevrimdisi kutuphaneler
@@ -39,8 +39,8 @@ jobs:
     runs-on: windows-latest
     needs: offline
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - name: Motorlari indir
@@ -57,7 +57,7 @@ jobs:
           Compress-Archive -Path build_out\paket\AfuDM -DestinationPath $zip -Force
           powershell -ExecutionPolicy Bypass -File scripts\verify_release.ps1 $zip
           powershell -ExecutionPolicy Bypass -File scripts\make_checksums.ps1 $zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: afudm-ci-package
           path: |

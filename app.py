@@ -40,6 +40,9 @@ from core.manager import AyarGecersiz  # noqa: E402
 from core import settings_validation  # noqa: E402
 from core.servis import AfuDMServis  # noqa: E402
 from core.windows_integration import WindowsIntegration  # noqa: E402
+from core.reliability import Reliability  # noqa: E402
+from core.manager import AyarGecersiz  # noqa: E402
+from core import settings_validation  # noqa: E402
 
 # Pencere basligi dile gore secilir (bkz. core/lang.py); ayar okunana kadar bu durur.
 WINDOW_TITLE = "AfuDM"
@@ -86,6 +89,21 @@ class Api:
         # v2.1: is mantigi TEK yerde. Masaustu arayuzu de web paneli de bu
         # servisi cagirir; asagidaki RPC'ler yalnizca ince kabuktur.
         self.servis = servis or AfuDMServis(manager, kip=ornek.KIP_MASAUSTU)
+        self.reliability = Reliability(manager)
+
+    # v2.3 Reliability & Security: desktop and HTTP use this shared service.
+    def reliability_integrity(self) -> dict: return self.reliability.integrity()
+    def reliability_backup(self) -> dict: return self.reliability.backup()
+    def reliability_backups(self) -> dict: return self.reliability.backups()
+    def reliability_restore(self, archive: str) -> dict: return self.reliability.restore(archive)
+    def reliability_diagnostics_preview(self) -> dict: return self.reliability.diagnostics_preview()
+    def reliability_diagnostics_export(self) -> dict: return self.reliability.diagnostics_export()
+    def reliability_health(self) -> dict: return self.reliability.health()
+    def reliability_restart_engine(self) -> dict: return self.reliability.restart_engine()
+    def reliability_recovery_preview(self, row_id: int) -> dict: return self.reliability.recovery_preview(row_id)
+    def security_rotate_token(self) -> dict:
+        self.local_api.rotate_token()
+        return {"ok": True, "message": "Yeni anahtar etkin; eski anahtar aninda gecersiz."}
         # Alt cizgili: pywebview js_api'nin ozelliklerini DOLASIR; `window.native`
         # (.NET formu) sonsuz derinlige inip gunlugu "Empty.Empty..." ile dolduruyordu.
         self._window: webview.Window | None = None
@@ -809,6 +827,18 @@ class Api:
         try: return {"ok": True, "job": self.manager.automation.cancel(int(job_id))}
         except Exception as exc: return {"ok": False, "error": str(exc)[:300]}
 
+    # --- v1.8 Automation -------------------------------------------------
+    def automation_jobs(self, gid: str = "") -> dict:
+        return {"ok": True, "jobs": self.manager.store.automation_jobs(str(gid))}
+
+    def automation_retry(self, job_id: int) -> dict:
+        try: return {"ok": True, "job": self.manager.automation.retry(int(job_id))}
+        except Exception as exc: return {"ok": False, "error": str(exc)[:300]}
+
+    def automation_cancel(self, job_id: int) -> dict:
+        try: return {"ok": True, "job": self.manager.automation.cancel(int(job_id))}
+        except Exception as exc: return {"ok": False, "error": str(exc)[:300]}
+
     # --- ayarlar ----------------------------------------------------------
     def settings_save(self, payload: dict) -> dict:
         return self.ayarlari_dogrula_kaydet(payload)
@@ -921,6 +951,7 @@ class Api:
 
     def sunucu_profil_etkinlestir(self, profil_id: int) -> dict:
         return self.servis.profil_etkinlestir(profil_id)
+
 
     # --- klasor -----------------------------------------------------------
     def open_download_dir(self) -> dict:

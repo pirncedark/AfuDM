@@ -210,6 +210,78 @@ def main():
         sizan = servis.kok.parent / "sizan.txt"
         check("Path traversal basarisiz oldu, dosya yok", not sizan.exists())
         
+        # --- VAKA 9: Toplam boyut sinirini asan paket REDDEDILIR ---
+        db.set("eklenti_max_boyut_mb", 1) # 1 MB limit
+        vaka9_manifest = {"ad": "test-vaka9", "surum": "1.0.0", "giris": "main.py"}
+        vaka9_zip = temp_dir / "vaka9.afup"
+        with zipfile.ZipFile(vaka9_zip, "w") as zf:
+            zf.writestr(MANIFEST_ADI, json.dumps(vaka9_manifest))
+            zf.writestr("main.py", "A" * (2 * 1024 * 1024)) # 2 MB (uncompressed)
+        sonuc_vaka9 = servis.kur(str(vaka9_zip))
+        check("Toplam boyut sinirini asan paket REDDEDILIR", not sonuc_vaka9["ok"] and sonuc_vaka9.get("code") == "PAKET_COK_BUYUK", sonuc_vaka9.get("error", ""))
+        db.set("eklenti_max_boyut_mb", 200) # Geri al
+
+        # --- VAKA 10: Asiri sikistirma orani REDDEDILIR ---
+        db.set("eklenti_max_oran", 5.0) # Limit 5:1
+        vaka10_manifest = {"ad": "test-vaka10", "surum": "1.0.0", "giris": "main.py"}
+        vaka10_zip = temp_dir / "vaka10.afup"
+        with zipfile.ZipFile(vaka10_zip, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+            zf.writestr(MANIFEST_ADI, json.dumps(vaka10_manifest))
+            zf.writestr("main.py", "A" * (500 * 1024)) # 500 KB highly compressible data -> tiny zip, huge ratio
+        sonuc_vaka10 = servis.kur(str(vaka10_zip))
+        check("Asiri sikistirma orani REDDEDILIR", not sonuc_vaka10["ok"] and sonuc_vaka10.get("code") == "PAKET_COK_BUYUK", sonuc_vaka10.get("error", ""))
+        db.set("eklenti_max_oran", 100.0) # Geri al
+
+        # --- VAKA 11: Sinirin altindaki normal paket KURULUR ---
+        vaka11_manifest = {"ad": "test-vaka11", "surum": "1.0.0", "giris": "main.py"}
+        vaka11_zip = temp_dir / "vaka11.afup"
+        _create_zip(vaka11_zip, vaka11_manifest, {"main.py": "print('ok')"})
+        servis.kur(str(vaka11_zip))
+        islem_v11 = _wait_islem(servis)
+        check("Sinirin altindaki normal paket KURULUR", islem_v11["durum"] == "bitti")
+
+        # --- VAKA 12: Manifest sha256 YANLIS -> REDDEDILIR ---
+        vaka12_manifest = {"ad": "test-vaka12", "surum": "1.0.0", "giris": "main.py", "sha256": "fake1234fake1234fake1234fake1234fake1234fake1234fake1234fake1234"}
+        vaka12_zip = temp_dir / "vaka12.afup"
+        _create_zip(vaka12_zip, vaka12_manifest, {"main.py": "print('ok')"})
+        servis.kur(str(vaka12_zip))
+        islem_v12 = _wait_islem(servis)
+        check("Manifest sha256 YANLIS -> REDDEDILIR", islem_v12["durum"] == "hata" and "OZET_UYUSMUYOR" in str(islem_v12.get("hata_kodu", "")))
+        # --- VAKA 13: Manifest sha256 DOGRU -> kurulur, ozet DB'ye yazilir ---
+        vaka13_manifest = {"ad": "test-vaka13", "surum": "1.0.0", "giris": "main.py"}
+        import hashlib
+        # Gercek hash'i hesapla (beklenen kurala gore)
+        h = hashlib.sha256()
+        h.update(b"print('ok')") # sadece main.py var
+        gercek_sha13 = h.hexdigest().lower()
+        vaka13_manifest["sha256"] = gercek_sha13
+        vaka13_zip = temp_dir / "vaka13.afup"
+        _create_zip(vaka13_zip, vaka13_manifest, {"main.py": "print('ok')"})
+        servis.kur(str(vaka13_zip))
+        islem_v13 = _wait_islem(servis)
+        check("Manifest sha256 DOGRU -> kurulur", islem_v13["durum"] == "bitti")
+        k13 = db.eklenti("test-vaka13")
+        check("Hesaplanan ozet DB'ye yazilir", k13["sha256"] == gercek_sha13)
+
+        # --- VAKA 14: sha256 alani YOK + izin ACIK -> kurulur (uyari ile) ---
+        db.set("eklenti_imzasiz_izin", True)
+        vaka14_manifest = {"ad": "test-vaka14", "surum": "1.0.0", "giris": "main.py"}
+        vaka14_zip = temp_dir / "vaka14.afup"
+        _create_zip(vaka14_zip, vaka14_manifest, {"main.py": "print('ok')"})
+        servis.kur(str(vaka14_zip))
+        islem_v14 = _wait_islem(servis)
+        check("sha256 alani YOK + izin ACIK -> kurulur", islem_v14["durum"] == "bitti")
+
+        # --- VAKA 15: sha256 alani YOK + izin KAPALI -> REDDEDILIR ---
+        db.set("eklenti_imzasiz_izin", False)
+        vaka15_manifest = {"ad": "test-vaka15", "surum": "1.0.0", "giris": "main.py"}
+        vaka15_zip = temp_dir / "vaka15.afup"
+        _create_zip(vaka15_zip, vaka15_manifest, {"main.py": "print('ok')"})
+        servis.kur(str(vaka15_zip))
+        islem_v15 = _wait_islem(servis)
+        check("sha256 alani YOK + izin KAPALI -> REDDEDILIR", islem_v15["durum"] == "hata" and "IMZASIZ_REDDEDILDI" in str(islem_v15.get("hata_kodu", "")))
+        db.set("eklenti_imzasiz_izin", True) # Geri al
+
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
     

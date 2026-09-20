@@ -111,6 +111,7 @@ if (`$parseHatalari) {
         "tests/eklenti_test.py",
         "tests/headless_test.py",
         "tests/v21_guvenlik_test.py"
+        "tests/eklenti_test.py"
     )
 
     $gecen = 0

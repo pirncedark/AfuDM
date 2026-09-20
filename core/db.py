@@ -102,7 +102,10 @@ DEFAULTS: dict[str, Any] = {
     "kategori_klasorleri": True,
     # qBittorrent gibi: kucult gorev cubuguna, X sistem tepsisine gitsin
     "tepsiye_kucult": True,
-    # Bilgisayar acilinca pencere ACILMADAN tepside basla
+    # Eklenti Guvenligi
+    "eklenti_max_boyut_mb": 200,
+    "eklenti_max_oran": 100.0,
+    "eklenti_imzasiz_izin": True,
     "baslangicta_tepside": True,
     # Kullanicinin elle ekledigi tracker'lar (her satirda bir adres)
     "ek_trackerlar": "",
@@ -168,7 +171,8 @@ DEFAULTS: dict[str, Any] = {
 # o numara v1.8/v1.7.5 tarafindan alinmisti; yeniden numaralandirildi.
 # v2.1 sunucu erisimi v9'dadir: v2.1 dali da onu v4 olarak yazmisti (ucuncu
 # kez ayni cakisma); yeniden numaralandirildi.
-USER_VERSION = 9
+# v2.3: plugins tablosuna sha256 sutunu eklendi (paket butunlugu dogrulamasi).
+USER_VERSION = 10
 
 
 def _v2_torrent_dosya_secimleri(conn: sqlite3.Connection) -> None:
@@ -306,6 +310,14 @@ def _v9_sunucu_erisimi(conn: sqlite3.Connection) -> None:
             olusturuldu REAL NOT NULL
         )
     """)
+def _v10_eklenti_sha256(conn: sqlite3.Connection) -> None:
+    """v2.3: kurulan paketin dogrulanmis SHA-256 ozeti kayitta tutulur.
+
+    YALNIZCA EKLER. Mevcut eklenti kayitlari ve ayarlar ELLENMEZ; eski
+    satirlarda alan bos kalir (o paketler dogrulanmadan kurulmustu)."""
+    sutunlar = {satir[1] for satir in conn.execute("PRAGMA table_info(plugins)")}
+    if "sha256" not in sutunlar:
+        conn.execute("ALTER TABLE plugins ADD COLUMN sha256 TEXT NOT NULL DEFAULT ''")
 
 
 MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
@@ -317,6 +329,7 @@ MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     7: _v7_rules_engine,
     8: _v8_eklenti_kaydi,
     9: _v9_sunucu_erisimi,
+    10: _v10_eklenti_sha256,
 }
 
 
@@ -622,13 +635,14 @@ class Store:
         with self._lock:
             self.conn.execute(
                 "INSERT INTO plugins(ad, baslik, surum, kaynak, giris, manifest, izinler,"
-                " domainler, ayarlar, etkin, son_hata, onceki_surum, kurulum_at, guncelleme_at)"
-                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                " domainler, ayarlar, etkin, son_hata, onceki_surum, sha256, kurulum_at, guncelleme_at)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
                 " ON CONFLICT(ad) DO UPDATE SET baslik=excluded.baslik, surum=excluded.surum,"
                 " kaynak=excluded.kaynak, giris=excluded.giris, manifest=excluded.manifest,"
                 " izinler=excluded.izinler, domainler=excluded.domainler,"
                 " ayarlar=excluded.ayarlar, etkin=excluded.etkin, son_hata=excluded.son_hata,"
-                " onceki_surum=excluded.onceki_surum, guncelleme_at=excluded.guncelleme_at",
+                " onceki_surum=excluded.onceki_surum, sha256=excluded.sha256,"
+                " guncelleme_at=excluded.guncelleme_at",
                 (
                     str(kayit["ad"]),
                     str(kayit.get("baslik") or ""),
@@ -642,6 +656,7 @@ class Store:
                     1 if kayit.get("etkin") else 0,
                     str(kayit.get("son_hata") or "")[:500],
                     str(kayit.get("onceki_surum") or ""),
+                    str(kayit.get("sha256") or ""),
                     float(kayit.get("kurulum_at") or time.time()),
                     float(kayit.get("guncelleme_at") or time.time()),
                 ),
@@ -651,7 +666,7 @@ class Store:
     def eklenti_alan_yaz(self, ad: str, **alanlar: Any) -> None:
         """Yalniz bilinen alanlari gunceller (etkin/son_hata/ayarlar/...)."""
         izinli = {"baslik", "surum", "kaynak", "giris", "etkin", "son_hata",
-                  "onceki_surum", "guncelleme_at"}
+                  "onceki_surum", "sha256", "guncelleme_at"}
         json_alan = {"manifest", "izinler", "domainler", "ayarlar"}
         setler, degerler = [], []
         for anahtar, deger in alanlar.items():

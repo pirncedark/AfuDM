@@ -53,21 +53,37 @@ function toast(message, bad = false) {
   el.textContent = message;
   el.className = "toast show" + (bad ? " bad" : "");
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => { el.className = "toast"; }, 3400);
+  // Hata mesaji okunacak kadar kalsin; bilgi mesaji kisa gecsin.
+  toast._t = setTimeout(() => { el.className = "toast"; }, bad ? 9000 : 3400);
 }
 
 /* ---------- kopru ---------- */
+/* Kopru cagrisi zaman asimlari (ms). Uzun suren isler ayrica listelenir;
+   geri kalani varsayilani kullanir. Amac: hicbir cagri sonsuza kadar beklemesin. */
+const KOPRU_ZAMAN_ASIMI = {
+  _varsayilan: 15000,
+  snapshot: 15000,
+  ekle: 60000,
+  eklenti_kur: 300000,
+  eklenti_guncelle: 300000,
+  reliability_backup: 300000,
+  reliability_restore: 300000,
+  reliability_diagnostics_export: 120000,
+};
+
 async function call(method, ...args) {
   if (!window.pywebview || !window.pywebview.api) throw new Error(t("err.bridge"));
-  
   let out;
-  if (method === "snapshot") {
-    const pywebviewPromise = window.pywebview.api[method](...args);
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 15000));
-    out = await Promise.race([pywebviewPromise, timeoutPromise]);
-  } else {
-    out = await window.pywebview.api[method](...args);
-  }
+  
+  // Zaman asimi HER cagri icin gecerlidir. Onceden yalniz "snapshot" korunuyordu;
+  // kopru yanit vermezse diger cagrilar SONSUZA kadar bekliyor ve arayuz sessizce
+  // kilitleniyordu (kullanicinin yasadigi arizanin sinifi buydu).
+  const sure = KOPRU_ZAMAN_ASIMI[method] || KOPRU_ZAMAN_ASIMI._varsayilan;
+  out = await Promise.race([
+    window.pywebview.api[method](...args),
+    new Promise((_, reddet) => setTimeout(
+      () => reddet(new Error(t("err.timeout"))), sure)),
+  ]);
   
   if (out && out.ok === false) throw new Error(out.error || t("err.failed"));
   return out;
@@ -86,7 +102,9 @@ function drawTrace() {
   ctx.clearRect(0, 0, w, h);
 
   // Tepeye %25 boşluk: sabit hızda çizgi tavana yapışıp blok gibi görünmesin
-  const peak = Math.max(...state.trace, 1024 * 512) * 1.25;
+  let enb = 1024 * 512;                    // spread YOK: her karede 180 eleman yaymak pahaliydi
+  for (let i = 0; i < state.trace.length; i++) if (state.trace[i] > enb) enb = state.trace[i];
+  const peak = enb * 1.25;
   const step = w / (TRACE_POINTS - 1);
   const y = (v) => h - 6 - (v / peak) * (h - 16);
 
@@ -1598,6 +1616,9 @@ $("openSettings").onclick = async () => {
   $("sVideoSesFormati").value = s.video_ses_formati || "";
   $("sVideoDosyaSablonu").value = s.video_dosya_sablonu || "";
   $("sVideoTarayiciCerezi").value = s.video_tarayici_cerezi || "";
+  $("sPlgMaxSize").value = s.eklenti_max_boyut_mb || "";
+  $("sPlgMaxRatio").value = s.eklenti_max_oran || "";
+  $("sPlgUnsigned").checked = !!s.eklenti_imzasiz_izin;
   $("sAutoEnabled").checked = s.automation_enabled !== false;
   $("sAutoSteps").value = (s.automation_steps || []).join(", ");
   $("sAutoChecksum").checked = !!s.automation_checksum;
@@ -1619,12 +1640,23 @@ $("openSettings").onclick = async () => {
       t("hint.api", { port: info.port });
   } catch (_) { $("apiHint").textContent = ""; }
   renderEngines();
+  reliabilityStatus();
   if (state.motorTimer) clearInterval(state.motorTimer);
   state.motorTimer = setInterval(renderEngines, 1000);
   ayarRozetleriCiz();
   openVeil("setVeil");
 };
 
+function reliabilityShow(value) { $("relStatus").textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2); }
+async function reliabilityStatus() { try { reliabilityShow(await call("reliability_integrity")); } catch (_) { reliabilityShow(t("rel.offline")); } }
+$("relIntegrity").onclick = async () => { try { reliabilityShow(await call("reliability_integrity")); } catch (e) { toast(e.message, true); } };
+$("relBackup").onclick = async () => { try { reliabilityShow(await call("reliability_backup")); toast(t("rel.backupDone")); } catch (e) { toast(e.message, true); } };
+$("relHealth").onclick = async () => { try { reliabilityShow(await call("reliability_health")); } catch (e) { toast(e.message, true); } };
+$("relRestart").onclick = async () => { try { reliabilityShow(await call("reliability_restart_engine")); } catch (e) { toast(e.message, true); } };
+$("relDiagnostic").onclick = async () => { try { reliabilityShow(await call("reliability_diagnostics_preview")); } catch (e) { toast(e.message, true); } };
+$("relExport").onclick = async () => { try { reliabilityShow(await call("reliability_diagnostics_export")); } catch (e) { toast(e.message, true); } };
+$("relBackups").onclick = async () => { try { const out = await call("reliability_backups"), box = $("relBackupsList"); box.replaceChildren(); out.items.forEach((item) => { const b = document.createElement("button"); b.className = "btn ghost"; b.textContent = t("rel.restore") + ": " + item.name; b.onclick = async () => { if (!confirm(t("rel.restoreAsk"))) return; try { reliabilityShow(await call("reliability_restore", item.path)); } catch (e) { toast(e.message, true); } }; box.appendChild(b); }); if (!out.items.length) box.textContent = t("rel.noBackups"); } catch (e) { toast(e.message, true); } };
+$("relToken").onclick = async () => { try { reliabilityShow(await call("security_rotate_token")); toast(t("rel.rotateDone")); } catch (e) { toast(e.message, true); } };
 /* Rules Engine: editor state is local until the explicit save action. */
 let rulesDraft = [];
 const ruleFields = ["domain","extension","filename","size_mb","protocol","category"];
@@ -1937,6 +1969,9 @@ $("setGo").onclick = async () => {
     automation_enabled: $("sAutoEnabled").checked,
     automation_steps: $("sAutoSteps").value.split(",").map((x) => x.trim()).filter((x) => ["checksum", "extract", "move", "rename", "script", "notify", "power"].includes(x)),
     automation_checksum: $("sAutoChecksum").checked,
+    eklenti_max_boyut_mb: Number($("sPlgMaxSize").value) || 200,
+    eklenti_max_oran: Number($("sPlgMaxRatio").value) || 100,
+    eklenti_imzasiz_izin: $("sPlgUnsigned").checked,
     automation_extract: $("sAutoExtract").checked,
     automation_move_to: $("sAutoMove").value.trim(),
     automation_rename_to: $("sAutoRename").value.trim(),
@@ -2778,6 +2813,9 @@ function plgCiz() {
       plgCiz();
     });
     dugme(t("plg.update"), "", () => plgGuncelle(e.ad));
+    if (e.onceki_surum) {
+      dugme(t("plg.rollback") + " (" + e.onceki_surum + ")", "ghost", () => plgGeriAl(e.ad, e.onceki_surum, e.baslik));
+    }
     dugme(t("plg.remove"), "ghost", () => plgKaldir(e.ad, e.baslik));
     kart.appendChild(dugmeler);
 
@@ -2891,6 +2929,11 @@ async function plgIslemiIzle(basariMesaji) {
   }
   return false;
 }
+function plgGeriAl(ad, surum, baslik) {
+  if (!confirm(t("plg.confirmRollback", { p1: baslik, p2: surum }))) return;
+  plgIslem(ad, async () => await _plgApi({ eylem: "geri_al", ad }));
+}
+
 
 /* --- eylemler --------------------------------------------------------- */
 async function plgEtkinlestir(ad, acik) {
@@ -2970,17 +3013,22 @@ async function plgKurAkisi() {
   const go = $("plgOnayGo");
   err.style.display = "none";
   go.disabled = false;
+  let msg = "";
+  if (!m.sha256) msg = t("plg.unsignedWarn");
+  
   if (!m.uyumlu) {
-    err.textContent = t("plg.incompatible", { surum: m.afudm_surum })
+    msg = (msg ? msg + "\n" : "") + t("plg.incompatible", { surum: m.afudm_surum })
       + " (" + t("plg.needs") + ": " + (m.afudm_min || "*") + " - " + (m.afudm_max || "*") + ")";
-    err.style.display = "";
     go.disabled = true;
   } else if (m.kurulu) {
-    err.textContent = t("plg.updateHint");
-    err.style.display = "";
+    msg = (msg ? msg + "\n" : "") + t("plg.updateHint");
     go.textContent = t("plg.update");
   } else {
     go.textContent = t("plg.confirmInstall");
+  }
+  if (msg) {
+    err.textContent = msg;
+    err.style.display = "";
   }
   openVeil("pluginOnayVeil");
 }

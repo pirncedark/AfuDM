@@ -14,7 +14,7 @@ AfuDM eklentileri **guvenilen eklenti** modeliyle calisir.
   ve "Yeniden baslat" ile toparlanir.
 * Manifestteki `izinler` ve `domainler` **beyandir**. Kurulumdan once
   kullaniciya gosterilir ve kayda gecer, ama **teknik olarak zorlanmaz**.
-* Paket **imzasiz**dir. Yalniz guvendigin kaynaktan gelen `.afup` dosyasini kur.
+* Manifestte `sha256` alanı ile paketin imzasını (içerik özetini) sunabilirsin. Aksi takdirde, yalnızca "imzasız eklentiye izin ver" ayarı açık olanlar kurabilir.
 
 ## Paket bicimi
 
@@ -36,6 +36,7 @@ edilir (gelistirme icin).
 | `izinler` | hayir | beyan edilen izin anahtarlari (asagida) |
 | `domainler` | hayir | erisilecegi bildirilen alan adlari (`*.ornek.com`) |
 | `ayar_semasi` | hayir | arayuzun form uretecegi ayar alanlari |
+| `sha256` | hayir | `eklenti.json` HARIC paket icindeki tum dosyalarin (isimlerine gore sirali) okunup birlestirilmesiyle hesaplanan SHA256 ozeti |
 
 Bilinen izin anahtarlari: `indirme_oku`, `indirme_ekle`, `indirme_yonet`,
 `ayar_oku`, `ayar_yaz`, `ag`, `dosya_oku`, `dosya_yaz`, `bildirim`.
@@ -68,6 +69,7 @@ Bilinmeyen anahtar reddedilmez; arayuzde ham haliyle gosterilir.
   "baslik": "Ornek Eklenti",
   "surum": "1.0.0",
   "yazar": "Ben",
+  "sha256": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
   "aciklama": "Biten indirmeleri bir dosyaya yazar.",
   "giris": "main.py",
   "afudm_min": "2.0.0",

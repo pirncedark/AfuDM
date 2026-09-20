@@ -11,10 +11,10 @@ jobs:
   gate:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -44,8 +44,8 @@ jobs:
       PYTHONUTF8: "1"
       PYTHONIOENCODING: "utf-8"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -77,7 +77,7 @@ jobs:
           powershell -ExecutionPolicy Bypass -File scripts\make_checksums.ps1 $zip
           if ($LASTEXITCODE -ne 0) { throw "make_checksums basarisiz ($LASTEXITCODE)" }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: afudm-release
           path: |
@@ -149,7 +149,7 @@ jobs:
           Write-Host "yer tutucu dolduruldu: $not"
 
       - name: Github Release yayinla
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: ${{ steps.release_basligi.outputs.baslik }}
           files: |

@@ -282,6 +282,20 @@
         <label data-i18n="set.surum">Sürüm</label>
         <div class="surum-satir" id="sSurum"></div>
       </div>
+      <div class="seed-kutu" id="pluginSecurityPanel">
+        <label data-i18n="set.plg.title">Eklenti Güvenliği</label>
+        <div class="grid2">
+          <div><label for="sPlgMaxSize" data-i18n="set.plg.maxSize">Maks. uncompressed (MB)</label><input id="sPlgMaxSize" type="number" min="10" placeholder="200"></div>
+          <div><label for="sPlgMaxRatio" data-i18n="set.plg.maxRatio">Maks. sıkıştırma (1:N)</label><input id="sPlgMaxRatio" type="number" min="10" placeholder="100"></div>
+        </div>
+        <label class="opt"><input type="checkbox" id="sPlgUnsigned"> <span data-i18n="set.plg.unsigned">İmzasız eklentiye izin ver</span></label>
+      </div>
+      <div class="seed-kutu" id="reliabilityPanel">
+        <label data-i18n="rel.title">Güvenilirlik ve güvenlik</label>
+        <div class="hint"><span class="rozet" data-i18n="apply.now">hemen</span> <span data-i18n="rel.hint">Durumu denetle, yedekle ve destek paketini güvenle hazırla.</span></div>
+        <div class="yol-satir"><button class="btn" id="relIntegrity" data-i18n="rel.integrity">Bütünlüğü denetle</button><button class="btn" id="relBackup" data-i18n="rel.backup">Şimdi yedekle</button><button class="btn" id="relHealth" data-i18n="rel.health">Motor sağlığı</button><button class="btn" id="relRestart" data-i18n="rel.restart">Motoru yeniden başlat</button></div>
+        <div class="yol-satir"><button class="btn" id="relDiagnostic" data-i18n="rel.preview">Maskelenmiş önizleme</button><button class="btn" id="relExport" data-i18n="rel.export">Tanı paketini kaydet</button><button class="btn" id="relBackups" data-i18n="rel.backups">Yedekleri göster</button><button class="btn ghost" id="relToken" data-i18n="rel.rotate">API anahtarını yenile</button></div>
+        <pre class="hint" id="relStatus" style="white-space:pre-wrap;max-height:170px;overflow:auto"></pre><div class="hint" id="relBackupsList"></div>
       <div class="seed-kutu" id="automationSettings">
         <label data-i18n="auto.title">Otomasyon</label>
         <div class="hint" data-i18n="auto.hint">İndirme tamamlanınca seçtiğin adımlar sırayla arka planda çalışır.</div>

@@ -15,7 +15,7 @@ DURUSTLUK (degismez kural):
     kayda gecer, ama teknik olarak ZORLANMAZ. "Sandbox var" veya "izole
     calisir" iddiasi UI'de ve burada KULLANILMAZ.
 """
-from __future__ import annotations
+import hashlib
 
 import json
 import os
@@ -209,24 +209,43 @@ def manifest_dogrula(ham: dict) -> dict:
         "giris": giris,
         "afudm_min": afudm_min,
         "afudm_max": afudm_max,
+        "sha256": _metin(ham, "sha256", sinir=64).lower(),
         "izinler": izinler,
         "domainler": domainler,
         "ayar_semasi": _ayar_semasi_dogrula(ham.get("ayar_semasi")),
     }
 
 
-def _zip_guvenli_uyeler(zf: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
-    """Zip Slip korumasi: paket disina yazmaya calisan girdiyi REDDEDER."""
+def _zip_guvenli_uyeler(zf: zipfile.ZipFile, max_boyut: int = 200 * 1024 * 1024, max_oran: float = 100.0) -> list[zipfile.ZipInfo]:
+    """Zip Slip korumasi: paket disina yazmaya calisan girdiyi REDDEDER.
+    Zip Bomb korumasi: boyut ve sikistirma oranini asan paketi REDDEDER."""
     uyeler = []
+    toplam_boyut = 0
+    toplam_sikistirilmis = 0
     for bilgi in zf.infolist():
         ad = bilgi.filename.replace("\\", "/")
         if ad.startswith("/") or ".." in ad.split("/") or ":" in ad.split("/")[0][1:2]:
             raise EklentiHatasi("PAKET_GUVENSIZ", f"paket disina yazmaya calisiyor: {ad[:60]}")
+        if bilgi.file_size > max_boyut:
+            raise EklentiHatasi("PAKET_COK_BUYUK", f"dosya cok buyuk: {ad[:60]} ({bilgi.file_size} bayt)")
+        toplam_boyut += bilgi.file_size
+        toplam_sikistirilmis += bilgi.compress_size
         uyeler.append(bilgi)
+    if toplam_boyut > max_boyut:
+        raise EklentiHatasi("PAKET_COK_BUYUK", f"toplam boyut cok buyuk: {toplam_boyut} bayt")
+    if toplam_sikistirilmis > 0 and (toplam_boyut / toplam_sikistirilmis) > max_oran:
+        raise EklentiHatasi("PAKET_COK_BUYUK", "asiri sikistirma orani (zip bomb suphesi)")
     return uyeler
 
 
-def paket_incele(yol: str) -> dict:
+def _json_oku(ham: bytes) -> dict:
+    try:
+        return json.loads(ham.decode("utf-8-sig"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise EklentiHatasi("MANIFEST_BOZUK", f"{MANIFEST_ADI} gecerli JSON degil") from exc
+
+
+def paket_incele(yol: str, max_boyut_mb: int = 200, max_oran: float = 100.0) -> dict:
     """KURMADAN manifesti okur — izin/domain ekrani bunu kullanir.
 
     `.afup` (zip) veya acik klasor kabul eder."""
@@ -245,7 +264,7 @@ def paket_incele(yol: str) -> dict:
             raise EklentiHatasi("PAKET_TUR", f"yalniz {PAKET_UZANTISI} paketi veya klasor")
         try:
             with zipfile.ZipFile(kaynak) as zf:
-                uyeler = _zip_guvenli_uyeler(zf)
+                uyeler = _zip_guvenli_uyeler(zf, max_boyut=max_boyut_mb * 1024 * 1024, max_oran=max_oran)
                 adlar = [u.filename.replace("\\", "/") for u in uyeler]
                 if MANIFEST_ADI not in adlar:
                     raise EklentiHatasi("MANIFEST_YOK", f"pakette {MANIFEST_ADI} yok (kokte olmali)")
@@ -266,21 +285,15 @@ def paket_incele(yol: str) -> dict:
     return manifest
 
 
-def _json_oku(ham: bytes) -> dict:
-    try:
-        return json.loads(ham.decode("utf-8-sig"))
-    except (UnicodeDecodeError, ValueError) as exc:
-        raise EklentiHatasi("MANIFEST_BOZUK", f"{MANIFEST_ADI} gecerli JSON degil") from exc
-
-
-def _paketi_ac(kaynak: Path, hedef: Path) -> None:
+def _paketi_ac(kaynak: Path, hedef: Path, max_boyut_mb: int = 200, max_oran: float = 100.0) -> None:
     hedef.mkdir(parents=True, exist_ok=True)
     if kaynak.is_dir():
         shutil.copytree(kaynak, hedef, dirs_exist_ok=True)
         return
     with zipfile.ZipFile(kaynak) as zf:
-        _zip_guvenli_uyeler(zf)
+        _zip_guvenli_uyeler(zf, max_boyut=max_boyut_mb * 1024 * 1024, max_oran=max_oran)
         zf.extractall(hedef)
+
 
 
 def _sil(klasor: Path) -> None:
@@ -650,7 +663,9 @@ class EklentiServisi:
     def incele(self, yol: str) -> dict:
         """Kurulumdan ONCE: hangi izinler, hangi domainler, uyumlu mu."""
         try:
-            manifest = paket_incele(yol)
+            max_boyut = int(self.store.get("eklenti_max_boyut_mb", 200))
+            max_oran = float(self.store.get("eklenti_max_oran", 100.0))
+            manifest = paket_incele(yol, max_boyut_mb=max_boyut, max_oran=max_oran)
         except EklentiHatasi as exc:
             return {"ok": False, "code": exc.kod, "error": exc.mesaj}
         except OSError as exc:
@@ -708,7 +723,9 @@ class EklentiServisi:
     def kur(self, yol: str, onaylanan_izinler: list | None = None) -> dict:
         """Yerel `.afup` paketinden kurar. Imza YOKTUR: guvenilen kaynak sarttir."""
         try:
-            manifest = paket_incele(yol)
+            max_boyut = int(self.store.get("eklenti_max_boyut_mb", 200))
+            max_oran = float(self.store.get("eklenti_max_oran", 100.0))
+            manifest = paket_incele(yol, max_boyut_mb=max_boyut, max_oran=max_oran)
         except EklentiHatasi as exc:
             return {"ok": False, "code": exc.kod, "error": exc.mesaj}
         if self.store.eklenti(manifest["ad"]):
@@ -732,9 +749,29 @@ class EklentiServisi:
         islem.adim = "dosyalar_aciliyor"
         if islem.iptal_istendi.is_set():
             return ""
+        gercek_sha = ""
+        if kaynak.is_file():
+            h = hashlib.sha256()
+            with zipfile.ZipFile(kaynak) as zf:
+                # Guvenlik icin infolist() siralamasi yerine isme gore siraliyoruz
+                dosyalar = sorted([u.filename for u in zf.infolist() if not u.is_dir() and u.filename != MANIFEST_ADI])
+                for dosya in dosyalar:
+                    with zf.open(dosya) as f:
+                        for buf in iter(lambda: f.read(65536), b""):
+                            h.update(buf)
+            gercek_sha = h.hexdigest().lower()
+            beklenen = manifest.get("sha256", "").lower()
+            izin_ver = self.store.get("eklenti_imzasiz_izin", True)
+            if not beklenen:
+                if not izin_ver:
+                    raise EklentiHatasi("IMZASIZ_REDDEDILDI", "imzasiz (sha256 yok) eklentiye izin verilmiyor")
+            elif beklenen != gercek_sha:
+                raise EklentiHatasi("OZET_UYUSMUYOR", f"sha256 uyusmuyor! beklenen: {beklenen}, gercek: {gercek_sha}")
         _sil(hedef)
         try:
-            _paketi_ac(kaynak, hedef)
+            max_boyut = int(self.store.get("eklenti_max_boyut_mb", 200))
+            max_oran = float(self.store.get("eklenti_max_oran", 100.0))
+            _paketi_ac(kaynak, hedef, max_boyut_mb=max_boyut, max_oran=max_oran)
         except (OSError, zipfile.BadZipFile) as exc:
             _sil(hedef)
             raise EklentiHatasi("PAKET_ACILMADI", f"paket acilamadi: {exc}"[:300]) from exc
@@ -752,6 +789,7 @@ class EklentiServisi:
             "izinler": manifest["izinler"], "domainler": manifest["domainler"],
             "ayarlar": _varsayilan_ayarlar(manifest), "etkin": False, "son_hata": "",
             "onceki_surum": "", "kurulum_at": simdi, "guncelleme_at": simdi,
+            "sha256": gercek_sha,
         })
         islem.adim = "bitti"
         return f"{manifest['baslik']} {manifest['surum']} kuruldu (devre disi)"
@@ -762,11 +800,13 @@ class EklentiServisi:
         if kayit is None:
             return {"ok": False, "code": "KURULU_DEGIL", "error": "eklenti kurulu degil"}
         try:
-            manifest = paket_incele(yol)
+            max_boyut = int(self.store.get("eklenti_max_boyut_mb", 200))
+            max_oran = float(self.store.get("eklenti_max_oran", 100.0))
+            manifest = paket_incele(yol, max_boyut_mb=max_boyut, max_oran=max_oran)
         except EklentiHatasi as exc:
             return {"ok": False, "code": exc.kod, "error": exc.mesaj}
         if manifest["ad"] != ad:
-            return {"ok": False, "code": "AD_UYUSMUYOR",
+            return {"ok": False, "code": "YANLIS_PAKET",
                     "error": f"paket '{manifest['ad']}' icin — '{ad}' bekleniyordu"}
         if not manifest["uyumlu"]:
             return {"ok": False, "code": "UYUMSUZ",
@@ -801,9 +841,29 @@ class EklentiServisi:
         try:
             if islem.iptal_istendi.is_set():
                 raise EklentiHatasi("IPTAL", "islem iptal edildi")
+
+            gercek_sha = ""
+            if kaynak.is_file():
+                h = hashlib.sha256()
+                with zipfile.ZipFile(kaynak) as zf:
+                    dosyalar = sorted([u.filename for u in zf.infolist() if not u.is_dir() and u.filename != MANIFEST_ADI])
+                    for dosya in dosyalar:
+                        with zf.open(dosya) as f:
+                            for buf in iter(lambda: f.read(65536), b""):
+                                h.update(buf)
+                gercek_sha = h.hexdigest().lower()
+                beklenen = manifest.get("sha256", "").lower()
+                izin_ver = self.store.get("eklenti_imzasiz_izin", True)
+                if not beklenen:
+                    if not izin_ver:
+                        raise EklentiHatasi("IMZASIZ_REDDEDILDI", "imzasiz (sha256 yok) eklentiye izin verilmiyor")
+                elif beklenen != gercek_sha:
+                    raise EklentiHatasi("OZET_UYUSMUYOR", f"sha256 uyusmuyor! beklenen: {beklenen}, gercek: {gercek_sha}")
             islem.adim = "dosyalar_aciliyor"
             _sil(hedef)
-            _paketi_ac(kaynak, hedef)
+            max_boyut = int(self.store.get("eklenti_max_boyut_mb", 200))
+            max_oran = float(self.store.get("eklenti_max_oran", 100.0))
+            _paketi_ac(kaynak, hedef, max_boyut_mb=max_boyut, max_oran=max_oran)
             if not (hedef / manifest["giris"]).is_file():
                 raise EklentiHatasi("GIRIS_YOK",
                                     f"giris dosyasi pakette yok: {manifest['giris']}")
@@ -817,6 +877,7 @@ class EklentiServisi:
                 "onceki_surum": eski.get("surum", ""),
                 "kurulum_at": eski.get("kurulum_at", time.time()),
                 "guncelleme_at": time.time(),
+                "sha256": gercek_sha,
             })
             if calisiyordu or eski.get("etkin"):
                 islem.adim = "baslatiliyor"
@@ -834,11 +895,58 @@ class EklentiServisi:
             raise EklentiHatasi(
                 kod, f"{mesaj} — onceki surum ({eski.get('surum', '?')}) geri yuklendi"[:400]
             ) from exc
-        finally:
-            _sil(yedek)
         islem.adim = "bitti"
         return (f"{manifest['baslik']} {eski.get('surum', '?')} -> {manifest['surum']} "
                 f"guncellendi")
+    def elle_geri_al(self, ad: str) -> dict:
+        """Kullanici istegiyle onceki surume rollback."""
+        kayit = self.store.eklenti(ad)
+        if not kayit:
+            return {"ok": False, "code": "KURULU_DEGIL", "error": "eklenti kurulu degil"}
+        if not kayit.get("onceki_surum"):
+            return {"ok": False, "code": "YEDEK_YOK", "error": "onceki surum kaydi yok"}
+            
+        yedek = paths.PLUGIN_YEDEK / ad
+        if not yedek.exists():
+            return {"ok": False, "code": "YEDEK_SILINMIS", "error": "yedek dosyalari bulunamadi"}
+            
+        islem = self._islem_basla("geri_al", ad)
+        
+        def kosucu(i: Islem):
+            try:
+                i.adim = "geri_aliniyor"
+                hedef = self.kok / ad
+                host = self._hostlar.get(ad)
+                calisiyordu = bool(host and host.calisiyor()) or kayit.get("etkin")
+                if host:
+                    host.durdur()
+                
+                _sil(hedef)
+                import shutil
+                shutil.copytree(yedek, hedef)
+                
+                eski = dict(kayit)
+                eski["surum"] = kayit["onceki_surum"]
+                eski["onceki_surum"] = kayit["surum"]
+                eski["son_hata"] = ""
+                self.store.eklenti_yaz(eski)
+                
+                if calisiyordu:
+                    yeni_host = self._host(self.store.eklenti(ad) or eski)
+                    yeni_host.baslat()
+                    
+                i.mesaj = f"{kayit['surum']} -> {eski['surum']} geri alindi"
+                i.adim = "bitti"
+            except Exception as exc:
+                i.adim = "hata"
+                i.mesaj = str(exc)[:400]
+            finally:
+                i.bitis = time.time()
+                
+        import threading
+        threading.Thread(target=kosucu, daemon=True).start()
+        return {"ok": True, "islem": islem.ozet()}
+
 
     def _geri_al(self, ad: str, eski: dict, yedek: Path, hedef: Path, calisiyordu: bool) -> None:
         """Rollback: dosyalar + kayit + (gerekiyorsa) surec eski haline doner."""
