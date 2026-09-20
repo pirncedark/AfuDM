@@ -280,6 +280,15 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(200, {"ok": True, **self.manager.seed_bilgi(gid)})
             except Exception as exc:
                 self._send(400, hata_json(exc))
+        elif parsed.path == "/eklentiler":
+            # Eklenti kayit defteri + CANLI durum. pywebview koprusuyle AYNI
+            # servis katmani (core/eklenti.EklentiServisi) kullanilir.
+            self._send(200, self.manager.eklentiler.liste())
+        elif parsed.path == "/eklenti/gunluk":
+            ad = query.get("ad", [""])[0]
+            self._send(200, self.manager.eklentiler.gunluk(ad))
+        elif parsed.path == "/eklenti/islem":
+            self._send(200, self.manager.eklentiler.islem())
         elif parsed.path == "/capabilities":
             from core import engines, surum
             self._send(200, {
@@ -298,6 +307,9 @@ class _Handler(BaseHTTPRequestHandler):
                     "rules_engine",
                     "automation", "automation_queue", "automation_retry", "automation_cancel",
                     "torrent_dosya_secimi", "seed_durumu", "tracker_tarama",
+                    # v2.0: yerel .afup eklentisi kurulur, ayri surecte calisir.
+                    # SANDBOX DEGILDIR — "guvenilen eklenti" modeli.
+                    "eklentiler", "eklenti_ayri_surec", "eklenti_rollback",
                 ],
                 "sinirlar": {
                     "kaynak": models.SOURCE_MAX,
@@ -462,6 +474,31 @@ class _Handler(BaseHTTPRequestHandler):
                     self._hata(400, "BAD_REQUEST", "profil gerekli (snail|normal|turbo)")
                     return
                 self._send(200, {"ok": True, **self.manager.set_mode(ad)})
+            elif parsed.path == "/eklenti":
+                # Tek kapi: {"eylem": "...", ...}. Kurulum/guncelleme ARKA
+                # PLANDA baslar; ilerleme GET /eklenti/islem ile izlenir.
+                servis = self.manager.eklentiler
+                eylem = str(data.get("eylem") or "")
+                ad = str(data.get("ad") or "")
+                yol = str(data.get("yol") or "")
+                if eylem == "incele":
+                    self._send(200, servis.incele(yol))
+                elif eylem == "kur":
+                    self._send(200, servis.kur(yol, data.get("onaylanan_izinler")))
+                elif eylem == "guncelle":
+                    self._send(200, servis.guncelle(ad, yol))
+                elif eylem == "kaldir":
+                    self._send(200, servis.kaldir(ad))
+                elif eylem == "etkinlestir":
+                    self._send(200, servis.etkinlestir(ad, _boolean_al(data, "acik")))
+                elif eylem == "yeniden_baslat":
+                    self._send(200, servis.yeniden_baslat(ad))
+                elif eylem == "ayar":
+                    self._send(200, servis.ayar_kaydet(ad, data.get("ayarlar") or {}))
+                elif eylem == "islem_iptal":
+                    self._send(200, servis.islem_iptal())
+                else:
+                    self._hata(400, "BILINMEYEN_EYLEM", "bilinmeyen eklenti eylemi")
             elif parsed.path == "/linkgrabber":
                 # Uzanti handoff'u: kopylanamayan/sayfa linkleri LinkGrabber
                 # paneline duser. Tehlikesizdir: cabuk kurutma/indirme YOKTUR,

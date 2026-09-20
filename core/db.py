@@ -141,7 +141,9 @@ DEFAULTS: dict[str, Any] = {
 # kullandi. v6 bu iki tarihi yolu idempotent olarak uzlastirir; boylece hangi
 # daldan yukseltilirse yukseltilsin her iki ozellik de eksiksiz kalir.
 # v1.9 kurallarini v6'yi degistirmeden yeni bir adimda ekler.
-USER_VERSION = 7
+# v2.0 eklenti kaydi v8'dedir: v2.0 dali onu once v4 olarak yazmisti, ancak
+# o numara v1.8/v1.7.5 tarafindan alinmisti; yeniden numaralandirildi.
+USER_VERSION = 8
 
 
 def _v2_torrent_dosya_secimleri(conn: sqlite3.Connection) -> None:
@@ -203,6 +205,31 @@ def _v7_rules_engine(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE TABLE IF NOT EXISTS rules (id TEXT PRIMARY KEY,name TEXT NOT NULL,active INTEGER DEFAULT 1,priority INTEGER NOT NULL,match_type TEXT NOT NULL,conditions TEXT NOT NULL,actions TEXT NOT NULL)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_rules_priority ON rules(priority)")
 
+def _v8_eklenti_kaydi(conn: sqlite3.Connection) -> None:
+    """v2.0 Plugin Platform — kurulu eklenti kaydi.
+
+    Eklenti DOSYALARI diskte (plugins/<ad>/) durur; burada yalnizca KAYIT
+    tutulur: hangi surum, nereden geldi, etkin mi, kullanicinin verdigi
+    ayarlar ve son hata. Indirme gecmisi ve ayarlar bu adimda ELLENMEZ."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS plugins (
+            ad            TEXT PRIMARY KEY,
+            baslik        TEXT NOT NULL DEFAULT '',
+            surum         TEXT NOT NULL DEFAULT '',
+            kaynak        TEXT NOT NULL DEFAULT '',
+            giris         TEXT NOT NULL DEFAULT '',
+            manifest      TEXT NOT NULL DEFAULT '{}',
+            izinler       TEXT NOT NULL DEFAULT '[]',
+            domainler     TEXT NOT NULL DEFAULT '[]',
+            ayarlar       TEXT NOT NULL DEFAULT '{}',
+            etkin         INTEGER NOT NULL DEFAULT 0,
+            son_hata      TEXT NOT NULL DEFAULT '',
+            onceki_surum  TEXT NOT NULL DEFAULT '',
+            kurulum_at    REAL NOT NULL DEFAULT 0,
+            guncelleme_at REAL NOT NULL DEFAULT 0
+        )
+    """)
+
 MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     2: _v2_torrent_dosya_secimleri,
     3: _v3_events_gid,
@@ -210,6 +237,7 @@ MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     5: _v5_mobile_devices,
     6: _v6_v175_v18_uzlastir,
     7: _v7_rules_engine,
+    8: _v8_eklenti_kaydi,
 }
 
 
@@ -499,6 +527,74 @@ class Store:
     def automation_cancel(self, job_id: int) -> None:
         self.automation_update(job_id, status="cancelled", finished_at=time.time())
 
+    # --- eklentiler (v2.0) ------------------------------------------------
+    def eklenti_listesi(self) -> list[dict]:
+        with self._lock:
+            rows = self.conn.execute("SELECT * FROM plugins ORDER BY ad").fetchall()
+        return [_eklenti_coz(dict(r)) for r in rows]
+
+    def eklenti(self, ad: str) -> dict | None:
+        with self._lock:
+            row = self.conn.execute("SELECT * FROM plugins WHERE ad = ?", (ad,)).fetchone()
+        return _eklenti_coz(dict(row)) if row else None
+
+    def eklenti_yaz(self, kayit: dict) -> None:
+        """Idempotent kayit: ayni ad ikinci kez yazilirsa SATIR GUNCELLENIR."""
+        with self._lock:
+            self.conn.execute(
+                "INSERT INTO plugins(ad, baslik, surum, kaynak, giris, manifest, izinler,"
+                " domainler, ayarlar, etkin, son_hata, onceki_surum, kurulum_at, guncelleme_at)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                " ON CONFLICT(ad) DO UPDATE SET baslik=excluded.baslik, surum=excluded.surum,"
+                " kaynak=excluded.kaynak, giris=excluded.giris, manifest=excluded.manifest,"
+                " izinler=excluded.izinler, domainler=excluded.domainler,"
+                " ayarlar=excluded.ayarlar, etkin=excluded.etkin, son_hata=excluded.son_hata,"
+                " onceki_surum=excluded.onceki_surum, guncelleme_at=excluded.guncelleme_at",
+                (
+                    str(kayit["ad"]),
+                    str(kayit.get("baslik") or ""),
+                    str(kayit.get("surum") or ""),
+                    str(kayit.get("kaynak") or ""),
+                    str(kayit.get("giris") or ""),
+                    json.dumps(kayit.get("manifest") or {}, ensure_ascii=False),
+                    json.dumps(kayit.get("izinler") or [], ensure_ascii=False),
+                    json.dumps(kayit.get("domainler") or [], ensure_ascii=False),
+                    json.dumps(kayit.get("ayarlar") or {}, ensure_ascii=False),
+                    1 if kayit.get("etkin") else 0,
+                    str(kayit.get("son_hata") or "")[:500],
+                    str(kayit.get("onceki_surum") or ""),
+                    float(kayit.get("kurulum_at") or time.time()),
+                    float(kayit.get("guncelleme_at") or time.time()),
+                ),
+            )
+            self.conn.commit()
+
+    def eklenti_alan_yaz(self, ad: str, **alanlar: Any) -> None:
+        """Yalniz bilinen alanlari gunceller (etkin/son_hata/ayarlar/...)."""
+        izinli = {"baslik", "surum", "kaynak", "giris", "etkin", "son_hata",
+                  "onceki_surum", "guncelleme_at"}
+        json_alan = {"manifest", "izinler", "domainler", "ayarlar"}
+        setler, degerler = [], []
+        for anahtar, deger in alanlar.items():
+            if anahtar in json_alan:
+                setler.append(f"{anahtar} = ?")
+                degerler.append(json.dumps(deger, ensure_ascii=False))
+            elif anahtar in izinli:
+                setler.append(f"{anahtar} = ?")
+                degerler.append(int(deger) if anahtar == "etkin" else deger)
+        if not setler:
+            return
+        degerler.append(ad)
+        with self._lock:
+            self.conn.execute(
+                f"UPDATE plugins SET {', '.join(setler)} WHERE ad = ?", degerler)
+            self.conn.commit()
+
+    def eklenti_sil(self, ad: str) -> None:
+        with self._lock:
+            self.conn.execute("DELETE FROM plugins WHERE ad = ?", (ad,))
+            self.conn.commit()
+
     # --- olay kaydi -------------------------------------------------------
     def log(self, level: str, message: str, gid: str = "") -> None:
         with self._lock:
@@ -519,3 +615,20 @@ class Store:
                     "SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,)
                 ).fetchall()
         return [dict(r) for r in rows]
+
+
+def _eklenti_coz(satir: dict) -> dict:
+    """DB satirindaki JSON sutunlarini Python nesnesine cevirir.
+
+    Bozuk JSON kaydi UYGULAMAYI DUSURMEZ: bos degerle devam eder, kullanici
+    eklentiyi kaldirip yeniden kurabilir."""
+    for anahtar, bos in (("manifest", {}), ("izinler", []),
+                         ("domainler", []), ("ayarlar", {})):
+        try:
+            satir[anahtar] = json.loads(satir.get(anahtar) or "null")
+        except (TypeError, ValueError):
+            satir[anahtar] = bos
+        if satir[anahtar] is None:
+            satir[anahtar] = bos
+    satir["etkin"] = bool(satir.get("etkin"))
+    return satir
