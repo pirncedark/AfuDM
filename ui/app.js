@@ -53,21 +53,37 @@ function toast(message, bad = false) {
   el.textContent = message;
   el.className = "toast show" + (bad ? " bad" : "");
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => { el.className = "toast"; }, 3400);
+  // Hata mesaji okunacak kadar kalsin; bilgi mesaji kisa gecsin.
+  toast._t = setTimeout(() => { el.className = "toast"; }, bad ? 9000 : 3400);
 }
 
 /* ---------- kopru ---------- */
+/* Kopru cagrisi zaman asimlari (ms). Uzun suren isler ayrica listelenir;
+   geri kalani varsayilani kullanir. Amac: hicbir cagri sonsuza kadar beklemesin. */
+const KOPRU_ZAMAN_ASIMI = {
+  _varsayilan: 15000,
+  snapshot: 15000,
+  ekle: 60000,
+  eklenti_kur: 300000,
+  eklenti_guncelle: 300000,
+  reliability_backup: 300000,
+  reliability_restore: 300000,
+  reliability_diagnostics_export: 120000,
+};
+
 async function call(method, ...args) {
   if (!window.pywebview || !window.pywebview.api) throw new Error(t("err.bridge"));
-  
   let out;
-  if (method === "snapshot") {
-    const pywebviewPromise = window.pywebview.api[method](...args);
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 15000));
-    out = await Promise.race([pywebviewPromise, timeoutPromise]);
-  } else {
-    out = await window.pywebview.api[method](...args);
-  }
+  
+  // Zaman asimi HER cagri icin gecerlidir. Onceden yalniz "snapshot" korunuyordu;
+  // kopru yanit vermezse diger cagrilar SONSUZA kadar bekliyor ve arayuz sessizce
+  // kilitleniyordu (kullanicinin yasadigi arizanin sinifi buydu).
+  const sure = KOPRU_ZAMAN_ASIMI[method] || KOPRU_ZAMAN_ASIMI._varsayilan;
+  out = await Promise.race([
+    window.pywebview.api[method](...args),
+    new Promise((_, reddet) => setTimeout(
+      () => reddet(new Error(t("err.timeout"))), sure)),
+  ]);
   
   if (out && out.ok === false) throw new Error(out.error || t("err.failed"));
   return out;
@@ -86,7 +102,9 @@ function drawTrace() {
   ctx.clearRect(0, 0, w, h);
 
   // Tepeye %25 boşluk: sabit hızda çizgi tavana yapışıp blok gibi görünmesin
-  const peak = Math.max(...state.trace, 1024 * 512) * 1.25;
+  let enb = 1024 * 512;                    // spread YOK: her karede 180 eleman yaymak pahaliydi
+  for (let i = 0; i < state.trace.length; i++) if (state.trace[i] > enb) enb = state.trace[i];
+  const peak = enb * 1.25;
   const step = w / (TRACE_POINTS - 1);
   const y = (v) => h - 6 - (v / peak) * (h - 16);
 
