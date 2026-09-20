@@ -21,7 +21,7 @@
     <span class="trace-up"><span data-i18n="trace.share">paylaşım</span> <b id="mUp">0 KB/s</b></span>
     <span><span data-i18n="trace.today">bugün</span> <b id="mTotal">0 B</b></span>
   </div>
-  <div class="engine"><span class="dot" id="engineDot"></span><span id="engineText" data-i18n="engine.connecting">motor bağlanıyor</span></div>
+  <div class="engine"><span class="dot" id="engineDot"></span><span id="engineText" data-i18n="engine.connecting">motor bağlanıyor</span> <button id="engineRetry" class="btn" style="display:none; padding: 2px 6px; font-size: 11px; margin-left: 6px;" data-i18n="engine.retry">Yeniden dene</button></div>
   <!-- Windows basligi yerine (core/pencere.py). Yalniz ozel baslik kurulunca gorunur. -->
   <div class="wc" id="winControls">
     <button class="wc-btn" id="wcMin" data-i18n-title="win.min" title="Küçült" tabindex="-1">
@@ -54,6 +54,7 @@
       <button id="openFolder" data-i18n="rail.openFolder">İndirme klasörünü aç</button>
       <button id="openChrome" class="rail-chrome" data-i18n="rail.chrome">Chrome'a ekle</button>
       <button id="openPlugins" data-i18n="rail.plugins">Eklentiler</button>
+      <button id="openServer" data-i18n="srv.title">Sunucu</button>
       <button id="openSettings" data-i18n="rail.settings">Ayarlar</button>
       <button id="rulesOpen" data-i18n="rules.open">Kuralları yönet</button>
       <div class="dir-hint" id="dirHint"></div>
@@ -236,6 +237,7 @@
         <label class="opt"><input type="checkbox" id="sClip"> <span data-i18n="set.clip">Panoya kopyalanan linki yakala</span></label>
         <label class="opt"><input type="checkbox" id="sTrackers"> <span data-i18n="set.trackers">Tracker listesini günlük güncelle</span></label>
         <label class="opt"><input type="checkbox" id="sNotify"> <span data-i18n="set.notify">Bitince Telegram'a haber ver</span></label>
+        <label class="opt"><input type="checkbox" id="sWinNotify"> <span data-i18n="set.winNotify">Windows bildirimi göster</span></label>
         <label class="opt"><input type="checkbox" id="sShutdown"> <span data-i18n="set.shutdown">Hepsi bitince bilgisayarı kapat</span></label>
         <label class="opt"><input type="checkbox" id="sSleep"> <span data-i18n="set.sleep">Hepsi bitince bilgisayarı uyut</span></label>
         <label class="opt"><input type="checkbox" id="sKaydet"> <span data-i18n="set.kaydet">İndirmeden önce kaydetme penceresini göster</span></label>
@@ -250,6 +252,12 @@
         <label for="sClipExts" data-i18n="set.clip.exts">Yakalanacak uzantılar</label>
         <input id="sClipExts" type="text" spellcheck="false">
         <div class="hint" data-i18n="set.clip.extsHint">Virgülle ayır. Pano izleme açıkken yalnızca bu uzantılarla biten adresler yakalanır.</div>
+      </div>
+      <div class="seed-kutu" id="windowsIntegration">
+        <label data-i18n="winint.title">Windows Integration</label>
+        <div class="hint" data-i18n="winint.hint">Each action reads the current Windows registration; Apply stores the previous value before changing it.</div>
+        <div id="winIntRows" class="winint-rows"></div>
+        <div class="hint" id="winIntError" aria-live="polite"></div>
       </div>
       <div class="seed-kutu">
         <label data-i18n="vid.title">Video</label>
@@ -400,6 +408,124 @@
       <span style="flex:1"></span>
       <button class="btn ghost" data-close="setVeil" data-i18n="set.cancel">Vazgeç</button>
       <button class="btn primary" id="setGo" data-i18n="set.save">Ayarları kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sunucu (v2.1 Headless Server) — masaustu ve web paneli AYNI servis
+     katmanini cagirir; buradaki her dugmenin arkasinda gercek bir backend
+     vardir, placeholder yoktur. -->
+<div class="veil" id="srvVeil">
+  <div class="sheet">
+    <h2 data-i18n="srv.title">Sunucu</h2>
+    <div class="body">
+      <div class="hint" data-i18n="srv.subtitle"></div>
+
+      <!-- durum + anahtar dugmesi -->
+      <div class="yol-satir">
+        <label class="satir-onay">
+          <input type="checkbox" id="srvAcik">
+          <span data-i18n="srv.start">Sunucuyu aç</span>
+        </label>
+        <span class="num" id="srvRozet">—</span>
+        <span class="num" id="srvUygulama">—</span>
+      </div>
+      <div class="hint" id="srvHata" style="color:#ff8a8a"></div>
+
+      <div>
+        <label data-i18n="srv.address">Adres</label>
+        <select id="srvAdres">
+          <option value="yerel" data-i18n="srv.addrLocal"></option>
+          <option value="lan" data-i18n="srv.addrLan"></option>
+        </select>
+      </div>
+      <div>
+        <label data-i18n="srv.port">Port</label>
+        <input id="srvPort" type="number" min="1024" max="65535" value="6821">
+      </div>
+      <div class="grid2">
+        <div>
+          <label for="srvIstekLimiti" data-i18n="srv.rateLimit">Dakikada en fazla istek</label>
+          <input id="srvIstekLimiti" type="number" min="1" max="10000" value="120">
+        </div>
+        <div>
+          <label for="srvHataliLimit" data-i18n="srv.rateFails">Üst üste hatalı anahtar sınırı</label>
+          <input id="srvHataliLimit" type="number" min="1" max="1000" value="10">
+        </div>
+        <div>
+          <label for="srvKilitSaniye" data-i18n="srv.rateLock">Kilit süresi (saniye)</label>
+          <input id="srvKilitSaniye" type="number" min="1" max="86400" value="1800">
+        </div>
+      </div>
+      <div class="opts">
+        <label class="opt"><input type="checkbox" id="srvIstemciKaydi"> <span data-i18n="srv.clientLog">İstemci kaydı tutulsun</span></label>
+      </div>
+      <div>
+        <label for="srvIzinliOriginler" data-i18n="srv.origins">İzinli kaynak adresler (origin)</label>
+        <textarea id="srvIzinliOriginler" spellcheck="false" placeholder="http://192.168.1.100"></textarea>
+        <div class="hint" data-i18n="srv.originsHint">Her satıra bir adres. Boş bırakırsan en sıkı mod aktiftir; yalnızca panelin kendi adresi kabul edilir.</div>
+      </div>
+      <div>
+        <label data-i18n="srv.url">Panel adresi</label>
+        <div class="yol-satir">
+          <input id="srvUrl" type="text" readonly spellcheck="false">
+          <button class="btn" id="srvUrlKopya" data-i18n="srv.copy">Kopyala</button>
+          <button class="btn" id="srvPanelAc" data-i18n="srv.open">Tarayıcıda aç</button>
+        </div>
+        <div class="hint" id="srvLanUrl"></div>
+      </div>
+      <div class="hint" data-i18n="srv.noTls"></div>
+      <div class="yol-satir">
+        <button class="btn" id="srvYeniden" data-i18n="srv.restart">Yeniden başlat</button>
+        <button class="btn" id="srvKilitTemizle" data-i18n="srv.rateClear">Kilitleri kaldır</button>
+        <button class="btn ghost" id="srvYenile" data-i18n="pnl.refresh">Yenile</button>
+      </div>
+      <div class="kv" id="srvKv"></div>
+
+      <!-- erisim anahtarlari -->
+      <h3 data-i18n="srv.keys">Erişim anahtarları</h3>
+      <div class="hint" data-i18n="srv.keysHint"></div>
+      <div class="yol-satir">
+        <input id="srvKAd" type="text" maxlength="64" data-i18n-ph="srv.keyName">
+        <select id="srvKRol" style="max-width:170px">
+          <option value="yonetici" data-i18n="srv.roleAdmin"></option>
+          <option value="salt_okur" data-i18n="srv.roleReader"></option>
+        </select>
+        <button class="btn primary" id="srvKOlustur" data-i18n="srv.keyCreate">Anahtar oluştur</button>
+      </div>
+      <div class="hint" data-i18n="srv.roleHint"></div>
+      <div id="srvGizliKutu" class="hint" style="display:none">
+        <div data-i18n="srv.keyOnce"></div>
+        <div class="yol-satir">
+          <input id="srvGizli" type="text" readonly spellcheck="false">
+          <button class="btn" id="srvGizliKopya" data-i18n="srv.copy">Kopyala</button>
+        </div>
+      </div>
+      <div id="srvKListe" class="dpanel-logs"></div>
+
+      <!-- aktif istemciler -->
+      <h3 data-i18n="srv.clients">Aktif istemciler</h3>
+      <div class="hint" data-i18n="srv.clientsHint"></div>
+      <div id="srvIListe" class="dpanel-logs"></div>
+
+      <!-- sunucu profilleri -->
+      <h3 data-i18n="srv.profiles">Sunucu profilleri</h3>
+      <div class="hint" data-i18n="srv.profilesHint"></div>
+      <div class="yol-satir">
+        <input id="srvPAd" type="text" maxlength="48" data-i18n-ph="srv.profileName">
+        <select id="srvPAdres" style="max-width:170px">
+          <option value="yerel" data-i18n="srv.addrLocal"></option>
+          <option value="lan" data-i18n="srv.addrLan"></option>
+        </select>
+        <input id="srvPPort" type="number" min="1024" max="65535" value="6821" style="max-width:110px">
+        <input id="srvPLimit" type="number" min="1" value="120" style="max-width:110px">
+        <button class="btn" id="srvPKaydet" data-i18n="srv.profileSave">Profili kaydet</button>
+      </div>
+      <div id="srvPListe" class="dpanel-logs"></div>
+    </div>
+    <div class="foot">
+      <span class="hint" id="srvNot" style="flex:1"></span>
+      <button class="btn ghost" data-close="srvVeil" data-i18n="tor.close">Kapat</button>
     </div>
   </div>
 </div>

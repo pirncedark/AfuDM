@@ -108,6 +108,9 @@ if (`$parseHatalari) {
         "tests/tr_arama_test.py",
         "tests/pwa_test.py",
         "tests/torrent_yaris_test.mjs",
+        "tests/eklenti_test.py",
+        "tests/headless_test.py",
+        "tests/v21_guvenlik_test.py"
         "tests/eklenti_test.py"
     )
 

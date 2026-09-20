@@ -7,6 +7,7 @@ const TRACE_POINTS = 180;
 const state = {
   filter: "all",
   motorTimer: null,
+  winIntTimer: null,
   seedTimer: null,
   torTimer: null,
   search: "",
@@ -58,7 +59,16 @@ function toast(message, bad = false) {
 /* ---------- kopru ---------- */
 async function call(method, ...args) {
   if (!window.pywebview || !window.pywebview.api) throw new Error(t("err.bridge"));
-  const out = await window.pywebview.api[method](...args);
+  
+  let out;
+  if (method === "snapshot") {
+    const pywebviewPromise = window.pywebview.api[method](...args);
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 15000));
+    out = await Promise.race([pywebviewPromise, timeoutPromise]);
+  } else {
+    out = await window.pywebview.api[method](...args);
+  }
+  
   if (out && out.ok === false) throw new Error(out.error || t("err.failed"));
   return out;
 }
@@ -161,6 +171,7 @@ function renderList() {
     let right;
     if (item.status === "complete") {
       right = '<button data-act="open" data-gid="' + item.gid + '">' + t("row.folder") + "</button>"
+        + '<button data-act="scan" data-gid="' + item.gid + '">' + t("row.scan") + "</button>"
         + '<button data-act="remove" data-gid="' + item.gid + '">' + t("row.delete") + "</button>";
     } else if (item.status === "error") {
       // Hataya dusen indirme 'unpause' edilemez; kaydi bastan baslatmak gerekir
@@ -483,6 +494,7 @@ async function tick() {
     }
     $("engineDot").className = "dot" + (snap.engine_ok ? " ok" : "");
     $("engineText").textContent = snap.engine_ok ? t("engine.running") : t("engine.stopped");
+    if ($("engineRetry")) $("engineRetry").style.display = "none";
     $("dirHint").textContent = snap.download_dir || "";
     $("dirHint").title = snap.download_dir || "";
 
@@ -494,8 +506,18 @@ async function tick() {
   } catch (err) {
     $("engineDot").className = "dot";
     $("engineText").textContent = t("engine.offline");
+    if ($("engineRetry")) $("engineRetry").style.display = "inline-block";
+    if (err.message === "timeout") return; // Stop polling on timeout
   }
   setTimeout(tick, POLL_MS);
+}
+
+if ($("engineRetry")) {
+  $("engineRetry").onclick = () => {
+    $("engineRetry").style.display = "none";
+    $("engineText").textContent = t("engine.connecting");
+    tick();
+  };
 }
 
 /* ---------- eylemler ---------- */
@@ -508,6 +530,7 @@ $("list").addEventListener("click", async (event) => {
     try {
       if (act === "files") { await torrentVeilAc(gid); return; }
       if (act === "seed") { await seedAc(gid); return; }
+      if (act === "scan") { await call("defender_scan", gid); toast(t("toast.scanStarted")); return; }
       if (act === "open") await call("open_item_folder", gid);
       else if (act === "retry") {
         const rowId = Number(button.dataset.id);
@@ -1548,6 +1571,7 @@ $("openSettings").onclick = async () => {
   trackerDurumuCiz();
   $("sTrackers").checked = !!s.auto_update_trackers;
   $("sNotify").checked = !!s.notify_telegram;
+  $("sWinNotify").checked = s.windows_notifications !== false;
   $("sShutdown").checked = !!s.shutdown_when_done;
   $("sSleep").checked = !!s.sleep_when_done;
   gucDurumu();
@@ -1556,6 +1580,9 @@ $("openSettings").onclick = async () => {
   $("sTepsi").checked = s.tepsiye_kucult !== false;
   $("sBasTepside").checked = s.baslangicta_tepside !== false;
   sistemDurumu();
+  windowsIntegrationDurumu();
+  if (state.winIntTimer) clearInterval(state.winIntTimer);
+  state.winIntTimer = setInterval(windowsIntegrationDurumu, 1500);
   telefonDurumu();
   seedListeCiz();
   $("sSeedEk").value = s.ek_trackerlar || "";
@@ -1598,6 +1625,7 @@ $("openSettings").onclick = async () => {
   reliabilityStatus();
   if (state.motorTimer) clearInterval(state.motorTimer);
   state.motorTimer = setInterval(renderEngines, 1000);
+  ayarRozetleriCiz();
   openVeil("setVeil");
 };
 
@@ -1655,6 +1683,45 @@ async function sistemAyarlariniUygula() {
   } catch (err) { hatalar.push(err.message); }
   if (hatalar.length) toast(hatalar[0], true);
 }
+
+/* Windows Integration: UI gercek kaydi RPC uzerinden yeniden OKUR; rozetler
+   varsayimla degil Windows kayit defterindeki mevcut degerle cizilir. */
+const winIntNames = { context: "winint.context", protocol: "winint.protocol", afup: "winint.afup", torrent: "winint.torrent", startup: "winint.startup", notify: "winint.notify", defender: "winint.defender" };
+async function windowsIntegrationDurumu() {
+  const root = $("winIntRows");
+  if (!root) return;
+  root.textContent = t("winint.loading");
+  try {
+    const out = await call("windows_integration_status");
+    const entries = out.integrations || {};
+    root.innerHTML = Object.keys(winIntNames).map((id) => {
+      const row = entries[id] || {};
+      const registered = !!row.registered;
+      return '<div class="winint-row"><div><div class="winint-name">' + escapeHtml(t(winIntNames[id])) +
+        ' <span class="winint-state ' + (registered ? "" : "off") + '">' + escapeHtml(t(registered ? "winint.registered" : "winint.notRegistered")) +
+        '</span></div><div class="winint-meta">' + escapeHtml(t("winint.whenNow")) + '</div></div><div class="winint-actions">' +
+        '<button class="btn" data-winint="apply" data-id="' + id + '">' + escapeHtml(t("winint.apply")) + '</button>' +
+        '<button class="btn" data-winint="test" data-id="' + id + '">' + escapeHtml(t("winint.test")) + '</button>' +
+        '<button class="btn ghost" data-winint="remove" data-id="' + id + '">' + escapeHtml(t("winint.remove")) + '</button></div></div>';
+    }).join("");
+    const scan = out.scan || {};
+    $("winIntError").textContent = scan.state && scan.state !== "idle"
+      ? t("winint.scanStatus", { state: scan.state, detail: scan.detail || "" }) : "";
+  } catch (err) { root.textContent = t("winint.offline"); $("winIntError").textContent = err.message; }
+}
+
+$("winIntRows").addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-winint]");
+  if (!button) return;
+  button.disabled = true;
+  $("winIntError").textContent = "";
+  try {
+    const out = await call("windows_integration_" + button.dataset.winint, button.dataset.id);
+    if (button.dataset.winint === "test") toast(out.registered ? t("winint.testOk") : t("winint.testNo"), !out.registered);
+    else toast(t("winint.updated"));
+    await windowsIntegrationDurumu();
+  } catch (err) { $("winIntError").textContent = err.message; toast(err.message, true); button.disabled = false; }
+});
 
 /* Windows'un varsayilan uygulama ekrani: .torrent secimini YALNIZ kullanici
    yapabilir (UserChoice hash korumali), en fazla dogru ekrani acabiliriz. */
@@ -1861,6 +1928,7 @@ $("setGo").onclick = async () => {
     ag_konumlari: $("sNetLocations").value.trim(),
     auto_update_trackers: $("sTrackers").checked,
     notify_telegram: $("sNotify").checked,
+    windows_notifications: $("sWinNotify").checked,
     shutdown_when_done: $("sShutdown").checked,
     sleep_when_done: $("sSleep").checked,
     kaydetme_penceresi: $("sKaydet").checked,
@@ -2301,7 +2369,6 @@ window.afudmClipboard = async (url) => {
   // Kaydetme penceresi kapaliysa (ayar) eski davranis: link ekleme penceresi.
   if (state.settings.kaydetme_penceresi === false) {
     $("urls").value = url;
-    $("addErr").textContent = t("toast.clipboard");
     openVeil("addVeil");
     return;
   }
@@ -2321,19 +2388,34 @@ window.afudmLinkgrabber = async (metin, dosya) => {
 };
 
 /* ---------- ozel baslik cubugu (core/pencere.py) ---------- */
+if (document.documentElement) document.documentElement.classList.add("ozel-baslik");
+
 window.afudmPencere = async () => {
-  if (!window.pywebview || !window.pywebview.api.pencere_durumu) return;
-  const durum = await window.pywebview.api.pencere_durumu();
-  document.documentElement.classList.toggle("ozel-baslik", !!durum.ozel);
-  document.documentElement.classList.toggle("buyuk", !!durum.buyuk);
-  $("wcMax").title = t(durum.buyuk ? "win.restore" : "win.max");
+  if (!window.pywebview || !window.pywebview.api || !window.pywebview.api.pencere_durumu) return;
+  try {
+    const durum = await window.pywebview.api.pencere_durumu();
+    document.documentElement.classList.toggle("ozel-baslik", !!durum.ozel);
+    document.documentElement.classList.toggle("buyuk", !!durum.buyuk);
+    if ($("wcMax")) $("wcMax").title = t(durum.buyuk ? "win.restore" : "win.max");
+  } catch (err) { /* ignore */ }
 };
-$("wcMin").onclick = () => window.pywebview.api.pencere_kucult();
-$("wcMax").onclick = async () => { await window.pywebview.api.pencere_buyut(); window.afudmPencere(); };
-$("wcClose").onclick = () => window.pywebview.api.pencere_kapat();
+if ($("wcMin")) {
+  $("wcMin").onclick = () => window.pywebview?.api?.pencere_kucult?.();
+}
+if ($("wcMax")) {
+  $("wcMax").onclick = async () => {
+    if (window.pywebview?.api?.pencere_buyut) {
+      await window.pywebview.api.pencere_buyut();
+      window.afudmPencere();
+    }
+  };
+}
+if ($("wcClose")) {
+  $("wcClose").onclick = () => window.pywebview?.api?.pencere_kapat?.();
+}
 document.querySelectorAll(".wc-edge").forEach((kenar) => {
   kenar.addEventListener("mousedown", (event) => {
-    if (event.button === 0) window.pywebview.api.pencere_kenar(kenar.dataset.edge);
+    if (event.button === 0) window.pywebview?.api?.pencere_kenar?.(kenar.dataset.edge);
   });
 });
 // Buyut/geri al Windows'tan da gelebilir (cift tik, Snap, Win+Yukari): simgeyi esitle.
@@ -2914,7 +2996,7 @@ async function plgKurAkisi() {
   err.style.display = "none";
   go.disabled = false;
   let msg = "";
-  if (!m.sha256) msg = t("plg.unsignedWarn") || "Bu eklenti imzasız.";
+  if (!m.sha256) msg = t("plg.unsignedWarn");
   
   if (!m.uyumlu) {
     msg = (msg ? msg + "\n" : "") + t("plg.incompatible", { surum: m.afudm_surum })
@@ -2971,3 +3053,453 @@ $("openPlugins").onclick = async () => {
     plgYukle(true);
   }, 4000);
 };
+/* ======================================================================
+   Sunucu (v2.1 Headless Server)
+
+   Masaustu arayuzu, web paneli ve CLI AYNI servis katmanini (core/servis.py)
+   cagirir. Buradaki her dugmenin arkasinda gercek bir backend vardir;
+   calismayan hicbir sey etkin BIRAKILMAZ. Durumlar tasarlanmistir:
+   yukleniyor / bos / basarili / hatali / baglantisiz.
+   ====================================================================== */
+const srvState = { timer: null, profiller: [], acik: false };
+
+function srvRozetYaz(kod) {
+  const ad = { hemen: "apply.now", yeni_indirmelerde: "apply.newDownloads",
+               sonraki_baslatmada: "apply.nextStart",
+               servis_yeniden: "apply.serviceRestart" }[kod] || "apply.unknown";
+  return t("apply.label") + ": " + t(ad);
+}
+
+function srvBosSatir(kutu, metin) {
+  kutu.textContent = "";
+  const d = document.createElement("div");
+  d.className = "hint";
+  d.textContent = metin;
+  kutu.appendChild(d);
+}
+
+function srvZaman(ts) {
+  if (!ts) return "—";
+  try { return new Date(Number(ts) * 1000).toLocaleString(); } catch (_) { return "—"; }
+}
+
+function srvRolAdi(rol) {
+  return rol === "yonetici" ? t("srv.roleAdmin") : t("srv.roleReader");
+}
+
+/* ---------- durum ---------- */
+async function srvDurumCiz() {
+  let out;
+  try {
+    out = await call("sunucu_durumu");
+  } catch (err) {
+    $("srvRozet").textContent = t("err.bridge");
+    $("srvHata").textContent = err.message;
+    return;
+  }
+  const s = out.sunucu || {}, l = out.limit || {};
+  srvState.acik = !!s.calisiyor;
+  $("srvAcik").checked = !!s.calisiyor;
+  $("srvRozet").textContent = s.calisiyor ? t("srv.on") : t("srv.off");
+  $("srvUygulama").textContent = srvRozetYaz("servis_yeniden");
+  $("srvHata").textContent = s.hata || "";
+  $("srvUrl").value = s.url || "";
+  $("srvLanUrl").textContent = s.lan_url ? t("srv.lanUrl") + ": " + s.lan_url : "";
+  $("srvPanelAc").disabled = !s.calisiyor;
+  $("srvUrlKopya").disabled = !s.url;
+  $("srvYeniden").disabled = !s.calisiyor;
+
+  const kutu = $("srvKv");
+  kutu.textContent = "";
+  const satir = (etiket, deger) => {
+    const d = document.createElement("div");
+    d.textContent = etiket + " ";
+    const b = document.createElement("b");
+    b.textContent = deger === undefined || deger === null || deger === "" ? "—" : deger;
+    d.appendChild(b);
+    kutu.appendChild(d);
+  };
+  satir(t("srv.port"), s.port);
+  satir(t("srv.requests"), s.istek_sayisi);
+  satir(t("srv.rejected"), s.reddedilen);
+  satir(t("srv.rateLimit"), l.limit);
+  satir(t("srv.rateWatched"), l.izlenen_ip);
+  satir(t("srv.rateLocked"), l.kilitli_ip);
+  satir(t("srv.profiles"), s.profil_ad || t("srv.profileNone"));
+}
+
+/* ---------- erisim anahtarlari ---------- */
+async function srvAnahtarCiz() {
+  const kutu = $("srvKListe");
+  try {
+    const out = await call("sunucu_anahtarlar");
+    const liste = out.anahtarlar || [];
+    if (!liste.length) { srvBosSatir(kutu, t("srv.keyEmpty")); return; }
+    kutu.textContent = "";
+    liste.forEach((k) => {
+      const satir = document.createElement("div");
+      satir.className = "yol-satir";
+      const ad = document.createElement("span");
+      ad.style.flex = "1";
+      ad.textContent = k.ad + " · " + srvRolAdi(k.rol) + " · " + k.onek + "… · " +
+        t("srv.keyLastUsed") + ": " +
+        (k.son_kullanim ? srvZaman(k.son_kullanim) : t("srv.keyNever")) +
+        (k.iptal ? " · " + t("srv.keyRevokedTag") : "");
+      satir.appendChild(ad);
+      if (k.iptal) {
+        const sil = document.createElement("button");
+        sil.className = "btn ghost";
+        sil.textContent = t("srv.keyDelete");
+        sil.onclick = async () => {
+          try {
+            await call("sunucu_anahtar_sil", k.id);
+            toast(t("srv.keyDeleted"));
+            srvAnahtarCiz();
+          } catch (err) { toast(err.message, true); }
+        };
+        satir.appendChild(sil);
+      } else {
+        const rot = document.createElement("button");
+        rot.className = "btn";
+        rot.textContent = t("srv.keyRotate");
+        rot.onclick = async () => {
+          if (!confirm(t("srv.keyConfirmRotate"))) return;
+          try {
+            const yeni = await call("sunucu_anahtar_rotasyon", k.id);
+            srvGizliGoster(yeni.gizli);
+            toast(t("srv.keyRotated"));
+            srvAnahtarCiz();
+            srvIstemciCiz();
+          } catch (err) { toast(err.message, true); }
+        };
+        const ipt = document.createElement("button");
+        ipt.className = "btn ghost";
+        ipt.textContent = t("srv.keyRevoke");
+        ipt.onclick = async () => {
+          if (!confirm(t("srv.keyConfirmRevoke"))) return;
+          try {
+            await call("sunucu_anahtar_iptal", k.id);
+            toast(t("srv.keyRevoked"));
+            srvAnahtarCiz();
+            srvIstemciCiz();
+          } catch (err) { toast(err.message, true); }
+        };
+        satir.appendChild(rot);
+        satir.appendChild(ipt);
+      }
+      kutu.appendChild(satir);
+    });
+  } catch (err) {
+    srvBosSatir(kutu, err.message);
+  }
+}
+
+/* Gizli deger YALNIZCA bir kez gosterilir; hicbir yerde saklanmaz. */
+function srvGizliGoster(gizli) {
+  $("srvGizliKutu").style.display = "";
+  $("srvGizli").value = gizli;
+}
+
+/* ---------- aktif istemciler ---------- */
+async function srvIstemciCiz() {
+  const kutu = $("srvIListe");
+  try {
+    const out = await call("sunucu_istemciler", 0);
+    const liste = (out.istemciler || []).filter((c) => !c.iptal);
+    if (!liste.length) { srvBosSatir(kutu, t("srv.clientsEmpty")); return; }
+    kutu.textContent = "";
+    liste.forEach((c) => {
+      const satir = document.createElement("div");
+      satir.className = "yol-satir";
+      const bilgi = document.createElement("span");
+      bilgi.style.flex = "1";
+      bilgi.textContent = (c.anahtar_adi || "—") + " · " + srvRolAdi(c.rol) + " · " +
+        c.ip + " · " + t("srv.clientLastSeen") + ": " + srvZaman(c.son_gorulme) +
+        " · " + t("srv.clientRequests") + ": " + c.istek_sayisi;
+      const kes = document.createElement("button");
+      kes.className = "btn ghost";
+      kes.textContent = t("srv.clientRevoke");
+      kes.onclick = async () => {
+        try {
+          await call("sunucu_istemci_iptal", c.id);
+          toast(t("srv.clientRevoked"));
+          srvIstemciCiz();
+        } catch (err) { toast(err.message, true); }
+      };
+      satir.appendChild(bilgi);
+      satir.appendChild(kes);
+      kutu.appendChild(satir);
+    });
+  } catch (err) {
+    srvBosSatir(kutu, err.message);
+  }
+}
+
+/* ---------- sunucu profilleri ---------- */
+async function srvProfilCiz() {
+  const kutu = $("srvPListe");
+  try {
+    const out = await call("sunucu_profiller");
+    srvState.profiller = out.profiller || [];
+    if (!srvState.profiller.length) { srvBosSatir(kutu, t("srv.profilesEmpty")); return; }
+    kutu.textContent = "";
+    srvState.profiller.forEach((p) => {
+      const satir = document.createElement("div");
+      satir.className = "yol-satir";
+      const bilgi = document.createElement("span");
+      bilgi.style.flex = "1";
+      bilgi.textContent = p.ad + " · " +
+        (p.adres === "lan" ? t("srv.addrLan") : t("srv.addrLocal")) + " · " +
+        t("srv.port") + " " + p.port + " · " + t("srv.profileLimit") + " " +
+        p.istek_limiti + (p.etkin ? " · " + t("srv.profileActive") : "");
+      const etkin = document.createElement("button");
+      etkin.className = "btn";
+      etkin.textContent = t("srv.profileActivate");
+      etkin.disabled = !!p.etkin;
+      etkin.onclick = async () => {
+        try {
+          await call("sunucu_profil_etkinlestir", p.id);
+          $("srvNot").textContent = t("srv.restartNeeded");
+          toast(t("srv.profileSaved"));
+          srvProfilCiz();
+          srvDurumCiz();
+        } catch (err) { toast(err.message, true); }
+      };
+      const sil = document.createElement("button");
+      sil.className = "btn ghost";
+      sil.textContent = t("srv.profileDelete");
+      sil.onclick = async () => {
+        try {
+          await call("sunucu_profil_sil", p.id);
+          toast(t("srv.profileDeleted"));
+          srvProfilCiz();
+          srvDurumCiz();
+        } catch (err) { toast(err.message, true); }
+      };
+      satir.appendChild(bilgi);
+      satir.appendChild(etkin);
+      satir.appendChild(sil);
+      kutu.appendChild(satir);
+    });
+  } catch (err) {
+    srvBosSatir(kutu, err.message);
+  }
+}
+
+/* ---------- panel acilis / kapanis ---------- */
+async function srvTumunuCiz() {
+  await srvDurumCiz();
+  await srvAnahtarCiz();
+  await srvIstemciCiz();
+  await srvProfilCiz();
+}
+
+$("openServer").onclick = async () => {
+  $("srvGizliKutu").style.display = "none";
+  $("srvGizli").value = "";
+  $("srvNot").textContent = "";
+  const ayar = state.settings || {};
+  $("srvAdres").value = ayar.sunucu_adres || "yerel";
+  $("srvPort").value = ayar.sunucu_port || 6821;
+  $("srvIstekLimiti").value = ayar.sunucu_istek_limiti !== undefined ? ayar.sunucu_istek_limiti : 120;
+  $("srvHataliLimit").value = ayar.sunucu_hatali_limit !== undefined ? ayar.sunucu_hatali_limit : 10;
+  $("srvKilitSaniye").value = ayar.sunucu_kilit_saniye !== undefined ? ayar.sunucu_kilit_saniye : 1800;
+  $("srvIstemciKaydi").checked = !!ayar.sunucu_istemci_kaydi;
+  $("srvIzinliOriginler").value = ayar.sunucu_izinli_originler || "";
+  srvBosSatir($("srvKListe"), t("pnl.loading"));
+  srvBosSatir($("srvIListe"), t("pnl.loading"));
+  srvBosSatir($("srvPListe"), t("pnl.loading"));
+  openVeil("srvVeil");
+  await srvTumunuCiz();
+  if (srvState.timer) clearInterval(srvState.timer);
+  srvState.timer = setInterval(() => {
+    srvDurumCiz();
+    srvIstemciCiz();
+  }, 3000);
+};
+
+/* Sunucu paneli kapanisinda canli yoklamayi durdur (bosuna istek atma).
+   closeVeil'in kendisi degistirilmez; kapatma dugmeleri zaten buradan gecer. */
+document.querySelectorAll("[data-close='srvVeil']").forEach((dugme) => {
+  const eski = dugme.onclick;
+  dugme.onclick = (ev) => {
+    if (srvState.timer) { clearInterval(srvState.timer); srvState.timer = null; }
+    if (eski) eski.call(dugme, ev);
+  };
+});
+
+/* ---------- ac / kapa ---------- */
+$("srvAcik").onchange = async (ev) => {
+  const acik = !!ev.target.checked;
+  ev.target.disabled = true;
+  $("srvRozet").textContent = acik ? t("srv.starting") : t("srv.off");
+  try {
+    /* Adres/port ONCE yazilir; sunucu bu degerlerle acilir. */
+    await call("settings_save", {
+      sunucu_adres: $("srvAdres").value,
+      sunucu_port: parseInt($("srvPort").value, 10) || 6821,
+      sunucu_istek_limiti: parseInt($("srvIstekLimiti").value, 10) || 0,
+      sunucu_hatali_limit: parseInt($("srvHataliLimit").value, 10) || 0,
+      sunucu_kilit_saniye: parseInt($("srvKilitSaniye").value, 10) || 0,
+      sunucu_istemci_kaydi: $("srvIstemciKaydi").checked,
+      sunucu_izinli_originler: $("srvIzinliOriginler").value,
+    });
+    const out = await call("sunucu_ayarla", acik);
+    toast(acik ? t("srv.started") : t("srv.stopped"));
+    if (out && out.zaten) $("srvNot").textContent = "";
+  } catch (err) {
+    ev.target.checked = !acik;
+    $("srvHata").textContent = err.message;
+    toast(acik ? t("srv.startFailed") + ": " + err.message : err.message, true);
+  } finally {
+    ev.target.disabled = false;
+    srvDurumCiz();
+  }
+};
+
+$("srvYeniden").onclick = async () => {
+  try {
+    await call("settings_save", {
+      sunucu_adres: $("srvAdres").value,
+      sunucu_port: parseInt($("srvPort").value, 10) || 6821,
+      sunucu_istek_limiti: parseInt($("srvIstekLimiti").value, 10) || 0,
+      sunucu_hatali_limit: parseInt($("srvHataliLimit").value, 10) || 0,
+      sunucu_kilit_saniye: parseInt($("srvKilitSaniye").value, 10) || 0,
+      sunucu_istemci_kaydi: $("srvIstemciKaydi").checked,
+      sunucu_izinli_originler: $("srvIzinliOriginler").value,
+    });
+    await call("sunucu_yeniden");
+    toast(t("srv.started"));
+    $("srvNot").textContent = "";
+    srvDurumCiz();
+  } catch (err) {
+    $("srvHata").textContent = err.message;
+    toast(err.message, true);
+  }
+};
+
+$("srvYenile").onclick = () => srvTumunuCiz();
+
+$("srvAdres").onchange = () => { $("srvNot").textContent = t("srv.restartNeeded"); };
+$("srvPort").oninput = () => { $("srvNot").textContent = t("srv.restartNeeded"); };
+
+$("srvPanelAc").onclick = async () => {
+  try { await call("sunucu_panel_ac"); } catch (err) { toast(err.message, true); }
+};
+$("srvIstekLimiti").oninput = () => { $("srvNot").textContent = t("srv.restartNeeded"); };
+$("srvHataliLimit").oninput = () => { $("srvNot").textContent = t("srv.restartNeeded"); };
+$("srvKilitSaniye").oninput = () => { $("srvNot").textContent = t("srv.restartNeeded"); };
+$("srvIstemciKaydi").onchange = () => { $("srvNot").textContent = t("srv.restartNeeded"); };
+$("srvIzinliOriginler").oninput = () => { $("srvNot").textContent = t("srv.restartNeeded"); };
+$("srvUrlKopya").onclick = async () => {
+  if (!$("srvUrl").value) return;
+  try {
+    await call("panoya_kopyala", $("srvUrl").value);
+    toast(t("srv.copied"));
+  } catch (err) { toast(err.message, true); }
+};
+
+$("srvGizliKopya").onclick = async () => {
+  if (!$("srvGizli").value) return;
+  try {
+    await call("panoya_kopyala", $("srvGizli").value);
+    toast(t("srv.copied"));
+  } catch (err) { toast(err.message, true); }
+};
+
+$("srvKilitTemizle").onclick = async () => {
+  try {
+    const out = await call("sunucu_kilit_temizle");
+    toast(t("srv.rateCleared", { n: out.temizlenen || 0 }));
+    srvDurumCiz();
+  } catch (err) { toast(err.message, true); }
+};
+
+$("srvKOlustur").onclick = async () => {
+  const ad = $("srvKAd").value.trim();
+  if (!ad) { toast(t("srv.keyName"), true); return; }
+  $("srvKOlustur").disabled = true;
+  try {
+    const out = await call("sunucu_anahtar_olustur", ad, $("srvKRol").value, "");
+    $("srvKAd").value = "";
+    srvGizliGoster(out.gizli);
+    toast(t("srv.keyCreated"));
+    srvAnahtarCiz();
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    $("srvKOlustur").disabled = false;
+  }
+};
+
+$("srvPKaydet").onclick = async () => {
+  try {
+    const out = await call("sunucu_profil_kaydet", {
+      id: 0,
+      ad: $("srvPAd").value.trim(),
+      adres: $("srvPAdres").value,
+      port: parseInt($("srvPPort").value, 10) || 0,
+      istek_limiti: parseInt($("srvPLimit").value, 10) || 120,
+      originler: "",
+    });
+    $("srvPAd").value = "";
+    toast(t("srv.profileSaved"));
+    if (out && out.sunucu_yeniden_gerekli) $("srvNot").textContent = t("srv.restartNeeded");
+    srvProfilCiz();
+  } catch (err) { toast(err.message, true); }
+};
+
+/* ---------- Ayarlar: uygulanma zamani rozetleri ----------------------
+   "Bu ayari degistirirsem NE ZAMAN etkili olur?" sorusunu arayuz cevaplar.
+   Kaynak TEK yerdedir (core/servis.py UYGULAMA_ZAMANI); burada tahmin
+   yurutulmez, sunucunun bildirdigi kod rozete cevrilir. Bilinmeyen ayar
+   icin "bilinmiyor" yazilir — uydurma "hemen" YAZILMAZ. */
+const AYAR_ROZET_ALANI = {
+  sLang: "language",
+  sDir: "download_dir",
+  sSplit: "split",
+  sConn: "max_conn_per_server",
+  sConc: "max_concurrent",
+  sSpeed: "max_speed_kb",
+  sMode: "hiz_profili",
+  sRatio: "seed_ratio",
+  sChat: "telegram_chat_id",
+  sToken: "telegram_bot_token",
+  sClip: "clipboard_watch",
+  sTrackers: "auto_update_trackers",
+  sNotify: "notify_telegram",
+  sShutdown: "shutdown_when_done",
+  sSleep: "sleep_when_done",
+  sKaydet: "kaydetme_penceresi",
+  sKategori: "kategori_klasorleri",
+  sTepsi: "tepsiye_kucult",
+  sBasTepside: "baslangicta_tepside",
+  sTelefon: "lan_erisimi",
+  sSeedOto: "tracker_otomatik_tara",
+};
+
+async function ayarRozetleriCiz() {
+  let uygulama = {};
+  try {
+    const out = await call("ayar_rozetleri");
+    uygulama = out.uygulama || {};
+  } catch (_) {
+    return;                 /* kopru yoksa rozet yok; sahte rozet BASILMAZ */
+  }
+  Object.keys(AYAR_ROZET_ALANI).forEach((elemanId) => {
+    const alan = $(elemanId);
+    if (!alan) return;
+    /* Onay kutusu <label> icindedir: rozet label'in sonuna gider.
+       Digerleri icin alanin hemen ardina konur. */
+    const kap = alan.type === "checkbox" ? alan.closest("label") : alan.parentNode;
+    if (!kap) return;
+    let rozet = kap.querySelector(".ayar-rozet");
+    if (!rozet) {
+      rozet = document.createElement("span");
+      rozet.className = "num ayar-rozet";
+      rozet.style.marginLeft = "8px";
+      kap.appendChild(rozet);
+    }
+    rozet.textContent = srvRozetYaz(uygulama[AYAR_ROZET_ALANI[elemanId]]);
+  });
+}

@@ -27,6 +27,7 @@ from .automation import AutomationWorker
 from . import proxy as P
 from .daemon import Aria2Daemon
 from .db import Store
+from .windows_integration import WindowsIntegration
 from .hata import BadSource, KayitYok, RenewDesteklenmez
 from .rpc import Aria2Error
 
@@ -70,6 +71,7 @@ class Manager:
     def __init__(self) -> None:
         paths.ensure_dirs()
         self.store = Store()
+        self.windows = WindowsIntegration(self.store)
         download_dir = self.store.get("download_dir") or str(paths.default_download_dir())
         Path(download_dir).mkdir(parents=True, exist_ok=True)
         self.daemon = Aria2Daemon(download_dir=download_dir)
@@ -89,6 +91,8 @@ class Manager:
         # v2.0 Plugin Platform: eklenti servisi TEK kaynak — pywebview koprusu
         # ve HTTP API ayni nesneyi kullanir (ayri durum tutulmaz).
         self.eklentiler = eklenti.EklentiServisi(self.store)
+        self.windows_notify = None
+
 
     # --- yasam dongusu ----------------------------------------------------
     def start(self) -> None:
@@ -1603,6 +1607,10 @@ class Manager:
     def _on_complete(self, title: str, size: int, gid: str = "") -> None:
         self.store.log("info", f"tamamlandi: {title} ({human_size(size)})", gid=gid or "")
         self.automation.enqueue_download(gid, self.store.by_gid(gid))
+        if self.store.get("windows_notifications") and callable(self.windows_notify):
+            try: self.windows_notify("AfuDM", f"Indirme tamamlandi: {title}")
+            except Exception: pass
+
         if self.store.get("notify_telegram"):
             threading.Thread(
                 target=self.notify_telegram,

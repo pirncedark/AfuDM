@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -32,9 +33,13 @@ from api.server import LocalAPI  # noqa: E402
 
 VARSAYILAN_API_PORT = 6811   # uzantinin da ilk denedigi port
 from core import (baslangic, chrome_kurulum, clipboard, dosya_adi, engines, guc, iliskilendir,  # noqa: E402
-                  tracker_saglik,
+                  ornek, tracker_saglik,
                   kaydet, lang, linkgrabber, models, paths, pencere)
 from core.manager import Manager  # noqa: E402
+from core.manager import AyarGecersiz  # noqa: E402
+from core import settings_validation  # noqa: E402
+from core.servis import AfuDMServis  # noqa: E402
+from core.windows_integration import WindowsIntegration  # noqa: E402
 from core.reliability import Reliability  # noqa: E402
 from core.manager import AyarGecersiz  # noqa: E402
 from core import settings_validation  # noqa: E402
@@ -50,6 +55,20 @@ def parse_start_at(text: str) -> float | None:
     return models.parse_time_spec(text)
 
 
+def protocol_link(argument: str) -> str:
+    """`afudm://download?url=...` baglantisini gercek indirme kaynagina cevir.
+
+    Protokol yalniz HTTP(S)/FTP/magnet veya yerel .torrent gonderir; diger
+    parametreler yok sayilir, boylece shell argumani ayar enjekte edemez.
+    """
+    if not argument.lower().startswith("afudm:"):
+        return argument
+    parsed = urllib.parse.urlparse(argument)
+    if parsed.netloc.lower() not in ("download", "add"):
+        return ""
+    return urllib.parse.parse_qs(parsed.query).get("url", [""])[0].strip()
+
+
 def open_in_explorer(target: str) -> None:
     path = Path(target)
     if not path.exists():
@@ -63,9 +82,13 @@ def open_in_explorer(target: str) -> None:
 class Api:
     """Arayuzun cagirdigi kopru. Her metot JSON'a cevrilebilir sozluk doner."""
 
-    def __init__(self, manager: Manager, local_api: LocalAPI) -> None:
+    def __init__(self, manager: Manager, local_api: LocalAPI,
+                 servis: AfuDMServis | None = None) -> None:
         self.manager = manager
         self.local_api = local_api
+        # v2.1: is mantigi TEK yerde. Masaustu arayuzu de web paneli de bu
+        # servisi cagirir; asagidaki RPC'ler yalnizca ince kabuktur.
+        self.servis = servis or AfuDMServis(manager, kip=ornek.KIP_MASAUSTU)
         self.reliability = Reliability(manager)
 
     # v2.3 Reliability & Security: desktop and HTTP use this shared service.
@@ -95,6 +118,7 @@ class Api:
         self._bekleyenler = kaydet.Bekleyenler()
         self._chrome_baslangic = 0.0
         self._probe_iptal: threading.Event | None = None
+        self.windows = getattr(manager, "windows", None)
 
     # --- durum ------------------------------------------------------------
     def snapshot(self) -> dict:
@@ -160,12 +184,8 @@ class Api:
     # --- ekleme -----------------------------------------------------------
     # --- kaydetme penceresi (bkz. core/kaydet.py) ------------------------
     def _hedef_klasor(self, secilen: str, url: str, kind: str, kategori: str) -> str | None:
-        if secilen:
-            return secilen
-        if not self.manager.store.get("kategori_klasorleri"):
-            return None
-        kategori = kategori or kaydet.kategori_tahmin(url, kind)
-        return kaydet.kategori_klasoru(self.manager.current_download_dir(), kategori)
+        """Tek kaynak: core/servis.AfuDMServis.hedef_klasor (ayni oncelik kurali)."""
+        return self.servis.hedef_klasor(secilen, url, kind, kategori)
 
     def kaydet_bilgi(self, url: str) -> dict:
         url = (url or "").strip()
@@ -475,6 +495,83 @@ class Api:
             return {"ok": False, "error": str(exc)[:300]}
         return {"ok": True, "durum": iliskilendir.durum()}
 
+    # --- Windows Integration v2.2 --------------------------------------
+    def windows_integration_status(self) -> dict:
+        if not self.windows:
+            return {"ok": False, "error": "Windows integration is not available in this environment.", "integrations": {}}
+        try:
+            out = self.windows.status()
+            out["integrations"]["torrent"] = {"registered": iliskilendir.acik_mi(), "scope": "current_user"}
+            out["integrations"]["startup"] = {"registered": baslangic.acik_mi(), "scope": "current_user"}
+            out["integrations"]["notify"] = {"registered": bool(self.manager.store.get("windows_notifications")), "scope": "current_user"}
+            
+            program = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Windows Defender" / "MpCmdRun.exe"
+            out["integrations"]["defender"] = {"registered": bool(self.manager.store.get("defender_auto_scan")), "scope": "current_user", "available": program.exists()}
+            
+            return out
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+
+    def windows_integration_apply(self, ident: str) -> dict:
+        if not self.windows: return {"ok": False, "error": "Unavailable"}
+        try:
+            if ident == "torrent":
+                iliskilendir.ac()
+            elif ident == "startup":
+                baslangic.ac("--tepside")
+            elif ident == "notify":
+                self.manager.store.set("windows_notifications", True)
+            elif ident == "defender":
+                self.manager.store.set("defender_auto_scan", True)
+            else:
+                self.windows.apply(str(ident))
+            return self.windows_integration_status()
+        except PermissionError as exc:
+            return {"ok": False, "error": "Windows kaydina yazma izni yok. Uygulamayi uygun kullanici hesabi ile yeniden deneyin: " + str(exc)[:120]}
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+
+    def windows_integration_remove(self, ident: str) -> dict:
+        if not self.windows: return {"ok": False, "error": "Unavailable"}
+        try:
+            if ident == "torrent":
+                iliskilendir.kapat()
+            elif ident == "startup":
+                baslangic.kapat()
+            elif ident == "notify":
+                self.manager.store.set("windows_notifications", False)
+            elif ident == "defender":
+                self.manager.store.set("defender_auto_scan", False)
+            else:
+                self.windows.remove(str(ident))
+            return self.windows_integration_status()
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+
+    def windows_integration_test(self, ident: str) -> dict:
+        if not self.windows: return {"ok": False, "error": "Unavailable"}
+        try:
+            if ident == "torrent": return {"ok": iliskilendir.acik_mi(), "registered": iliskilendir.acik_mi()}
+            if ident == "startup": return {"ok": baslangic.acik_mi(), "registered": baslangic.acik_mi()}
+            if ident == "notify":
+                if callable(getattr(self.manager, "windows_notify", None)):
+                    self.manager.windows_notify("AfuDM Test", "Bildirimler calisiyor!")
+                return {"ok": True, "registered": bool(self.manager.store.get("windows_notifications"))}
+            if ident == "defender":
+                program = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Windows Defender" / "MpCmdRun.exe"
+                return {"ok": program.exists(), "registered": bool(self.manager.store.get("defender_auto_scan"))}
+            return self.windows.test(str(ident))
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+
+    def defender_scan(self, gid: str) -> dict:
+        if not self.windows: return {"ok": False, "error": "Windows integration unavailable."}
+        for item in self.manager.snapshot().get("items", []):
+            if item.get("gid") == gid:
+                path = Path(item.get("dir") or self.manager.current_download_dir()) / (item.get("filename") or "")
+                return self.windows.scan_file(str(path))
+        return {"ok": False, "error": "indirme bulunamadi"}
+
     # --- seed penceresi (torrent) ----------------------------------------
     def seed_bilgi(self, gid: str) -> dict:
         return self.manager.seed_bilgi(gid)
@@ -705,77 +802,30 @@ class Api:
         return {"ok": bool(guc.uyut())}
 
     def add_links(self, payload: dict) -> dict:
-        urls = payload.get("urls") or []
-        try:
-            start_after = parse_start_at(payload.get("start_at", ""))
-        except ValueError as exc:
-            return {"ok": False, "error": str(exc)}
-        added, scheduled, failed = 0, 0, []
-        tek_ad = kaydet.guvenli_dosya_adi(payload.get("filename") or "") if len(urls) == 1 else ""
-        for url in urls:
-            try:
-                kind = self.manager.detect_kind(url)
-                self.manager.add(
-                    url,
-                    dest_dir=self._hedef_klasor(payload.get("dest_dir") or "", url, kind,
-                                                payload.get("kategori") or ""),
-                    filename=tek_ad if tek_ad and kind == "http" else None,
-                    title=tek_ad if tek_ad and kind == "video" else None,
-                    quality=payload.get("quality") or None,
-                    audio_only=bool(payload.get("audio_only")),
-                    playlist=bool(payload.get("playlist")),
-                    start_after=start_after,
-
-                    altyazi_diller=payload.get("altyazi_diller") or "",
-                    oto_altyazi=bool(payload.get("oto_altyazi")),
-                    altyazi_goem=bool(payload.get("altyazi_goem")),
-                    kucuk_resim=payload.get("kucuk_resim") or "",
-                    ustveri_goem=bool(payload.get("ustveri_goem")),
-                    bolumler=payload.get("bolumler") or "",
-                    sponsorblock=payload.get("sponsorblock") or "",
-                    bolum_araligi=payload.get("bolum_araligi") or "",
-                    kapsayici=payload.get("kapsayici") or "",
-                    ses_formati=payload.get("ses_formati") or "",
-                    dosya_sablonu=payload.get("dosya_sablonu") or "",
-                    tarayici_cerezi=payload.get("tarayici_cerezi") or "",
-                )
-                if start_after:
-                    scheduled += 1
-                else:
-                    added += 1
-            except Exception as exc:
-                failed.append(f"{url[:48]}: {exc}"[:180])
-        if not added and not scheduled and failed:
-            return {"ok": False, "error": failed[0]}
-        return {"ok": True, "added": added, "scheduled": scheduled, "failed": failed}
+        """Link ekle. Is mantigi core/servis.py'de; burada KOPYA YOKTUR."""
+        return self.servis.ekle(payload)
 
     # --- kontrol ----------------------------------------------------------
     def control(self, action: str, gid: str, delete_files: bool = False) -> dict:
-        try:
-            if action == "pause":
-                self.manager.pause(gid)
-            elif action == "resume":
-                self.manager.resume(gid)
-            elif action == "remove":
-                self.manager.remove(gid, delete_files)
-            elif action == "pause_all":
-                self.manager.pause_all()
-            elif action == "resume_all":
-                self.manager.resume_all()
-            else:
-                return {"ok": False, "error": lang.t("err.unknownAction", str(self.manager.store.get("language", "auto")))}
-        except Exception as exc:
-            return {"ok": False, "error": str(exc)[:300]}
-        return {"ok": True}
+        return self.servis.kontrol(action, gid, delete_files)
 
     def retry(self, row_id: int) -> dict:
-        try:
-            return {"ok": True, **self.manager.retry(int(row_id))}
-        except Exception as exc:
-            return {"ok": False, "error": str(exc)[:300]}
+        return self.servis.yeniden_dene(row_id)
 
     def clear_finished(self) -> dict:
-        return {"ok": True, "removed": self.manager.store.clear_finished()}
+        return self.servis.bitmisleri_temizle()
+
+    # --- v1.8 Automation -------------------------------------------------
+    def automation_jobs(self, gid: str = "") -> dict:
+        return {"ok": True, "jobs": self.manager.store.automation_jobs(str(gid))}
+
+    def automation_retry(self, job_id: int) -> dict:
+        try: return {"ok": True, "job": self.manager.automation.retry(int(job_id))}
+        except Exception as exc: return {"ok": False, "error": str(exc)[:300]}
+
+    def automation_cancel(self, job_id: int) -> dict:
+        try: return {"ok": True, "job": self.manager.automation.cancel(int(job_id))}
+        except Exception as exc: return {"ok": False, "error": str(exc)[:300]}
 
     # --- v1.8 Automation -------------------------------------------------
     def automation_jobs(self, gid: str = "") -> dict:
@@ -826,6 +876,82 @@ class Api:
     def ag_konumlari_listele(self) -> dict:
         ham = str(self.manager.store.get("ag_konumlari") or "")
         return {"ok": True, "konumlar": [x for x in ham.splitlines() if x.strip()]}
+        return self.servis.ayar_kaydet(payload)
+
+    def ayar_rozetleri(self) -> dict:
+        """Her ayarin UYGULANMA ZAMANI (hemen / yeni indirmelerde / sonraki
+        baslatmada / servis yeniden baslayinca). Arayuz rozetleri bunu okur."""
+        return {"ok": True, "uygulama": self.servis.ayarlar()["uygulama"]}
+
+    # --- v2.1 yonetim sunucusu -------------------------------------------
+    def sunucu_durumu(self) -> dict:
+        return self.servis.sunucu_durumu()
+
+    def sunucu_ayarla(self, acik: bool) -> dict:
+        """Tek anahtar: sunucuyu ac/kapat. Yonetici anahtari YOKSA ACMAZ —
+        anahtarsiz acilan bir sunucu kimseye yaramaz, yanlis guven verir."""
+        if acik and not self.servis.erisim.yonetici_var_mi():
+            return {"ok": False, "code": "ANAHTAR_YOK",
+                    "error": "once bir yonetici erisim anahtari olustur"}
+        return self.servis.sunucu_ayarla(bool(acik))
+
+    def sunucu_yeniden(self) -> dict:
+        return self.servis.sunucu_yeniden()
+
+    def sunucu_panel_ac(self) -> dict:
+        """Panel adresini varsayilan tarayicida acar. Anahtar URL'ye KONMAZ."""
+        durum = self.servis.sunucu_durumu()["sunucu"]
+        if not durum["calisiyor"]:
+            return {"ok": False, "code": "SUNUCU_KAPALI", "error": "sunucu kapali"}
+        try:
+            import webbrowser
+            webbrowser.open(durum["url"])
+        except Exception as exc:
+            return {"ok": False, "code": "ACILAMADI", "error": str(exc)[:200]}
+        return {"ok": True, "url": durum["url"]}
+
+    def sunucu_anahtarlar(self) -> dict:
+        return self.servis.anahtarlar()
+
+    def sunucu_anahtar_olustur(self, ad: str, rol: str, not_metni: str = "") -> dict:
+        return self.servis.anahtar_olustur(ad, rol, not_metni)
+
+    def sunucu_anahtar_rotasyon(self, key_id: int) -> dict:
+        return self.servis.anahtar_rotasyon(key_id)
+
+    def sunucu_anahtar_iptal(self, key_id: int) -> dict:
+        return self.servis.anahtar_iptal(key_id)
+
+    def sunucu_anahtar_sil(self, key_id: int) -> dict:
+        return self.servis.anahtar_sil(key_id)
+
+    def sunucu_anahtar_rol(self, key_id: int, rol: str) -> dict:
+        return self.servis.anahtar_rol_ayarla(key_id, rol)
+
+    def sunucu_istemciler(self, dakika: int = 0) -> dict:
+        return self.servis.istemciler(dakika)
+
+    def sunucu_istemci_iptal(self, client_id: int) -> dict:
+        return self.servis.istemci_iptal(client_id)
+
+    def sunucu_istemci_temizle(self, gun: int = 7) -> dict:
+        return self.servis.istemcileri_temizle(gun)
+
+    def sunucu_kilit_temizle(self) -> dict:
+        return self.servis.kilitleri_temizle()
+
+    def sunucu_profiller(self) -> dict:
+        return self.servis.profiller()
+
+    def sunucu_profil_kaydet(self, veri: dict) -> dict:
+        return self.servis.profil_kaydet(veri)
+
+    def sunucu_profil_sil(self, profil_id: int) -> dict:
+        return self.servis.profil_sil(profil_id)
+
+    def sunucu_profil_etkinlestir(self, profil_id: int) -> dict:
+        return self.servis.profil_etkinlestir(profil_id)
+
 
     # --- klasor -----------------------------------------------------------
     def open_download_dir(self) -> dict:
@@ -1094,15 +1220,33 @@ def build_tray(window, manager: Manager, api: Api | None = None):
 
 def main() -> int:
     paths.ensure_dirs()
-    link = argvden_link(sys.argv)
+    if "--headless" in sys.argv or "--sunucu" in sys.argv:
+        # Arayuzsuz kip AYRI bir giristir (headless.py): orada `webview` HIC
+        # import edilmez. Kaynaktan calisirken kullaniciyi oraya yonlendiririz.
+        # PAKETLENMIS exe'de ayri bir giris dosyasi yoktur (tek dosya), bu
+        # yuzden orada servisi dogrudan burada calistiririz.
+        import headless
+        if getattr(sys, "frozen", False):
+            return headless.calistir()
+        print("Arayuzsuz kip icin: afuadm server start  (veya python headless.py)")
+        return 2
+    link = protocol_link(argvden_link(sys.argv))
     # Tepside basla: Baslangic kisayolu bu bayrakla cagirir (bkz. core/baslangic.py)
     tepside_basla = "--tepside" in sys.argv
     if calisan_ornege_yolla(link):
         return 0                      # zaten acik: is ona verildi, ikinci pencere yok
+    # Ayni klasorde headless servis calisiyorsa IKINCI SUREC ACMA: aksi halde
+    # iki surec ayni SQLite ve ayni aria2 oturumuna asilir.
+    _rapor = ornek.cakisma_raporu(ornek.KIP_MASAUSTU)
+    if _rapor["cakisma"]:
+        print(lang.t(_rapor["mesaj_anahtari"], "auto"))
+        return 0
     if not paths.ARIA2C.exists():
         print(f"HATA: motor bulunamadi -> {paths.ARIA2C}")
         return 2
 
+    _kilit = ornek.OrnekKilidi(ornek.KIP_MASAUSTU)
+    _kilit.al()
     manager = Manager()
     tracker_saglik.klasoru_hazirla()   # kullanici .txt atabilsin diye hep dursun
     try:
@@ -1124,7 +1268,18 @@ def main() -> int:
     except Exception as exc:
         print(f"UYARI: yerel API acilamadi: {exc}")
 
-    api = Api(manager, local_api)
+    _kilit.guncelle(api_port=local_api.port)
+    servis = AfuDMServis(manager, kip=ornek.KIP_MASAUSTU)
+    api = Api(manager, local_api, servis)
+    # Ayar "sunucu acik" ise yonetim sunucusunu da ac. Anahtar yoksa ACILMAZ:
+    # anahtarsiz sunucu hicbir sey yapamaz, sahte bir guven verir.
+    if manager.store.get("sunucu_acik") and servis.erisim.yonetici_var_mi():
+        _sonuc = servis.sunucu_baslat()
+        if _sonuc.get("ok"):
+            _kilit.guncelle(sunucu_port=servis.sunucu.port,
+                            sunucu_adres=servis.sunucu.adres)
+        else:
+            print("UYARI: yonetim sunucusu acilamadi: %s" % _sonuc.get("error"))
     pencere.webview2_hazirligini_yama()  # CSS app-region: drag, ilk sayfadan once
     window = webview.create_window(
         lang.t("window.title", str(manager.store.get("language", "auto"))),
@@ -1139,6 +1294,7 @@ def main() -> int:
     )
     api._window = window
     from api.server import _Handler as _ApiHandler  # noqa: E402
+    _ApiHandler.servis = servis          # /capabilities tek kaynaktan
     _ApiHandler.on_ask = api.tarayicidan_sor
     _ApiHandler.on_show = lambda: pencere.one_getir(window)
 
@@ -1177,6 +1333,7 @@ def main() -> int:
             pass
 
     api._tepsi_bildirimi = tepsi_bildirimi
+    manager.windows_notify = lambda baslik, metin: getattr(api, "_tepsi", None) and api._tepsi.notify(metin, baslik)
 
     def baslik_hazir() -> None:
         try:
@@ -1244,8 +1401,10 @@ def main() -> int:
         webview.start(on_start, debug=bool(os.environ.get("AFUDM_DEBUG")))
     finally:
         watcher.stop()
+        servis.sunucu_durdur()
         local_api.stop()
         manager.stop()
+        _kilit.birak()
     return 0
 
 

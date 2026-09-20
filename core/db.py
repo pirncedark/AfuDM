@@ -80,6 +80,8 @@ DEFAULTS: dict[str, Any] = {
     "clipboard_watch": True,
     "clipboard_exts": "zip,rar,7z,exe,msi,iso,pdf,mp4,mkv,mp3,apk,dmg,torrent",
     "notify_telegram": False,
+    # Windows bildirimleri; tepsi altyapisi varsa tamamlanma/hata durumunu gosterir.
+    "windows_notifications": True,
     "telegram_bot_token": "",
     "telegram_chat_id": "",
     "shutdown_when_done": False,
@@ -133,6 +135,27 @@ DEFAULTS: dict[str, Any] = {
     "automation_notify": True,
     "automation_power": "none",
     "automation_power_seconds": 60,
+    # --- v2.1 Headless Server -------------------------------------------
+    # HTTP yonetim sunucusu. VARSAYILAN KAPALI: acilmadan hicbir uzak
+    # erisim yoktur. Acilinca bile anahtarsiz hicbir sey yapilamaz.
+    "sunucu_acik": False,
+    # "yerel" = yalniz 127.0.0.1, "lan" = 0.0.0.0 (ayni Wi-Fi).
+    # Internete acma OZELLIGI YOKTUR; port yonlendirmeyi kullanici yapar.
+    "sunucu_adres": "yerel",
+    "sunucu_port": 6821,
+    # Kaba kuvvet korumasi: ayni IP'den dakikada izin verilen istek sayisi
+    "sunucu_istek_limiti": 120,
+    # Ust uste bu kadar yanlis anahtar -> o IP gecici kilitlenir
+    "sunucu_hatali_limit": 8,
+    "sunucu_kilit_saniye": 300,
+    # CSRF/origin: panel disindan gelen tarayici isteklerini reddet.
+    # Bos ise YALNIZ sunucunun kendi adresi kabul edilir (en siki).
+    "sunucu_izinli_originler": "",
+    # Istemci oturum kaydi tutulsun mu (kim bagli ekrani bunu okur)
+    "sunucu_istemci_kaydi": True,
+    # Etkin sunucu profili (server_profiles.id); 0 = profil yok
+    "sunucu_profil_id": 0,
+    "sunucu_proxy_guven": False,
 }
 
 
@@ -146,7 +169,10 @@ DEFAULTS: dict[str, Any] = {
 # v1.9 kurallarini v6'yi degistirmeden yeni bir adimda ekler.
 # v2.0 eklenti kaydi v8'dedir: v2.0 dali onu once v4 olarak yazmisti, ancak
 # o numara v1.8/v1.7.5 tarafindan alinmisti; yeniden numaralandirildi.
-USER_VERSION = 8
+# v2.1 sunucu erisimi v9'dadir: v2.1 dali da onu v4 olarak yazmisti (ucuncu
+# kez ayni cakisma); yeniden numaralandirildi.
+# v2.3: plugins tablosuna sha256 sutunu eklendi (paket butunlugu dogrulamasi).
+USER_VERSION = 10
 
 
 def _v2_torrent_dosya_secimleri(conn: sqlite3.Connection) -> None:
@@ -233,6 +259,67 @@ def _v8_eklenti_kaydi(conn: sqlite3.Connection) -> None:
         )
     """)
 
+def _v9_sunucu_erisimi(conn: sqlite3.Connection) -> None:
+    """v2.1 Headless Server: erisim anahtarlari, istemciler, sunucu profilleri.
+
+    YALNIZCA EKLER. downloads/settings/events tablolarina DOKUNMAZ; kullanici
+    ayarlari ve indirme gecmisi oldugu gibi kalir. Idempotent: IF NOT EXISTS.
+
+    `gizli_hash` alani anahtarin SHA-256 ozetidir; anahtarin KENDISI hicbir
+    yerde saklanmaz ve loglanmaz. Rotasyon ayni satirin ozetini degistirir,
+    boylece eski anahtar ANINDA gecersiz olur.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS api_keys (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            ad          TEXT NOT NULL,
+            rol         TEXT NOT NULL DEFAULT 'salt_okur',
+            gizli_hash  TEXT NOT NULL,
+            onek        TEXT NOT NULL DEFAULT '',
+            olusturuldu REAL NOT NULL,
+            son_kullanim REAL,
+            son_rotasyon REAL,
+            iptal       INTEGER NOT NULL DEFAULT 0,
+            not_metni   TEXT DEFAULT ''
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(gizli_hash)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS api_clients (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            key_id       INTEGER,
+            oturum       TEXT NOT NULL UNIQUE,
+            ip           TEXT NOT NULL DEFAULT '',
+            istemci      TEXT NOT NULL DEFAULT '',
+            rol          TEXT NOT NULL DEFAULT 'salt_okur',
+            ilk_gorulme  REAL NOT NULL,
+            son_gorulme  REAL NOT NULL,
+            istek_sayisi INTEGER NOT NULL DEFAULT 0,
+            iptal        INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_api_clients_oturum ON api_clients(oturum)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS server_profiles (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            ad          TEXT NOT NULL,
+            adres       TEXT NOT NULL DEFAULT 'yerel',
+            port        INTEGER NOT NULL DEFAULT 6821,
+            originler   TEXT NOT NULL DEFAULT '',
+            istek_limiti INTEGER NOT NULL DEFAULT 120,
+            olusturuldu REAL NOT NULL
+        )
+    """)
+def _v10_eklenti_sha256(conn: sqlite3.Connection) -> None:
+    """v2.3: kurulan paketin dogrulanmis SHA-256 ozeti kayitta tutulur.
+
+    YALNIZCA EKLER. Mevcut eklenti kayitlari ve ayarlar ELLENMEZ; eski
+    satirlarda alan bos kalir (o paketler dogrulanmadan kurulmustu)."""
+    sutunlar = {satir[1] for satir in conn.execute("PRAGMA table_info(plugins)")}
+    if "sha256" not in sutunlar:
+        conn.execute("ALTER TABLE plugins ADD COLUMN sha256 TEXT NOT NULL DEFAULT ''")
+
+
 MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     2: _v2_torrent_dosya_secimleri,
     3: _v3_events_gid,
@@ -241,6 +328,8 @@ MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     6: _v6_v175_v18_uzlastir,
     7: _v7_rules_engine,
     8: _v8_eklenti_kaydi,
+    9: _v9_sunucu_erisimi,
+    10: _v10_eklenti_sha256,
 }
 
 
@@ -546,13 +635,14 @@ class Store:
         with self._lock:
             self.conn.execute(
                 "INSERT INTO plugins(ad, baslik, surum, kaynak, giris, manifest, izinler,"
-                " domainler, ayarlar, etkin, son_hata, onceki_surum, kurulum_at, guncelleme_at)"
-                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                " domainler, ayarlar, etkin, son_hata, onceki_surum, sha256, kurulum_at, guncelleme_at)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
                 " ON CONFLICT(ad) DO UPDATE SET baslik=excluded.baslik, surum=excluded.surum,"
                 " kaynak=excluded.kaynak, giris=excluded.giris, manifest=excluded.manifest,"
                 " izinler=excluded.izinler, domainler=excluded.domainler,"
                 " ayarlar=excluded.ayarlar, etkin=excluded.etkin, son_hata=excluded.son_hata,"
-                " onceki_surum=excluded.onceki_surum, guncelleme_at=excluded.guncelleme_at",
+                " onceki_surum=excluded.onceki_surum, sha256=excluded.sha256,"
+                " guncelleme_at=excluded.guncelleme_at",
                 (
                     str(kayit["ad"]),
                     str(kayit.get("baslik") or ""),
@@ -566,6 +656,7 @@ class Store:
                     1 if kayit.get("etkin") else 0,
                     str(kayit.get("son_hata") or "")[:500],
                     str(kayit.get("onceki_surum") or ""),
+                    str(kayit.get("sha256") or ""),
                     float(kayit.get("kurulum_at") or time.time()),
                     float(kayit.get("guncelleme_at") or time.time()),
                 ),
@@ -575,7 +666,7 @@ class Store:
     def eklenti_alan_yaz(self, ad: str, **alanlar: Any) -> None:
         """Yalniz bilinen alanlari gunceller (etkin/son_hata/ayarlar/...)."""
         izinli = {"baslik", "surum", "kaynak", "giris", "etkin", "son_hata",
-                  "onceki_surum", "guncelleme_at"}
+                  "onceki_surum", "sha256", "guncelleme_at"}
         json_alan = {"manifest", "izinler", "domainler", "ayarlar"}
         setler, degerler = [], []
         for anahtar, deger in alanlar.items():

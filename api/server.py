@@ -98,6 +98,10 @@ class _Handler(BaseHTTPRequestHandler):
     # Uzanti "Sayfadaki linkleri gönder" dediginde ham metni LinkGrabber
     # paneline iletmek icin. None ise istek reddedilir (panel kapali/UI yok).
     on_linkgrabber = None
+    # v2.1: ortak servis katmani (core/servis.AfuDMServis). Atanmissa
+    # /capabilities yetenek listesini ORADAN alir — iki ayri liste tutup
+    # birinin bayatlamasi diye bir sey olmaz.
+    servis = None
     reliability = None
     rotate_token = None
     _rate: dict[str, list[float]] = {}
@@ -130,6 +134,7 @@ class _Handler(BaseHTTPRequestHandler):
         header = self.headers.get("X-AfuDM-Token", "")
         supplied = header or (query.get("token", [""])[0])
         return bool(self.token) and secrets.compare_digest(supplied, self.token)
+
 
     def _rate_allowed(self) -> bool:
         """Small in-memory per-client limit; no token/IP is written to disk/logs."""
@@ -303,6 +308,10 @@ class _Handler(BaseHTTPRequestHandler):
         elif parsed.path == "/eklenti/islem":
             self._send(200, self.manager.eklentiler.islem())
         elif parsed.path == "/capabilities":
+            if _Handler.servis is not None:
+                # TEK KAYNAK: yalnizca gercekten calisan ozellikler bildirilir.
+                self._send(200, _Handler.servis.yetenekler())
+                return
             from core import engines, surum
             self._send(200, {
                 "ok": True,
@@ -317,6 +326,7 @@ class _Handler(BaseHTTPRequestHandler):
                     "scheduler", "hiz_profilleri", "renew", "ozel_basliklar",
                     "cerez", "zamanlama", "cli", "api", "kategori_klasorleri",
                     "proxy", "sistem_proxy", "checksum", "canli_ayar",
+
                     "reliability",
                     "rules_engine",
                     "automation", "automation_queue", "automation_retry", "automation_cancel",
@@ -333,6 +343,8 @@ class _Handler(BaseHTTPRequestHandler):
                     "proxy": models.PROXY_MAX,
                 },
             })
+        elif parsed.path == "/windows-integration":
+            self._send(200, self.manager.windows.status())
         else:
             self._hata(404, "BILINMEYEN_YOL", "bilinmeyen yol")
 
@@ -463,6 +475,15 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(200, {"ok": True, **self.manager.seed_tazele(gid)})
             elif parsed.path == "/tracker/tara":
                 self._send(200, {"ok": True, **self.manager.tracker_tara(data.get("gid", ""))})
+            elif parsed.path == "/windows-integration":
+                ident = str(data.get("id") or "")
+                action = str(data.get("action") or "")
+                if action == "apply": result = self.manager.windows.apply(ident)
+                elif action == "remove": result = self.manager.windows.remove(ident)
+                elif action == "test": result = self.manager.windows.test(ident)
+                else: raise ValueError("action apply, remove veya test olmali")
+                self._send(200, result)
+
             elif parsed.path == "/renew":
                 # Olen linki yeni adresle devam ettir (afuadm renew <gid> <url>).
                 # headers/cookies/user_agent OPSIYONEL: varliksa ayni atomik
@@ -489,6 +510,7 @@ class _Handler(BaseHTTPRequestHandler):
                     self._hata(400, "BAD_REQUEST", "profil gerekli (snail|normal|turbo)")
                     return
                 self._send(200, {"ok": True, **self.manager.set_mode(ad)})
+
             elif parsed.path == "/reliability/integrity": self._send(200, self.reliability.integrity())
             elif parsed.path == "/reliability/backup": self._send(200, self.reliability.backup())
             elif parsed.path == "/reliability/diagnostics-preview": self._send(200, self.reliability.diagnostics_preview())
@@ -509,6 +531,7 @@ class _Handler(BaseHTTPRequestHandler):
                     self._send(200, servis.kur(yol, data.get("onaylanan_izinler")))
                 elif eylem == "guncelle":
                     self._send(200, servis.guncelle(ad, yol))
+
                 elif eylem == "geri_al":
                     self._send(200, servis.elle_geri_al(ad))
                 elif eylem == "kaldir":
