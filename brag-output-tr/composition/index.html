@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>AfuDM v2.4.0 Tanıtım</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html, body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0f131a;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        color: #e6eaf0;
+        user-select: none;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: radial-gradient(circle at 50% 20%, #1c2433 0%, #0f131a 80%);
+        overflow: hidden;
+      }
+
+      /* Cyber grid background */
+      .bg-grid {
+        position: absolute;
+        inset: 0;
+        background-image: 
+          linear-gradient(to right, rgba(91, 157, 255, 0.05) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(91, 157, 255, 0.05) 1px, transparent 1px);
+        background-size: 60px 60px;
+        pointer-events: none;
+      }
+
+      .clip {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+
+      .scene-inner {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+
+      /* Common Components */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 18px;
+        background: rgba(91, 157, 255, 0.12);
+        border: 1px solid rgba(91, 157, 255, 0.35);
+        border-radius: 9999px;
+        color: #5b9dff;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 24px;
+      }
+      .badge.green {
+        background: rgba(70, 201, 139, 0.12);
+        border-color: rgba(70, 201, 139, 0.4);
+        color: #46c98b;
+      }
+      .badge.purple {
+        background: rgba(167, 139, 250, 0.12);
+        border-color: rgba(167, 139, 250, 0.4);
+        color: #a78bfa;
+      }
+
+      /* Scene 1: Hero */
+      .hero-logo-box {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        margin-bottom: 20px;
+      }
+      .hero-icon {
+        width: 110px;
+        height: 110px;
+        filter: drop-shadow(0 0 35px rgba(91, 157, 255, 0.5));
+      }
+      .hero-title {
+        font-size: 110px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        line-height: 1;
+        background: linear-gradient(135deg, #ffffff 30%, #5b9dff 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .hero-tagline {
+        font-size: 34px;
+        color: #8a97a8;
+        font-weight: 400;
+        margin-bottom: 48px;
+        text-align: center;
+        max-width: 1100px;
+        line-height: 1.4;
+      }
+      .hero-tagline strong {
+        color: #e6eaf0;
+        font-weight: 600;
+      }
+      .hero-pills {
+        display: flex;
+        gap: 24px;
+      }
+      .pill-card {
+        background: #1c222c;
+        border: 1px solid #2a3340;
+        border-radius: 16px;
+        padding: 20px 32px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        min-width: 260px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      }
+      .pill-value {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 26px;
+        font-weight: 700;
+        color: #5b9dff;
+      }
+      .pill-card:nth-child(2) .pill-value { color: #46c98b; }
+      .pill-card:nth-child(3) .pill-value { color: #a78bfa; }
+      .pill-label {
+        font-size: 14px;
+        color: #8a97a8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      /* Scene 2: Tri Engine */
+      .section-header {
+        text-align: center;
+        margin-bottom: 50px;
+      }
+      .section-title {
+        font-size: 56px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        margin-bottom: 12px;
+      }
+      .section-desc {
+        font-size: 22px;
+        color: #8a97a8;
+      }
+      .cards-grid {
+        display: flex;
+        gap: 32px;
+        width: 1540px;
+      }
+      .engine-card {
+        flex: 1;
+        background: #181e28;
+        border: 1px solid #2a3340;
+        border-radius: 20px;
+        padding: 36px 32px;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 15px 40px rgba(0,0,0,0.5);
+      }
+      .engine-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+      }
+      .engine-card.card-blue::before { background: #5b9dff; }
+      .engine-card.card-green::before { background: #46c98b; }
+      .engine-card.card-purple::before { background: #a78bfa; }
+
+      .card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+      }
+      .engine-name {
+        font-size: 28px;
+        font-weight: 700;
+      }
+      .engine-tag {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 4px 10px;
+        border-radius: 6px;
+        background: #232b37;
+        color: #8a97a8;
+      }
+      .engine-highlight {
+        font-size: 19px;
+        color: #e6eaf0;
+        margin-bottom: 24px;
+        line-height: 1.4;
+      }
+      .meter-box {
+        background: #0f131a;
+        border: 1px solid #222a35;
+        border-radius: 12px;
+        padding: 20px;
+        margin-top: auto;
+      }
+      .meter-label-row {
+        display: flex;
+        justify-content: space-between;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 15px;
+        margin-bottom: 12px;
+      }
+      .meter-val {
+        color: #5b9dff;
+        font-weight: 700;
+      }
+      .chunks-row {
+        display: grid;
+        grid-template-columns: repeat(16, 1fr);
+        gap: 4px;
+        height: 24px;
+      }
+      .chunk {
+        background: #232b37;
+        border-radius: 3px;
+      }
+      .chunk.active {
+        background: #5b9dff;
+        box-shadow: 0 0 8px rgba(91, 157, 255, 0.6);
+      }
+      .chunk.done {
+        background: #46c98b;
+      }
+
+      /* Scene 3: Mobile Companion */
+      .mobile-scene-content {
+        display: flex;
+        align-items: center;
+        gap: 80px;
+        width: 1500px;
+      }
+      .phone-frame {
+        width: 440px;
+        height: 720px;
+        background: #14181f;
+        border: 3px solid #364253;
+        border-radius: 44px;
+        padding: 20px 24px;
+        box-shadow: 0 25px 70px rgba(0,0,0,0.7), 0 0 40px rgba(91, 157, 255, 0.15);
+        display: flex;
+        flex-direction: column;
+        position: relative;
+      }
+      .phone-notch {
+        width: 140px;
+        height: 22px;
+        background: #232b37;
+        border-radius: 0 0 14px 14px;
+        margin: -20px auto 16px auto;
+      }
+      .phone-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 14px;
+        border-bottom: 1px solid #2a3340;
+        margin-bottom: 20px;
+      }
+      .phone-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #e6eaf0;
+      }
+      .phone-ip {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        color: #5b9dff;
+        background: rgba(91, 157, 255, 0.12);
+        padding: 4px 8px;
+        border-radius: 6px;
+      }
+      .phone-download-card {
+        background: #1c222c;
+        border: 1px solid #2a3340;
+        border-radius: 16px;
+        padding: 18px;
+        margin-bottom: 16px;
+      }
+      .phone-file-title {
+        font-size: 15px;
+        font-weight: 600;
+        margin-bottom: 6px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .phone-file-meta {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        color: #46c98b;
+        margin-bottom: 14px;
+      }
+      .phone-progress-bar {
+        height: 6px;
+        background: #2a3340;
+        border-radius: 3px;
+        overflow: hidden;
+        margin-bottom: 16px;
+      }
+      .phone-progress-fill {
+        width: 100%;
+        height: 100%;
+        background: #46c98b;
+      }
+      .btn-phone-download {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        padding: 12px;
+        background: #46c98b;
+        color: #0f131a;
+        font-weight: 700;
+        font-size: 14px;
+        border-radius: 10px;
+        border: none;
+      }
+      .phone-pwa-banner {
+        margin-top: auto;
+        background: #232b37;
+        border: 1px dashed #5b9dff;
+        border-radius: 14px;
+        padding: 14px;
+        text-align: center;
+        font-size: 13px;
+        color: #5b9dff;
+        font-weight: 600;
+      }
+
+      .mobile-info-panel {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 32px;
+      }
+      .feature-item {
+        display: flex;
+        gap: 20px;
+        align-items: flex-start;
+      }
+      .feature-icon-box {
+        width: 56px;
+        height: 56px;
+        border-radius: 16px;
+        background: #1c222c;
+        border: 1px solid #2a3340;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 26px;
+        flex-shrink: 0;
+      }
+      .feature-text h4 {
+        font-size: 24px;
+        font-weight: 700;
+        margin-bottom: 6px;
+        color: #e6eaf0;
+      }
+      .feature-text p {
+        font-size: 17px;
+        color: #8a97a8;
+        line-height: 1.5;
+      }
+
+      /* Scene 4: CTA */
+      .cta-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+      .cta-title {
+        font-size: 76px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        margin-bottom: 20px;
+        background: linear-gradient(135deg, #ffffff 40%, #5b9dff 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .cta-sub {
+        font-size: 26px;
+        color: #8a97a8;
+        margin-bottom: 48px;
+      }
+      .cta-box {
+        background: #181e28;
+        border: 2px solid #5b9dff;
+        border-radius: 24px;
+        padding: 36px 64px;
+        box-shadow: 0 20px 60px rgba(91, 157, 255, 0.25);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+      }
+      .cta-url {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 32px;
+        font-weight: 700;
+        color: #5b9dff;
+      }
+      .cta-meta {
+        font-size: 16px;
+        color: #8a97a8;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="20"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="bg-grid"></div>
+
+      <!-- Background Music -->
+      <audio id="bgm" src="assets/music/track.mp3" data-start="0" data-duration="20" data-track-index="4"></audio>
+
+      <!-- Scene 1: Hook (0s - 4.5s) -->
+      <div id="scene-1" class="clip" data-start="0" data-duration="4.5" data-track-index="0">
+        <div class="scene-inner scene-1-inner">
+          <div class="badge">WINDOWS 10 VE 11 DESTEĞİ</div>
+          <div class="hero-logo-box">
+            <img src="assets/icon.png" alt="AfuDM Logosu" class="hero-icon" />
+            <h1 class="hero-title">AfuDM</h1>
+          </div>
+          <p class="hero-tagline">
+            <strong>Kurulumsuz</strong> ve yüksek hızlı indirme motoru.<br />
+            Çoklu bağlantılı dosyalar, 4K video akışları ve BitTorrent tek klasörde.
+          </p>
+          <div class="hero-pills">
+            <div class="pill-card">
+              <span class="pill-value">%100</span>
+              <span class="pill-label">Taşınabilir (Kayıt Defteri Yok)</span>
+            </div>
+            <div class="pill-card">
+              <span class="pill-value">22 MB</span>
+              <span class="pill-label">Kompakt Çekirdek</span>
+            </div>
+            <div class="pill-card">
+              <span class="pill-value">64 BAĞLANTI</span>
+              <span class="pill-label">Maksimum Gigabit Hızı</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scene 2: Tri-Engine Power (4.5s - 9.5s) -->
+      <div id="scene-2" class="clip" data-start="4.5" data-duration="5.0" data-track-index="1">
+        <div class="scene-inner scene-2-inner">
+          <div class="section-header">
+            <div class="badge green">YÜKSEK PERFORMANSLI MİMARİ</div>
+            <h2 class="section-title">Üç Motorlu Güç</h2>
+            <p class="section-desc">Her indirme türü için özel optimize edilmiş bağımsız motor.</p>
+          </div>
+          <div class="cards-grid">
+            <div class="engine-card card-blue">
+              <div class="card-top">
+                <span class="engine-name">aria2 Turbo</span>
+                <span class="engine-tag">DOSYALAR</span>
+              </div>
+              <p class="engine-highlight">Dosyaları 64 parçaya böler, 16 bağlantı açar. Anında duraklat & devam et.</p>
+              <div class="meter-box">
+                <div class="meter-label-row">
+                  <span>HIZ GÖSTERGESİ</span>
+                  <span id="speed-num-tr" class="meter-val">48.5 MB/s</span>
+                </div>
+                <div class="chunks-row">
+                  <div class="chunk active"></div><div class="chunk active"></div><div class="chunk active"></div><div class="chunk active"></div>
+                  <div class="chunk active"></div><div class="chunk active"></div><div class="chunk active"></div><div class="chunk active"></div>
+                  <div class="chunk active"></div><div class="chunk active"></div><div class="chunk active"></div><div class="chunk active"></div>
+                  <div class="chunk done"></div><div class="chunk done"></div><div class="chunk done"></div><div class="chunk done"></div>
+                </div>
+              </div>
+            </div>
+            <div class="engine-card card-green">
+              <div class="card-top">
+                <span class="engine-name">Akıllı 4K Muxer</span>
+                <span class="engine-tag">VİDEO</span>
+              </div>
+              <p class="engine-highlight">FFmpeg olmadan 4K video ve sesi birleştirir. 46.368 kare birebir doğrulandı.</p>
+              <div class="meter-box">
+                <div class="meter-label-row">
+                  <span>DESTEK</span>
+                  <span class="meter-val" style="color:#46c98b;">YouTube · TikTok · IG</span>
+                </div>
+                <div style="font-size: 14px; color: #8a97a8; font-family: 'JetBrains Mono', monospace;">
+                  Kalite: 4K UHD, 1080p, MP3 Ses
+                </div>
+              </div>
+            </div>
+            <div class="engine-card card-purple">
+              <div class="card-top">
+                <span class="engine-name">BitTorrent Pro</span>
+                <span class="engine-tag">TORRENT</span>
+              </div>
+              <p class="engine-highlight">Günlük otomatik tracker yenileme ile ölü torrentleri canlandırır. DHT, PEX, LPD.</p>
+              <div class="meter-box">
+                <div class="meter-label-row">
+                  <span>SÜRÜ HIZLANDIRMA</span>
+                  <span class="meter-val" style="color:#a78bfa;">Aktif Tracker Eşitleme</span>
+                </div>
+                <div style="font-size: 14px; color: #8a97a8; font-family: 'JetBrains Mono', monospace;">
+                  Magnet Bağlantıları · Seed Listesi
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scene 3: Mobile Companion (9.5s - 15.5s) -->
+      <div id="scene-3" class="clip" data-start="9.5" data-duration="6.0" data-track-index="2">
+        <div class="scene-inner scene-3-inner">
+          <div class="mobile-scene-content">
+            <div class="phone-frame">
+              <div class="phone-notch"></div>
+              <div class="phone-header">
+                <span class="phone-title">AfuDM Mobil</span>
+                <span class="phone-ip">192.168.1.5:8010/m</span>
+              </div>
+              <div class="phone-download-card">
+                <div class="phone-file-title">Ubuntu-24.04-desktop.iso</div>
+                <div class="phone-file-meta">4.8 GB · %100 Tamamlandı</div>
+                <div class="phone-progress-bar">
+                  <div class="phone-progress-fill"></div>
+                </div>
+                <button class="btn-phone-download">
+                  <span>📲</span> Telefona İndir
+                </button>
+              </div>
+              <div class="phone-pwa-banner">
+                ⚡ Ana Ekrana Kur (PWA / APK)
+              </div>
+            </div>
+
+            <div class="mobile-info-panel">
+              <div>
+                <div class="badge purple">v2.4.0 İLE YENİ</div>
+                <h2 class="section-title">Mobil Kumanda</h2>
+                <p class="section-desc">Wi-Fi ağınızdaki herhangi bir telefon tarayıcısından bilgisayarınızı yönetin.</p>
+              </div>
+              <div class="feature-item">
+                <div class="feature-icon-box">📶</div>
+                <div class="feature-text">
+                  <h4>Wi-Fi Uzaktan Kumanda</h4>
+                  <p>Bilgisayardaki indirmeleri durdurun, başlatın ve telefonunuzdan takip edin.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-icon-box">📥</div>
+                <div class="feature-text">
+                  <h4>Doğrudan Telefona Aktarım</h4>
+                  <p>Biten film, müzik ve arşiv dosyalarını doğrudan telefon hafızasına çekin.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-icon-box">🧩</div>
+                <div class="feature-text">
+                  <h4>Tek Tıkla Chrome Eklentisi</h4>
+                  <p>Tarayıcı indirmelerini yakalar & videolara otomatik indirme butonu ekler.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scene 4: CTA (15.5s - 20.0s) -->
+      <div id="scene-4" class="clip" data-start="15.5" data-duration="4.5" data-track-index="3">
+        <div class="scene-inner scene-4-inner">
+          <div class="cta-content">
+            <div class="badge green">ÜCRETSİZ & AÇIK KAYNAK</div>
+            <h2 class="cta-title">İndirme Deneyiminizi Yükseltin</h2>
+            <p class="cta-sub">Temiz, taşınabilir ve her zamankinden daha hızlı. Kurulum gerekmez.</p>
+            <div class="cta-box">
+              <span class="cta-meta">v2.4.0 Son Sürümü İndirin</span>
+              <span class="cta-url">github.com/pirncedark/AfuDM/releases</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Scene 1 Animations (0.0s - 4.5s)
+      tl.fromTo(".scene-1-inner", { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "power2.out" }, 0.1);
+      tl.fromTo(".scene-1-inner .hero-icon", { scale: 0.7, rotate: -12 }, { scale: 1, rotate: 0, duration: 0.9, ease: "back.out(1.5)" }, 0.2);
+      tl.fromTo(".scene-1-inner .hero-title", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, ease: "power3.out" }, 0.3);
+      tl.fromTo(".scene-1-inner .hero-tagline", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, ease: "power3.out" }, 0.5);
+      tl.fromTo(".scene-1-inner .pill-card", { y: 30, opacity: 0 }, { y: 0, opacity: 1, stagger: 0.15, duration: 0.7, ease: "power2.out" }, 0.8);
+      tl.to(".scene-1-inner", { opacity: 0, y: -20, duration: 0.4, ease: "power2.in" }, 4.0);
+
+      // Scene 2 Animations (4.5s - 9.5s)
+      tl.fromTo(".scene-2-inner", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 4.6);
+      tl.fromTo(".scene-2-inner .engine-card", { y: 40, opacity: 0 }, { y: 0, opacity: 1, stagger: 0.15, duration: 0.7, ease: "back.out(1.2)" }, 4.8);
+      tl.fromTo(".scene-2-inner .chunk", { opacity: 0.3 }, { opacity: 1, stagger: 0.04, duration: 0.7, ease: "none" }, 5.5);
+      tl.to(".scene-2-inner", { opacity: 0, y: -20, duration: 0.4, ease: "power2.in" }, 9.0);
+
+      // Scene 3 Animations (9.5s - 15.5s)
+      tl.fromTo(".scene-3-inner", { opacity: 0, scale: 0.95 }, { opacity: 1, scale: 1, duration: 0.6, ease: "power2.out" }, 9.6);
+      tl.fromTo(".scene-3-inner .phone-frame", { x: -40, opacity: 0 }, { x: 0, opacity: 1, duration: 0.8, ease: "power3.out" }, 9.8);
+      tl.fromTo(".scene-3-inner .feature-item", { x: 40, opacity: 0 }, { x: 0, opacity: 1, stagger: 0.2, duration: 0.7, ease: "power2.out" }, 10.1);
+      tl.fromTo(".scene-3-inner .btn-phone-download", { scale: 0.92 }, { scale: 1.05, repeat: 3, yoyo: true, duration: 0.35, ease: "power1.inOut" }, 11.5);
+      tl.to(".scene-3-inner", { opacity: 0, scale: 1.05, duration: 0.4, ease: "power2.in" }, 15.0);
+
+      // Scene 4 Animations (15.5s - 20.0s)
+      tl.fromTo(".scene-4-inner", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }, 15.6);
+      tl.fromTo(".scene-4-inner .cta-box", { scale: 0.9, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.8, ease: "back.out(1.4)" }, 16.0);
+
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

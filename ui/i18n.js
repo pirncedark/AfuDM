@@ -99,7 +99,10 @@ const DICT = {
     "plg.perm.indirme_yonet": "İndirmeleri duraklatır, sürdürür, siler",
     "plg.perm.ayar_oku": "AfuDM ayarlarını okur",
     "plg.perm.ayar_yaz": "AfuDM ayarlarını değiştirir",
-    "plg.perm.ag": "İnternete çıkar",
+    "plg.perm.ag": "Ağa (internete) çıkar",
+    "rem.title": "İndirmeyi Kaldır",
+    "rem.desc": "Bu indirmeyi listeden kaldırmak istiyor musunuz?",
+    "rem.files": "İndirilen dosyaları da diskten tamamen SİL",
     "plg.perm.dosya_oku": "Diskten dosya okur",
     "plg.perm.dosya_yaz": "Diske dosya yazar",
     "plg.perm.bildirim": "Bildirim gösterir",
@@ -797,6 +800,9 @@ const DICT = {
   },
 
   en: {
+    "rem.title": "Remove Download",
+    "rem.desc": "Are you sure you want to remove this download from the list?",
+    "rem.files": "Also DELETE downloaded files from disk completely",
     "app.title": "AfuDM — download manager",
 
     "rail.toolsTitle": "System & Tools",

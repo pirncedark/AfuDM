@@ -380,7 +380,12 @@ $("liste").addEventListener("click", async (olay) => {
     return;
   }
   if (dugme.dataset.eylem === "indir") {
-    window.location.href = "/indir?gid=" + encodeURIComponent(dugme.dataset.gid) + "&k=" + encodeURIComponent(anahtar);
+    const a = document.createElement("a");
+    a.href = "/indir?gid=" + encodeURIComponent(dugme.dataset.gid) + "&k=" + encodeURIComponent(anahtar);
+    a.download = "";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
     return;
   }
   try {

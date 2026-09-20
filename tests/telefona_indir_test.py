@@ -28,7 +28,7 @@ check("Dosya icerigini basariyla donduruyor (shutil)", "shutil.copyfileobj(dosya
 print("2) Mobil Arayuz (mobil.html) - PWA kurulum ve Dosya İndirme")
 html_kod = MOBIL_HTML.read_text(encoding="utf-8")
 check("Telefona Indir butonu eklendi", 'data-eylem="indir"' in html_kod and 'Telefona İndir' in html_kod)
-check("Butona basilinca /indir yoluna yonlendiriliyor", 'window.location.href = "/indir?gid="' in html_kod)
+check("Butona basilinca /indir yoluna yonlendiriliyor", 'a.href = "/indir?gid="' in html_kod)
 check("PWA Kurulum butonu var (APK/PWA)", 'id="pwaKur"' in html_kod and 'Uygulamayı Kur' in html_kod)
 check("Tarayici uyarisi iceriyor (HTTP icin manuel menu uyari fall-back'i)", "Ana Ekrana Ekle" in html_kod and "alert(" in html_kod)
 check("Klasor seciminde varsayilan klasor adi gosteriliyor", "veri.ana ?" in html_kod and "varsayılan" in html_kod)

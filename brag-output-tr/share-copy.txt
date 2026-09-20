@@ -1,0 +1,7 @@
+AfuDM v2.4.0 çıktı! 🚀 Windows için yüksek performanslı ve %100 taşınabilir indirme yöneticisi.
+
+⚡ Kurulum Yok, Kayıt Defteri Kirliliği Yok (USB'den doğrudan çalışır)
+⚡ Üç Motorlu Güç: 64 bağlantılı aria2 turbo dosya indirme, FFmpeg gerektirmeyen 4K video birleştirici ve günlük tracker yenileyen BitTorrent motoru
+⚡ v2.4.0 ile Yeni: Mobil Kumanda — yerel Wi-Fi üzerinden telefonunuzdan bilgisayardaki indirmeleri yönetin ve biten dosyaları doğrudan telefonunuza çekin!
+
+Hemen deneyin: https://github.com/pirncedark/AfuDM/releases

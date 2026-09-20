@@ -1,0 +1,9 @@
+Still dealing with IDM's "Fake Serial Number" popup in 2026? 🛑
+
+Here are 3 reasons to delete IDM and switch to AfuDM:
+1️⃣ 100% Free & Open-Source: No cracked DLLs, no sketchy popups.
+2️⃣ 3 Tools in One (22MB): IDM can't do torrents. AfuDM gives you 64-connection turbo files (aria2), full BitTorrent swarms, AND 4K video muxing (yt-dlp) in one portable folder.
+3️⃣ Mobile Companion: Control PC downloads from your phone and stream completed files straight to your phone over local Wi-Fi!
+
+Get it on GitHub: https://github.com/pirncedark/AfuDM/releases
+#AfuDM #IDM #OpenSource #DownloadManager #TechTools #Productivity

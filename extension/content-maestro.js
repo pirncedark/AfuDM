@@ -118,26 +118,21 @@
           }
         } catch (_) { /* basliklar okunamadi */ }
         const istek = basliklariSuz(ham);
-        return sonuc.then((yanit) => {
+        sonuc.then((yanit) => {
           try {
             const tur = yanit.headers && yanit.headers.get("content-type");
             if (yanit.ok && listeMi(adres, tur)) {
-              // Yanit AKISTIR: bir kez okunur. Kopyasini biz okuruz ki
-              // oynatici kendi yanitini bozulmamis halde alsin.
               const yanitB = basliklariSuz([...(yanit.headers || [])]);
               yanit.clone().text()
                 .then((metin) => {
-                  /* Uzanti listeyi webRequest'ten gelen ISTEK adresiyle arar;
-                     yonlendirme varsa yanit.url ondan farklidir. Ikisini de
-                     kaydederiz, yoksa yonlendirilen listeler eslesmez. */
                   yolla(adres, metin, istek, yanitB);
                   if (yanit.url && yanit.url !== adres) yolla(yanit.url, metin, istek, yanitB);
                 })
                 .catch(() => {});
             }
           } catch (_) { /* yok say */ }
-          return yanit;
-        });
+        }).catch(() => {});
+        return sonuc;
       } catch (_) {
         return sonuc;
       }

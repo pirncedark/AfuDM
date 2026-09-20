@@ -1,0 +1,9 @@
+Hala 2005'ten kalma tasarımıyla IDM mi kullanıyorsunuz? Üstelik torrent bile indiremiyor! 🛑
+
+İşte IDM'i silip AfuDM'e geçmeniz için 3 somut neden:
+1️⃣ Sahte Lisans Uyarısına Son: Tamamen ücretsiz ve açık kaynaklı.
+2️⃣ 3 Program Tek Pakette: IDM + qBittorrent + 4K Video Downloader... Üçü tek bir 22MB'lık portable uygulamada!
+3️⃣ Mobil Kumanda: PC'deki indirmeleri otobüsteyken telefonunuzdan kontrol edin ve biten dosyaları tek tıkla telefonunuza çekin!
+
+Hemen ücretsiz indirin: https://github.com/pirncedark/AfuDM/releases
+#AfuDM #IDM #DownloadManager #AçıkKaynak #Yazılım

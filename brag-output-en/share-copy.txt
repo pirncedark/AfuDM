@@ -1,0 +1,7 @@
+Meet AfuDM v2.4.0 — the high-performance portable download manager for Windows! 🚀
+
+⚡ 100% Portable (Zero Registry / No AppData pollution)
+⚡ Tri-Engine Architecture: 64-connection aria2 turbo, 4K video muxer (no FFmpeg needed!), & BitTorrent with daily tracker refreshes
+⚡ NEW in v2.4.0: Mobile Companion — remote control your PC downloads from your phone & stream files straight to mobile storage!
+
+Grab the release: https://github.com/pirncedark/AfuDM/releases

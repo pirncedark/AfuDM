@@ -886,6 +886,7 @@
         <div class="plg-domainler" id="plgOnayDomainler"></div>
       </div>
       <div class="err-note plg-guven" data-i18n="plg.permHonesty">Bu liste eklentinin KENDİ BEYANIDIR. AfuDM bu listeyi teknik olarak zorlamaz: kurarsan eklenti burada yazmayan bir şeye de erişebilir. Liste, kaynağına güvenip güvenmeyeceğine karar vermen içindir.</div>
+
       <div class="err-note" id="plgOnayErr" style="display:none"></div>
     </div>
     <div class="foot">
@@ -901,6 +902,22 @@
 <div class="ctx" id="ctx" hidden></div>
 
 <div class="toast" id="toast"></div>
+
+<!-- Kaldirma onayi -->
+<div class="veil" id="removeVeil">
+  <div class="sheet rules-sheet" style="max-width: 400px;">
+    <h2 data-i18n="rem.title">İndirmeyi Kaldır</h2>
+    <div class="body">
+      <p data-i18n="rem.desc" style="margin-bottom: 12px; color: var(--text);">Bu indirmeyi listeden kaldırmak istiyor musunuz?</p>
+      <label class="opt"><input type="checkbox" id="remFiles"> <span data-i18n="rem.files">İndirilen dosyaları da diskten tamamen SİL</span></label>
+    </div>
+    <div class="foot">
+      <button class="btn ghost" data-close="removeVeil" data-i18n="set.cancel">Vazgeç</button>
+      <span style="flex:1"></span>
+      <button class="btn primary" id="remGo" data-i18n="row.remove">Kaldır</button>
+    </div>
+  </div>
+</div>
 <div class="veil" id="rulesVeil"><div class="sheet rules-sheet"><h2 data-i18n="rules.title">İndirme kuralları</h2><div class="body">
 <div class="rules-toolbar"><button class="btn" id="rulesNew" data-i18n="rules.new">Yeni kural</button><span class="hint" data-i18n="rules.badgeNew">Yeni indirmelerde</span></div><div id="rulesList"></div>
 <div class="rules-sim"><label data-i18n="rules.sim">URL simülatörü</label><input id="rulesUrl" type="text" placeholder="https://example.com/file.iso"><button class="btn" id="rulesRun" data-i18n="rules.run">Test et</button><div class="hint" id="rulesResult"></div></div>

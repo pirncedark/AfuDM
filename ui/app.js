@@ -561,9 +561,12 @@ $("list").addEventListener("click", async (event) => {
         const rowId = Number(button.dataset.id);
         if (!rowId) throw new Error(t("err.noRetry"));
         await call("retry", rowId);
-        toast(t("toast.retried"));
-      } else await call("control", act, gid, false);
-      if (act === "remove" && state.selected === gid) state.selected = null;
+      } else if (act !== "remove") await call("control", act, gid, false);
+      else if (act === "remove") {
+        $("remFiles").checked = false;
+        $("remGo").dataset.gid = gid;
+        openVeil("removeVeil");
+      }
     } catch (err) { toast(err.message, true); }
     return;
   }
@@ -667,6 +670,7 @@ $("addGo").onclick = async () => {
     audio_only: $("audioOnly").checked || $("quality").value === "audio",
     playlist: $("playlist").checked,
     dest_dir: $("dest").value.trim(),
+
     start_at: $("startAt").value.trim(),
   };
   try {
@@ -683,6 +687,18 @@ $("addGo").onclick = async () => {
     }
   } catch (err) { $("addErr").textContent = err.message; }
 };
+
+$("remGo").onclick = async () => {
+  const gid = $("remGo").dataset.gid;
+  if (!gid) return;
+  const delFiles = $("remFiles").checked;
+  try {
+    await call("control", "remove", gid, { delete_files: delFiles });
+    if (state.selected === gid) state.selected = null;
+    closeVeil("removeVeil");
+  } catch (err) { toast(err.message, true); }
+};
+
 
 /* ---------- LinkGrabber (v1.5) ----------
    Akis: metin yapistir -> analiz (ayikla+normalize+tekil) ->
