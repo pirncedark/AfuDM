@@ -142,7 +142,7 @@ def ac(ek_arguman: str = "") -> None:
         ]
         sonuc = subprocess.run(
             komut, capture_output=True, text=True, encoding="utf-8", errors="replace",
-            creationflags=CREATE_NO_WINDOW, timeout=20,
+            creationflags=CREATE_NO_WINDOW, timeout=90,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise OSError(f"kisayol olusturma komutu calistirilamadi: {exc}") from exc
@@ -173,7 +173,7 @@ def _kisayol_argumani() -> str:
             ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
              "-Command", betik],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
-            creationflags=CREATE_NO_WINDOW, timeout=20,
+            creationflags=CREATE_NO_WINDOW, timeout=90,
         )
     except (OSError, subprocess.SubprocessError):
         return ""

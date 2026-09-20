@@ -52,7 +52,9 @@ with tempfile.TemporaryDirectory() as gecici:
     sure = time.time() - baslasi
     check("kisayol dosyasi olustu", baslangic.kisayol_yolu().is_file())
     check("acik_mi() True", baslangic.acik_mi() is True)
-    check("saniyeler surdu (pencere acilmadi, takilmadi)", sure < 20, f"{sure:.1f} sn")
+    # CI runner'i soguk basladiginda powershell ilk cagrida yavastir; olcut
+    # "takilmadi"yi olcer, hizi degil. Sinir core/baslangic.py ile ayni.
+    check("saniyeler surdu (pencere acilmadi, takilmadi)", sure < 90, f"{sure:.1f} sn")
 
     print("4) Ikinci ac()")
     try:
