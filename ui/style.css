@@ -581,6 +581,13 @@ input, textarea, code, .kv, .row-title, .kay-url, .hint, .err-note { user-select
 .rule-card input, .rule-card select { width:auto; min-width:90px; padding:5px; }
 .rule-rows { display:grid; gap:5px; margin:8px 0; }.rule-row { display:flex; gap:5px; flex-wrap:wrap; align-items:center; }
 .rules-sim { border-top:1px solid var(--line); padding-top:12px; margin-top:12px; }.rules-sim input { margin-bottom:7px; }
+.winint-rows { display: grid; gap: 8px; }
+.winint-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 9px; border: 1px solid var(--line-soft); background: var(--bg-deep); }
+.winint-name { color: var(--text); font-size: 12px; }
+.winint-meta { color: var(--dim); font-size: 10.5px; margin-top: 3px; }
+.winint-actions { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+.winint-state { color: var(--done); }
+.winint-state.off, #winIntError { color: var(--err); }
 
 /* ---------- Chrome'a ekle ---------- */
 .rail-chrome { color: var(--dl) !important; }

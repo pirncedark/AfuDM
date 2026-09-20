@@ -21,7 +21,7 @@
     <span class="trace-up"><span data-i18n="trace.share">paylaşım</span> <b id="mUp">0 KB/s</b></span>
     <span><span data-i18n="trace.today">bugün</span> <b id="mTotal">0 B</b></span>
   </div>
-  <div class="engine"><span class="dot" id="engineDot"></span><span id="engineText" data-i18n="engine.connecting">motor bağlanıyor</span></div>
+  <div class="engine"><span class="dot" id="engineDot"></span><span id="engineText" data-i18n="engine.connecting">motor bağlanıyor</span> <button id="engineRetry" class="btn" style="display:none; padding: 2px 6px; font-size: 11px; margin-left: 6px;" data-i18n="engine.retry">Yeniden dene</button></div>
   <!-- Windows basligi yerine (core/pencere.py). Yalniz ozel baslik kurulunca gorunur. -->
   <div class="wc" id="winControls">
     <button class="wc-btn" id="wcMin" data-i18n-title="win.min" title="Küçült" tabindex="-1">
@@ -237,6 +237,7 @@
         <label class="opt"><input type="checkbox" id="sClip"> <span data-i18n="set.clip">Panoya kopyalanan linki yakala</span></label>
         <label class="opt"><input type="checkbox" id="sTrackers"> <span data-i18n="set.trackers">Tracker listesini günlük güncelle</span></label>
         <label class="opt"><input type="checkbox" id="sNotify"> <span data-i18n="set.notify">Bitince Telegram'a haber ver</span></label>
+        <label class="opt"><input type="checkbox" id="sWinNotify"> <span data-i18n="set.winNotify">Windows bildirimi göster</span></label>
         <label class="opt"><input type="checkbox" id="sShutdown"> <span data-i18n="set.shutdown">Hepsi bitince bilgisayarı kapat</span></label>
         <label class="opt"><input type="checkbox" id="sSleep"> <span data-i18n="set.sleep">Hepsi bitince bilgisayarı uyut</span></label>
         <label class="opt"><input type="checkbox" id="sKaydet"> <span data-i18n="set.kaydet">İndirmeden önce kaydetme penceresini göster</span></label>
@@ -251,6 +252,12 @@
         <label for="sClipExts" data-i18n="set.clip.exts">Yakalanacak uzantılar</label>
         <input id="sClipExts" type="text" spellcheck="false">
         <div class="hint" data-i18n="set.clip.extsHint">Virgülle ayır. Pano izleme açıkken yalnızca bu uzantılarla biten adresler yakalanır.</div>
+      </div>
+      <div class="seed-kutu" id="windowsIntegration">
+        <label data-i18n="winint.title">Windows Integration</label>
+        <div class="hint" data-i18n="winint.hint">Each action reads the current Windows registration; Apply stores the previous value before changing it.</div>
+        <div id="winIntRows" class="winint-rows"></div>
+        <div class="hint" id="winIntError" aria-live="polite"></div>
       </div>
       <div class="seed-kutu">
         <label data-i18n="vid.title">Video</label>

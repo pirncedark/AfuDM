@@ -7,6 +7,7 @@ const TRACE_POINTS = 180;
 const state = {
   filter: "all",
   motorTimer: null,
+  winIntTimer: null,
   seedTimer: null,
   torTimer: null,
   search: "",
@@ -58,7 +59,16 @@ function toast(message, bad = false) {
 /* ---------- kopru ---------- */
 async function call(method, ...args) {
   if (!window.pywebview || !window.pywebview.api) throw new Error(t("err.bridge"));
-  const out = await window.pywebview.api[method](...args);
+  
+  let out;
+  if (method === "snapshot") {
+    const pywebviewPromise = window.pywebview.api[method](...args);
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 15000));
+    out = await Promise.race([pywebviewPromise, timeoutPromise]);
+  } else {
+    out = await window.pywebview.api[method](...args);
+  }
+  
   if (out && out.ok === false) throw new Error(out.error || t("err.failed"));
   return out;
 }
@@ -161,6 +171,7 @@ function renderList() {
     let right;
     if (item.status === "complete") {
       right = '<button data-act="open" data-gid="' + item.gid + '">' + t("row.folder") + "</button>"
+        + '<button data-act="scan" data-gid="' + item.gid + '">' + t("row.scan") + "</button>"
         + '<button data-act="remove" data-gid="' + item.gid + '">' + t("row.delete") + "</button>";
     } else if (item.status === "error") {
       // Hataya dusen indirme 'unpause' edilemez; kaydi bastan baslatmak gerekir
@@ -483,6 +494,7 @@ async function tick() {
     }
     $("engineDot").className = "dot" + (snap.engine_ok ? " ok" : "");
     $("engineText").textContent = snap.engine_ok ? t("engine.running") : t("engine.stopped");
+    if ($("engineRetry")) $("engineRetry").style.display = "none";
     $("dirHint").textContent = snap.download_dir || "";
     $("dirHint").title = snap.download_dir || "";
 
@@ -494,8 +506,18 @@ async function tick() {
   } catch (err) {
     $("engineDot").className = "dot";
     $("engineText").textContent = t("engine.offline");
+    if ($("engineRetry")) $("engineRetry").style.display = "inline-block";
+    if (err.message === "timeout") return; // Stop polling on timeout
   }
   setTimeout(tick, POLL_MS);
+}
+
+if ($("engineRetry")) {
+  $("engineRetry").onclick = () => {
+    $("engineRetry").style.display = "none";
+    $("engineText").textContent = t("engine.connecting");
+    tick();
+  };
 }
 
 /* ---------- eylemler ---------- */
@@ -508,6 +530,7 @@ $("list").addEventListener("click", async (event) => {
     try {
       if (act === "files") { await torrentVeilAc(gid); return; }
       if (act === "seed") { await seedAc(gid); return; }
+      if (act === "scan") { await call("defender_scan", gid); toast(t("toast.scanStarted")); return; }
       if (act === "open") await call("open_item_folder", gid);
       else if (act === "retry") {
         const rowId = Number(button.dataset.id);
@@ -1548,6 +1571,7 @@ $("openSettings").onclick = async () => {
   trackerDurumuCiz();
   $("sTrackers").checked = !!s.auto_update_trackers;
   $("sNotify").checked = !!s.notify_telegram;
+  $("sWinNotify").checked = s.windows_notifications !== false;
   $("sShutdown").checked = !!s.shutdown_when_done;
   $("sSleep").checked = !!s.sleep_when_done;
   gucDurumu();
@@ -1556,6 +1580,9 @@ $("openSettings").onclick = async () => {
   $("sTepsi").checked = s.tepsiye_kucult !== false;
   $("sBasTepside").checked = s.baslangicta_tepside !== false;
   sistemDurumu();
+  windowsIntegrationDurumu();
+  if (state.winIntTimer) clearInterval(state.winIntTimer);
+  state.winIntTimer = setInterval(windowsIntegrationDurumu, 1500);
   telefonDurumu();
   seedListeCiz();
   $("sSeedEk").value = s.ek_trackerlar || "";
@@ -1642,6 +1669,45 @@ async function sistemAyarlariniUygula() {
   } catch (err) { hatalar.push(err.message); }
   if (hatalar.length) toast(hatalar[0], true);
 }
+
+/* Windows Integration: UI gercek kaydi RPC uzerinden yeniden OKUR; rozetler
+   varsayimla degil Windows kayit defterindeki mevcut degerle cizilir. */
+const winIntNames = { context: "winint.context", protocol: "winint.protocol", afup: "winint.afup", torrent: "winint.torrent", startup: "winint.startup", notify: "winint.notify", defender: "winint.defender" };
+async function windowsIntegrationDurumu() {
+  const root = $("winIntRows");
+  if (!root) return;
+  root.textContent = t("winint.loading");
+  try {
+    const out = await call("windows_integration_status");
+    const entries = out.integrations || {};
+    root.innerHTML = Object.keys(winIntNames).map((id) => {
+      const row = entries[id] || {};
+      const registered = !!row.registered;
+      return '<div class="winint-row"><div><div class="winint-name">' + escapeHtml(t(winIntNames[id])) +
+        ' <span class="winint-state ' + (registered ? "" : "off") + '">' + escapeHtml(t(registered ? "winint.registered" : "winint.notRegistered")) +
+        '</span></div><div class="winint-meta">' + escapeHtml(t("winint.whenNow")) + '</div></div><div class="winint-actions">' +
+        '<button class="btn" data-winint="apply" data-id="' + id + '">' + escapeHtml(t("winint.apply")) + '</button>' +
+        '<button class="btn" data-winint="test" data-id="' + id + '">' + escapeHtml(t("winint.test")) + '</button>' +
+        '<button class="btn ghost" data-winint="remove" data-id="' + id + '">' + escapeHtml(t("winint.remove")) + '</button></div></div>';
+    }).join("");
+    const scan = out.scan || {};
+    $("winIntError").textContent = scan.state && scan.state !== "idle"
+      ? t("winint.scanStatus", { state: scan.state, detail: scan.detail || "" }) : "";
+  } catch (err) { root.textContent = t("winint.offline"); $("winIntError").textContent = err.message; }
+}
+
+$("winIntRows").addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-winint]");
+  if (!button) return;
+  button.disabled = true;
+  $("winIntError").textContent = "";
+  try {
+    const out = await call("windows_integration_" + button.dataset.winint, button.dataset.id);
+    if (button.dataset.winint === "test") toast(out.registered ? t("winint.testOk") : t("winint.testNo"), !out.registered);
+    else toast(t("winint.updated"));
+    await windowsIntegrationDurumu();
+  } catch (err) { $("winIntError").textContent = err.message; toast(err.message, true); button.disabled = false; }
+});
 
 /* Windows'un varsayilan uygulama ekrani: .torrent secimini YALNIZ kullanici
    yapabilir (UserChoice hash korumali), en fazla dogru ekrani acabiliriz. */
@@ -1848,6 +1914,7 @@ $("setGo").onclick = async () => {
     ag_konumlari: $("sNetLocations").value.trim(),
     auto_update_trackers: $("sTrackers").checked,
     notify_telegram: $("sNotify").checked,
+    windows_notifications: $("sWinNotify").checked,
     shutdown_when_done: $("sShutdown").checked,
     sleep_when_done: $("sSleep").checked,
     kaydetme_penceresi: $("sKaydet").checked,
@@ -2285,7 +2352,6 @@ window.afudmClipboard = async (url) => {
   // Kaydetme penceresi kapaliysa (ayar) eski davranis: link ekleme penceresi.
   if (state.settings.kaydetme_penceresi === false) {
     $("urls").value = url;
-    $("addErr").textContent = t("toast.clipboard");
     openVeil("addVeil");
     return;
   }
@@ -2305,19 +2371,34 @@ window.afudmLinkgrabber = async (metin, dosya) => {
 };
 
 /* ---------- ozel baslik cubugu (core/pencere.py) ---------- */
+if (document.documentElement) document.documentElement.classList.add("ozel-baslik");
+
 window.afudmPencere = async () => {
-  if (!window.pywebview || !window.pywebview.api.pencere_durumu) return;
-  const durum = await window.pywebview.api.pencere_durumu();
-  document.documentElement.classList.toggle("ozel-baslik", !!durum.ozel);
-  document.documentElement.classList.toggle("buyuk", !!durum.buyuk);
-  $("wcMax").title = t(durum.buyuk ? "win.restore" : "win.max");
+  if (!window.pywebview || !window.pywebview.api || !window.pywebview.api.pencere_durumu) return;
+  try {
+    const durum = await window.pywebview.api.pencere_durumu();
+    document.documentElement.classList.toggle("ozel-baslik", !!durum.ozel);
+    document.documentElement.classList.toggle("buyuk", !!durum.buyuk);
+    if ($("wcMax")) $("wcMax").title = t(durum.buyuk ? "win.restore" : "win.max");
+  } catch (err) { /* ignore */ }
 };
-$("wcMin").onclick = () => window.pywebview.api.pencere_kucult();
-$("wcMax").onclick = async () => { await window.pywebview.api.pencere_buyut(); window.afudmPencere(); };
-$("wcClose").onclick = () => window.pywebview.api.pencere_kapat();
+if ($("wcMin")) {
+  $("wcMin").onclick = () => window.pywebview?.api?.pencere_kucult?.();
+}
+if ($("wcMax")) {
+  $("wcMax").onclick = async () => {
+    if (window.pywebview?.api?.pencere_buyut) {
+      await window.pywebview.api.pencere_buyut();
+      window.afudmPencere();
+    }
+  };
+}
+if ($("wcClose")) {
+  $("wcClose").onclick = () => window.pywebview?.api?.pencere_kapat?.();
+}
 document.querySelectorAll(".wc-edge").forEach((kenar) => {
   kenar.addEventListener("mousedown", (event) => {
-    if (event.button === 0) window.pywebview.api.pencere_kenar(kenar.dataset.edge);
+    if (event.button === 0) window.pywebview?.api?.pencere_kenar?.(kenar.dataset.edge);
   });
 });
 // Buyut/geri al Windows'tan da gelebilir (cift tik, Snap, Win+Yukari): simgeyi esitle.

@@ -119,6 +119,7 @@ const DICT = {
     "engine.running": "aria2 çalışıyor",
     "engine.stopped": "motor kapalı",
     "engine.offline": "bağlantı yok",
+    "engine.retry": "Yeniden dene",
 
     "filter.all": "Tümü",
     "filter.active": "İndiriliyor",
@@ -543,7 +544,6 @@ const DICT = {
     "err.failed": "işlem başarısız",
     "err.noRetry": "bu kayıt yeniden başlatılamıyor",
     "hint.api": "Tarayıcı uzantısı bağlantısı: 127.0.0.1:{port} — anahtar data/api_endpoint.json içinde.",
-
     /* v1.7.5 — Uzaktan erisim / Ag / Pano / Hiz / Tracker durumu
        (docs/v175_SOZLESME.md) */
     "set.remote.title": "Uzaktan erişim",
@@ -756,6 +756,30 @@ const DICT = {
     "pnl.eventsEmpty": "Kayıtlı olay yok.",
     "pnl.of": "/",
     "pnl.retryAction": "Tekrar dene",
+    "winint.title": "Windows entegrasyonları",
+    "winint.hint": "Her eylem mevcut Windows kaydını okur; Uygula değiştirmeden önce önceki değeri yedekler.",
+    "winint.context": "Explorer sağ tık: AfuDM ile indir",
+    "winint.protocol": "afudm:// bağlantıları",
+    "winint.afup": ".afup dosya ilişkilendirmesi",
+    "winint.torrent": ".torrent ve magnet ilişkilendirmesi",
+    "winint.startup": "Windows başlangıcında çalıştır",
+    "winint.notify": "Windows bildirimleri (pystray)",
+    "winint.defender": "Otomatik Defender taraması",
+    "winint.registered": "Kayıtlı",
+    "winint.notRegistered": "Kayıtlı değil",
+    "winint.whenNow": "Hemen uygulanır",
+    "winint.apply": "Uygula",
+    "winint.test": "Test et",
+    "winint.remove": "Kaldır",
+    "winint.loading": "Windows kayıt durumu okunuyor…",
+    "winint.offline": "Windows entegrasyon durumu okunamadı.",
+    "winint.testOk": "Kayıt Windows'ta doğrulandı.",
+    "winint.testNo": "Kayıt Windows'ta bulunamadı.",
+    "winint.updated": "Windows entegrasyonu güncellendi.",
+    "row.scan": "Defender tara",
+    "toast.scanStarted": "Defender taraması arka planda başladı; Windows entegrasyon durumundan sonucu izleyin.",
+    "winint.scanStatus": "Defender durumu: {state} {detail}",
+    "set.winNotify": "Windows bildirimi göster",
   },
 
   en: {
@@ -861,6 +885,7 @@ const DICT = {
     "engine.running": "aria2 running",
     "engine.stopped": "engine stopped",
     "engine.offline": "no connection",
+    "engine.retry": "Retry",
 
     "filter.all": "All",
     "filter.active": "Downloading",
@@ -1284,7 +1309,6 @@ const DICT = {
     "err.failed": "the operation failed",
     "err.noRetry": "this entry cannot be restarted",
     "hint.api": "Browser extension endpoint: 127.0.0.1:{port} — the key is in data/api_endpoint.json.",
-
     /* v1.7.5 — remote access / network / clipboard / speed / tracker status
        (docs/v175_SOZLESME.md) */
     "set.remote.title": "Remote access",
@@ -1497,6 +1521,30 @@ const DICT = {
     "pnl.eventsEmpty": "No events recorded.",
     "pnl.of": "/",
     "pnl.retryAction": "Try again",
+    "winint.title": "Windows integrations",
+    "winint.hint": "Every action reads the current Windows registration; Apply backs up the prior value before changing it.",
+    "winint.context": "Explorer context menu: Download with AfuDM",
+    "winint.protocol": "afudm:// links",
+    "winint.afup": ".afup file association",
+    "winint.torrent": ".torrent and magnet association",
+    "winint.startup": "Run at Windows startup",
+    "winint.notify": "Windows notifications (pystray)",
+    "winint.defender": "Automatic Defender scan",
+    "winint.registered": "Registered",
+    "winint.notRegistered": "Not registered",
+    "winint.whenNow": "Applies immediately",
+    "winint.apply": "Apply",
+    "winint.test": "Test",
+    "winint.remove": "Remove",
+    "winint.loading": "Reading Windows registration status…",
+    "winint.offline": "Could not read Windows integration status.",
+    "winint.testOk": "Registration verified in Windows.",
+    "winint.testNo": "Registration was not found in Windows.",
+    "winint.updated": "Windows integration updated.",
+    "row.scan": "Scan with Defender",
+    "toast.scanStarted": "Defender scan started in the background; monitor its result in Windows integration status.",
+    "winint.scanStatus": "Defender status: {state} {detail}",
+    "set.winNotify": "Show Windows notifications",
   },
 };
 
