@@ -196,7 +196,10 @@ def test_torrent(manager: Manager) -> None:
                f"{info['gid']} -> {handed}")
         manager.remove(handed, delete_files=True)
         if handed != info["gid"]:
-            manager.remove(info["gid"], delete_files=True)
+            try:
+                manager.remove(info["gid"], delete_files=True)
+            except KayitYok:
+                pass
     except Exception as exc:
         record(".torrent adresinden devralma", False, str(exc)[:90])
 

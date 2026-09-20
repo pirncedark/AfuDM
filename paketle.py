@@ -26,7 +26,8 @@ CIKTI = KOK / "build_out" / "paket"
 # headless.py: `afuadm server start` arayuzsuz servisi bununla acar
 # (webview'i hic import etmez; bkz. headless.py modul basligi).
 KOPYALANACAK_DOSYALAR = ("AfuDM.exe", "README.md", "THIRD_PARTY_NOTICES.md",
-                         "afuadm.py", "afuadm.bat", "headless.py")
+                         "afuadm.py", "afuadm.bat", "headless.py",
+                         "tani.bat", "web_panel_baslat.bat", "debug_modu.bat")
 KOPYALANACAK_KLASORLER = ("ui", "extension", "trackers", "core", "api")
 
 CEKIRDEK_MOTORLAR = ("aria2c.exe",)
@@ -103,6 +104,9 @@ def main() -> int:
         if boyut > 100_000:
             print(f"  {mb(boyut):7.1f} MB  {parca.name}")
     print(f"  {'-' * 24}\n  {mb(toplam):7.1f} MB  TOPLAM")
+    zip_kok = CIKTI / ("AfuDM-tam" if secim.tam else "AfuDM-cekirdek")
+    zip_yolu = Path(shutil.make_archive(str(zip_kok), "zip", root_dir=CIKTI, base_dir="AfuDM"))
+    print(f"  Release ZIP: {zip_yolu}")
     if not secim.tam:
         print("\n  Not: yt-dlp ve ffmpeg YOK — kullanici Ayarlar > Motorlar'dan indirir.")
     return 0

@@ -97,7 +97,12 @@ class Manager:
     # --- yasam dongusu ----------------------------------------------------
     def start(self) -> None:
         cerez.artiklari_temizle()
-        self.rpc = self.daemon.start()
+        try:
+            self.rpc = self.daemon.start()
+        except Exception as exc:
+            self.last_error = f"aria2c baslatilamadi: {exc}"
+            self.store.log("warn", self.last_error)
+            self.rpc = self.daemon.rpc
         self.apply_settings()
         self.automation.start()
         if self.store.get("auto_update_trackers"):

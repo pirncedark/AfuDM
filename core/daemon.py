@@ -132,6 +132,22 @@ class Aria2Daemon:
                 self.port, self.rpc = port, aday
                 return self.rpc
         if not paths.ARIA2C.exists():
+            import shutil
+            from pathlib import Path
+            sistem_aria = shutil.which("aria2c")
+            if sistem_aria and Path(sistem_aria).is_file():
+                try:
+                    paths.ENGINE.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(sistem_aria, paths.ARIA2C)
+                except Exception:
+                    pass
+            if not paths.ARIA2C.exists():
+                try:
+                    from . import engines
+                    engines.indir("aria2c")
+                except Exception:
+                    pass
+        if not paths.ARIA2C.exists():
             raise FileNotFoundError(f"aria2c.exe bulunamadi: {paths.ARIA2C}")
         # 2) Degilse GERCEKTEN BOS bir port sec. Dolu porta baglanmak Windows'ta
         #    hata VERMEZ; istekler iki surece dagilir ve kopya asla acilmaz.

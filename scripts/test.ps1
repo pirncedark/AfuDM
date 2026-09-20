@@ -111,7 +111,10 @@ if (`$parseHatalari) {
         "tests/eklenti_test.py",
         "tests/headless_test.py",
         "tests/v21_guvenlik_test.py",
-        "tests/telefona_indir_test.py"
+        "tests/telefona_indir_test.py",
+        "tests/ui_startup_test.py",
+        "tests/ui_ux_gate_test.py",
+        "tests/release_tools_test.py"
     )
 
     $gecen = 0

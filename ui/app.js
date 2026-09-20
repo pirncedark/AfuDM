@@ -529,10 +529,11 @@ async function tick() {
     await renderDrawer();
     await bekleyenYokla();
   } catch (err) {
+    console.warn("[AfuDM] tick:", err);
     $("engineDot").className = "dot";
     $("engineText").textContent = t("engine.offline");
+    if ($("engineText")) $("engineText").title = (err && err.message) || "";
     if ($("engineRetry")) $("engineRetry").style.display = "inline-block";
-    if (err.message === "timeout") return; // Stop polling on timeout
   }
   setTimeout(tick, POLL_MS);
 }
@@ -1669,6 +1670,8 @@ $("openSettings").onclick = async () => {
   $("sAutoSeconds").value = s.automation_power_seconds || 60;
   $("sSeedEkOzet").textContent = "";
   surumuCiz();
+  ayarRozetleriCiz();
+  openVeil("setVeil");
   try {
     const port = await call("port_durumu");
     $("sRunningPort").value = port.calisan || "-";
@@ -1681,8 +1684,6 @@ $("openSettings").onclick = async () => {
   reliabilityStatus();
   if (state.motorTimer) clearInterval(state.motorTimer);
   state.motorTimer = setInterval(renderEngines, 1000);
-  ayarRozetleriCiz();
-  openVeil("setVeil");
 };
 
 function reliabilityShow(value) { $("relStatus").textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2); }
