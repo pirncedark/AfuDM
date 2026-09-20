@@ -107,7 +107,8 @@ if (`$parseHatalari) {
         "tests/v175_mobil_test.py",
         "tests/tr_arama_test.py",
         "tests/pwa_test.py",
-        "tests/torrent_yaris_test.mjs"
+        "tests/torrent_yaris_test.mjs",
+        "tests/eklenti_test.py"
     )
 
     $gecen = 0
