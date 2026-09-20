@@ -111,8 +111,8 @@ tr_sozluk: dict[str, str] = {}
 en_sozluk: dict[str, str] = {}
 
 try:
-    tr_sozluk = sozluk(blok_ayikla(i18n_content, "tr: {"))
-    en_sozluk = sozluk(blok_ayikla(i18n_content, "en: {"))
+    tr_sozluk = sozluk(blok_ayikla(i18n_content, "  tr: {"))
+    en_sozluk = sozluk(blok_ayikla(i18n_content, "  en: {"))
 except Exception as exc:
     print(f"  [UYARI] i18n bloklari ayiklanamadi: {exc}")
 

@@ -338,7 +338,13 @@ async function renderDetailTabContent(gid, tabName) {
     }
   } else if (tabName === "rules") {
     const rContent = $("dRulesContent");
-    if (rContent) rContent.textContent = t("dtab.rulesEmpty");
+    if (rContent) {
+      try {
+        const out = await call("download_rules", gid), trace = out.trace || {};
+        const rows = Object.entries(trace).map(([key, info]) => '<div class="kv"><div>' + escapeHtml(key) + '<b>' + escapeHtml(t("rules.source", {name: info.source_name || "?"})) + '</b></div></div>');
+        rContent.innerHTML = rows.length ? rows.join("") : '<div class="hint">' + escapeHtml(t("dtab.rulesEmpty")) + '</div>';
+      } catch (_) { rContent.textContent = t("dtab.rulesEmpty"); }
+    }
   } else if (tabName === "automation") {
     const aContent = $("dAutomationContent");
     if (aContent) {
@@ -1585,6 +1591,23 @@ $("openSettings").onclick = async () => {
   state.motorTimer = setInterval(renderEngines, 1000);
   openVeil("setVeil");
 };
+
+/* Rules Engine: editor state is local until the explicit save action. */
+let rulesDraft = [];
+const ruleFields = ["domain","extension","filename","size_mb","protocol","category"];
+const ruleOps = ["eq","neq","contains","ends_with","regex","in","gt","lt"];
+const ruleActions = ["dest_dir","proxy","max_speed_kb","split","start_after","automation_script"];
+const ruleId = () => "rule-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+function rulesRender() {
+  const root=$("rulesList"); if(!rulesDraft.length){root.innerHTML='<div class="empty">'+escapeHtml(t("rules.empty"))+'</div>';return;}
+  root.innerHTML=rulesDraft.map((r,i)=>{const cs=(r.conditions||[]).map((c,j)=>'<div class="rule-row"><select data-f="'+i+'" data-j="'+j+'">'+ruleFields.map(v=>'<option '+(c.field===v?'selected':'')+'>'+v+'</option>').join('')+'</select><select data-o="'+i+'" data-j="'+j+'">'+ruleOps.map(v=>'<option '+(c.op===v?'selected':'')+'>'+v+'</option>').join('')+'</select><input data-v="'+i+'" data-j="'+j+'" value="'+escapeHtml(Array.isArray(c.value)?c.value.join(','):c.value||'')+'"><button data-cdel="'+i+'" data-j="'+j+'">×</button></div>').join('');const as=Object.entries(r.actions||{}).map(([k,v])=>'<div class="rule-row"><select data-a="'+i+'" data-k="'+k+'">'+ruleActions.map(x=>'<option '+(x===k?'selected':'')+'>'+x+'</option>').join('')+'</select><input data-av="'+i+'" data-k="'+k+'" value="'+escapeHtml(v)+'"><button data-adel="'+i+'" data-k="'+k+'">×</button></div>').join('');return '<div class="rule-card"><div class="rule-head"><input type="checkbox" data-active="'+i+'" '+(r.active?'checked':'')+'><input data-name="'+i+'" value="'+escapeHtml(r.name||'')+'" placeholder="'+escapeHtml(t("rules.name"))+'"><select data-match="'+i+'"><option value="all">'+escapeHtml(t("rules.all"))+'</option><option value="any" '+(r.match_type==='any'?'selected':'')+'>'+escapeHtml(t("rules.any"))+'</option></select><button data-up="'+i+'">↑</button><button data-down="'+i+'">↓</button><button data-copy="'+i+'">'+escapeHtml(t("rules.copy"))+'</button><button data-del="'+i+'">'+escapeHtml(t("rules.delete"))+'</button></div><div class="rule-rows">'+cs+'<button data-addc="'+i+'">'+escapeHtml(t("rules.addCondition"))+'</button></div><div class="rule-rows">'+as+'<button data-adda="'+i+'">'+escapeHtml(t("rules.addAction"))+'</button></div></div>';}).join('');
+}
+$("rulesOpen").onclick=async()=>{try{rulesDraft=(await call("rules_list")).rules||[];rulesRender();openVeil("rulesVeil");}catch(e){toast(e.message,true);}};
+$("rulesNew").onclick=()=>{rulesDraft.push({id:ruleId(),name:"",active:true,match_type:"all",conditions:[],actions:{}});rulesRender();};
+$("rulesList").onchange=e=>{const x=e.target,i=Number(x.dataset.f??x.dataset.o??x.dataset.v??x.dataset.a??x.dataset.av??x.dataset.active??x.dataset.name??x.dataset.match),r=rulesDraft[i],j=Number(x.dataset.j);if(!r)return;if(x.dataset.active!==undefined)r.active=x.checked;else if(x.dataset.name!==undefined)r.name=x.value;else if(x.dataset.match!==undefined)r.match_type=x.value;else if(x.dataset.f!==undefined)r.conditions[j].field=x.value;else if(x.dataset.o!==undefined)r.conditions[j].op=x.value;else if(x.dataset.v!==undefined)r.conditions[j].value=x.value.includes(',')?x.value.split(',').map(v=>v.trim()):x.value;else if(x.dataset.a!==undefined){const v=r.actions[x.dataset.k];delete r.actions[x.dataset.k];r.actions[x.value]=v;rulesRender();}else if(x.dataset.av!==undefined)r.actions[x.dataset.k]=x.value;};
+$("rulesList").onclick=e=>{const x=e.target,i=Number(x.dataset.up??x.dataset.down??x.dataset.copy??x.dataset.del??x.dataset.addc??x.dataset.adda??x.dataset.cdel??x.dataset.adel),r=rulesDraft[i];if(!r)return;if(x.dataset.up!==undefined&&i)[rulesDraft[i-1],rulesDraft[i]]=[r,rulesDraft[i-1]];else if(x.dataset.down!==undefined&&i<rulesDraft.length-1)[rulesDraft[i+1],rulesDraft[i]]=[r,rulesDraft[i+1]];else if(x.dataset.copy!==undefined)rulesDraft.splice(i+1,0,{...r,id:ruleId(),conditions:r.conditions.map(c=>({...c})),actions:{...r.actions}});else if(x.dataset.del!==undefined)rulesDraft.splice(i,1);else if(x.dataset.addc!==undefined)r.conditions.push({field:"domain",op:"eq",value:""});else if(x.dataset.adda!==undefined)r.actions.max_speed_kb="";else if(x.dataset.cdel!==undefined)r.conditions.splice(Number(x.dataset.j),1);else if(x.dataset.adel!==undefined)delete r.actions[x.dataset.k];rulesRender();};
+$("rulesSave").onclick=async()=>{try{const out=await call("rules_save",rulesDraft);if(!out.ok)throw new Error(out.error);closeVeil("rulesVeil");toast(t("toast.saved"));}catch(e){$("rulesErr").textContent=e.message;}};
+$("rulesRun").onclick=async()=>{try{const out=await call("rules_simulate",$("rulesUrl").value.trim()),names=(out.matched_rules||[]).map(r=>r.name).join(', ');$("rulesResult").textContent=names?t("rules.match",{n:names}):t("rules.noMatch");if((out.conflicts||[]).length)$("rulesResult").textContent+=" · "+t("rules.conflict",{items:out.conflicts.join(', ')});}catch(e){$("rulesResult").textContent=e.message;}};
 
 /* ---------- sistem ayarlari: baslangic + .torrent/magnet (core/baslangic.py,
    core/iliskilendir.py) ---------- */

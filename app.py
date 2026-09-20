@@ -175,6 +175,34 @@ class Api:
             "resumable": sonuc.get("resumable", False),
         }
 
+    # --- rules engine ----------------------------------------------------
+    def rules_list(self) -> dict:
+        return {"ok": True, "rules": self.manager.store.rules_list()}
+
+    def rules_save(self, rules: list[dict]) -> dict:
+        import uuid
+        clean = []
+        for rule in rules or []:
+            if not isinstance(rule, dict) or not str(rule.get("name") or "").strip():
+                return {"ok": False, "error": "kural adi gerekli"}
+            clean.append({"id": str(rule.get("id") or uuid.uuid4()), "name": str(rule["name"]).strip()[:100], "active": bool(rule.get("active", True)), "match_type": rule.get("match_type") if rule.get("match_type") in ("all", "any") else "all", "conditions": rule.get("conditions") if isinstance(rule.get("conditions"), list) else [], "actions": rule.get("actions") if isinstance(rule.get("actions"), dict) else {}})
+        self.manager.store.rules_save(clean)
+        return {"ok": True, "rules": self.manager.store.rules_list()}
+
+    def rules_simulate(self, url: str, filename: str = "", size_bytes: int = 0, protocol: str = "http", category: str = "") -> dict:
+        from core import rules
+        all_rules = self.manager.store.rules_list()
+        out = rules.evaluate(all_rules, {"dest_dir": self.manager.current_download_dir(), "proxy": self.manager.store.get("proxy", ""), "max_speed_kb": self.manager.store.get("max_speed_kb", 0), "split": self.manager.store.get("max_conn_per_server", 16)}, rules.context(url, filename, size_bytes, protocol, category))
+        matched = [r for r in all_rules if r["id"] in out["matched_rules"]]
+        conflicts = [k for k in out["effective_options"] if sum(1 for r in matched if k in r.get("actions", {})) > 1]
+        return {"ok": True, **out, "matched_rules": matched, "conflicts": conflicts}
+
+    def download_rules(self, gid: str) -> dict:
+        import json
+        row = self.manager.store.by_gid(gid)
+        if not row: return {"ok": False, "error": "kayit bulunamadi"}
+        return {"ok": True, "trace": json.loads(row.get("options") or "{}").get("rules_trace", {})}
+
     # --- LinkGrabber (v1.5) ---------------------------------------------
     def linkgrabber_analiz(self, metin: str, filtre: dict | None = None) -> dict:
         """Ham metinden URL cikarir: ayikla -> normalize -> tekil -> tur+domain filtre.

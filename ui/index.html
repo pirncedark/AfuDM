@@ -54,6 +54,7 @@
       <button id="openFolder" data-i18n="rail.openFolder">İndirme klasörünü aç</button>
       <button id="openChrome" class="rail-chrome" data-i18n="rail.chrome">Chrome'a ekle</button>
       <button id="openSettings" data-i18n="rail.settings">Ayarlar</button>
+      <button id="rulesOpen" data-i18n="rules.open">Kuralları yönet</button>
       <div class="dir-hint" id="dirHint"></div>
     </div>
   </aside>
@@ -690,6 +691,10 @@
 <div class="ctx" id="ctx" hidden></div>
 
 <div class="toast" id="toast"></div>
+<div class="veil" id="rulesVeil"><div class="sheet rules-sheet"><h2 data-i18n="rules.title">İndirme kuralları</h2><div class="body">
+<div class="rules-toolbar"><button class="btn" id="rulesNew" data-i18n="rules.new">Yeni kural</button><span class="hint" data-i18n="rules.badgeNew">Yeni indirmelerde</span></div><div id="rulesList"></div>
+<div class="rules-sim"><label data-i18n="rules.sim">URL simülatörü</label><input id="rulesUrl" type="text" placeholder="https://example.com/file.iso"><button class="btn" id="rulesRun" data-i18n="rules.run">Test et</button><div class="hint" id="rulesResult"></div></div>
+</div><div class="foot"><span class="err-note" id="rulesErr"></span><button class="btn ghost" data-close="rulesVeil" data-i18n="set.cancel">Vazgeç</button><button class="btn primary" id="rulesSave" data-i18n="rules.save">Kuralları kaydet</button></div></div></div>
 <script src="i18n.js"></script>
 <script src="app.js"></script>
 </body>

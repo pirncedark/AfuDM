@@ -140,7 +140,8 @@ DEFAULTS: dict[str, Any] = {
 # v1.8 ile v1.7.5 ayni v4 numarasini farkli, bagimsiz migration'lar icin
 # kullandi. v6 bu iki tarihi yolu idempotent olarak uzlastirir; boylece hangi
 # daldan yukseltilirse yukseltilsin her iki ozellik de eksiksiz kalir.
-USER_VERSION = 6
+# v1.9 kurallarini v6'yi degistirmeden yeni bir adimda ekler.
+USER_VERSION = 7
 
 
 def _v2_torrent_dosya_secimleri(conn: sqlite3.Connection) -> None:
@@ -197,6 +198,10 @@ def _v6_v175_v18_uzlastir(conn: sqlite3.Connection) -> None:
     _v4_automation_jobs(conn)
     _v4_api_listen_port(conn)
 
+def _v7_rules_engine(conn: sqlite3.Connection) -> None:
+    """v1.9 kurallarini v1.7.5/v1.8 uzlastirmasinin ardindan ekle."""
+    conn.execute("CREATE TABLE IF NOT EXISTS rules (id TEXT PRIMARY KEY,name TEXT NOT NULL,active INTEGER DEFAULT 1,priority INTEGER NOT NULL,match_type TEXT NOT NULL,conditions TEXT NOT NULL,actions TEXT NOT NULL)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rules_priority ON rules(priority)")
 
 MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     2: _v2_torrent_dosya_secimleri,
@@ -204,6 +209,7 @@ MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     4: _v4_automation_jobs,
     5: _v5_mobile_devices,
     6: _v6_v175_v18_uzlastir,
+    7: _v7_rules_engine,
 }
 
 
@@ -272,6 +278,18 @@ class Store:
             except json.JSONDecodeError:
                 out[row["key"]] = row["value"]
         return out
+
+    def rules_list(self) -> list[dict]:
+        with self._lock:
+            rows = self.conn.execute("SELECT * FROM rules ORDER BY priority, id").fetchall()
+        return [{**dict(r), "active":bool(r["active"]), "conditions":json.loads(r["conditions"]), "actions":json.loads(r["actions"])} for r in rows]
+
+    def rules_save(self, rules: list[dict]) -> None:
+        with self._lock:
+            self.conn.execute("BEGIN"); self.conn.execute("DELETE FROM rules")
+            for priority, rule in enumerate(rules, 1):
+                self.conn.execute("INSERT INTO rules(id,name,active,priority,match_type,conditions,actions) VALUES(?,?,?,?,?,?,?)", (rule["id"],rule["name"],int(bool(rule.get("active",True))),priority,rule.get("match_type","all"),json.dumps(rule.get("conditions") or []),json.dumps(rule.get("actions") or {})))
+            self.conn.commit()
 
     # --- indirmeler -------------------------------------------------------
     def add(
