@@ -15,9 +15,15 @@ if (-not $ZipPath) {
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if (-not $sira) { Write-Host "zip bulunamadi"; exit 1 }
     $ZipPath = $sira.FullName
+} elseif (-not $ZipPath.EndsWith(".zip")) {
+    $ZipPath = (Join-Path $kok "build_out\AfuDM-$ZipPath-win64.zip")
 }
-if (-not (Test-Path $ZipPath)) { Write-Host "zip yok: $ZipPath"; exit 1 }
+# NOT: Yer tutucu ("<!-- SHA256-PLACEHOLDER -->") kontrolu BURADA YAPILMAZ.
+# Tabloyu release.yml paketlemeden SONRA doldurur; bu betik paketlemeden ONCE
+# kosar. Burada bakmak her yayini reddeder (v2.0.0 tam bu yuzden yayinlanamadi).
+# Kontrol release.yml icinde, yayinlama adiminin HEMEN ONUNDE yapilir.
 
+if (-not (Test-Path $ZipPath)) { Write-Host "zip yok: $ZipPath"; exit 1 }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
 try {
@@ -33,8 +39,7 @@ try {
     )
     $eksik = @()
     foreach ($g in $gerekli) {
-        $gAr = $g.Replace("/", "\")
-        $eSiz = $adlar | Where-Object { $_ -like "*$gAr" }
+        $eSiz = $adlar | Where-Object { $_ -like "*$g" }
         if (-not $eSiz) { $eksik += $g }
     }
     if ($eksik.Count -gt 0) {

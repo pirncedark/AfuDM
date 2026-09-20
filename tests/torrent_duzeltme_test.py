@@ -121,8 +121,8 @@ def blok_ayikla(metin: str, baslangic: str) -> str:
                 return metin[i:j + 1]
     raise ValueError("kapanmayan blok: " + baslangic)
 
-tr_metin = blok_ayikla(i18n_code, "tr: {")
-en_metin = blok_ayikla(i18n_code, "en: {")
+tr_metin = blok_ayikla(i18n_code, "  tr: {")
+en_metin = blok_ayikla(i18n_code, "  en: {")
 check("TR sozlugunde tum metrik hata anahtarlari mevcut",
       all(k in tr_metin for k in gerekli_anahtarlar))
 check("EN sozlugunde tum metrik hata anahtarlari mevcut",

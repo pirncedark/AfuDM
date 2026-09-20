@@ -11,10 +11,10 @@ jobs:
   gate:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -44,8 +44,8 @@ jobs:
       PYTHONUTF8: "1"
       PYTHONIOENCODING: "utf-8"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -71,10 +71,13 @@ jobs:
           $zip = "build_out\AfuDM-v$surum-win64.zip"
           Compress-Archive -Path build_out\paket\AfuDM -DestinationPath $zip -Force
           powershell -ExecutionPolicy Bypass -File scripts\verify_release.ps1 $zip
+          if ($LASTEXITCODE -ne 0) { throw "verify_release basarisiz ($LASTEXITCODE)" }
           powershell -ExecutionPolicy Bypass -File scripts\smoke_test.ps1 $zip
+          if ($LASTEXITCODE -ne 0) { throw "smoke_test basarisiz ($LASTEXITCODE)" }
           powershell -ExecutionPolicy Bypass -File scripts\make_checksums.ps1 $zip
+          if ($LASTEXITCODE -ne 0) { throw "make_checksums basarisiz ($LASTEXITCODE)" }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: afudm-release
           path: |
@@ -133,8 +136,20 @@ jobs:
           }
           "baslik=$baslik" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
+      - name: Yer tutucu kapisi (SHA-256 dolduruldu mu)
+        shell: pwsh
+        run: |
+          $not = "docs/RELEASE_NOTES/${{ github.ref_name }}.md"
+          if (-not (Test-Path $not -PathType Leaf)) {
+            Write-Host "GATE HATA - surum notu yok: $not"; exit 1
+          }
+          if ((Get-Content -Path $not -Raw).Contains('<!-- SHA256-PLACEHOLDER -->')) {
+            Write-Host "GATE HATA - yer tutucu HALA dolu degil: $not"; exit 1
+          }
+          Write-Host "yer tutucu dolduruldu: $not"
+
       - name: Github Release yayinla
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: ${{ steps.release_basligi.outputs.baslik }}
           files: |
