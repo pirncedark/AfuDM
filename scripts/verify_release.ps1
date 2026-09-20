@@ -18,15 +18,10 @@ if (-not $ZipPath) {
 } elseif (-not $ZipPath.EndsWith(".zip")) {
     $ZipPath = (Join-Path $kok "build_out\AfuDM-$ZipPath-win64.zip")
 }
-$notesDir = Join-Path $kok "docs/RELEASE_NOTES"
-if (Test-Path $notesDir) {
-    $placeholders = Get-ChildItem -Path $notesDir -Filter "*.md" | Select-String -Pattern "<!-- SHA256-PLACEHOLDER -->" -SimpleMatch
-    if ($placeholders) {
-        Write-Host "GATE HATA - Release notlarinda doldurulmamis SHA256 yer tutuculari bulundu:"
-        $placeholders | ForEach-Object { Write-Host "  - $($_.Path):$($_.LineNumber)" }
-        exit 1
-    }
-}
+# NOT: Yer tutucu ("<!-- SHA256-PLACEHOLDER -->") kontrolu BURADA YAPILMAZ.
+# Tabloyu release.yml paketlemeden SONRA doldurur; bu betik paketlemeden ONCE
+# kosar. Burada bakmak her yayini reddeder (v2.0.0 tam bu yuzden yayinlanamadi).
+# Kontrol release.yml icinde, yayinlama adiminin HEMEN ONUNDE yapilir.
 
 if (-not (Test-Path $ZipPath)) { Write-Host "zip yok: $ZipPath"; exit 1 }
 Add-Type -AssemblyName System.IO.Compression.FileSystem

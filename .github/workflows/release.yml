@@ -71,8 +71,11 @@ jobs:
           $zip = "build_out\AfuDM-v$surum-win64.zip"
           Compress-Archive -Path build_out\paket\AfuDM -DestinationPath $zip -Force
           powershell -ExecutionPolicy Bypass -File scripts\verify_release.ps1 $zip
+          if ($LASTEXITCODE -ne 0) { throw "verify_release basarisiz ($LASTEXITCODE)" }
           powershell -ExecutionPolicy Bypass -File scripts\smoke_test.ps1 $zip
+          if ($LASTEXITCODE -ne 0) { throw "smoke_test basarisiz ($LASTEXITCODE)" }
           powershell -ExecutionPolicy Bypass -File scripts\make_checksums.ps1 $zip
+          if ($LASTEXITCODE -ne 0) { throw "make_checksums basarisiz ($LASTEXITCODE)" }
 
       - uses: actions/upload-artifact@v4
         with:
@@ -82,5 +85,74 @@ jobs:
             build_out/*.sha256
           if-no-files-found: error
 
+      - name: Not dosyasina SHA-256 ekle
+        shell: pwsh
+        run: |
+          $surum = & python scripts\surum_oku.py
+          $zip = (Resolve-Path "build_out\AfuDM-v$surum-win64.zip").Path
+          $not = "docs/RELEASE_NOTES/${{ github.ref_name }}.md"
+          if (-not (Test-Path (Split-Path $not) -PathType Container)) {
+            New-Item -ItemType Directory -Force -Path (Split-Path $not) | Out-Null
+          }
+          if (-not (Test-Path $not -PathType Leaf)) {
+            Write-Host "UYARI: $not yok — olusturuluyor"
+            "# ${{ github.ref_name }}" | Set-Content -Path $not -Encoding UTF8
+          }
+          $zipHash = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash
+          $exe = "build_out\paket\AfuDM\AfuDM.exe"
+          $exeHash = if (Test-Path $exe) { (Get-FileHash -Algorithm SHA256 -Path $exe).Hash } else { "yok" }
+          $tabloSatirlar = @(
+            "| Dosya | SHA-256 |",
+            "|---|---|",
+            "| $([IO.Path]::GetFileName($zip)) | $zipHash |",
+            "| AfuDM.exe | $exeHash |"
+          )
+          $icerik = Get-Content -Path $not -Raw
+          $placeholder = '<!-- SHA256-PLACEHOLDER -->'
+          if ($icerik.Contains($placeholder)) {
+            $nl = if ($icerik.Contains("`r`n")) { "`r`n" } else { "`n" }
+            $icerik.Replace($placeholder, ($tabloSatirlar -join $nl)) | Set-Content -Path $not -Encoding utf8 -NoNewline
+            Write-Host "SHA-256 placeholder guncellendi: $not"
+          } else {
+            $bolum = @("", "## SHA-256") + $tabloSatirlar
+            Add-Content -Path $not -Value $bolum -Encoding utf8
+            Write-Host "SHA-256 eklendi: $not"
+          }
 
+      - name: Release basligini nottan oku
+        id: release_basligi
+        shell: pwsh
+        run: |
+          $not = "docs/RELEASE_NOTES/${{ github.ref_name }}.md"
+          $baslik = "AfuDM ${{ github.ref_name }}"
+          if (Test-Path $not -PathType Leaf) {
+            $satir = Get-Content -Path $not | Where-Object { $_ -match '^#\s+' } | Select-Object -First 1
+            if (-not [string]::IsNullOrWhiteSpace($satir)) {
+              $aday = $satir -replace '^#\s+', ''
+              if (-not [string]::IsNullOrWhiteSpace($aday)) {
+                $baslik = $aday.Trim()
+              }
+            }
+          }
+          "baslik=$baslik" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
+      - name: Yer tutucu kapisi (SHA-256 dolduruldu mu)
+        shell: pwsh
+        run: |
+          $not = "docs/RELEASE_NOTES/${{ github.ref_name }}.md"
+          if (-not (Test-Path $not -PathType Leaf)) {
+            Write-Host "GATE HATA - surum notu yok: $not"; exit 1
+          }
+          if ((Get-Content -Path $not -Raw).Contains('<!-- SHA256-PLACEHOLDER -->')) {
+            Write-Host "GATE HATA - yer tutucu HALA dolu degil: $not"; exit 1
+          }
+          Write-Host "yer tutucu dolduruldu: $not"
+
+      - name: Github Release yayinla
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.release_basligi.outputs.baslik }}
+          files: |
+            build_out/AfuDM-v*-win64.zip
+            build_out/*.sha256
+          body_path: docs/RELEASE_NOTES/${{ github.ref_name }}.md
