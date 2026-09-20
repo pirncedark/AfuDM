@@ -27,7 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from core import engines, paths, surum  # noqa: E402
+from core import engines, lang, ornek, paths, surum  # noqa: E402
 
 CREATE_NO_WINDOW = 0x08000000
 BAGLANMA_BEKLEME = 20.0
@@ -238,6 +238,152 @@ def _motor_surumu(ad: str) -> str:
         return (ilk or cikti.strip())[:80]
     except Exception:
         return ""
+
+
+# ======================================================================
+# v2.1 Headless Server — `afuadm server start | status | stop`
+# ======================================================================
+# Bu uc komut CALISAN AfuDM'e baglanmaz; dogrudan `data/ornek.json` kilidini
+# ve yonetim sunucusunun `/api/ping` ucunu okur. Bu yuzden `_ac()` ile GUI
+# baslatilmaz (bkz. main(): `yerel` bayrakli komutlar atlanir).
+
+SUNUCU_BEKLEME = 25.0
+
+
+def _sunucu_ping(port: int, timeout: float = 1.2) -> bool:
+    """Yonetim sunucusu o portta gercekten AfuDM mi? (anahtarsiz bilgi ucu)"""
+    if not port:
+        return False
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/api/ping", timeout=timeout
+        ) as yanit:
+            if yanit.status != 200:
+                return False
+            govde = json.loads(yanit.read().decode("utf-8", "replace"))
+            return bool(govde.get("ok")) and govde.get("app") == "AfuDM"
+    except Exception:
+        return False
+
+
+def _sunucu_bilgi() -> dict:
+    """Kilit dosyasi + canli ping'ten derlenen durum. Hicbir sir icermez."""
+    var = ornek.mevcut() or {}
+    port = int(var.get("sunucu_port") or 0)
+    return {
+        "calisiyor": bool(var),
+        "kip": var.get("kip") or "",
+        "pid": int(var.get("pid") or 0),
+        "sunucu_port": port,
+        "sunucu_adres": var.get("sunucu_adres") or "",
+        "api_port": int(var.get("api_port") or 0),
+        "panel": ("http://127.0.0.1:%d/panel" % port) if port else "",
+        "panel_yanit": _sunucu_ping(port),
+        "klasor": var.get("klasor") or str(paths.BASE),
+        "baslangic": var.get("baslangic") or 0,
+    }
+
+
+def komut_server_start(args) -> int:
+    """Headless servisi arka planda baslatir ve panel adresini basar."""
+    rapor = ornek.cakisma_raporu(ornek.KIP_HEADLESS)
+    if rapor["cakisma"]:
+        var = rapor["mevcut"] or {}
+        raise CliHata(
+            "%s (pid %s)" % (lang.t(rapor["mesaj_anahtari"], "auto"), var.get("pid")),
+            kod=CC_YOK,
+        )
+    # Arayuzsuz giris AYRI dosyadir: headless.py `webview`i HIC import etmez.
+    # Paketlenmis kurulumda tek bir AfuDM.exe vardir; orada --headless bayragi
+    # ayni servisi acar (bkz. app.py main()).
+    kok = Path(__file__).resolve().parent
+    afudm_exe = kok / "AfuDM.exe"
+    if afudm_exe.exists():
+        komut = [str(afudm_exe), "--headless"]
+        app = afudm_exe
+    else:
+        app = kok / "headless.py"
+        if not app.exists():
+            raise CliHata("headless.py bulunamadi: %s" % app, kod=CC_API)
+        komut = [sys.executable, str(app)]
+    try:
+        subprocess.Popen(
+            komut,
+            cwd=str(kok),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=CREATE_NO_WINDOW,
+        )
+    except OSError as exc:
+        raise CliHata("sunucu baslatilamadi: %s" % exc, kod=CC_API) from exc
+
+    bitis = time.time() + SUNUCU_BEKLEME
+    while time.time() < bitis:
+        bilgi = _sunucu_bilgi()
+        if bilgi["panel_yanit"]:
+            if args.json:
+                print(json.dumps(bilgi, ensure_ascii=False))
+            else:
+                print(lang.t("srv.started", "auto"))
+                print("  panel : %s" % bilgi["panel"])
+                print("  pid   : %s" % bilgi["pid"])
+                print("  durdur: afuadm server stop")
+            return CC_OK
+        time.sleep(0.4)
+    raise CliHata(
+        "sunucu %.0f saniyede acilmadi. Yonetici erisim anahtari var mi? "
+        "(AfuDM > Sunucu sekmesi)" % SUNUCU_BEKLEME,
+        kod=CC_API,
+    )
+
+
+def komut_server_status(args) -> int:
+    bilgi = _sunucu_bilgi()
+    if args.json:
+        print(json.dumps(bilgi, ensure_ascii=False))
+        return CC_OK if bilgi["panel_yanit"] else CC_YOK
+    if not bilgi["calisiyor"]:
+        print(lang.t("srv.notRunning", "auto"))
+        return CC_YOK
+    print("kip     : %s" % bilgi["kip"])
+    print("pid     : %s" % bilgi["pid"])
+    print("klasor  : %s" % bilgi["klasor"])
+    print("api     : %s" % (bilgi["api_port"] or "-"))
+    print("panel   : %s" % (bilgi["panel"] or "-"))
+    print("yanit   : %s" % ("evet" if bilgi["panel_yanit"] else "hayir"))
+    return CC_OK if bilgi["panel_yanit"] else CC_YOK
+
+
+def komut_server_stop(args) -> int:
+    """Duzenli kapanis: bayrak dosyasi. Surec kendi temizligini yapar."""
+    bilgi = _sunucu_bilgi()
+    if not bilgi["calisiyor"]:
+        if args.json:
+            print(json.dumps({"ok": True, "zaten_kapali": True}, ensure_ascii=False))
+        else:
+            print(lang.t("srv.notRunning", "auto"))
+        return CC_OK                    # idempotent: kapaliyi kapatmak hata degil
+    if bilgi["kip"] != ornek.KIP_HEADLESS:
+        raise CliHata(
+            "calisan ornek masaustu kipinde; sunucuyu AfuDM penceresindeki "
+            "Sunucu sekmesinden kapat.",
+            kod=CC_API,
+        )
+    bayrak = paths.DATA / "sunucu_dur.flag"
+    try:
+        bayrak.write_text("dur", encoding="utf-8")
+    except OSError as exc:
+        raise CliHata("durdurma bayragi yazilamadi: %s" % exc, kod=CC_API) from exc
+    bitis = time.time() + 20.0
+    while time.time() < bitis:
+        if ornek.mevcut() is None:
+            if args.json:
+                print(json.dumps({"ok": True}, ensure_ascii=False))
+            else:
+                print(lang.t("srv.stopped", "auto"))
+            return CC_OK
+        time.sleep(0.4)
+    raise CliHata("sunucu 20 saniyede kapanmadi (pid %s)." % bilgi["pid"], kod=CC_API)
 
 
 def komut_info(args) -> int:
@@ -676,7 +822,21 @@ def komutlar_ayirici() -> argparse.ArgumentParser:
     ki = alt.add_parser("info", parents=[_ortak()], help="surum + servis bilgisi")
     ki.set_defaults(func=komut_info)
 
-    p.set_defaults(func=komut_info, json=False, no_start=False)
+    # --- v2.1: arayuzsuz servis (headless) --------------------------------
+    ksrv = alt.add_parser("server", parents=[_ortak()],
+                          help="arayuzsuz servis: start | status | stop")
+    ksrv_alt = ksrv.add_subparsers(dest="alt_komut", required=True)
+    ksrv_alt.add_parser("start", parents=[_ortak()],
+                        help="servisi arka planda baslat").set_defaults(
+        func=komut_server_start, yerel=True)
+    ksrv_alt.add_parser("status", parents=[_ortak()],
+                        help="servis durumu").set_defaults(
+        func=komut_server_status, yerel=True)
+    ksrv_alt.add_parser("stop", parents=[_ortak()],
+                        help="servisi duzenli kapat").set_defaults(
+        func=komut_server_stop, yerel=True)
+
+    p.set_defaults(func=komut_info, json=False, no_start=False, yerel=False)
     return p
 
 
@@ -685,7 +845,10 @@ def main(argv: list[str] | None = None) -> int:
     p = komutlar_ayirici()
     args = p.parse_args(argv)
     try:
-        _ac(args.no_start)
+        # `server` komutlari calisan GUI'ye baglanmaz ve ONU BASLATMAZ:
+        # kilit dosyasini ve yonetim sunucusunu dogrudan okurlar.
+        if not getattr(args, "yerel", False):
+            _ac(args.no_start)
         return args.func(args)
     except CliHata as exc:
         print("AFUADM HATA: %s" % exc, file=sys.stderr)

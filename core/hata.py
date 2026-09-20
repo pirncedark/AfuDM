@@ -61,8 +61,9 @@ class RenewDesteklenmez(BadRequest):
 def hata_json(exc: BaseException) -> dict:
     """Herhangi bir istisnayi standart hata sozlesmesine cevirir.
 
-    AfuHata kendi code'unu tasir; digerleri tipine gore eslenir. Hicbir yerde
-    ham gövde/iz (stack) disariya sizmez, yalnizca mesaj kisa tutulur."""
+    AfuHata kendi code'unu tasir; digerleri tipine gore eslenir.
+    OSError ve beklenmeyen hatalarin tam metni aga acilmaz (guvenlik),
+    bunun yerine jenerik bir mesaj donulur."""
     if isinstance(exc, AfuHata):
         return exc.json()
     if isinstance(exc, ValueError):
@@ -70,10 +71,10 @@ def hata_json(exc: BaseException) -> dict:
     if isinstance(exc, KeyError):
         return AfuHata(str(exc), code="BAD_REQUEST").json()
     if isinstance(exc, (OSError, PermissionError)):
-        return AfuHata(str(exc), code="IO").json()
+        return AfuHata("dosya islemi basarisiz", code="IO").json()
     # Aria2Error dahil her sey buraya: nedeni ayirt edilemiyorsa ENGINE de
     # olabilir, ama genel soy eslestirme INTERNAL ile kapanir.
-    return AfuHata(str(exc)[:300], code="INTERNAL").json()
+    return AfuHata("beklenmeyen bir sunucu hatasi olustu", code="INTERNAL").json()
 
 
 def kod_bul(govde: dict | None) -> str:
