@@ -59,7 +59,16 @@ function toast(message, bad = false) {
 /* ---------- kopru ---------- */
 async function call(method, ...args) {
   if (!window.pywebview || !window.pywebview.api) throw new Error(t("err.bridge"));
-  const out = await window.pywebview.api[method](...args);
+  
+  let out;
+  if (method === "snapshot") {
+    const pywebviewPromise = window.pywebview.api[method](...args);
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 15000));
+    out = await Promise.race([pywebviewPromise, timeoutPromise]);
+  } else {
+    out = await window.pywebview.api[method](...args);
+  }
+  
   if (out && out.ok === false) throw new Error(out.error || t("err.failed"));
   return out;
 }
@@ -467,6 +476,7 @@ async function tick() {
     }
     $("engineDot").className = "dot" + (snap.engine_ok ? " ok" : "");
     $("engineText").textContent = snap.engine_ok ? t("engine.running") : t("engine.stopped");
+    if ($("engineRetry")) $("engineRetry").style.display = "none";
     $("dirHint").textContent = snap.download_dir || "";
     $("dirHint").title = snap.download_dir || "";
 
@@ -478,8 +488,18 @@ async function tick() {
   } catch (err) {
     $("engineDot").className = "dot";
     $("engineText").textContent = t("engine.offline");
+    if ($("engineRetry")) $("engineRetry").style.display = "inline-block";
+    if (err.message === "timeout") return; // Stop polling on timeout
   }
   setTimeout(tick, POLL_MS);
+}
+
+if ($("engineRetry")) {
+  $("engineRetry").onclick = () => {
+    $("engineRetry").style.display = "none";
+    $("engineText").textContent = t("engine.connecting");
+    tick();
+  };
 }
 
 /* ---------- eylemler ---------- */
@@ -2189,7 +2209,6 @@ window.afudmClipboard = async (url) => {
   // Kaydetme penceresi kapaliysa (ayar) eski davranis: link ekleme penceresi.
   if (state.settings.kaydetme_penceresi === false) {
     $("urls").value = url;
-    $("addErr").textContent = t("toast.clipboard");
     openVeil("addVeil");
     return;
   }
@@ -2209,19 +2228,34 @@ window.afudmLinkgrabber = async (metin, dosya) => {
 };
 
 /* ---------- ozel baslik cubugu (core/pencere.py) ---------- */
+if (document.documentElement) document.documentElement.classList.add("ozel-baslik");
+
 window.afudmPencere = async () => {
-  if (!window.pywebview || !window.pywebview.api.pencere_durumu) return;
-  const durum = await window.pywebview.api.pencere_durumu();
-  document.documentElement.classList.toggle("ozel-baslik", !!durum.ozel);
-  document.documentElement.classList.toggle("buyuk", !!durum.buyuk);
-  $("wcMax").title = t(durum.buyuk ? "win.restore" : "win.max");
+  if (!window.pywebview || !window.pywebview.api || !window.pywebview.api.pencere_durumu) return;
+  try {
+    const durum = await window.pywebview.api.pencere_durumu();
+    document.documentElement.classList.toggle("ozel-baslik", !!durum.ozel);
+    document.documentElement.classList.toggle("buyuk", !!durum.buyuk);
+    if ($("wcMax")) $("wcMax").title = t(durum.buyuk ? "win.restore" : "win.max");
+  } catch (err) { /* ignore */ }
 };
-$("wcMin").onclick = () => window.pywebview.api.pencere_kucult();
-$("wcMax").onclick = async () => { await window.pywebview.api.pencere_buyut(); window.afudmPencere(); };
-$("wcClose").onclick = () => window.pywebview.api.pencere_kapat();
+if ($("wcMin")) {
+  $("wcMin").onclick = () => window.pywebview?.api?.pencere_kucult?.();
+}
+if ($("wcMax")) {
+  $("wcMax").onclick = async () => {
+    if (window.pywebview?.api?.pencere_buyut) {
+      await window.pywebview.api.pencere_buyut();
+      window.afudmPencere();
+    }
+  };
+}
+if ($("wcClose")) {
+  $("wcClose").onclick = () => window.pywebview?.api?.pencere_kapat?.();
+}
 document.querySelectorAll(".wc-edge").forEach((kenar) => {
   kenar.addEventListener("mousedown", (event) => {
-    if (event.button === 0) window.pywebview.api.pencere_kenar(kenar.dataset.edge);
+    if (event.button === 0) window.pywebview?.api?.pencere_kenar?.(kenar.dataset.edge);
   });
 });
 // Buyut/geri al Windows'tan da gelebilir (cift tik, Snap, Win+Yukari): simgeyi esitle.

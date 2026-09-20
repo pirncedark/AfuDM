@@ -29,6 +29,7 @@ const DICT = {
     "engine.running": "aria2 çalışıyor",
     "engine.stopped": "motor kapalı",
     "engine.offline": "bağlantı yok",
+    "engine.retry": "Yeniden dene",
 
     "filter.all": "Tümü",
     "filter.active": "İndiriliyor",
@@ -465,6 +466,7 @@ const DICT = {
     "engine.running": "aria2 running",
     "engine.stopped": "engine stopped",
     "engine.offline": "no connection",
+    "engine.retry": "Retry",
 
     "filter.all": "All",
     "filter.active": "Downloading",
