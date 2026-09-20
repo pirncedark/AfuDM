@@ -24,6 +24,9 @@ DATA = BASE / "data"
 UI = BASE / "ui"
 EXTENSION = BASE / "extension"
 DOWNLOADS = BASE / "downloads"
+# v2.0 Plugin Platform: eklenti dosyalari ve guncelleme yedegi (portable kalir)
+PLUGINS = BASE / "plugins"
+PLUGIN_YEDEK = DATA / "eklenti_yedek"
 
 ARIA2C = ENGINE / "aria2c.exe"
 DB_PATH = DATA / "afudm.db"
@@ -72,5 +75,5 @@ def user_downloads_dir() -> Path:
 
 
 def ensure_dirs() -> None:
-    for folder in (DATA, DOWNLOADS):
+    for folder in (DATA, DOWNLOADS, PLUGINS):
         folder.mkdir(parents=True, exist_ok=True)

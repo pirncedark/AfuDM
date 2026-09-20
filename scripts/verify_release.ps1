@@ -15,9 +15,20 @@ if (-not $ZipPath) {
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if (-not $sira) { Write-Host "zip bulunamadi"; exit 1 }
     $ZipPath = $sira.FullName
+} elseif (-not $ZipPath.EndsWith(".zip")) {
+    $ZipPath = (Join-Path $kok "build_out\AfuDM-$ZipPath-win64.zip")
 }
-if (-not (Test-Path $ZipPath)) { Write-Host "zip yok: $ZipPath"; exit 1 }
+$notesDir = Join-Path $kok "docs/RELEASE_NOTES"
+if (Test-Path $notesDir) {
+    $placeholders = Get-ChildItem -Path $notesDir -Filter "*.md" | Select-String -Pattern "<!-- SHA256-PLACEHOLDER -->" -SimpleMatch
+    if ($placeholders) {
+        Write-Host "GATE HATA - Release notlarinda doldurulmamis SHA256 yer tutuculari bulundu:"
+        $placeholders | ForEach-Object { Write-Host "  - $($_.Path):$($_.LineNumber)" }
+        exit 1
+    }
+}
 
+if (-not (Test-Path $ZipPath)) { Write-Host "zip yok: $ZipPath"; exit 1 }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
 try {
@@ -33,8 +44,7 @@ try {
     )
     $eksik = @()
     foreach ($g in $gerekli) {
-        $gAr = $g.Replace("/", "\")
-        $eSiz = $adlar | Where-Object { $_ -like "*$gAr" }
+        $eSiz = $adlar | Where-Object { $_ -like "*$g" }
         if (-not $eSiz) { $eksik += $g }
     }
     if ($eksik.Count -gt 0) {
