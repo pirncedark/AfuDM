@@ -95,7 +95,7 @@ class Api:
         self._bekleyenler = kaydet.Bekleyenler()
         self._chrome_baslangic = 0.0
         self._probe_iptal: threading.Event | None = None
-        self.windows = manager.windows
+        self.windows = getattr(manager, "windows", None)
 
     # --- durum ------------------------------------------------------------
     def snapshot(self) -> dict:
@@ -478,41 +478,75 @@ class Api:
 
     # --- Windows Integration v2.2 --------------------------------------
     def windows_integration_status(self) -> dict:
+        if not self.windows:
+            return {"ok": False, "error": "Windows integration is not available in this environment.", "integrations": {}}
         try:
             out = self.windows.status()
             out["integrations"]["torrent"] = {"registered": iliskilendir.acik_mi(), "scope": "current_user"}
+            out["integrations"]["startup"] = {"registered": baslangic.acik_mi(), "scope": "current_user"}
+            out["integrations"]["notify"] = {"registered": bool(self.manager.store.get("windows_notifications")), "scope": "current_user"}
+            
+            program = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Windows Defender" / "MpCmdRun.exe"
+            out["integrations"]["defender"] = {"registered": bool(self.manager.store.get("defender_auto_scan")), "scope": "current_user", "available": program.exists()}
+            
             return out
         except OSError as exc:
             return {"ok": False, "error": str(exc)[:300]}
 
     def windows_integration_apply(self, ident: str) -> dict:
+        if not self.windows: return {"ok": False, "error": "Unavailable"}
         try:
             if ident == "torrent":
                 iliskilendir.ac()
-                return self.windows_integration_status()
-            return self.windows.apply(str(ident))
+            elif ident == "startup":
+                baslangic.ac("--tepside")
+            elif ident == "notify":
+                self.manager.store.set("windows_notifications", True)
+            elif ident == "defender":
+                self.manager.store.set("defender_auto_scan", True)
+            else:
+                self.windows.apply(str(ident))
+            return self.windows_integration_status()
         except PermissionError as exc:
             return {"ok": False, "error": "Windows kaydina yazma izni yok. Uygulamayi uygun kullanici hesabi ile yeniden deneyin: " + str(exc)[:120]}
         except OSError as exc:
             return {"ok": False, "error": str(exc)[:300]}
 
     def windows_integration_remove(self, ident: str) -> dict:
+        if not self.windows: return {"ok": False, "error": "Unavailable"}
         try:
             if ident == "torrent":
                 iliskilendir.kapat()
-                return self.windows_integration_status()
-            return self.windows.remove(str(ident))
+            elif ident == "startup":
+                baslangic.kapat()
+            elif ident == "notify":
+                self.manager.store.set("windows_notifications", False)
+            elif ident == "defender":
+                self.manager.store.set("defender_auto_scan", False)
+            else:
+                self.windows.remove(str(ident))
+            return self.windows_integration_status()
         except OSError as exc:
             return {"ok": False, "error": str(exc)[:300]}
 
     def windows_integration_test(self, ident: str) -> dict:
+        if not self.windows: return {"ok": False, "error": "Unavailable"}
         try:
             if ident == "torrent": return {"ok": iliskilendir.acik_mi(), "registered": iliskilendir.acik_mi()}
+            if ident == "startup": return {"ok": baslangic.acik_mi(), "registered": baslangic.acik_mi()}
+            if ident == "notify":
+                if callable(getattr(self.manager, "windows_notify", None)):
+                    self.manager.windows_notify("AfuDM Test", "Bildirimler calisiyor!")
+                return {"ok": True, "registered": bool(self.manager.store.get("windows_notifications"))}
+            if ident == "defender":
+                program = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Windows Defender" / "MpCmdRun.exe"
+                return {"ok": program.exists(), "registered": bool(self.manager.store.get("defender_auto_scan"))}
             return self.windows.test(str(ident))
         except OSError as exc:
             return {"ok": False, "error": str(exc)[:300]}
 
     def defender_scan(self, gid: str) -> dict:
+        if not self.windows: return {"ok": False, "error": "Windows integration unavailable."}
         for item in self.manager.snapshot().get("items", []):
             if item.get("gid") == gid:
                 path = Path(item.get("dir") or self.manager.current_download_dir()) / (item.get("filename") or "")

@@ -1671,7 +1671,7 @@ async function sistemAyarlariniUygula() {
 
 /* Windows Integration: UI gercek kaydi RPC uzerinden yeniden OKUR; rozetler
    varsayimla degil Windows kayit defterindeki mevcut degerle cizilir. */
-const winIntNames = { context: "winint.context", protocol: "winint.protocol", afup: "winint.afup", torrent: "winint.torrent" };
+const winIntNames = { context: "winint.context", protocol: "winint.protocol", afup: "winint.afup", torrent: "winint.torrent", startup: "winint.startup", notify: "winint.notify", defender: "winint.defender" };
 async function windowsIntegrationDurumu() {
   const root = $("winIntRows");
   if (!root) return;
