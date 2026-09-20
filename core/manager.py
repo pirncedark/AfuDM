@@ -22,7 +22,8 @@ from video import ytdlp
 
 from .dosya_adi import resolve_filename
 
-from . import cerez, lang, models, paths, trackers
+from . import cerez, eklenti, lang, models, paths, trackers, rules, settings_validation
+from .automation import AutomationWorker
 from . import proxy as P
 from .daemon import Aria2Daemon
 from .db import Store
@@ -37,6 +38,13 @@ TRACKER_CHECK_INTERVAL = 3600.0
 #   normal -> kullanicinin max_speed_kb ayari gecerli
 #   snail  -> snail_speed_kb (varsayilan 100 KB/s — oyun/toplantida interneti rahatlatir)
 HIZ_PROFILLERI = ("snail", "normal", "turbo")
+
+
+class AyarGecersiz(ValueError):
+    """UI koprusune alan bazli i18n hatalarini tasir; gizli deger tasimaz."""
+    def __init__(self, hatalar: list[dict]) -> None:
+        super().__init__("settings_invalid")
+        self.hatalar = hatalar
 
 
 class TorrentDosyaListesi(list[dict]):
@@ -77,23 +85,36 @@ class Manager:
         # Oturum cerezleri: kayit kimligi -> cerezler. BILEREK veritabaninda degil
         # (bkz. core/cerez.py); is bitince/silinince birakilir.
         self._cerezler: dict[int, list[dict]] = {}
+        self.automation = AutomationWorker(self.store, self.notify_telegram)
+        # v2.0 Plugin Platform: eklenti servisi TEK kaynak — pywebview koprusu
+        # ve HTTP API ayni nesneyi kullanir (ayri durum tutulmaz).
+        self.eklentiler = eklenti.EklentiServisi(self.store)
 
     # --- yasam dongusu ----------------------------------------------------
     def start(self) -> None:
         cerez.artiklari_temizle()
         self.rpc = self.daemon.start()
         self.apply_settings()
+        self.automation.start()
         if self.store.get("auto_update_trackers"):
             threading.Thread(target=self._refresh_trackers, daemon=True).start()
         self._poller = threading.Thread(target=self._poll_loop, daemon=True)
         self._poller.start()
+        # Etkin eklentiler AYRI SUREClerde acilir; biri patlasa da buraya
+        # dusmez — servis her eklentinin hatasini kendi kaydina yazar.
+        threading.Thread(target=self.eklentiler.basla, daemon=True).start()
         self.store.log("info", "AfuDM basladi")
 
     def stop(self) -> None:
         self._stop.set()
+        self.automation.stop()
         for job in list(self.video_jobs.values()):
             if job.status == "active":
                 job.stop()
+        try:
+            self.eklentiler.kapat()
+        except Exception:
+            pass
         self.daemon.stop()
         self.store.log("info", "AfuDM kapandi")
 
@@ -201,8 +222,28 @@ class Manager:
         return {"ok": True, "gid": gid, "baglanti": baglanti, "hiz_kb": hiz_kb}
 
     def update_settings(self, changes: dict) -> dict:
+        """Ayarlari DOGRULA ve HEPSI-YA-HICBIRI kaydet.
+
+        Bir alan bile gecersizse hicbiri yazilmaz (kismi kayit yok) ve
+        `AyarGecersiz` ile alan+i18n anahtari listesi yukari tasinir.
+        """
+        hatalar, temiz = settings_validation.ayarlari_dogrula(changes or {})
+        if hatalar:
+            raise AyarGecersiz(hatalar)
+        changes = temiz
+        onceki_snail = int(self.store.get("snail_speed_kb") or 100)
         for key, value in changes.items():
             self.store.set(key, value)
+        # Salyangoz hizi degistiyse ve profil SU AN salyangozsa yeni sinir
+        # aria2'ye CANLI uygulanir (indirmeler kesilmez). apply_settings()
+        # asagida zaten cagriliyor; burada yalnizca gorunurluk/kayit var.
+        if "snail_speed_kb" in changes:
+            yeni_snail = int(changes["snail_speed_kb"])
+            aktif = str(self.store.get("hiz_profili") or "normal").strip().lower()
+            if aktif == "snail" and yeni_snail != onceki_snail:
+                self.store.log(
+                    "info", "salyangoz hizi canli uygulandi: %d KB/s" % yeni_snail
+                )
         if "download_dir" in changes:
             new_dir = changes["download_dir"] or str(paths.default_download_dir())
             Path(new_dir).mkdir(parents=True, exist_ok=True)
@@ -360,7 +401,12 @@ class Manager:
         if duplicate:
             label = "bu torrent" if kind == "torrent" else "bu baglanti"
             raise ValueError(f"{label} zaten kuyrukta: {duplicate.get('title') or req.source[:60]}")
-        dest_dir = req.dest_dir or self.current_download_dir()
+        category = "video" if kind == "video" else ("torrent" if kind == "torrent" else "")
+        resolved = rules.evaluate(self.store.rules_list(), {"dest_dir": self.current_download_dir(), "proxy": self.store.get("proxy", ""), "max_speed_kb": self.store.get("max_speed_kb", 0), "split": self.store.get("max_conn_per_server", 16)}, rules.context(req.source, req.filename or req.title or "", 0, kind, category), {"dest_dir": req.dest_dir, "proxy": req.proxy})
+        effective = resolved["effective_options"]
+        dest_dir = effective.get("dest_dir") or self.current_download_dir()
+        rule_start_after = models.parse_time_spec(effective.get("start_after", ""))
+        start_after = req.start_after or rule_start_after
         Path(dest_dir).mkdir(parents=True, exist_ok=True)
         options = {
             "quality": req.quality or self.store.get("video_quality", "best"),
@@ -370,7 +416,10 @@ class Manager:
             "filename": req.filename or "",
             "user_agent": req.user_agent or "",
             "title": req.title or "",
-            "proxy": req.proxy or "",
+            "proxy": effective.get("proxy", ""),
+            "hiz_kb": effective.get("max_speed_kb", 0),
+            "baglanti": effective.get("split", 0),
+            "rules_trace": resolved["trace"],
             "checksum": req.checksum or "",
             "adopt_gid": getattr(req, "adopt_gid", None),
             "selected_files": getattr(req, "selected_files", None),
@@ -395,15 +444,15 @@ class Manager:
             title=options["title"] or self.guess_name(req.source),
             dest_dir=dest_dir,
             options=options,
-            start_after=req.start_after,
+            start_after=start_after,
         )
         temiz = cerez.temizle(req.cookies)
         if temiz:
             self._cerezler[row_id] = temiz
-        if req.start_after:
-            when = time.strftime("%H:%M", time.localtime(req.start_after))
+        if start_after:
+            when = time.strftime("%H:%M", time.localtime(start_after))
             self.store.log("info", f"zamanlandi ({when}): {req.source[:80]}")
-            return {"id": row_id, "kind": kind, "scheduled_for": req.start_after}
+            return {"id": row_id, "kind": kind, "scheduled_for": start_after}
         return self._launch(self.store.by_id(row_id))  # type: ignore[arg-type]
 
     def _launch(self, row: dict) -> dict:
@@ -1080,6 +1129,7 @@ class Manager:
             # Arayuz hangi dilde yazacagini buradan ogrenir ("auto" cozulmus halde)
             "lang": lang.resolve(str(self.store.get("language", "auto"))),
             "last_error": self.last_error,
+            "automation": self.store.automation_jobs(limit=200),
         }
 
     def _shape_aria2(self, status: dict) -> dict:
@@ -1552,6 +1602,7 @@ class Manager:
     # --- bitis islemleri --------------------------------------------------
     def _on_complete(self, title: str, size: int, gid: str = "") -> None:
         self.store.log("info", f"tamamlandi: {title} ({human_size(size)})", gid=gid or "")
+        self.automation.enqueue_download(gid, self.store.by_gid(gid))
         if self.store.get("notify_telegram"):
             threading.Thread(
                 target=self.notify_telegram,

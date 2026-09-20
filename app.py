@@ -15,6 +15,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+# Eklenti hostu AYRI SUREctir. Paketlenmis (PyInstaller) kopyada yanimizda
+# ayri bir python yok; bu yuzden host kendimizi bu bayrakla acar ve pencere
+# acmadan yalniz host dongusune girer (bkz. core/eklenti_host.py).
+if os.environ.get("AFUDM_EKLENTI_HOST") == "1":
+    from core import eklenti_host  # noqa: E402
+
+    sys.exit(eklenti_host.main())
+
 import urllib.error  # noqa: E402
 import urllib.request  # noqa: E402
 
@@ -27,6 +35,8 @@ from core import (baslangic, chrome_kurulum, clipboard, dosya_adi, engines, guc,
                   ornek, tracker_saglik,
                   kaydet, lang, linkgrabber, models, paths, pencere)
 from core.manager import Manager  # noqa: E402
+from core.manager import AyarGecersiz  # noqa: E402
+from core import settings_validation  # noqa: E402
 from core.servis import AfuDMServis  # noqa: E402
 
 # Pencere basligi dile gore secilir (bkz. core/lang.py); ayar okunana kadar bu durur.
@@ -173,6 +183,34 @@ class Api:
             "kategori": kategori,
             "resumable": sonuc.get("resumable", False),
         }
+
+    # --- rules engine ----------------------------------------------------
+    def rules_list(self) -> dict:
+        return {"ok": True, "rules": self.manager.store.rules_list()}
+
+    def rules_save(self, rules: list[dict]) -> dict:
+        import uuid
+        clean = []
+        for rule in rules or []:
+            if not isinstance(rule, dict) or not str(rule.get("name") or "").strip():
+                return {"ok": False, "error": "kural adi gerekli"}
+            clean.append({"id": str(rule.get("id") or uuid.uuid4()), "name": str(rule["name"]).strip()[:100], "active": bool(rule.get("active", True)), "match_type": rule.get("match_type") if rule.get("match_type") in ("all", "any") else "all", "conditions": rule.get("conditions") if isinstance(rule.get("conditions"), list) else [], "actions": rule.get("actions") if isinstance(rule.get("actions"), dict) else {}})
+        self.manager.store.rules_save(clean)
+        return {"ok": True, "rules": self.manager.store.rules_list()}
+
+    def rules_simulate(self, url: str, filename: str = "", size_bytes: int = 0, protocol: str = "http", category: str = "") -> dict:
+        from core import rules
+        all_rules = self.manager.store.rules_list()
+        out = rules.evaluate(all_rules, {"dest_dir": self.manager.current_download_dir(), "proxy": self.manager.store.get("proxy", ""), "max_speed_kb": self.manager.store.get("max_speed_kb", 0), "split": self.manager.store.get("max_conn_per_server", 16)}, rules.context(url, filename, size_bytes, protocol, category))
+        matched = [r for r in all_rules if r["id"] in out["matched_rules"]]
+        conflicts = [k for k in out["effective_options"] if sum(1 for r in matched if k in r.get("actions", {})) > 1]
+        return {"ok": True, **out, "matched_rules": matched, "conflicts": conflicts}
+
+    def download_rules(self, gid: str) -> dict:
+        import json
+        row = self.manager.store.by_gid(gid)
+        if not row: return {"ok": False, "error": "kayit bulunamadi"}
+        return {"ok": True, "trace": json.loads(row.get("options") or "{}").get("rules_trace", {})}
 
     # --- LinkGrabber (v1.5) ---------------------------------------------
     def linkgrabber_analiz(self, metin: str, filtre: dict | None = None) -> dict:
@@ -531,6 +569,66 @@ class Api:
         self.manager.store.set("ek_trackerlar", "\n".join(temiz))
         return {"ok": True, "sayi": len(temiz), "liste": "\n".join(temiz)}
 
+
+    # --- eklentiler (v2.0 Plugin Platform) -------------------------------
+    # DURUSTLUK: eklentiler AfuDM'in TUM yetkileriyle calisir. Ayri surec
+    # yalnizca COKME/TAKILMA izolasyonu saglar, GUVENLIK sandbox'i DEGILDIR.
+    # Izin ve domain listeleri BEYANDIR; teknik olarak zorlanmaz.
+    def eklenti_listesi(self) -> dict:
+        return self.manager.eklentiler.liste()
+
+    def eklenti_incele(self, yol: str = "") -> dict:
+        """Kurulumdan ONCE manifest + istenen izinler + domainler.
+
+        Yol bossa dosya secici acilir (yerel .afup paketi)."""
+        if not yol:
+            if not self._window:
+                return {"ok": False, "error": "pencere hazir degil"}
+            secim = self._window.create_file_dialog(
+                webview.OPEN_DIALOG, allow_multiple=False,
+                file_types=("AfuDM eklenti paketi (*.afup)", "Tum dosyalar (*.*)"))
+            if not secim:
+                return {"ok": True, "iptal": True}
+            yol = secim[0]
+        return self.manager.eklentiler.incele(yol)
+
+    def eklenti_kur(self, yol: str, onaylanan_izinler: list | None = None) -> dict:
+        """Arka planda kurar; ilerleme `eklenti_islem` ile izlenir."""
+        return self.manager.eklentiler.kur(yol, onaylanan_izinler)
+
+    def eklenti_guncelle(self, ad: str, yol: str) -> dict:
+        """Basarisiz olursa ONCEKI SURUME geri doner (rollback)."""
+        return self.manager.eklentiler.guncelle(ad, yol)
+
+    def eklenti_kaldir(self, ad: str) -> dict:
+        return self.manager.eklentiler.kaldir(ad)
+
+    def eklenti_etkinlestir(self, ad: str, acik: bool) -> dict:
+        return self.manager.eklentiler.etkinlestir(ad, bool(acik))
+
+    def eklenti_yeniden_baslat(self, ad: str) -> dict:
+        return self.manager.eklentiler.yeniden_baslat(ad)
+
+    def eklenti_ayar_kaydet(self, ad: str, ayarlar: dict | None = None) -> dict:
+        return self.manager.eklentiler.ayar_kaydet(ad, ayarlar or {})
+
+    def eklenti_gunluk(self, ad: str) -> dict:
+        return self.manager.eklentiler.gunluk(ad)
+
+    def eklenti_islem(self) -> dict:
+        return self.manager.eklentiler.islem()
+
+    def eklenti_islem_iptal(self) -> dict:
+        return self.manager.eklentiler.islem_iptal()
+
+    def eklenti_klasoru_ac(self) -> dict:
+        try:
+            paths.PLUGINS.mkdir(parents=True, exist_ok=True)
+            os.startfile(str(paths.PLUGINS))          # noqa: S606
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)[:200]}
+        return {"ok": True}
+
     # --- telefon arayuzu (ui/mobil.html + LocalAPI) ----------------------
     def telefon_durumu(self) -> dict:
         """Ayarlar penceresi icin: acik mi, adres ne, QR nerede."""
@@ -572,14 +670,11 @@ class Api:
         Baglanacak adres soket acilirken seciliyor; ayarin hemen gecerli olmasi
         icin sunucu yeniden kuruluyor (yeniden baslatma beklenmesin).
         """
+        sonuc = self.local_api.lan_ayarla(bool(acik))
+        if not sonuc.get("ok"):
+            return {"ok": False, "error": "lan_bind_failed", "acik": bool(sonuc.get("acik"))}
         self.manager.store.set("lan_erisimi", bool(acik))
-        try:
-            self.local_api.stop()
-            self.local_api.lan = bool(acik)
-            port = self.local_api.start()
-            self.manager.store.set("api_port", port)
-        except Exception as exc:
-            return {"ok": False, "error": str(exc)[:200]}
+        self.manager.store.set("api_port", int(sonuc.get("port") or 0))
         return self.telefon_durumu()
 
     # --- uyku / telefondan uyandirma (core/guc.py) -----------------------
@@ -608,8 +703,55 @@ class Api:
     def clear_finished(self) -> dict:
         return self.servis.bitmisleri_temizle()
 
+    # --- v1.8 Automation -------------------------------------------------
+    def automation_jobs(self, gid: str = "") -> dict:
+        return {"ok": True, "jobs": self.manager.store.automation_jobs(str(gid))}
+
+    def automation_retry(self, job_id: int) -> dict:
+        try: return {"ok": True, "job": self.manager.automation.retry(int(job_id))}
+        except Exception as exc: return {"ok": False, "error": str(exc)[:300]}
+
+    def automation_cancel(self, job_id: int) -> dict:
+        try: return {"ok": True, "job": self.manager.automation.cancel(int(job_id))}
+        except Exception as exc: return {"ok": False, "error": str(exc)[:300]}
+
     # --- ayarlar ----------------------------------------------------------
     def settings_save(self, payload: dict) -> dict:
+        return self.ayarlari_dogrula_kaydet(payload)
+
+    def ayarlari_dogrula_kaydet(self, ayarlar: dict) -> dict:
+        """Atomik ayar RPC'si: hata metni degil i18n anahtari tasir."""
+        try:
+            kayit = self.manager.update_settings(ayarlar)
+            return {"ok": True, "hatalar": [], "ayarlar": kayit, "settings": kayit}
+        except AyarGecersiz as exc:
+            return {"ok": False, "hatalar": exc.hatalar, "ayarlar": self.manager.store.all_settings()}
+        except Exception:
+            return {"ok": False, "hatalar": [{"alan": "_genel", "mesaj_anahtari": "err.invalidValue"}], "ayarlar": self.manager.store.all_settings()}
+
+    def proxy_testi(self, proxy: str) -> dict:
+        try:
+            temiz = settings_validation.dogrula_proxy(proxy)
+        except settings_validation.AyarHatasi as exc:
+            return {"ok": False, "gecikme_ms": 0, "mesaj_anahtari": exc.mesaj_anahtari}
+        if not temiz:
+            return {"ok": False, "gecikme_ms": 0, "mesaj_anahtari": "err.proxyRequired"}
+        import socket
+        try:
+            _, hostport = settings_validation._proxy_parcala(temiz)
+            host, port = hostport.rsplit(":", 1)
+            basla = time.monotonic(); sock = socket.create_connection((host, int(port)), timeout=4)
+            sock.close()
+            return {"ok": True, "gecikme_ms": round((time.monotonic()-basla)*1000), "mesaj_anahtari": ""}
+        except OSError:
+            return {"ok": False, "gecikme_ms": 0, "mesaj_anahtari": "err.proxyUnreachable"}
+
+    def port_durumu(self) -> dict:
+        return self.local_api.durum()
+
+    def ag_konumlari_listele(self) -> dict:
+        ham = str(self.manager.store.get("ag_konumlari") or "")
+        return {"ok": True, "konumlar": [x for x in ham.splitlines() if x.strip()]}
         return self.servis.ayar_kaydet(payload)
 
     def ayar_rozetleri(self) -> dict:
@@ -685,7 +827,6 @@ class Api:
 
     def sunucu_profil_etkinlestir(self, profil_id: int) -> dict:
         return self.servis.profil_etkinlestir(profil_id)
-
 
     # --- klasor -----------------------------------------------------------
     def open_download_dir(self) -> dict:
@@ -993,10 +1134,11 @@ def main() -> int:
     # 6812'ye dusulmusse bu DEGER KAYDEDILIP kalici olurdu: uygulama hep
     # 6812'de acilir, uzanti ise 6811'i denerdi ve "AfuDM kapali" derdi.
     # Kayit artik yalnizca "su an hangi port" bilgisi; baslangic noktasi degil.
-    local_api = LocalAPI(manager, port=VARSAYILAN_API_PORT,
+    local_api = LocalAPI(manager, port=int(manager.store.get("api_listen_port") or VARSAYILAN_API_PORT),
                          lan=bool(manager.store.get("lan_erisimi")))
     try:
         port = local_api.start()
+        manager.store.set("api_port", port)
         manager.store.set("api_port", port)
     except Exception as exc:
         print(f"UYARI: yerel API acilamadi: {exc}")

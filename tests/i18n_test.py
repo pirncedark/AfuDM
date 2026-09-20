@@ -52,8 +52,8 @@ def sozluk(blok: str) -> dict:
 
 print("1) ui/i18n.js sozlugu")
 js = (KOK / "ui" / "i18n.js").read_text(encoding="utf-8")
-tr = sozluk(blok_ayikla(js, "tr: {"))
-en = sozluk(blok_ayikla(js, "en: {"))
+tr = sozluk(blok_ayikla(js, "  tr: {"))
+en = sozluk(blok_ayikla(js, "  en: {"))
 kontrol("tr sozlugu dolu", len(tr) > 40, f"{len(tr)} anahtar")
 eksik_en = sorted(set(tr) - set(en))
 eksik_tr = sorted(set(en) - set(tr))
