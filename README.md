@@ -4,8 +4,15 @@ A portable download manager for Windows — files, video and torrents in one
 folder. Nothing is written to the system, the registry or AppData: copy the
 folder to a USB stick and it runs.
 
-Engines are bundled: **aria2** (HTTP/FTP + BitTorrent), **yt-dlp** (1800+ video
-sites), **ffmpeg** (optional — only needed for mp3).
+## Engines
+
+AfuDM Core bundles **aria2**.
+
+**yt-dlp** and **FFmpeg** are downloaded on demand from
+Settings → Engines and stored inside the AfuDM folder,
+so the application remains portable.
+
+The Full package may include additional engines.
 
 *Türkçe açıklama aşağıda ↓*
 
@@ -260,8 +267,15 @@ AfuDM/
 IDM'in yerine geçen portable indirme yöneticisi. Dosya, video ve torrent indirir;
 tek klasörde yaşar, sisteme hiçbir şey yazmaz.
 
-Motorlar gömülü: **aria2** (HTTP/FTP + BitTorrent), **yt-dlp** (1800+ video
-sitesi), **ffmpeg** (isteğe bağlı — yalnız mp3 için gerekli).
+## Motorlar
+
+AfuDM Core paketinde **aria2** bulunur.
+
+**yt-dlp** ve **FFmpeg**, Ayarlar → Motorlar bölümünden
+istek üzerine indirilir ve AfuDM klasöründe tutulur.
+Portable yapı bozulmaz.
+
+Tam paket ek motorları içerebilir.
 
 ## Başlatma
 

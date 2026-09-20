@@ -124,7 +124,7 @@ input[type="text"], select {
 <header>
   <div class="ust">
     <div class="marka">Afu<span>DM</span></div>
-    <button class="sessiz" id="pwaKur" hidden>Ana ekrana ekle</button>
+    <button class="sessiz" id="pwaKur" style="font-weight: 600; color: var(--dl);">Uygulamayı Kur (APK/PWA)</button>
     <div class="hiz"><span id="hiz">0.0</span><small>MB/s</small></div>
   </div>
   <div class="durum">
@@ -265,6 +265,7 @@ function satir(is) {
       (is.downloadSpeed > 0 ? "<span>" + sure(is.eta) + "</span>" : "") +
       (durumYazi ? "<span>" + durumYazi + "</span>" : "") +
       '<span class="sag">' + durakla +
+        (is.status === "complete" ? '<button data-eylem="indir" data-gid="' + kacir(is.gid) + '">Telefona İndir</button>' : "") +
         (is.kind === "torrent" ? '<button data-eylem="dosyalar" data-gid="' + kacir(is.gid) + '">Dosyalar</button>' : "") +
         '<button class="sessiz" data-eylem="remove" data-gid="' + kacir(is.gid) + '">Kaldır</button>' +
       "</span>" +
@@ -378,6 +379,10 @@ $("liste").addEventListener("click", async (olay) => {
     torrentKatmanAc(dugme.dataset.gid);
     return;
   }
+  if (dugme.dataset.eylem === "indir") {
+    window.location.href = "/indir?gid=" + encodeURIComponent(dugme.dataset.gid) + "&k=" + encodeURIComponent(anahtar);
+    return;
+  }
   try {
     await api("/control", { method: "POST",
       body: JSON.stringify({ action: dugme.dataset.eylem, gid: dugme.dataset.gid }) });
@@ -426,27 +431,23 @@ $("trackerTara").addEventListener("click", async () => {
     const veri = await api("/seed?gid=" + encodeURIComponent(acikTorrentGid));
     seedOzetGoster(veri);
   } catch (err) {
-    bildir(err.message, true);
-  } finally {
-    dugme.disabled = false;
-    dugme.textContent = eskiYazi;
+    $("seedOzet").innerHTML = '<div class="hata">' + kacir(err.message) + "</div>";
   }
-});
+}
 
 async function klasorleriDoldur() {
   try {
     const veri = await api("/klasorler");
-    if (!veri.acik) return;               // kategori klasorleri kapali: varsayilan kalsin
     const secici = $("klasor");
-    (veri.kategoriler || []).forEach((k) => {
-      const secenek = document.createElement("option");
-      secenek.value = k.anahtar;
-      secenek.textContent = k.ad;
-      secici.append(secenek);
-    });
+    let yazi = veri.ana ? (veri.ana.length > 20 ? "..." + veri.ana.slice(-17) : veri.ana) : "varsayılan";
+    secici.innerHTML = '<option value="">Klasör: ' + kacir(yazi) + '</option>';
+    if (veri.acik && veri.kategoriler) {
+      for (const kat of veri.kategoriler) {
+        secici.innerHTML += '<option value="' + kacir(kat.anahtar) + '">' + kacir(kat.ad) + '</option>';
+      }
+    }
   } catch (_) { /* anahtar yok ya da baglanti yok: varsayilan secenekle devam */ }
 }
-
 $("gonder").onclick = async () => {
   const url = $("link").value.trim();
   if (!url) { bildir("Önce bir link yapıştır.", true); return; }
@@ -466,20 +467,20 @@ $("gonder").onclick = async () => {
 $("link").addEventListener("keydown", (olay) => {
   if (olay.key === "Enter") $("gonder").click();
 });
-
-/* Tarayici kurulum secenegini verirse dugmeyi gorunur yapar. */
 let kurulumIstegi;
 const pwaKur = $("pwaKur");
 window.addEventListener("beforeinstallprompt", (olay) => {
   olay.preventDefault();
   kurulumIstegi = olay;
-  pwaKur.hidden = false;
 });
 pwaKur.addEventListener("click", async () => {
-  if (!kurulumIstegi) return;
-  await kurulumIstegi.prompt();
-  kurulumIstegi = null;
-  pwaKur.hidden = true;
+  if (kurulumIstegi) {
+    await kurulumIstegi.prompt();
+    kurulumIstegi = null;
+    pwaKur.hidden = true;
+  } else {
+    alert("Uygulamayı ana ekrana eklemek için tarayıcınızın menüsünden (üç nokta) 'Ana Ekrana Ekle' (Add to Home screen) seçeneğine dokunun. Bu sayede AfuDM telefonda yerel bir uygulama (APK) gibi çalışacaktır.");
+  }
 });
 
 /* Worker kaydi basarisiz olsa bile telefon arayuzu normal calismaya devam eder. */

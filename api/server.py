@@ -242,6 +242,58 @@ class _Handler(BaseHTTPRequestHandler):
                     "eslestirme kapali — AfuDM'de Ayarlar > Uzantiyi bagla'ya bas",
                 )
             return
+        if parsed.path == "/indir":
+            if not self._authorized(query):
+                self._hata(401, "ANAHTAR_GEREKLI", "anahtar gerekli")
+                return
+            gid = query.get("gid", [""])[0]
+            if not gid:
+                self._hata(400, "GID_GEREKLI", "gid gerekli")
+                return
+            yol_str = ""
+            try:
+                st = self.manager.rpc.tell_status(gid)
+                if st and st.get("status") == "complete":
+                    dosyalar = st.get("files") or []
+                    if dosyalar and dosyalar[0].get("path"):
+                        yol_str = dosyalar[0].get("path")
+            except Exception:
+                pass
+            if not yol_str:
+                row = self.manager.store.by_gid(gid)
+                if row and row.get("status") == "complete" and row.get("target_path"):
+                    yol_str = row["target_path"]
+            if not yol_str:
+                self._hata(404, "HAZIR_DEGIL", "Dosya hazir degil veya yolu bulunamadi")
+                return
+            
+            from pathlib import Path
+            yol = Path(yol_str)
+            if not yol.exists() or not yol.is_file():
+                self._hata(404, "BULUNAMADI", "Dosya diskte yok")
+                return
+            
+            import urllib.parse
+            import shutil
+            try:
+                dosya = open(yol, "rb")
+            except OSError:
+                self._hata(403, "ERISIM_ENGEL", "Erisim engellendi")
+                return
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                gvn_ad = urllib.parse.quote(yol.name)
+                self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{gvn_ad}")
+                self.send_header("Content-Length", str(yol.stat().st_size))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                shutil.copyfileobj(dosya, self.wfile)
+            except Exception:
+                pass
+            finally:
+                dosya.close()
+            return
         if not self._authorized(query):
             self._hata(401, "GECERSIZ_TOKEN", "gecersiz token")
             return

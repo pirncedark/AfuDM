@@ -254,6 +254,13 @@ function renderCounts() {
     const el = document.querySelector('[data-c="' + key + '"]');
     if (el) el.textContent = value;
   });
+
+  const pauseAllBtn = $("pauseAll");
+  if (pauseAllBtn) pauseAllBtn.disabled = counts.active === 0;
+  const resumeAllBtn = $("resumeAll");
+  if (resumeAllBtn) resumeAllBtn.disabled = counts.paused === 0;
+  const clearDoneBtn = $("clearDone");
+  if (clearDoneBtn) clearDoneBtn.disabled = (counts.complete + counts.error) === 0;
 }
 
 /* ---------- detay cekmecesi ---------- */
@@ -588,10 +595,17 @@ $("clearDone").onclick = async () => {
 };
 $("openFolder").onclick = () => call("open_download_dir").catch((e) => toast(e.message, true));
 
-/* ---------- kipler ---------- */
-function openVeil(id) { $(id).classList.add("open"); }
+const veilFocusMap = new Map();
+function openVeil(id) {
+  veilFocusMap.set(id, document.activeElement);
+  $(id).classList.add("open");
+}
 function closeVeil(id) {
   $(id).classList.remove("open");
+  const prev = veilFocusMap.get(id);
+  if (prev && typeof prev.focus === "function") prev.focus();
+  veilFocusMap.delete(id);
+  
   // Ayarlar kapaninca motor listesini bosuna sorgulamayi birak
   if (id === "setVeil" && state.motorTimer) {
     clearInterval(state.motorTimer);
@@ -627,7 +641,15 @@ document.querySelectorAll(".veil").forEach((veil) => {
   veil.addEventListener("click", (event) => { if (event.target === veil) closeVeil(veil.id); });
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") document.querySelectorAll(".veil.open").forEach((v) => closeVeil(v.id));
+  if (event.key === "Escape") {
+    document.querySelectorAll(".veil.open").forEach((v) => {
+      if (v.id === "klasorVeil" && typeof klasorSoz !== "undefined" && klasorSoz) {
+        klasorKapat("");
+      } else {
+        closeVeil(v.id);
+      }
+    });
+  }
 });
 
 $("addBtn").onclick = () => {
@@ -2002,6 +2024,7 @@ $("setGo").onclick = async () => {
 
 $("settingsSearch").oninput = () => {
   const q = $("settingsSearch").value.trim().toLocaleLowerCase();
+
   const fields = [...$("settingsBody").querySelectorAll("label, .hint")];
   const match = !q || fields.some((x) => (x.textContent || "").toLocaleLowerCase().includes(q));
   $("settingsSearchResult").textContent = q ? (match ? t("set.searchFound") : t("set.searchNone")) : "";
@@ -2012,6 +2035,10 @@ $("settingsSearch").oninput = () => {
    Alt klasorler ISTENDIKCE okunur: tum disk hicbir zaman taranmaz. */
 let klasorSoz = null;   // acik secimin cozucusu
 
+
+$("showAdvSet").onchange = (e) => {
+  $("settingsBody").classList.toggle("show-adv", e.target.checked);
+};
 function agacSatiri(oge, derinlik) {
   const satir = document.createElement("div");
   satir.className = "dugum";
@@ -2599,6 +2626,7 @@ async function surumuYukle() {
     surumBilgisi = await call("surum_bilgi");
   } catch (_) { return null; }
   $("brandSurum").textContent = "v" + surumBilgisi.surum;
+  if ($("globalVersion")) $("globalVersion").textContent = "v" + surumBilgisi.surum;
   return surumBilgisi;
 }
 

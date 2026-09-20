@@ -51,6 +51,7 @@
       <button class="filter" data-f="error"><span data-i18n="filter.error">Hata</span> <span class="count" data-c="error">0</span></button>
     </nav>
     <div class="rail-foot">
+      <div class="rail-group-title" data-i18n="rail.toolsTitle">Sistem & Araçlar</div>
       <button id="openFolder" data-i18n="rail.openFolder">İndirme klasörünü aç</button>
       <button id="openChrome" class="rail-chrome" data-i18n="rail.chrome">Chrome'a ekle</button>
       <button id="openPlugins" data-i18n="rail.plugins">Eklentiler</button>
@@ -118,6 +119,9 @@
       </div>
     </section>
   </main>
+
+<!-- Sag alt kosede sabit surum numarasi -->
+<div class="global-version" id="globalVersion"></div>
 </div>
 
 <!-- Link ekleme -->
@@ -171,7 +175,11 @@
   <div class="sheet">
     <h2 data-i18n="set.title">Ayarlar</h2>
     <div class="body" id="settingsBody">
-      <div class="settings-tools"><input id="settingsSearch" type="search" data-i18n-ph="set.search" placeholder="Ayarlarda ara" spellcheck="false"><span id="settingsSearchResult" class="hint"></span></div>
+      <div class="settings-tools">
+        <input id="settingsSearch" type="search" data-i18n-ph="set.search" placeholder="Ayarlarda ara" spellcheck="false">
+        <label class="adv-toggle"><input type="checkbox" id="showAdvSet"> <span data-i18n="set.advToggle">Gelişmiş ayarlar</span></label>
+        <span id="settingsSearchResult" class="hint"></span>
+      </div>
       <div>
         <label for="sLang" data-i18n="set.lang">Dil / Language</label>
         <select id="sLang">
@@ -191,15 +199,15 @@
         <div class="hint" data-i18n="set.dirHint">Boş bırakırsan uygulama klasöründeki downloads kullanılır (portable).</div>
       </div>
       <div class="grid2">
-        <div>
+        <div class="adv-only">
           <label for="sSplit" data-i18n="set.split">Dosya başına parça (split)</label>
           <input id="sSplit" type="number" min="1" max="128">
         </div>
-        <div>
+        <div class="adv-only">
           <label for="sConn" data-i18n="set.conn">Sunucu başına bağlantı</label>
           <input id="sConn" type="number" min="1" max="16">
         </div>
-        <div>
+        <div class="adv-only">
           <label for="sConc" data-i18n="set.conc">Aynı anda indirme</label>
           <input id="sConc" type="number" min="1" max="20">
         </div>
@@ -215,7 +223,7 @@
             <option value="snail" data-i18n="mode.snail">Salyangoz — interneti rahat bırak</option>
           </select>
         </div>
-        <div>
+        <div class="adv-only">
           <label for="sSnailSpeed" data-i18n="set.speed.snail">Salyangoz hızı (KB/s)</label>
           <input id="sSnailSpeed" type="number" min="1">
           <div class="hint" data-i18n="set.speed.snailHint">Salyangoz profili seçiliyken kullanılan hız. Düşük tut: internet başkasına kalsın.</div>
@@ -224,12 +232,12 @@
           <label for="sRatio" data-i18n="set.ratio">Seed oranı (torrent)</label>
           <input id="sRatio" type="number" min="0" step="0.1">
         </div>
-        <div>
+        <div class="adv-only">
           <label for="sChat" data-i18n="set.chat">Telegram sohbet kimliği</label>
           <input id="sChat" type="text" spellcheck="false">
         </div>
       </div>
-      <div>
+      <div class="adv-only">
         <label for="sToken" data-i18n="set.token">Telegram bot anahtarı (bildirim için)</label>
         <input id="sToken" type="text" spellcheck="false">
       </div>
@@ -248,10 +256,18 @@
         <label class="opt"><input type="checkbox" id="sBasTepside"> <span data-i18n="set.basTepside">Açılışta pencere açılmasın, tepside başlasın</span></label>
       </div>
       <!-- v1.7.5 Bolum 3 — pano izleme eki (docs/v175_SOZLESME.md) -->
-      <div>
+      <div class="adv-only">
         <label for="sClipExts" data-i18n="set.clip.exts">Yakalanacak uzantılar</label>
-        <input id="sClipExts" type="text" spellcheck="false">
+        <input id="sClipExts" type="text" spellcheck="false" placeholder="iso,zip,mp4,exe">
         <div class="hint" data-i18n="set.clip.extsHint">Virgülle ayır. Pano izleme açıkken yalnızca bu uzantılarla biten adresler yakalanır.</div>
+      </div>
+      <div class="adv-only">
+        <label for="sProxy" data-i18n="set.proxy">Sistem Geneli Proxy (http, https, socks5)</label>
+        <input id="sProxy" type="text" spellcheck="false" placeholder="socks5://127.0.0.1:1080">
+      </div>
+      <div class="adv-only">
+        <label for="sApiPort" data-i18n="set.apiPort">API / Arayüz Portu</label>
+        <input id="sApiPort" type="number" min="1024" max="65535" placeholder="8010">
       </div>
       <div class="seed-kutu" id="windowsIntegration">
         <label data-i18n="winint.title">Windows Integration</label>
@@ -269,10 +285,6 @@
           <div><label for="sVideoBolumAraligi" data-i18n="vid.bolumAraligi">Bölüm aralığı</label><input id="sVideoBolumAraligi" type="text" spellcheck="false" data-i18n-ph="vid.phBolumAraligi" placeholder="00:01:00-00:02:30"></div>
           <div><label for="sVideoKapsayici" data-i18n="vid.kapsayici">Kapsayıcı</label><select id="sVideoKapsayici"><option value="" data-i18n="vid.varsayilanMp4">Varsayılan (mp4)</option><option value="mkv">mkv</option><option value="webm">webm</option><option value="mp4">mp4</option></select></div>
           <div><label for="sVideoSesFormati" data-i18n="vid.sesFormati">Ses formatı</label><select id="sVideoSesFormati"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="mp3">mp3</option><option value="m4a">m4a</option><option value="opus">opus</option><option value="flac">flac</option></select></div>
-          <div><label for="sVideoTarayiciCerezi" data-i18n="vid.tarayiciCerezi">Tarayıcı çerezleri</label><select id="sVideoTarayiciCerezi"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="chrome">chrome</option><option value="edge">edge</option><option value="firefox">firefox</option><option value="brave">brave</option></select></div>
-        </div>
-        <div><label for="sVideoDosyaSablonu" data-i18n="vid.dosyaSablonu">Dosya adı şablonu</label><input id="sVideoDosyaSablonu" type="text" spellcheck="false" data-i18n-ph="vid.phDosyaSablonu" placeholder=""></div>
-        <div class="opts">
           <label class="opt"><input type="checkbox" id="sVideoOtoAltyazi"> <span data-i18n="vid.otoAltyazi">Otomatik altyazı yaz</span></label>
           <label class="opt"><input type="checkbox" id="sVideoAltyaziGoem"> <span data-i18n="vid.altyaziGoem">Altyazıyı göm</span></label>
           <label class="opt"><input type="checkbox" id="sVideoUstveriGoem"> <span data-i18n="vid.ustveriGoem">Üstveriyi göm</span></label>
@@ -296,6 +308,7 @@
         <div class="yol-satir"><button class="btn" id="relIntegrity" data-i18n="rel.integrity">Bütünlüğü denetle</button><button class="btn" id="relBackup" data-i18n="rel.backup">Şimdi yedekle</button><button class="btn" id="relHealth" data-i18n="rel.health">Motor sağlığı</button><button class="btn" id="relRestart" data-i18n="rel.restart">Motoru yeniden başlat</button></div>
         <div class="yol-satir"><button class="btn" id="relDiagnostic" data-i18n="rel.preview">Maskelenmiş önizleme</button><button class="btn" id="relExport" data-i18n="rel.export">Tanı paketini kaydet</button><button class="btn" id="relBackups" data-i18n="rel.backups">Yedekleri göster</button><button class="btn ghost" id="relToken" data-i18n="rel.rotate">API anahtarını yenile</button></div>
         <pre class="hint" id="relStatus" style="white-space:pre-wrap;max-height:170px;overflow:auto"></pre><div class="hint" id="relBackupsList"></div>
+      </div>
       <div class="seed-kutu" id="automationSettings">
         <label data-i18n="auto.title">Otomasyon</label>
         <div class="hint" data-i18n="auto.hint">İndirme tamamlanınca seçtiğin adımlar sırayla arka planda çalışır.</div>
@@ -634,6 +647,7 @@
           <label for="kayAt" data-i18n="add.startAt">Saatinde başlat (boş = hemen)</label>
           <input id="kayAt" type="text" placeholder="23:30" spellcheck="false">
         </div>
+      </div>
       <div id="kayTorWrap" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
         <div class="tor-meta">
           <strong data-i18n="kay.torFiles">Torrent Dosyaları</strong>
@@ -725,7 +739,7 @@
     <div class="body">
       <div>
         <label for="lgMetin" data-i18n="lg.metin">Bağlantı metni (bir sayfadan kopyaladığın her şeyi yapıştır — URL'ler otomatik çıkarılır)</label>
-        <textarea id="lgMetin" spellcheck="false" placeholder="https://ornek.com/dosya.zip&#10;Bir metin içinde https://ornek.com/video.mp4 gibi gömülü link...</textarea>
+        <textarea id="lgMetin" spellcheck="false" placeholder="https://ornek.com/dosya.zip&#10;Bir metin içinde https://ornek.com/video.mp4 gibi gömülü link..."></textarea>
       </div>
       <div class="lg-filtre">
         <div class="lg-filtre-ara">
@@ -780,6 +794,8 @@
       <button class="btn primary" id="lgGo" data-i18n="lg.go">Seçilenleri indir</button>
     </div>
   </div>
+
+</div>
 
 <!-- Torrent dosya agaci ve secimi (core/manager.torrent_dosyalari, torrent_secimi_ayarla) -->
 <div class="veil" id="torrentVeil">

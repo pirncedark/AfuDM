@@ -158,7 +158,14 @@ button { cursor: pointer; }
   padding: 14px 0 0;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-width: none; /* Firefox */
 }
+.rail::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Webkit */
+}
+.rail > * { flex-shrink: 0; }
 .brand {
   padding: 0 16px 16px;
   font-family: var(--ui-display);
@@ -182,15 +189,16 @@ button { cursor: pointer; }
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  padding: 7px 16px;
+  padding: 8px 16px 8px 15px;
   background: none;
   border: 0;
-  border-left: 2px solid transparent;
+  transition: background 0.1s, border-color 0.1s;
+  border-left: 3px solid transparent;
   text-align: left;
   color: var(--muted);
 }
 .filter:hover { background: #ffffff08; color: var(--text); }
-.filter.on { background: #ffffff0d; color: var(--text); border-left-color: var(--dl); }
+.filter.on { background: #ffffff1a; color: var(--text); border-left-color: var(--dl); }
 .filter .count {
   font-family: var(--mono);
   font-size: 11px;
@@ -204,6 +212,13 @@ button { cursor: pointer; }
   display: flex;
   flex-direction: column;
   gap: 7px;
+}
+.rail-group-title {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 4px 0 8px 0;
 }
 .rail-foot button {
   background: none;
@@ -260,6 +275,8 @@ button { cursor: pointer; }
 /* ---------- arac cubugu ---------- */
 .bar {
   display: flex;
+  flex-wrap: wrap;
+  flex-shrink: 0;
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
@@ -280,6 +297,9 @@ button { cursor: pointer; }
 .btn.ghost:hover { color: var(--text); background: #ffffff0a; }
 .btn:disabled { opacity: 0.4; cursor: default; }
 .bar .spacer { flex: 1; }
+.bar .btn { flex-shrink: 0; white-space: nowrap; }
+.bar .search { min-width: 120px; max-width: 100%; flex: 1 1 160px; }
+button:focus-visible { outline: 2px solid var(--dl); outline-offset: 2px; }
 .search {
   background: var(--bg-deep);
   border: 1px solid var(--line);
@@ -364,6 +384,27 @@ select:focus-visible, button:focus-visible {
 .acts button {
   background: none;
   border: 1px solid transparent;
+}
+
+.global-version {
+  position: fixed;
+  bottom: 8px;
+  right: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  pointer-events: none;
+  z-index: 50;
+}
+.adv-only { display: none !important; }
+.show-adv .adv-only { display: block !important; }
+.show-adv .grid2 > .adv-only, .show-adv .grid3 > .adv-only { display: block !important; }
+
+.settings-tools { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.adv-toggle { font-size: 11px; cursor: pointer; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+.adv-toggle:hover { color: var(--text); }
+
+.hint {
   border-radius: 2px;
   padding: 3px 6px;
   color: var(--dim);

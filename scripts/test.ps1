@@ -110,8 +110,8 @@ if (`$parseHatalari) {
         "tests/torrent_yaris_test.mjs",
         "tests/eklenti_test.py",
         "tests/headless_test.py",
-        "tests/v21_guvenlik_test.py"
-        "tests/eklenti_test.py"
+        "tests/v21_guvenlik_test.py",
+        "tests/telefona_indir_test.py"
     )
 
     $gecen = 0

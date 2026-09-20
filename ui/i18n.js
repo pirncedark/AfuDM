@@ -150,6 +150,10 @@ const DICT = {
     "chr.m2": "Sağ üstteki <b>Geliştirici modu</b> anahtarını aç.",
     "chr.m3": "Sol üstteki <b>Paketlenmemiş öğe yükle</b> düğmesine bas. <em>\"Uzantı paketle\" değil!</em>",
     "chr.m4": "Açılan pencerede <b>Klasör:</b> kutusuna bu yolu yapıştır, <b>Klasör Seç</b>'e bas:",
+    "rail.toolsTitle": "Sistem & Araçlar",
+    "set.advToggle": "Gelişmiş ayarlar",
+    "set.proxy": "Sistem Geneli Proxy (http, https, socks5)",
+    "set.apiPort": "API / Arayüz Portu",
     "chr.m5": "Bu pencere açıkken uzantı AfuDM'e kendiliğinden bağlanır; yukarıdaki son satır yeşile döner.",
     "chr.update": "Uzantıyı güncellemek için: uzantılar sayfasında AfuDM kartındaki ⟳ simgesine bas.",
     "chr.copy": "Kopyala",
@@ -795,6 +799,10 @@ const DICT = {
   en: {
     "app.title": "AfuDM — download manager",
 
+    "rail.toolsTitle": "System & Tools",
+    "set.advToggle": "Advanced settings",
+    "set.proxy": "System-wide Proxy (http, https, socks5)",
+    "set.apiPort": "API / UI Port",
     /* --- v2.0 Plugin Platform (core/eklenti.py) --- */
     "rail.plugins": "Plugins",
     "plg.title": "Plugins",

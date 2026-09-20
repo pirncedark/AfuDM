@@ -29,7 +29,7 @@ content = UI_JS.read_text(encoding="utf-8")
 # 1) Modal Escape tus dinleyicisi (regex hatali negatif duzeltmesi)
 # ---------------------------------------------------------------------------
 print("1) Modal Escape tus dinleyicisi")
-esc_match = re.search(r'event\.key === "Escape"[^;\n]*closeVeil\(v\.id\)', content)
+esc_match = re.search(r'event\.key === "Escape".*?closeVeil\(v\.id\)', content, re.DOTALL)
 check("Escape tusu modal temizligi icin closeVeil cagirir", esc_match is not None)
 
 # ---------------------------------------------------------------------------
