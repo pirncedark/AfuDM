@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 import unittest
 
@@ -46,6 +47,8 @@ class UIUXGateTest(unittest.TestCase):
                     },
                     port_durumu: async () => window.fakeBackendState.port_status,
                     api_info: async () => ({ port: 6811 }),
+                    rules_list: async () => ({ rules: [] }),
+                    surum_bilgi: async () => ({ surum: "2.4.0" }),
                     motor_durumu: async () => ({ motorlar: {}, ilerleme: {} }),
                     reliability_integrity: async () => "OK",
                     telefon_durumu: async () => ({ acik: false, adres: "" }),
@@ -77,11 +80,45 @@ class UIUXGateTest(unittest.TestCase):
         expect(self.page.locator("#list")).to_be_visible()
         expect(self.page.locator(".rail")).to_be_visible()
 
+    def test_mobile_page_script_parses_clean(self):
+        """Mobil arayuz (mobil.html) scripti hatasiz yuklenmeli.
+
+        Gecmiste inline script 'trackerTara' dinleyicisi '});' yerine '}' ile
+        bitince TUM script parse edilemiyordu: sayfa statik HTML ile aciliyor
+        ama hicbir JS calismiyor, 'aciliyor ama baglanmiyor' gorunumu olu-
+        syordu. Sayfa yuklenirken pageerror olmamasi bu sinifi yakalar."""
+        mobil = Path(__file__).resolve().parents[1] / "ui" / "mobil.html"
+        sayfa = self.browser.new_page()
+        try:
+            hatalar = []
+            sayfa.on("pageerror", lambda hata: hatalar.append(str(hata)))
+            sayfa.goto(mobil.as_uri())
+            sayfa.wait_for_timeout(400)
+            self.assertEqual([], hatalar, f"mobil.html script hatalari: {hatalar}")
+            expect(sayfa.locator("#baglantiUyari")).to_be_attached()
+        finally:
+            sayfa.close()
+
+    def test_rules_veil_opens_even_when_bridge_fails(self):
+        """rulesOpen her durumda paneli acar; veri yuklenemezse hata panelin icinde.
+
+        Eski derlemede koprude rules_list YOKTU: tiktakta 'rules_list is not a
+        function' hatasi atiliyor, catch toast gosteriyor ve openVeil hic cag-
+        rilip panel hic acilmiyordu. Panelin acilmasi + hatanin #rulesErr'de
+        gorunmesi bu sinifi kilitler."""
+        self.page.evaluate("delete window.pywebview.api.rules_list;")
+        self.page.locator("#rulesOpen").click(force=True)
+        expect(self.page.locator("#rulesVeil")).to_have_class(re.compile(r"\bopen\b"))
+        self.page.wait_for_function(
+            "document.getElementById('rulesErr').textContent.trim().length > 0",
+            timeout=3000,
+        )
+
     def test_g005_g006_click_everything(self):
         """G-005, G-006: All primary buttons are clickable and don't throw errors."""
         buttons_to_test = [
             "#addBtn", "#lgBtn", "#pauseAll", "#resumeAll", "#clearDone",
-            "#openSettings", "[data-f='video']"
+            "#openSettings", "#rulesOpen", "[data-f='video']"
         ]
         
         for btn in buttons_to_test:
@@ -109,6 +146,20 @@ class UIUXGateTest(unittest.TestCase):
             self.page.keyboard.press("Escape")
 
         self.assertEqual(self.errors, [], f"Uncaught errors after visible controls: {self.errors}")
+
+    def test_rules_and_global_version_are_visible(self):
+        """Sidebar rules opens its modal and the persistent version indicator is populated."""
+        self.page.locator("#rulesOpen").click()
+        expect(self.page.locator("#rulesVeil")).to_be_visible()
+        self.page.keyboard.press("Escape")
+        expect(self.page.locator("#globalModel")).to_contain_text("AfuDM v2.4.0")
+
+    def test_trace_has_no_divider_below_the_speed_readout(self):
+        """The trace/status junction is intentionally seamless."""
+        self.assertEqual(
+            self.page.locator(".trace").evaluate("el => getComputedStyle(el).borderBottomWidth"),
+            "0px",
+        )
 
     def test_g007_to_g010_modal_lifecycle(self):
         """G-007 to G-010: Modal opens, focus traps (implicit), closes with Esc and Backdrop."""

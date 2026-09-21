@@ -138,6 +138,17 @@ input[type="text"], select {
   (sonundaki <code>?k=…</code> dahil) telefona yaz.
 </div>
 
+<div id="baglantiUyari" class="uyari" style="display:none">
+  <b>Bağlantı için geçerli anahtar gerekli.</b>
+  AfuDM'de <b>Ayarlar → Telefondan bağlan</b> adresinin tamamını yapıştır
+  (<code>?k=…</code> dahil) veya yalnız anahtarı gir:
+  <div class="satir">
+    <input id="baglantiAdres" type="text" inputmode="url" autocomplete="off" autocapitalize="off"
+           spellcheck="false" placeholder="http://…/m?k=…  (veya yalnız anahtar)">
+    <button class="ana" id="baglanBtn">Bağlan</button>
+  </div>
+</div>
+
 <main>
   <div id="liste"></div>
   <div class="bos" id="bos" style="display:none">Kuyruk boş.<br>Aşağıdan link ekleyebilirsin.</div>
@@ -197,9 +208,29 @@ function anahtarAl() {
   try { return localStorage.getItem(ANAHTAR_AD) || ""; } catch (_) { return ""; }
 }
 let anahtar = anahtarAl();
-if (!anahtar) document.getElementById("anahtarUyari").style.display = "";
+if (!anahtar) {
+  document.getElementById("anahtarUyari").style.display = "";
+  document.getElementById("baglantiUyari").style.display = "";
+}
 
 const $ = (id) => document.getElementById(id);
+
+/* Yetki hatalari: anahtar YOK veya ESKI (401). Sayfa her zaman acilir; kullanici
+   bu iki durumda tekrar baglanmak icin panelden adresi/anahtari yapistirir. */
+function yetkiSorunu(hata) {
+  return hata && hata.kod && (hata.kod === "ANAHTAR_GEREKLI" || hata.kod === "GECERSIZ_TOKEN");
+}
+function baglantiPaneli(goster, durum) {
+  $("baglantiUyari").style.display = goster ? "" : "none";
+  if (durum) $("baglanti").textContent = durum;
+}
+function anahtarKaydet(yeni) {
+  try { localStorage.setItem(ANAHTAR_AD, yeni); } catch (_) {}
+  anahtar = yeni;
+  $("anahtarUyari").style.display = "none";
+  baglantiPaneli(false);
+  $("baglantiAdres").value = "";
+}
 
 async function api(yol, secenek = {}) {
   const yanit = await fetch(yol, {
@@ -208,7 +239,13 @@ async function api(yol, secenek = {}) {
                ...(secenek.headers || {}) },
   });
   const veri = await yanit.json().catch(() => ({}));
-  if (!yanit.ok || veri.ok === false) throw new Error(veri.error || ("hata " + yanit.status));
+  if (!yanit.ok || veri.ok === false) {
+    // Hata sozlesmesi: {ok:false, code, message, error}. `code` ile yetki
+    // sorununu (eski/eksik anahtar) baglanti kopuklugundan ayirt ediyoruz.
+    const hata = new Error(veri.error || veri.message || ("hata " + yanit.status));
+    hata.kod = veri.code || "";
+    throw hata;
+  }
   return veri;
 }
 
@@ -366,7 +403,11 @@ async function yenile() {
     $("bos").style.display = isler.length ? "none" : "";
   } catch (err) {
     $("nokta").className = "nokta";
-    $("baglanti").textContent = anahtar ? "bağlantı yok" : "anahtar gerekli";
+    if (yetkiSorunu(err)) {
+      baglantiPaneli(true, "anahtar geçerli değil");
+    } else {
+      baglantiPaneli(false, anahtar ? "bağlantı yok" : "anahtar gerekli");
+    }
     $("bos").style.display = "";
   }
   setTimeout(yenile, 1500);
@@ -438,7 +479,7 @@ $("trackerTara").addEventListener("click", async () => {
   } catch (err) {
     $("seedOzet").innerHTML = '<div class="hata">' + kacir(err.message) + "</div>";
   }
-}
+});
 
 async function klasorleriDoldur() {
   try {
@@ -486,6 +527,27 @@ pwaKur.addEventListener("click", async () => {
   } else {
     alert("Uygulamayı ana ekrana eklemek için tarayıcınızın menüsünden (üç nokta) 'Ana Ekrana Ekle' (Add to Home screen) seçeneğine dokunun. Bu sayede AfuDM telefonda yerel bir uygulama (APK) gibi çalışacaktır.");
   }
+});
+
+/* Yeniden baglan: adresin tamami (?k=… dahil) ya da yalniz anahtar.
+   Yalniz anahtar girilir ve /m?k=… adresi degisti diye localStorage
+   kullanilmazsa bile yeni anahtar hemen gecerli olur. */
+$("baglanBtn").addEventListener("click", () => {
+  const girilen = $("baglantiAdres").value.trim();
+  if (!girilen) return;
+  let yeni = girilen;
+  if (/^https?:\/\//i.test(girilen)) {
+    try {
+      yeni = new URL(girilen).searchParams.get("k") || "";
+    } catch (_) { yeni = ""; }
+  }
+  if (!yeni) {
+    bildir("Anahtar bulunamadi. Adresin sonundaki ?k=… dahil olmali.", true);
+    return;
+  }
+  anahtarKaydet(yeni);
+  bildir("Bağlanılıyor…");
+  yenile();
 });
 
 /* Worker kaydi basarisiz olsa bile telefon arayuzu normal calismaya devam eder. */

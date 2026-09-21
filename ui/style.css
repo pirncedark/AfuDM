@@ -386,7 +386,7 @@ select:focus-visible, button:focus-visible {
   border: 1px solid transparent;
 }
 
-.global-version {
+.global-model {
   position: fixed;
   bottom: 8px;
   right: 12px;
@@ -395,6 +395,7 @@ select:focus-visible, button:focus-visible {
   color: var(--muted);
   pointer-events: none;
   z-index: 50;
+  opacity: .75;
 }
 .adv-only { display: none !important; }
 .show-adv .adv-only { display: block !important; }

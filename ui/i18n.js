@@ -624,6 +624,7 @@ const DICT = {
     "rules.openRule": "Kurali ac",
     "rules.override": "Bu indirme icin degistir",
     "rules.default": "Varsayilani kullan",
+    "rules.engineMissing": "Bu surumde kural motoru yok. Yeni AfuDM surumunu kurup yeniden baslat.",
     /* --- v2.1 Headless Server --------------------------------------- */
     "apply.label": "Uygulanma",
     "apply.now": "hemen",
@@ -1406,6 +1407,7 @@ const DICT = {
     "rules.openRule": "Open rule",
     "rules.override": "Change for this download",
     "rules.default": "Use default",
+    "rules.engineMissing": "This build has no rules engine. Install a newer AfuDM build and restart.",
     /* --- v2.1 Headless Server --------------------------------------- */
     "apply.label": "Applies",
     "apply.now": "immediately",

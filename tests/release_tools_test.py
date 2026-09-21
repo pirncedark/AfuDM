@@ -29,6 +29,10 @@ class ReleaseToolsTest(unittest.TestCase):
         self.assertIn('"tests/ui_startup_test.py"', source)
         self.assertIn('"tests/ui_ux_gate_test.py"', source)
 
+    def test_desktop_api_exposes_the_global_version(self):
+        source = (ROOT / "app.py").read_text(encoding="utf-8")
+        self.assertIn("def surum_bilgi", source)
+
 
 if __name__ == "__main__":
     unittest.main()

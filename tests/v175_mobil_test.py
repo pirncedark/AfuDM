@@ -175,6 +175,29 @@ def mobil_ui_sozlesmesi() -> None:
     for element_id in ("torrentKatman", "torrentDosyalar", "seedOzet", "torrentKaydet", "torrentVazgec", "trackerTara"):
         check(f"B1 id='{element_id}' var", bool(re.search(rf'id=["\']{element_id}["\']', html)))
 
+    for element_id in ("baglantiUyari", "baglantiAdres", "baglanBtn"):
+        check(f"B1b yeni baglanti paneli id='{element_id}' var", bool(re.search(rf'id=["\']{element_id}["\']', html)))
+
+    api_fn = re.search(r'async function\s+api\s*\([^)]*\)\s*\{([\s\S]*?)\n\}', html)
+    api_kodu = api_fn.group(1) if api_fn else ""
+    check("B1c api() hata nesnesine kod ekler", "hata.kod = veri.code" in api_kodu, api_kodu[:120])
+    check("B1d api() yetki hatasini atar", 'veri.code || ""' in api_kodu, api_kodu[:120])
+
+    yetki = re.search(r'function\s+yetkiSorunu\s*\([^)]*\)\s*\{([\s\S]*?)\n\}', html)
+    yetki_kodu = yetki.group(1) if yetki else ""
+    check("B1e yetkiSorunu ANAHTAR_GEREKLI/GECERSIZ_TOKEN tanir",
+          "ANAHTAR_GEREKLI" in yetki_kodu and "GECERSIZ_TOKEN" in yetki_kodu, yetki_kodu[:160])
+
+    baglan = re.search(r'\$\s*\(\s*["\']baglanBtn["\']\s*\)\.addEventListener\([^)]*,\s*\(\)\s*=>\s*\{([\s\S]*?)\n\}\);', html)
+    baglan_kodu = baglan.group(1) if baglan else ""
+    check("B1f baglanBtn anahtari ayiklar ve kaydeder",
+          "searchParams.get(\"k\")" in baglan_kodu and "anahtarKaydet" in baglan_kodu, baglan_kodu[:160])
+
+    tracker = re.search(r'\$\s*\(\s*["\']trackerTara["\']\s*\)\.addEventListener\([^)]*\)\s*=>\s*\{[\s\S]*?\n\}\);?', html)
+    check("B1g trackerTara dinleyicisi '});' ile kapanir (script parse edilir)",
+          bool(tracker) and tracker.group(0).rstrip().endswith("});"),
+          (tracker.group(0)[-40:] if tracker else "dinleyici bulunamadi"))
+
     liste_dinleyici = re.search(r'\$\(["\']liste["\']\)\.addEventListener\("click",[\s\S]*?\n}\);', html)
     liste_kodu = liste_dinleyici.group(0) if liste_dinleyici else ""
     dosyalar_dali = re.search(r'if\s*\([^)]*eylem\s*===\s*["\']dosyalar["\'][^)]*\)\s*\{([\s\S]*?)\}', liste_kodu)
