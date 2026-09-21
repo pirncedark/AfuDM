@@ -50,7 +50,7 @@ jobs:
           python-version: "3.11"
 
       - name: Cevrimdisi kutuphaneler
-        run: python -m pip install --quiet pywebview pystray pillow qrcode pyinstaller
+        run: python -m pip install --quiet pywebview pystray pillow qrcode pyinstaller playwright
 
       - name: Cevrimdisi testler
         run: powershell -ExecutionPolicy Bypass -File scripts/test.ps1
