@@ -62,7 +62,7 @@ function toast(message, bad = false) {
    geri kalani varsayilani kullanir. Amac: hicbir cagri sonsuza kadar beklemesin. */
 const KOPRU_ZAMAN_ASIMI = {
   _varsayilan: 15000,
-  snapshot: 15000,
+  snapshot: 30000,
   ekle: 60000,
   eklenti_kur: 300000,
   eklenti_guncelle: 300000,
@@ -491,9 +491,12 @@ async function renderDrawer() {
 }
 
 /* ---------- veri dongusu ---------- */
+let offlineArdisik = 0;   // art arda basarisiz snapshot sayisi (tek yavaslık yanıp sönme yapmasın)
+
 async function tick() {
   try {
     const snap = await call("snapshot");
+    offlineArdisik = 0;
     state.items = snap.items || [];
     state.settings = snap.settings || {};
     const stat = snap.stat || {};
@@ -530,10 +533,15 @@ async function tick() {
     await bekleyenYokla();
   } catch (err) {
     console.warn("[AfuDM] tick:", err);
-    $("engineDot").className = "dot";
-    $("engineText").textContent = t("engine.offline");
-    if ($("engineText")) $("engineText").title = (err && err.message) || "";
-    if ($("engineRetry")) $("engineRetry").style.display = "inline-block";
+    // Tek bir yavaslik/kisa takilma yuzunden surekli "baglanti yok" yanip
+    // somnesin: art arda 2 hatadan sonra offline say (ilk hata yok sayilir).
+    offlineArdisik++;
+    if (offlineArdisik >= 2) {
+      $("engineDot").className = "dot";
+      $("engineText").textContent = t("engine.offline");
+      if ($("engineText")) $("engineText").title = (err && err.message) || "";
+      if ($("engineRetry")) $("engineRetry").style.display = "inline-block";
+    }
   }
   setTimeout(tick, POLL_MS);
 }
