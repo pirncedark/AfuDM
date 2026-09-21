@@ -51,7 +51,7 @@ button { cursor: pointer; }
   position: relative;
   height: var(--trace-h);
   background: var(--bg-deep);
-  border-bottom: 1px solid var(--line);
+  border-bottom: none;
   overflow: hidden;
 }
 .trace canvas { position: absolute; inset: 0; width: 100%; height: 100%; }

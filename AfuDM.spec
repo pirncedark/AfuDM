@@ -1,5 +1,77 @@
 ﻿# -*- mode: python ; coding: utf-8 -*-
 
+# Windows version resource (Dosya ozellikleri > Ayrintilar > Surum/telif).
+# Imzasiz exe'ler icin "yayinci bilgisi olmayan dosya" gorunumu smart screen
+# itibarini dusurur; bu blok en azindan surum/sirket/adres bilgisini exe'ye
+# gomer. Surum tek kaynaktan (core/surum.py) cekilir ki etikette kalinti
+# surum kalmasin. PyInstaller dahili olarak gelir, ek bagimlilik yok.
+import re as _re
+from pathlib import Path as _Path
+
+try:
+    from core import surum as _surum
+except ImportError:
+    _surum = None
+
+_SURUM_METIN = "2.4.0"
+if _surum is not None:
+    try:
+        _SURUM_METIN = getattr(_surum, "SURUM", "2.4.0")
+    except Exception:
+        _SURUM_METIN = "2.4.0"
+
+# "2.4.0" -> (2, 4, 0) ; "-" dev/gunluk derlemelerinde 0'a dus
+def _surum_demeti(metin):
+    parcalar = _re.findall(r"[0-9]+", metin)[:3]
+    while len(parcalar) < 3:
+        parcalar.append("0")
+    return tuple(int(x) for x in parcalar)
+
+_SR, _SV, _SB = _surum_demeti(_SURUM_METIN)
+
+from PyInstaller.utils.win32.versioninfo import (
+    FixedFileInfo,
+    StringFileInfo,
+    StringStruct,
+    StringTable,
+    VarFileInfo,
+    VarStruct,
+    VSVersionInfo,
+)
+
+_VERSION_RESOURCE = VSVersionInfo(
+    ffi=FixedFileInfo(
+        filevers=(_SR, _SV, _SB, 0),
+        prodvers=(_SR, _SV, _SB, 0),
+        mask=0x3F,
+        flags=0x0,
+        OS=0x40004,
+        fileType=0x1,
+        subtype=0x0,
+        date=(0, 0),
+    ),
+    kids=[
+        StringFileInfo(
+            [
+                StringTable(
+                    u"040904B0",
+                    [
+                        StringStruct(u"CompanyName", u"AfuDM Project"),
+                        StringStruct(u"FileDescription", u"AfuDM - indirme yoneticisi"),
+                        StringStruct(u"FileVersion", _SURUM_METIN),
+                        StringStruct(u"InternalName", u"AfuDM"),
+                        StringStruct(u"LegalCopyright", u"(c) AfuDM Project"),
+                        StringStruct(u"OriginalFilename", u"AfuDM.exe"),
+                        StringStruct(u"ProductName", u"AfuDM"),
+                        StringStruct(u"ProductVersion", _SURUM_METIN),
+                    ],
+                )
+            ]
+        ),
+        VarFileInfo([VarStruct(u"Translation", [2057, 1200])]),
+    ],
+)
+
 
 a = Analysis(
     ['app.py'],
@@ -72,5 +144,6 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=['ui/afudm.ico'],
+    version=_VERSION_RESOURCE,
 )
 

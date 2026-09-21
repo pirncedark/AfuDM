@@ -34,7 +34,7 @@ from api.server import LocalAPI  # noqa: E402
 VARSAYILAN_API_PORT = 6811   # uzantinin da ilk denedigi port
 from core import (baslangic, chrome_kurulum, clipboard, dosya_adi, engines, guc, iliskilendir,  # noqa: E402
                   ornek, tracker_saglik,
-                  kaydet, lang, linkgrabber, models, paths, pencere)
+                  kaydet, lang, linkgrabber, models, paths, pencere, surum)
 from core.manager import Manager  # noqa: E402
 from core.manager import AyarGecersiz  # noqa: E402
 from core import settings_validation  # noqa: E402
@@ -172,6 +172,13 @@ class Api:
 
     def api_info(self) -> dict:
         return {"ok": True, "port": self.local_api.port, "token": self.local_api.token}
+
+    def surum_bilgi(self) -> dict:
+        """Arayuzdeki surum rozeti (tek kaynak core/surum.py + uzanti manifesti).
+
+        Kopru metodu app.js'in surumuYukle cagrisina karsilik gelir; eski
+        derlemelerde yoktu ve rozet sessizce bos kaliyordu."""
+        return {"surum": surum.SURUM, "uzanti": surum.uzanti_surumu()}
 
     def peers(self, gid: str) -> dict:
         return {"ok": True, "peers": self.manager.peers(gid)}
