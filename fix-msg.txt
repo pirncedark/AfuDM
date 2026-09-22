@@ -1,0 +1,5 @@
+Updater birim testlerinde JVM JSON ayristirmasini duzelt
+
+Android org.json yerine test sinifinda JVM JSON kutuphanesini kullan.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

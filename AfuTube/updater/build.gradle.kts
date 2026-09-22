@@ -22,4 +22,5 @@ dependencies {
     implementation("com.github.yausername.youtubedl-android:library:0.14.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation(kotlin("test"))
+    testImplementation("org.json:json:20240303")
 }
