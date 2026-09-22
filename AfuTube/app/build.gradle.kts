@@ -13,8 +13,8 @@ android {
         applicationId = "com.afudm.afutube"
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1000000
+        versionName = (project.findProperty("versionName") as String?) ?: "1.0.0"
 
         // ABI split — arm64-v8a öncelikli, diğerleri ayrı APK
         ndk {
@@ -33,20 +33,34 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val keystorePath = System.getenv("AFUTUBE_KEYSTORE_PATH")
+            if (!keystorePath.isNullOrBlank()) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("AFUTUBE_KEYSTORE_PASS")
+                keyAlias = System.getenv("AFUTUBE_KEY_ALIAS")
+                keyPassword = System.getenv("AFUTUBE_KEY_PASS")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
         }
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            isMinifyEnabled = false
+            isShrinkResources = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
     }
+
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

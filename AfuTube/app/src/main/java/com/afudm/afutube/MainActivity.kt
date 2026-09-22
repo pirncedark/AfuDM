@@ -26,6 +26,8 @@ import com.afudm.afutube.core.theme.AfuColors
 import com.afudm.afutube.feature.home.HomeScreen
 import com.afudm.afutube.feature.settings.SettingsScreen
 import com.afudm.afutube.feature.torrent.TorrentPickerScreen
+import com.afudm.afutube.updater.AppUpdate
+import com.afudm.afutube.updater.UpdateManager
 
 class MainActivity : ComponentActivity() {
 
@@ -68,6 +70,25 @@ fun AfuTubeApp(sharedUrl: String? = null) {
     val currentRoute      = navBackStackEntry?.destination?.route
 
     var pendingMediaInfo by remember { mutableStateOf<MediaInfo?>(null) }
+    var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    LaunchedEffect(Unit) {
+        if (UpdateManager.shouldCheckAutomatically(context)) {
+            UpdateManager.markChecked(context)
+            runCatching { UpdateManager.check(BuildConfig.VERSION_CODE) }.getOrNull()?.let { availableUpdate = it }
+        }
+    }
+
+    availableUpdate?.let { update ->
+        AlertDialog(
+            onDismissRequest = { availableUpdate = null },
+            title = { Text("Yeni AfuTube surumu bulundu") },
+            text = { Text("Surum: ${update.versionName}\n\n${update.releaseNotes.ifBlank { "Yeni hata duzeltmeleri ve gelistirmeler." }}") },
+            confirmButton = { TextButton(onClick = { availableUpdate = null; UpdateManager.enqueueDownload(context, update) }) { Text("Indir ve kur") } },
+            dismissButton = { TextButton(onClick = { availableUpdate = null }) { Text("Daha sonra") } }
+        )
+    }
 
     val bottomScreens = listOf(Screen.Home, Screen.Torrent, Screen.Downloads, Screen.Settings)
     val showBottomBar = currentRoute in bottomScreens.map { it.route }
@@ -108,7 +129,9 @@ fun AfuTubeApp(sharedUrl: String? = null) {
                 }
             }
             composable(Screen.Downloads.route) { DownloadsScreen() }
-            composable(Screen.Settings.route)  { SettingsScreen() }
+            composable(Screen.Settings.route)  {
+                SettingsScreen(currentVersionCode = BuildConfig.VERSION_CODE, onUpdateFound = { availableUpdate = it })
+            }
             composable(Screen.Torrent.route)   {
                 TorrentPickerScreen(onBack = { navController.popBackStack() })
             }

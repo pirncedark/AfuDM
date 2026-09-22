@@ -18,16 +18,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.afudm.afutube.core.theme.AfuColors
 import com.afudm.afutube.updater.ExtractorUpdater
+import com.afudm.afutube.updater.AppUpdate
+import com.afudm.afutube.updater.UpdateManager
 import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(
+    currentVersionCode: Int = 1000000,
+    onUpdateFound: (AppUpdate) -> Unit = {}
+) {
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
     var ytdlpVersion by remember { mutableStateOf("…") }
     var updateStatus by remember { mutableStateOf("") }
     var isUpdating   by remember { mutableStateOf(false) }
     var channel      by remember { mutableStateOf(ExtractorUpdater.Channel.STABLE) }
+    var autoUpdate   by remember { mutableStateOf(UpdateManager.autoCheckEnabled(context)) }
+    var appUpdateStatus by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         ytdlpVersion = ExtractorUpdater.currentVersion(context)
@@ -50,6 +57,33 @@ fun SettingsScreen() {
             contentPadding      = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            item {
+                SettingsCard(title = "Uygulama guncellemeleri") {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Guncellemeleri denetle", color = AfuColors.text, fontSize = 14.sp)
+                            Text("Acilista gunde bir sessizce kontrol et", color = AfuColors.textMuted, fontSize = 12.sp)
+                        }
+                        Switch(checked = autoUpdate, onCheckedChange = {
+                            autoUpdate = it
+                            UpdateManager.setAutoCheckEnabled(context, it)
+                        })
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Button(onClick = {
+                        scope.launch {
+                            appUpdateStatus = "Denetleniyor..."
+                            runCatching { UpdateManager.check(currentVersionCode) }
+                                .onSuccess { update ->
+                                    if (update == null) appUpdateStatus = "Uygulama guncel"
+                                    else { appUpdateStatus = "Yeni surum bulundu"; onUpdateFound(update) }
+                                }
+                                .onFailure { appUpdateStatus = "Denetleme basarisiz: ${it.localizedMessage ?: "ag hatasi"}" }
+                        }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Guncellemeleri denetle") }
+                    if (appUpdateStatus.isNotBlank()) Text(appUpdateStatus, color = AfuColors.textMuted, fontSize = 12.sp)
+                }
+            }
             // ── Extractor güncelleyici ──────────────────────────────────────
             item {
                 SettingsCard(title = "🔧 Extractor (yt-dlp)") {
