@@ -24,13 +24,33 @@ const state = {
 
 function updateBulkRemoveBtn() {
   const btn = $("removeSelected");
-  if (!btn) return;
   const count = state.selectedGids.size;
-  if (count > 0) {
-    btn.style.display = "inline-block";
-    btn.textContent = "🗑 " + t("bar.removeSelected", { n: count });
-  } else {
-    btn.style.display = "none";
+  if (btn) {
+    if (count > 0) {
+      btn.style.display = "inline-block";
+      btn.textContent = "🗑 " + t("bar.removeSelected", { n: count });
+    } else {
+      btn.style.display = "none";
+    }
+  }
+
+  const selAll = $("selectAllBtn");
+  if (selAll) {
+    const visibleItems = visible();
+    const visibleLen = visibleItems.length;
+    if (visibleLen > 0) {
+      selAll.style.display = "inline-block";
+      const allSelected = visibleItems.every(i => state.selectedGids.has(i.gid));
+      if (allSelected) {
+        selAll.textContent = t("bar.deselectAll");
+        selAll.dataset.all = "1";
+      } else {
+        selAll.textContent = t("bar.selectAll");
+        selAll.dataset.all = "0";
+      }
+    } else {
+      selAll.style.display = "none";
+    }
   }
 }
 
@@ -780,6 +800,21 @@ $("addGo").onclick = async () => {
     }
   } catch (err) { $("addErr").textContent = err.message; }
 };
+
+const selectAllBtn = $("selectAllBtn");
+if (selectAllBtn) {
+  selectAllBtn.onclick = () => {
+    const isAll = selectAllBtn.dataset.all === "1";
+    const visibleItems = visible();
+    if (isAll) {
+      state.selectedGids.clear();
+    } else {
+      visibleItems.forEach(i => state.selectedGids.add(i.gid));
+    }
+    updateBulkRemoveBtn();
+    renderList();
+  };
+}
 
 const removeSelBtn = $("removeSelected");
 if (removeSelBtn) {
