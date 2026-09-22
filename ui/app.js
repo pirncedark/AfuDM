@@ -2254,16 +2254,7 @@ $("settingsSearch").oninput = () => {
 let klasorSoz = null;   // acik secimin cozucusu
 
 
-$("showAdvSet").onchange = (e) => {
-  $("settingsBody").classList.toggle("show-adv", e.target.checked);
-  if (!e.target.checked) {
-    const activeTab = document.querySelector('.set-tab-btn.active');
-    if (activeTab && activeTab.classList.contains('adv-only')) {
-      const genelTab = document.querySelector('.set-tab-btn[data-stab="genel"]');
-      if (genelTab) genelTab.click();
-    }
-  }
-};
+
 
 document.querySelectorAll('.set-tab-btn').forEach(tab => {
   tab.addEventListener('click', () => {

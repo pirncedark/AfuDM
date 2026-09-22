@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AfuDM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -187,12 +190,6 @@
       <h2 data-i18n="set.title" style="margin: 0;">Ayarlar</h2>
       <div style="display: flex; gap: 16px; align-items: center;">
         <input id="settingsSearch" type="search" data-i18n-ph="set.search" placeholder="Ayarlarda ara" spellcheck="false" style="width:160px; padding: 6px 12px; font-size: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg-deep); color: var(--text);">
-        <label class="mode-switch" title="Gelişmiş (Uzman) ayarları göster/gizle">
-          <span class="mode-label-off">Normal</span>
-          <input type="checkbox" id="showAdvSet">
-          <span class="mode-slider"></span>
-          <span class="mode-label-on">Gelişmiş</span>
-        </label>
       </div>
     </div>
     <div class="body" id="settingsBody">
@@ -233,27 +230,30 @@
         </div>
         <div class="hint" data-i18n="hint.tepsi" style="margin-top: 4px;">Küçültme normal görev çubuğuna iner. X uygulamayı kapatmaz; simge sağ alttaki ^ okunun altına gider.</div>
         
-        <div class="adv-only" style="margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
-          <label class="opt"><input type="checkbox" id="sClip"> <span data-i18n="set.clip">Panoya kopyalanan linki yakala</span></label>
-          <div style="margin-top: 8px;">
-            <label for="sClipExts" data-i18n="set.clip.exts">Yakalanacak uzantılar</label>
-            <input id="sClipExts" type="text" spellcheck="false" placeholder="iso,zip,mp4,exe">
-            <div class="hint" data-i18n="set.clip.extsHint">Virgülle ayır. Pano izleme açıkken yalnızca bu uzantılarla biten adresler yakalanır.</div>
-          </div>
-        </div>
-
-        <div class="adv-only" style="margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
-          <div class="grid2">
-            <div>
-              <label for="sChat" data-i18n="set.chat">Telegram sohbet kimliği</label>
-              <input id="sChat" type="text" spellcheck="false">
+        <details class="adv-accordion" style="margin-top: 15px;">
+          <summary data-i18n="set.advToggle">Gelişmiş Ayarlar</summary>
+          <div class="adv-content">
+            <div style="margin-bottom: 12px;">
+              <label class="opt"><input type="checkbox" id="sClip"> <span data-i18n="set.clip">Panoya kopyalanan linki yakala</span></label>
+              <div style="margin-top: 8px;">
+                <label for="sClipExts" data-i18n="set.clip.exts">Yakalanacak uzantılar</label>
+                <input id="sClipExts" type="text" spellcheck="false" placeholder="iso,zip,mp4,exe">
+                <div class="hint" data-i18n="set.clip.extsHint">Virgülle ayır. Pano izleme açıkken yalnızca bu uzantılarla biten adresler yakalanır.</div>
+              </div>
             </div>
-            <div>
-              <label for="sToken" data-i18n="set.token">Telegram bot anahtarı (bildirim için)</label>
-              <input id="sToken" type="text" spellcheck="false">
+            
+            <div class="grid2" style="border-top: 1px solid var(--line-soft); padding-top: 12px; margin-top: 12px;">
+              <div>
+                <label for="sChat" data-i18n="set.chat">Telegram sohbet kimliği</label>
+                <input id="sChat" type="text" spellcheck="false">
+              </div>
+              <div>
+                <label for="sToken" data-i18n="set.token">Telegram bot anahtarı (bildirim için)</label>
+                <input id="sToken" type="text" spellcheck="false">
+              </div>
             </div>
           </div>
-        </div>
+        </details>
 
         <div class="seed-kutu adv-only" id="windowsIntegration" style="margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
           <label data-i18n="winint.title">Windows Integration</label>
@@ -287,40 +287,50 @@
               <option value="snail" data-i18n="mode.snail">Salyangoz — interneti rahat bırak</option>
             </select>
           </div>
-          <div class="adv-only">
-            <label for="sSnailSpeed" data-i18n="set.speed.snail">Salyangoz hızı (KB/s)</label>
-            <input id="sSnailSpeed" type="number" min="1">
-            <div class="hint" data-i18n="set.speed.snailHint">Salyangoz profili seçiliyken kullanılan hız. Düşük tut: internet başkasına kalsın.</div>
-          </div>
-          <div class="adv-only">
-            <label for="sRatio" data-i18n="set.ratio">Seed oranı (torrent)</label>
-            <input id="sRatio" type="number" min="0" step="0.1">
-          </div>
-          <div class="adv-only">
-            <label for="sSplit" data-i18n="set.split">Dosya başına parça (split)</label>
-            <input id="sSplit" type="number" min="1" max="128">
-          </div>
-          <div class="adv-only">
-            <label for="sConn" data-i18n="set.conn">Sunucu başına bağlantı</label>
-            <input id="sConn" type="number" min="1" max="16">
-          </div>
-          <div class="adv-only">
-            <label for="sConc" data-i18n="set.conc">Aynı anda indirme</label>
-            <input id="sConc" type="number" min="1" max="20">
-          </div>
         </div>
+        <details class="adv-accordion" style="margin-top: 15px;">
+          <summary data-i18n="set.advToggle">Gelişmiş Ayarlar</summary>
+          <div class="adv-content">
+            <div class="grid2" style="margin-bottom: 12px;">
+              <div>
+                <label for="sSnailSpeed" data-i18n="set.speed.snail">Salyangoz hızı (KB/s)</label>
+                <input id="sSnailSpeed" type="number" min="1">
+                <div class="hint" data-i18n="set.speed.snailHint">Salyangoz profili seçiliyken kullanılan hız. Düşük tut: internet başkasına kalsın.</div>
+              </div>
+              <div>
+                <label for="sRatio" data-i18n="set.ratio">Seed oranı (torrent)</label>
+                <input id="sRatio" type="number" min="0" step="0.1">
+              </div>
+              <div>
+                <label for="sSplit" data-i18n="set.split">Dosya başına parça (split)</label>
+                <input id="sSplit" type="number" min="1" max="128">
+              </div>
+              <div>
+                <label for="sConn" data-i18n="set.conn">Sunucu başına bağlantı</label>
+                <input id="sConn" type="number" min="1" max="16">
+              </div>
+              <div>
+                <label for="sConc" data-i18n="set.conc">Aynı anda indirme</label>
+                <input id="sConc" type="number" min="1" max="20">
+              </div>
+            </div>
         <div class="opts" style="margin-top: 12px;">
           <label class="opt"><input type="checkbox" id="sKategori"> <span data-i18n="set.kategori">Dosyaları kategori klasörlerine ayır</span></label>
           <label class="opt"><input type="checkbox" id="sTorrent"> <span data-i18n="set.torrent">.torrent ve magnet linklerini AfuDM açsın</span></label>
-          <label class="opt adv-only"><input type="checkbox" id="sTrackers"> <span data-i18n="set.trackers">Tracker listesini günlük güncelle</span></label>
-          <label class="opt adv-only"><input type="checkbox" id="sNotify"> <span data-i18n="set.notify">Bitince Telegram'a haber ver</span></label>
-          <label class="opt adv-only"><input type="checkbox" id="sShutdown"> <span data-i18n="set.shutdown">Hepsi bitince bilgisayarı kapat</span></label>
-          <label class="opt adv-only"><input type="checkbox" id="sSleep"> <span data-i18n="set.sleep">Hepsi bitince bilgisayarı uyut</span></label>
         </div>
+        <div class="opts" style="margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
+          <label class="opt"><input type="checkbox" id="sTrackers"> <span data-i18n="set.trackers">Tracker listesini günlük güncelle</span></label>
+          <label class="opt"><input type="checkbox" id="sNotify"> <span data-i18n="set.notify">Bitince Telegram'a haber ver</span></label>
+          <label class="opt"><input type="checkbox" id="sShutdown"> <span data-i18n="set.shutdown">Hepsi bitince bilgisayarı kapat</span></label>
+          <label class="opt"><input type="checkbox" id="sSleep"> <span data-i18n="set.sleep">Hepsi bitince bilgisayarı uyut</span></label>
+        </div>
+          </div> <!-- adv-content -->
+        </details>
+        
         <div class="hint" id="torrentHint" style="margin-top: 4px;"></div>
 
         <!-- Seed listeleri -->
-        <div class="seed-kutu adv-only" style="margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
+        <div class="seed-kutu" style="margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
           <label data-i18n="set.seedListe">Seed listeleri (tracker .txt dosyaları)</label>
           <div class="yol-satir">
             <button class="btn primary" id="sSeedEkle" data-i18n="set.seedEkle">Seed dosyası ekle</button>
@@ -365,33 +375,45 @@
             <div><label for="sVideoKapsayici" data-i18n="vid.kapsayici">Kapsayıcı</label><select id="sVideoKapsayici"><option value="" data-i18n="vid.varsayilanMp4">Varsayılan (mp4)</option><option value="mkv">mkv</option><option value="webm">webm</option><option value="mp4">mp4</option></select></div>
             <div><label for="sVideoSesFormati" data-i18n="vid.sesFormati">Ses formatı</label><select id="sVideoSesFormati"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="mp3">mp3</option><option value="m4a">m4a</option><option value="opus">opus</option><option value="flac">flac</option></select></div>
             <div><label for="sVideoKucukResim" data-i18n="vid.kucukResim">Küçük resim</label><select id="sVideoKucukResim"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="goem" data-i18n="vid.goem">Göm</option><option value="dosya" data-i18n="vid.dosya">Dosya</option></select></div>
-            <div class="adv-only"><label for="sVideoSponsorblock" data-i18n="vid.sponsorblock">SponsorBlock bölümleri</label><input id="sVideoSponsorblock" type="text" spellcheck="false" data-i18n-ph="vid.phSponsorblock" placeholder="sponsor,selfpromo"></div>
-            <div class="adv-only"><label for="sVideoBolumler" data-i18n="vid.bolumler">Bölümler</label><select id="sVideoBolumler"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="goem" data-i18n="vid.goem">Göm</option><option value="ayir" data-i18n="vid.ayir">Ayır</option></select></div>
-            <div class="adv-only"><label for="sVideoBolumAraligi" data-i18n="vid.bolumAraligi">Bölüm aralığı</label><input id="sVideoBolumAraligi" type="text" spellcheck="false" data-i18n-ph="vid.phBolumAraligi" placeholder="00:01:00-00:02:30"></div>
-            <div class="adv-only"><label for="sVideoDosyaSablonu" data-i18n="vid.dosyaSablonu">Dosya adı şablonu</label><input id="sVideoDosyaSablonu" type="text" spellcheck="false" data-i18n-ph="vid.phDosyaSablonu" placeholder=""></div>
-            <div class="adv-only"><label for="sVideoTarayiciCerezi" data-i18n="vid.tarayiciCerezi">Tarayıcı çerezleri</label><select id="sVideoTarayiciCerezi"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="chrome">chrome</option><option value="edge">edge</option><option value="firefox">firefox</option><option value="brave">brave</option></select></div>
           </div>
+          <details class="adv-accordion" style="margin-top: 15px;">
+            <summary data-i18n="set.advToggle">Gelişmiş Ayarlar</summary>
+            <div class="adv-content">
+              <div class="grid2">
+                <div><label for="sVideoSponsorblock" data-i18n="vid.sponsorblock">SponsorBlock bölümleri</label><input id="sVideoSponsorblock" type="text" spellcheck="false" data-i18n-ph="vid.phSponsorblock" placeholder="sponsor,selfpromo"></div>
+                <div><label for="sVideoBolumler" data-i18n="vid.bolumler">Bölümler</label><select id="sVideoBolumler"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="goem" data-i18n="vid.goem">Göm</option><option value="ayir" data-i18n="vid.ayir">Ayır</option></select></div>
+                <div><label for="sVideoBolumAraligi" data-i18n="vid.bolumAraligi">Bölüm aralığı</label><input id="sVideoBolumAraligi" type="text" spellcheck="false" data-i18n-ph="vid.phBolumAraligi" placeholder="00:01:00-00:02:30"></div>
+                <div><label for="sVideoDosyaSablonu" data-i18n="vid.dosyaSablonu">Dosya adı şablonu</label><input id="sVideoDosyaSablonu" type="text" spellcheck="false" data-i18n-ph="vid.phDosyaSablonu" placeholder=""></div>
+                <div><label for="sVideoTarayiciCerezi" data-i18n="vid.tarayiciCerezi">Tarayıcı çerezleri</label><select id="sVideoTarayiciCerezi"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="chrome">chrome</option><option value="edge">edge</option><option value="firefox">firefox</option><option value="brave">brave</option></select></div>
+              </div>
           <div class="opts" style="margin-top: 8px;">
             <label class="opt"><input type="checkbox" id="sVideoOtoAltyazi"> <span data-i18n="vid.otoAltyazi">Otomatik altyazı yaz</span></label>
-            <label class="opt adv-only"><input type="checkbox" id="sVideoAltyaziGoem"> <span data-i18n="vid.altyaziGoem">Altyazıyı göm</span></label>
-            <label class="opt adv-only"><input type="checkbox" id="sVideoUstveriGoem"> <span data-i18n="vid.ustveriGoem">Üstveriyi göm</span></label>
           </div>
+          <div class="opts" style="margin-top: 8px; border-top: 1px solid var(--line-soft); padding-top: 8px;">
+            <label class="opt"><input type="checkbox" id="sVideoAltyaziGoem"> <span data-i18n="vid.altyaziGoem">Altyazıyı göm</span></label>
+            <label class="opt"><input type="checkbox" id="sVideoUstveriGoem"> <span data-i18n="vid.ustveriGoem">Üstveriyi göm</span></label>
+          </div>
+            </div> <!-- adv-content -->
+          </details>
         </div>
       </div>
 
       <!-- AĞ SEKME -->
       <div class="set-pane" id="sPaneAg">
-        <div class="adv-only">
-          <h3 data-i18n="set.net.title" style="margin-top: 0;">Ağ</h3>
-          <div class="opts">
-            <label class="opt"><input type="checkbox" id="sSystemProxy"> <span data-i18n="set.net.systemProxy">Sistem proxy'sini kullan</span></label>
+        <details class="adv-accordion">
+          <summary data-i18n="set.advToggle">Gelişmiş Ayarlar</summary>
+          <div class="adv-content">
+            <h3 data-i18n="set.net.title" style="margin-top: 0; color: var(--accent);">Ağ</h3>
+            <div class="opts">
+              <label class="opt"><input type="checkbox" id="sSystemProxy"> <span data-i18n="set.net.systemProxy">Sistem proxy'sini kullan</span></label>
+            </div>
+            <label for="sProxy" data-i18n="set.net.proxy" style="margin-top: 8px;">Proxy adresi</label>
+            <input id="sProxy" type="text" spellcheck="false" placeholder="http://127.0.0.1:8080">
+            <div class="hint" data-i18n="set.net.proxyHint">Boş bırakırsan proxy kullanılmaz. Sistem proxy'si açıkken bu alan devre dışı kalır.</div>
+            <label for="sNetLocations" data-i18n="set.net.locations" style="margin-top: 8px;">Ağ konumları</label>
+            <textarea id="sNetLocations" spellcheck="false" placeholder="\sunucu\paylasim"></textarea>
           </div>
-          <label for="sProxy" data-i18n="set.net.proxy" style="margin-top: 8px;">Proxy adresi</label>
-          <input id="sProxy" type="text" spellcheck="false" placeholder="http://127.0.0.1:8080">
-          <div class="hint" data-i18n="set.net.proxyHint">Boş bırakırsan proxy kullanılmaz. Sistem proxy'si açıkken bu alan devre dışı kalır.</div>
-          <label for="sNetLocations" data-i18n="set.net.locations" style="margin-top: 8px;">Ağ konumları</label>
-          <textarea id="sNetLocations" spellcheck="false" placeholder="\sunucu\paylasim"></textarea>
-        </div>
+        </details>
 
         <div style="margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
           <h3 data-i18n="set.remote.title">Uzaktan erişim</h3>
