@@ -51,6 +51,7 @@ class UIUXGateTest(unittest.TestCase):
                     surum_bilgi: async () => ({ surum: "2.4.0" }),
                     motor_durumu: async () => ({ motorlar: {}, ilerleme: {} }),
                     reliability_integrity: async () => "OK",
+                    reliability_restart_engine: async () => ({ ok: window.fakeBackendState.engine_ok, message: "motor yeniden baslatildi" }),
                     telefon_durumu: async () => ({ acik: false, adres: "" }),
                     seed_dosyalari: async () => ({ eklenebilir: [], uygulanan: [] }),
                     pencere_kucult: async () => null,

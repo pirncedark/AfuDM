@@ -779,12 +779,29 @@ class Manager:
                 self.rpc.save_session()
             except Exception:
                 pass
-
         if row:
             if row.get("filename") and row.get("dest_dir"):
                 targets.append(Path(row["dest_dir"]) / row["filename"])
             elif row.get("target_path"):
                 targets.append(Path(row["target_path"]))
+            if row.get("dest_dir"):
+                dest_dir = Path(row["dest_dir"])
+                if row.get("filename"):
+                    targets.append(dest_dir / row["filename"])
+                if row.get("title"):
+                    targets.append(dest_dir / row["title"])
+                try:
+                    options = json.loads(row.get("options") or "{}")
+                    if options.get("filename"):
+                        targets.append(dest_dir / options["filename"])
+                    if options.get("title"):
+                        targets.append(dest_dir / options["title"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            if row.get("source") and row["source"].lower().endswith(".torrent"):
+                local_torrent = Path(row["source"])
+                if local_torrent.exists() and local_torrent.is_file():
+                    targets.append(local_torrent)
 
         if delete_files and targets:
             self._delete_targets(targets, row)
@@ -894,27 +911,94 @@ class Manager:
 
     @staticmethod
     def _delete_targets(targets: list[Path], row: dict | None) -> None:
-        """Dosyalari ve aria2'nin .aria2 kontrol dosyalarini birlikte temizle;
-        yarim kalmis indirmeler klasorde iz birakmasin. Windows dosya kilitlerine karsi
-        kisa yenileme/tekrar deneme uygular."""
-        for target in targets:
-            for candidate in (target, Path(str(target) + ".aria2")):
-                for _attempt in range(5):
-                    try:
-                        candidate.unlink(missing_ok=True)
-                        break
-                    except OSError:
-                        time.sleep(0.1)
+        """Dosyalari, klasorleri, temp/part ve .aria2 kontrol dosyalarini temizle;
+        yarim kalmis indirmeler klasorde iz birakmasin. Windows dosya kilitlerine
+        karsi kisa yenileme/tekrar deneme uygular."""
+        import shutil
+        import os
+        import stat
 
-            # Cok dosyali torrent: kontrol dosyasi klasorun YANINDA durur
-            # (downloads/Sintel/... icin downloads/Sintel.aria2), klasor
-            # bosaldiysa klasorun kendisi de gitmeli.
+        def _force_remove_file(p: Path) -> None:
+            if not p:
+                return
             try:
-                parent = target.parent
+                if not p.exists() and not p.is_symlink():
+                    return
+            except OSError:
+                pass
+            try:
+                os.chmod(p, stat.S_IWRITE)
+            except OSError:
+                pass
+            for _attempt in range(5):
+                try:
+                    p.unlink(missing_ok=True)
+                    return
+                except OSError:
+                    time.sleep(0.1)
+
+        def _remove_readonly(func, path, _exc_info):
+            try:
+                os.chmod(path, stat.S_IWRITE)
+                func(path)
+            except OSError:
+                pass
+
+        def _silmeye_calis(p: Path) -> None:
+            """Klasor ise rmtree ile sil, dosya/symlink ise unlink et."""
+            for _attempt in range(5):
+                try:
+                    if p.is_dir():
+                        shutil.rmtree(p, onerror=_remove_readonly)
+                    elif p.is_file() or p.is_symlink():
+                        _force_remove_file(p)
+                    return
+                except OSError:
+                    time.sleep(0.1)
+
+        seen: set[Path] = set()
+        for target in targets:
+            if not target:
+                continue
+            try:
+                t_path = target.resolve() if isinstance(target, Path) else Path(str(target)).resolve()
+            except OSError:
+                t_path = target if isinstance(target, Path) else Path(str(target))
+
+            if t_path in seen:
+                continue
+            seen.add(t_path)
+
+            # 1. candidate.aria2 kontrol dosyasi
+            _force_remove_file(Path(str(t_path) + ".aria2"))
+
+            # 2. Klasor ise rmtree ile sil, dosya/symlink ise unlink et
+            _silmeye_calis(t_path)
+            _force_remove_file(Path(str(t_path) + ".aria2"))
+
+            # 3. Klasor icindeki ytdlp / aria2 parca/gecici dosyalarini temizle
+            try:
+                parent = t_path.parent
+                stem = t_path.stem
+                if parent.exists() and parent.is_dir() and stem:
+                    for child in parent.iterdir():
+                        try:
+                            if child.is_file() and child.name.startswith(stem):
+                                if (child.name.endswith((".part", ".ytdl", ".temp", ".aria2"))
+                                        or ".f" in child.name):
+                                    _force_remove_file(child)
+                        except OSError:
+                            pass
+            except OSError:
+                pass
+
+            # 4. Cok dosyali torrent / klasor: ust klasor bosaldiysa ve dest_dir altinda ise sil
+            try:
+                parent = t_path.parent
                 base = Path(row["dest_dir"]).resolve() if row and row.get("dest_dir") else None
-                if base and parent.resolve() != base:
-                    Path(str(parent) + ".aria2").unlink(missing_ok=True)
-                    if parent.is_dir() and not any(parent.iterdir()):
+                if base and parent.exists() and parent.is_dir() and parent.resolve() != base:
+                    _force_remove_file(Path(str(parent) + ".aria2"))
+                    if not any(parent.iterdir()):
                         for _attempt in range(3):
                             try:
                                 parent.rmdir()

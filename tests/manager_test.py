@@ -70,6 +70,43 @@ for kotu in ("Ternet Ninja 3 2025 WEB DL 1080p DUAL.mp4", "merhaba dunya",
              "C:/yok/olmayan.torrent", "www.ornek.com/f.zip"):
     check(f"red: {kotu[:28]}", Manager.is_supported_source(kotu) is False)
 
+print("4) Dosya ve Klasor Silme (delete_targets)")
+import tempfile
+import os
+import stat
+
+with tempfile.TemporaryDirectory() as tmpdir:
+    tmp_path = Path(tmpdir)
+    # Test 1: Single file deletion
+    test_file = tmp_path / "sample.mp4"
+    test_file.write_bytes(b"12345")
+    aria2_file = tmp_path / "sample.mp4.aria2"
+    aria2_file.write_bytes(b"aria2")
+    part_file = tmp_path / "sample.mp4.part"
+    part_file.write_bytes(b"part")
+
+    Manager._delete_targets([test_file], {"dest_dir": str(tmp_path)})
+    check("tek dosya silindi", not test_file.exists())
+    check("aria2 kontrol dosyasi silindi", not aria2_file.exists())
+    check("part gecici dosyasi silindi", not part_file.exists())
+
+    # Test 2: Read-only file deletion
+    ro_file = tmp_path / "readonly.txt"
+    ro_file.write_bytes(b"readonly")
+    try:
+        os.chmod(ro_file, stat.S_IREAD)
+    except OSError:
+        pass
+    Manager._delete_targets([ro_file], {"dest_dir": str(tmp_path)})
+    check("salt-okunur dosya silindi", not ro_file.exists())
+
+    # Test 3: Directory deletion
+    test_dir = tmp_path / "torrent_folder"
+    test_dir.mkdir()
+    (test_dir / "subfile.txt").write_bytes(b"sub")
+    Manager._delete_targets([test_dir], {"dest_dir": str(tmp_path)})
+    check("klasor rmtree ile silindi", not test_dir.exists())
+
 print()
 if fails:
     print("BASARISIZ:", ", ".join(fails))

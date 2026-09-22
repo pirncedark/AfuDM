@@ -572,7 +572,8 @@ async function tick() {
     }
     $("engineDot").className = "dot" + (snap.engine_ok ? " ok" : "");
     $("engineText").textContent = snap.engine_ok ? t("engine.running") : t("engine.stopped");
-    if ($("engineRetry")) $("engineRetry").style.display = "none";
+    // Motor asagi ama kopru ayakta: "Yeniden dene" ile gercekten yeniden baslat.
+    if ($("engineRetry")) $("engineRetry").style.display = snap.engine_ok ? "none" : "inline-block";
     $("dirHint").textContent = snap.download_dir || "";
     $("dirHint").title = snap.download_dir || "";
 
@@ -597,9 +598,14 @@ async function tick() {
 }
 
 if ($("engineRetry")) {
-  $("engineRetry").onclick = () => {
+  $("engineRetry").onclick = async () => {
     $("engineRetry").style.display = "none";
     $("engineText").textContent = t("engine.connecting");
+    try {
+      await call("reliability_restart_engine");
+    } catch (e) {
+      console.warn("[AfuDM] motor yeniden başlatılamadı:", e);
+    }
     tick();
   };
 }
@@ -859,7 +865,7 @@ $("remGo").onclick = async () => {
   if (!gid) return;
   let isOrphan = false;
   try {
-    const res = await call("control", "remove", gid, { delete_files: delFiles });
+    const res = await call("control", "remove", gid, Boolean($("remFiles").checked));
     if (res && res.orphan) isOrphan = true;
   } catch (err) {
     const msg = String(err.message || "").toLocaleLowerCase("tr-TR");

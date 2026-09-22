@@ -131,6 +131,60 @@ class _Handler(BaseHTTPRequestHandler):
         `error`'u okur, CLI `code`'u)."""
         self._send(durum, {"ok": False, "code": kod, "message": mesaj, "error": mesaj})
 
+    def _telefona_dosya(self, gid: str):
+        """gid -> diskteki gercek dosya. Yol ISTEMCIDEN ALINMAZ.
+
+        Dosya indirme kokunun ICINDE degilse PermissionError atar; boylece
+        bir sekilde kok disina yazilmis bir kayit da servis EDILEMEZ."""
+        from pathlib import Path
+        durum = {}
+        try:
+            durum = self.manager.rpc.tell_status(gid) or {}
+        except Exception:
+            durum = {}
+        dosyalar = durum.get("files") or []
+        ham = ""
+        for girdi in dosyalar:
+            if girdi.get("path"):
+                ham = girdi["path"]
+                break
+        if not ham:
+            kayit = self.manager.store.by_gid(gid) or {}
+            ham = str(kayit.get("path") or "")
+        if not ham:
+            raise FileNotFoundError(gid)
+        dosya = Path(ham).resolve()
+        kok = Path(self.manager.current_download_dir()).resolve()
+        if not dosya.is_relative_to(kok):
+            raise PermissionError(str(dosya))
+        if not dosya.is_file():
+            raise FileNotFoundError(str(dosya))
+        return dosya
+
+    def _dosya_akit(self, dosya) -> None:
+        """Dosyayi parca parca gonderir; buyuk dosya bellege ALINMAZ."""
+        import mimetypes
+        import urllib.parse
+        tur = mimetypes.guess_type(dosya.name)[0] or "application/octet-stream"
+        boyut = dosya.stat().st_size
+        ad = urllib.parse.quote(dosya.name)
+        self.send_response(200)
+        self.send_header("Content-Type", tur)
+        self.send_header("Content-Length", str(boyut))
+        # RFC 5987: Turkce karakterli dosya adlari telefonda bozulmasin.
+        self.send_header("Content-Disposition",
+                         "attachment; filename*=UTF-8''" + ad)
+        self.end_headers()
+        with open(dosya, "rb") as kaynak:
+            while True:
+                parca = kaynak.read(256 * 1024)
+                if not parca:
+                    break
+                try:
+                    self.wfile.write(parca)
+                except (BrokenPipeError, ConnectionResetError):
+                    return  # telefon indirmeyi iptal etti
+
     def _authorized(self, query: dict) -> bool:
         header = self.headers.get("X-AfuDM-Token", "")
         supplied = header
@@ -256,6 +310,29 @@ class _Handler(BaseHTTPRequestHandler):
                 "kategoriler": [{"anahtar": k, "ad": ad} for k, ad in kaydet.KATEGORI_KLASORU.items()],
                 "acik": bool(self.manager.store.get("kategori_klasorleri")),
             })
+            return
+        if parsed.path == "/dosya":
+            # v2.4 "Telefona indir": biten dosyayi telefonun tarayicisina AKITIR.
+            # GUVENLIK: istemciden YOL ALINMAZ, yalnizca gid alinir ve yolu
+            # sunucu kendisi bulur. Bulunan yol indirme kokunun ICINDE olmak
+            # zorundadir; disari cikan istek reddedilir (v2.1'de eklenen
+            # kisitlamayi delmemek icin ayni kural burada da uygulanir).
+            if not self._authorized(query):
+                self._hata(401, "ANAHTAR_GEREKLI", "anahtar gerekli")
+                return
+            gid = query.get("gid", [""])[0]
+            if not gid:
+                self._hata(400, "GID_GEREKLI", "gid gerekli")
+                return
+            try:
+                dosya = self._telefona_dosya(gid)
+            except FileNotFoundError:
+                self._hata(404, "DOSYA_YOK", "dosya bulunamadi veya indirme bitmemis")
+                return
+            except PermissionError:
+                self._hata(403, "HEDEF_DISARIDA", "dosya indirme kokunun disinda")
+                return
+            self._dosya_akit(dosya)
             return
         if parsed.path in ("/m", "/m/"):
             # Telefon arayuzu. Sayfanin KENDISI anahtarsiz gelir (bos kabuk);
