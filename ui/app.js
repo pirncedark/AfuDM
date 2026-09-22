@@ -3675,3 +3675,25 @@ async function ayarRozetleriCiz() {
     rozet.textContent = srvRozetYaz(uygulama[AYAR_ROZET_ALANI[elemanId]]);
   });
 }
+
+/* PWA (Progressive Web App) Kurulum Olayi */
+let pwaPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  pwaPrompt = e;
+  if (installPwaBtn) {
+    installPwaBtn.style.display = 'block';
+  }
+});
+
+if (installPwaBtn) {
+  installPwaBtn.onclick = async () => {
+    if (!pwaPrompt) return;
+    pwaPrompt.prompt();
+    const { outcome } = await pwaPrompt.userChoice;
+    if (outcome === 'accepted') {
+      installPwaBtn.style.display = 'none';
+    }
+    pwaPrompt = null;
+  };
+}

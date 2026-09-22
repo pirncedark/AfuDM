@@ -1,0 +1,36 @@
+name: Build AfuTube (Native Android)
+
+on:
+  push:
+    paths:
+      - 'AfuTube/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Generate Gradle Wrapper
+        working-directory: ./AfuTube
+        run: gradle wrapper --gradle-version 8.6
+
+      - name: Build Debug APK
+        working-directory: ./AfuTube
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AfuTube-Debug-APK
+          path: AfuTube/app/build/outputs/apk/debug/app-debug.apk
