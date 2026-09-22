@@ -24,7 +24,7 @@ import coil.compose.AsyncImage
 import com.afudm.afutube.core.extractor.MediaFormat
 import com.afudm.afutube.core.extractor.MediaInfo
 import com.afudm.afutube.downloader.DownloadEngine
-import com.afudm.afutube.feature.home.AfuColors
+import com.afudm.afutube.core.theme.AfuColors
 
 @Composable
 fun FormatPickerScreen(

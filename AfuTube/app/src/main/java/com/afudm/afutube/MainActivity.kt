@@ -23,7 +23,7 @@ import androidx.navigation.compose.*
 import com.afudm.afutube.core.extractor.MediaInfo
 import com.afudm.afutube.feature.downloads.DownloadsScreen
 import com.afudm.afutube.feature.formats.FormatPickerScreen
-import com.afudm.afutube.feature.home.AfuColors
+import com.afudm.afutube.core.theme.AfuColors
 import com.afudm.afutube.feature.home.HomeScreen
 import com.afudm.afutube.feature.settings.SettingsScreen
 import com.yausername.aria2c.Aria2c

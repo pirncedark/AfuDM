@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.sp
 import androidx.work.WorkInfo
 import com.afudm.afutube.downloader.DownloadEngine
 import com.afudm.afutube.downloader.DownloadProgress
-import com.afudm.afutube.feature.home.AfuColors
+import com.afudm.afutube.core.theme.AfuColors
 import java.util.UUID
 
 @Composable

@@ -16,7 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.afudm.afutube.feature.home.AfuColors
+import com.afudm.afutube.core.theme.AfuColors
 import com.afudm.afutube.updater.ExtractorUpdater
 import kotlinx.coroutines.launch
 
