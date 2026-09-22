@@ -26,6 +26,7 @@ import com.afudm.afutube.feature.formats.FormatPickerScreen
 import com.afudm.afutube.core.theme.AfuColors
 import com.afudm.afutube.feature.home.HomeScreen
 import com.afudm.afutube.feature.settings.SettingsScreen
+import com.afudm.afutube.feature.torrent.TorrentPickerScreen
 import com.yausername.aria2c.Aria2c
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
@@ -68,6 +69,7 @@ class MainActivity : ComponentActivity() {
 
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
     object Home      : Screen("home",      "Ana Ekran",   Icons.Default.Home)
+    object Torrent   : Screen("torrent",   "Torrent",     Icons.Default.MoveToInbox)
     object Downloads : Screen("downloads", "İndirmeler",  Icons.Default.Download)
     object Settings  : Screen("settings",  "Ayarlar",     Icons.Default.Settings)
 }
@@ -80,7 +82,7 @@ fun AfuTubeApp(sharedUrl: String? = null) {
 
     var pendingMediaInfo by remember { mutableStateOf<MediaInfo?>(null) }
 
-    val bottomScreens = listOf(Screen.Home, Screen.Downloads, Screen.Settings)
+    val bottomScreens = listOf(Screen.Home, Screen.Torrent, Screen.Downloads, Screen.Settings)
     val showBottomBar = currentRoute in bottomScreens.map { it.route }
 
     Scaffold(
@@ -120,6 +122,9 @@ fun AfuTubeApp(sharedUrl: String? = null) {
             }
             composable(Screen.Downloads.route) { DownloadsScreen() }
             composable(Screen.Settings.route)  { SettingsScreen() }
+            composable(Screen.Torrent.route)   {
+                TorrentPickerScreen(onBack = { navController.popBackStack() })
+            }
         }
     }
 }

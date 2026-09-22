@@ -120,4 +120,5 @@ dependencies {
     implementation(project(":feature:downloads"))
     implementation(project(":feature:history"))
     implementation(project(":feature:settings"))
+    implementation(project(":feature:torrent"))
 }

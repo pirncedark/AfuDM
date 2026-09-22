@@ -10,6 +10,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.io.File
 import java.util.UUID
 
 /**
@@ -20,35 +21,55 @@ class DownloadEngine(private val context: Context) {
 
     private val workManager = WorkManager.getInstance(context)
 
+    /** İndirme türü */
+    enum class Kind { HTTP, TORRENT }
+
     data class DownloadRequest(
         val url       : String,
-        val formatId  : String,
+        val formatId  : String  = "",
         val title     : String,
         val outputDir : String? = null,
-        val mergeAV   : Boolean = true
+        val mergeAV   : Boolean = true,
+        val kind      : Kind    = Kind.HTTP
     )
 
     /** İndirmeyi kuyruğa ekler, WorkRequest ID'sini döndürür */
     fun enqueue(request: DownloadRequest): UUID {
-        val inputData = Data.Builder()
-            .putString(DownloadWorker.KEY_URL,        request.url)
-            .putString(DownloadWorker.KEY_FORMAT_ID,  request.formatId)
-            .putBoolean(DownloadWorker.KEY_MERGE,     request.mergeAV)
-            .apply {
-                request.outputDir?.let { putString(DownloadWorker.KEY_OUTPUT_DIR, it) }
-            }
-            .build()
-
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        val workRequest = OneTimeWorkRequestBuilder<DownloadWorker>()
-            .setInputData(inputData)
-            .setConstraints(constraints)
-            .addTag("afutube_download")
-            .addTag("title:${request.title.take(50)}")
-            .build()
+        val workRequest = when (request.kind) {
+            Kind.HTTP -> {
+                val inputData = Data.Builder()
+                    .putString(DownloadWorker.KEY_URL,       request.url)
+                    .putString(DownloadWorker.KEY_FORMAT_ID, request.formatId.ifBlank { "bestvideo+bestaudio/best" })
+                    .putBoolean(DownloadWorker.KEY_MERGE,    request.mergeAV)
+                    .apply { request.outputDir?.let { putString(DownloadWorker.KEY_OUTPUT_DIR, it) } }
+                    .build()
+
+                OneTimeWorkRequestBuilder<DownloadWorker>()
+                    .setInputData(inputData)
+                    .setConstraints(constraints)
+                    .addTag("afutube_download")
+                    .addTag("title:${request.title.take(50)}")
+                    .build()
+            }
+            Kind.TORRENT -> {
+                val inputData = Data.Builder()
+                    .putString(TorrentWorker.KEY_TORRENT_URI, request.url)
+                    .putString(TorrentWorker.KEY_TITLE,       request.title)
+                    .apply { request.outputDir?.let { putString(TorrentWorker.KEY_OUTPUT_DIR, it) } }
+                    .build()
+
+                OneTimeWorkRequestBuilder<TorrentWorker>()
+                    .setInputData(inputData)
+                    .setConstraints(constraints)
+                    .addTag("afutube_torrent")
+                    .addTag("title:${request.title.take(50)}")
+                    .build()
+            }
+        }
 
         workManager.enqueueUniqueWork(
             "download:${request.url.hashCode()}",
@@ -72,15 +93,43 @@ class DownloadEngine(private val context: Context) {
             )
         }
 
-    /** Tüm aktif indirme akışı */
+    /** Tüm aktif HTTP indirme akışı */
     fun allDownloads(): Flow<List<WorkInfo>> =
         workManager.getWorkInfosByTagFlow("afutube_download")
+
+    /** Tüm aktif torrent indirme akışı */
+    fun allTorrents(): Flow<List<WorkInfo>> =
+        workManager.getWorkInfosByTagFlow("afutube_torrent")
 
     /** İndirmeyi durdur */
     fun cancel(workId: UUID) = workManager.cancelWorkById(workId)
 
-    /** Tüm indirmeleri durdur */
+    /** Tüm HTTP indirmeleri durdur */
     fun cancelAll() = workManager.cancelAllWorkByTag("afutube_download")
+
+    /** Tüm torrent indirmelerini durdur */
+    fun cancelAllTorrents() = workManager.cancelAllWorkByTag("afutube_torrent")
+
+    /**
+     * Başarısız / iptal edilmiş bir indirmenin geçici dosyasını sil.
+     * @param workId     WorkRequest ID'si (iptal için)
+     * @param tempPath   Silinecek dosyanın tam yolu (boş olabilir)
+     */
+    fun cleanupFailedDownload(workId: UUID, tempPath: String) {
+        cancel(workId)
+        deleteFileIfExists(tempPath)
+    }
+
+    /** Belirtilen dosyayı sil; yoksa sessizce geç */
+    fun deleteFileIfExists(path: String): Boolean {
+        if (path.isBlank()) return true
+        return try {
+            val f = File(path)
+            if (f.exists()) f.delete() else true
+        } catch (e: Exception) {
+            false
+        }
+    }
 
     companion object {
         @Volatile private var INSTANCE: DownloadEngine? = null

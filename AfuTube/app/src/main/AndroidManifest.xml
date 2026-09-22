@@ -54,6 +54,22 @@
                 <data android:scheme="https" android:host="youtube.com" />
                 <data android:scheme="https" android:host="www.youtube.com" />
             </intent-filter>
+            <!-- .torrent dosyası ile açılma -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="file" android:mimeType="application/x-bittorrent" />
+                <data android:scheme="content" android:mimeType="application/x-bittorrent" />
+            </intent-filter>
+
+            <!-- Magnet link ile açılma -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="magnet" />
+            </intent-filter>
         </activity>
 
         <!-- ── WorkManager foreground service ───────────────────────── -->
