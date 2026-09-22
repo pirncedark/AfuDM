@@ -25,7 +25,7 @@ jobs:
         working-directory: ./AfuTube
         run: |
           # Gradle'i SDK Manager olmadan doğrudan kur
-          GRADLE_VERSION="8.9"
+          GRADLE_VERSION="9.6.0"
           wget -q "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -O /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /tmp/
           export GRADLE_HOME="/tmp/gradle-${GRADLE_VERSION}"
