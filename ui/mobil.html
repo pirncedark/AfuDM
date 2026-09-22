@@ -422,7 +422,8 @@ $("liste").addEventListener("click", async (olay) => {
   }
   if (dugme.dataset.eylem === "indir") {
     const a = document.createElement("a");
-    a.href = "/indir?gid=" + encodeURIComponent(dugme.dataset.gid) + "&k=" + encodeURIComponent(anahtar);
+    const encKey = encodeURIComponent(anahtar);
+    a.href = "/indir?gid=" + encodeURIComponent(dugme.dataset.gid) + "&token=" + encKey + "&k=" + encKey;
     a.download = "";
     document.body.appendChild(a);
     a.click();

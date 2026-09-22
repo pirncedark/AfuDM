@@ -370,6 +370,7 @@ const DICT = {
 
     "toast.retried": "Yeniden başlatıldı",
     "toast.cleared": "{n} kayıt temizlendi",
+    "toast.bulkRemoved": "{n} indirme kaldırıldı",
     "toast.removed": "İndirme kaldırıldı",
     "toast.orphanCleared": "Artık kayıt temizlendi",
     "toast.started": "{n} indirme başlatıldı",
@@ -1162,6 +1163,7 @@ const DICT = {
 
     "toast.retried": "Restarted",
     "toast.cleared": "{n} entries cleared",
+    "toast.bulkRemoved": "{n} downloads removed",
     "toast.removed": "Download removed",
     "toast.orphanCleared": "Stale record cleaned up",
     "toast.started": "{n} downloads started",

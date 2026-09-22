@@ -800,6 +800,90 @@ class Manager:
                 pass
         return True
 
+    def resolve_item_path(self, gid: str) -> Path | None:
+        """Tekil ve coklu indirmeler, DB kayitlari, video job'lari ve aria2
+        kaynaklari icin diskteki gercek dosya yolunu dondurur. Klasor ise veya
+        birden fazla dosya iceriyorsa en buyuk/ana dosyayi bulur."""
+        import glob
+        from pathlib import Path
+
+        candidates: list[Path] = []
+
+        # 1. Canli aria2 durumu
+        try:
+            st = self.rpc.tell_status(gid)
+            if st:
+                for entry in st.get("files") or []:
+                    if entry.get("path"):
+                        candidates.append(Path(entry["path"]))
+        except Exception:
+            pass
+
+        # 2. DB kaydi
+        row = self.store.by_gid(gid)
+        if not row and gid.startswith("row:"):
+            try:
+                row = self.store.by_id(int(gid.split(":")[1]))
+            except (ValueError, IndexError):
+                pass
+        if row:
+            if row.get("target_path"):
+                candidates.append(Path(row["target_path"]))
+            dest_dir = row.get("dest_dir") or row.get("dir") or ""
+            filename = row.get("filename") or ""
+            if dest_dir and filename:
+                candidates.append(Path(dest_dir) / filename)
+                escaped = glob.escape(filename)
+                matches = glob.glob(str(Path(dest_dir) / f"{escaped}*"))
+                for m in matches:
+                    candidates.append(Path(m))
+
+        # 3. Video jobs (yt-dlp)
+        if gid in self.video_jobs:
+            vjob = self.video_jobs[gid]
+            if getattr(vjob, "output_path", None):
+                candidates.append(Path(vjob.output_path))
+            if getattr(vjob, "target_path", None):
+                candidates.append(Path(vjob.target_path))
+            if getattr(vjob, "dir", None) and getattr(vjob, "filename", None):
+                candidates.append(Path(vjob.dir) / vjob.filename)
+
+        # 4. Snapshot items
+        try:
+            snap = self.snapshot()
+            for item in snap.get("items", []):
+                if item.get("gid") == gid or (row and item.get("id") == row.get("id")):
+                    dest_dir = item.get("dir") or item.get("dest_dir") or self.current_download_dir()
+                    filename = item.get("filename") or ""
+                    if item.get("target_path"):
+                        candidates.append(Path(item["target_path"]))
+                    if dest_dir and filename:
+                        candidates.append(Path(dest_dir) / filename)
+                        escaped = glob.escape(filename)
+                        matches = glob.glob(str(Path(dest_dir) / f"{escaped}*"))
+                        for m in matches:
+                            candidates.append(Path(m))
+        except Exception:
+            pass
+
+        # Aday yollari dogrula
+        for cand in candidates:
+            if not cand:
+                continue
+            try:
+                if cand.is_file():
+                    return cand
+                elif cand.is_dir():
+                    files = [p for p in cand.rglob("*") if p.is_file()]
+                    if files:
+                        files.sort(key=lambda p: p.stat().st_size, reverse=True)
+                        return files[0]
+            except Exception:
+                pass
+
+        return None
+
+
     def _cerez_birak(self, row: dict | None) -> None:
         if row:
             self._cerezler.pop(row["id"], None)

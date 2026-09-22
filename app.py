@@ -995,21 +995,7 @@ class Api:
         return {"ok": False, "error": lang.t("err.notFound", str(self.manager.store.get("language", "auto")))}
 
     def share_create(self, gid: str) -> dict:
-        yol = None
-        for item in self.manager.snapshot()["items"]:
-            if item["gid"] == gid:
-                folder = item.get("dir") or self.manager.current_download_dir()
-                name = item.get("filename") or ""
-                if name:
-                    yol = Path(folder) / name
-                    if not yol.exists():
-                        # Yt-dlp gibi araçlar uzantı eklemiş/değiştirmiş olabilir
-                        import glob
-                        escaped = glob.escape(name)
-                        matches = glob.glob(str(Path(folder) / f"{escaped}*"))
-                        if matches:
-                            yol = Path(matches[0])
-                break
+        yol = self.manager.resolve_item_path(gid)
         if not yol or not yol.exists() or not yol.is_file():
             return {"ok": False, "error": "Sadece tamamlanmış tekil dosyalar paylaşılabilir veya dosya diskte bulunamadı."}
         from api.server import _Handler

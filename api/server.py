@@ -133,7 +133,9 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _authorized(self, query: dict) -> bool:
         header = self.headers.get("X-AfuDM-Token", "")
-        supplied = header or (query.get("token", [""])[0])
+        supplied = header
+        if not supplied and query:
+            supplied = query.get("token", [""])[0] or query.get("k", [""])[0]
         return bool(self.token) and secrets.compare_digest(supplied, self.token)
 
 
@@ -303,51 +305,11 @@ class _Handler(BaseHTTPRequestHandler):
             if not gid:
                 self._hata(400, "GID_GEREKLI", "gid gerekli")
                 return
-            yol_str = ""
-            try:
-                st = self.manager.rpc.tell_status(gid)
-                if st and st.get("status") == "complete":
-                    dosyalar = st.get("files") or []
-                    if dosyalar and dosyalar[0].get("path"):
-                        yol_str = dosyalar[0].get("path")
-            except Exception:
-                pass
-            if not yol_str:
-                row = self.manager.store.by_gid(gid)
-                if not row and gid.startswith("row:"):
-                    try:
-                        row = self.manager.store.by_id(int(gid.split(":")[1]))
-                    except (ValueError, IndexError):
-                        pass
-                if row:
-                    folder = row.get("dest_dir") or row.get("dir") or ""
-                    filename = row.get("filename") or ""
-                    if folder and filename:
-                        from pathlib import Path as _Path
-                        cand = _Path(folder) / filename
-                        if cand.exists() and cand.is_file():
-                            yol_str = str(cand)
-                        else:
-                            import glob as _glob
-                            escaped = _glob.escape(filename)
-                            matches = _glob.glob(str(_Path(folder) / f"{escaped}*"))
-                            for m in matches:
-                                p = _Path(m)
-                                if p.is_file():
-                                    yol_str = str(p)
-                                    break
-                    if not yol_str and row.get("target_path"):
-                        yol_str = row["target_path"]
-            if not yol_str:
-                self._hata(404, "HAZIR_DEGIL", "Dosya hazir degil veya yolu bulunamadi")
+            yol = self.manager.resolve_item_path(gid)
+            if not yol or not yol.exists() or not yol.is_file():
+                self._hata(404, "BULUNAMADI", "Dosya diskte yok veya hazir degil")
                 return
-            
-            from pathlib import Path
-            yol = Path(yol_str)
-            if not yol.exists() or not yol.is_file():
-                self._hata(404, "BULUNAMADI", "Dosya diskte yok")
-                return
-            
+
             import urllib.parse
             import shutil
             try:
