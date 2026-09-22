@@ -222,7 +222,7 @@ function renderList() {
     let right;
     if (item.status === "complete") {
       right = '<button data-act="open" data-gid="' + item.gid + '">📂 ' + t("row.folder") + "</button>"
-          + '<button data-act="share" data-gid="' + item.gid + '">📲 ' + t("row.share") + "</button>"
+          + '<button data-act="network-share" data-gid="' + item.gid + '">📲 ' + t("row.share") + "</button>"
           + '<button data-act="scan" data-gid="' + item.gid + '">🔍 ' + t("row.scan") + "</button>"
           + '<button data-act="remove" data-gid="' + item.gid + '">🗑 ' + t("row.delete") + "</button>";
     } else if (item.status === "error") {
@@ -621,9 +621,9 @@ $("list").addEventListener("click", async (event) => {
       if (act === "files") { await torrentVeilAc(gid); return; }
       if (act === "seed") { await seedAc(gid); return; }
       if (act === "scan") { await call("defender_scan", gid); toast(t("toast.scanStarted")); return; }
-      if (act === "share") {
+      if (act === "network-share") {
         try {
-          const res = await call("share_create", gid);
+          const res = await call("agda_paylas", gid);
           if (res.ok) {
             if (button.dataset.direct === "1") {
               const a = document.createElement("a");
@@ -635,16 +635,15 @@ $("list").addEventListener("click", async (event) => {
               toast("Telefona indirme başlatılıyor...");
               return;
             }
-            $("shareLink").value = res.url;
+            $("shareLink").value = res.url || "";
+            $("shareSmbPath").value = res.smb || "";
             $("shareErr").textContent = "";
-            
-            // Try to generate QR code using a simple API if no lib available, or just leave it empty.
-            // Google Chart API is deprecated but works for simple QRs, or just a simple text
             const qri = $("shareQrImg");
             if (qri) {
-              qri.src = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=" + encodeURIComponent(res.url);
-              qri.style.display = "inline-block";
+              qri.src = res.qr || "";
+              qri.style.display = res.qr ? "inline-block" : "none";
             }
+            if (res.warning) $("shareErr").textContent = res.warning;
             openVeil("shareVeil");
           }
         } catch(e) {
@@ -2826,6 +2825,17 @@ document.addEventListener("contextmenu", async (event) => {
     { etiket: t("ctx.openFile"), pasif: oge.status !== "complete",
       calis: () => call("dosya_ac", gid) },
     { etiket: t("ctx.openFolder"), calis: () => call("open_item_folder", gid) },
+    "ayrac",
+    { etiket: t("row.share"), pasif: oge.status !== "complete",
+      calis: async () => {
+        const res = await call("agda_paylas", gid);
+        $("shareLink").value = res.url || "";
+        $("shareSmbPath").value = res.smb || "";
+        $("shareQrImg").src = res.qr || "";
+        $("shareQrImg").style.display = res.qr ? "inline-block" : "none";
+        $("shareErr").textContent = res.warning || "";
+        openVeil("shareVeil");
+      } },
     "ayrac",
     { etiket: t("ctx.again"), pasif: !adres,
       calis: async () => {

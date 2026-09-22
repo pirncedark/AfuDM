@@ -1309,13 +1309,15 @@
 
   <div class="veil" id="shareVeil">
     <div class="sheet">
-      <h2 data-i18n="share.title">Ağda Paylaş</h2>
+      <div class="sheet-head"><h2 data-i18n="share.title">Ağda Paylaş</h2><button class="wc-btn wc-close" data-close="shareVeil" aria-label="Kapat">×</button></div>
       <div class="body">
         <div class="hint" data-i18n="share.hint">Aşağıdaki linki aynı ağdaki arkadaşlarına göndererek bu dosyayı
           doğrudan senin bilgisayarından indirmelerini sağlayabilirsin.</div>
         <div class="yol-satir" style="margin-top: 16px;"><input id="shareLink" type="text" readonly spellcheck="false"
             style="font-size: 14px; padding: 8px; font-weight: bold; color: var(--accent);"><button class="btn primary"
             id="shareCopy" data-i18n="srv.copy">Kopyala</button></div>
+        <label for="shareSmbPath" data-i18n="share.smbPath">SMB / UNC yolu</label>
+        <input id="shareSmbPath" type="text" readonly spellcheck="false" placeholder="\\bilgisayar\AfuDM_...\dosya">
         <div id="shareQrBox" style="margin-top: 20px; text-align: center;"><img id="shareQrImg"
             style="display:none; max-width: 200px; border-radius: 8px; margin:0 auto;"></div>
       </div>

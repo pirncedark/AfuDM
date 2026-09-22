@@ -7,8 +7,11 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -1099,6 +1102,59 @@ class Api:
             ip = "127.0.0.1"
         url = f"http://{ip}:{self.local_api.port}/s/{token}"
         return {"ok": True, "token": token, "url": url, "filename": yol.name}
+
+    def agda_paylas(self, gid: str) -> dict:
+        """Tamamlanan dosyayi SMB/UNC olarak dene; yetki yoksa HTTP+QR'a dus.
+
+        `net share` Windows sistem ayaridir; bu nedenle gercek paylasim yalnızca
+        kullanici eylemiyle burada denenir ve testlerde subprocess sahte olur.
+        SMB basarisiz olsa bile LocalAPI linki calisan bir alternatif olarak kalir.
+        """
+        yol = self.manager.resolve_item_path(gid)
+        if not yol or not yol.exists() or not yol.is_file():
+            return {"ok": False, "error": "Sadece tamamlanmış tekil dosyalar paylaşılabilir veya dosya diskte bulunamadı."}
+        from api.server import _Handler
+        import secrets
+
+        token = secrets.token_urlsafe(12)
+        _Handler.shared_files[token] = {"path": yol, "created": time.time()}
+        ip = self.local_api.lan_adresi() or "127.0.0.1"
+        if ip.startswith("127."):
+            ip = "127.0.0.1"
+        url = f"http://{ip}:{self.local_api.port}/s/{token}"
+        result = {
+            "ok": True,
+            "transport": "http",
+            "token": token,
+            "url": url,
+            "qr": self._qr_uret(url),
+            "filename": yol.name,
+            "smb": "",
+            "warning": "SMB paylaşımı için yönetici izni bulunamadı; HTTP LAN bağlantısı hazırlandı.",
+        }
+        if os.name != "nt":
+            return result
+
+        # Dosyanın bulunduğu klasörü değil, yalnızca bu dosyanın kopyasını paylaş.
+        share_root = Path(tempfile.gettempdir()) / "AfuDM-network-shares" / token
+        share_root.mkdir(parents=True, exist_ok=True)
+        staged = share_root / yol.name
+        try:
+            shutil.copy2(yol, staged)
+            share_name = "AfuDM_" + token.replace("-", "")[:12]
+            subprocess.run(
+                ["net", "share", f"{share_name}={share_root}", "/GRANT:Everyone,READ"],
+                check=True, capture_output=True, text=True, timeout=15,
+            )
+            host = socket.gethostname() or ip
+            result.update({
+                "transport": "smb",
+                "smb": f"\\\\{host}\\{share_name}\\{yol.name}",
+                "warning": "",
+            })
+        except (OSError, subprocess.SubprocessError) as exc:
+            result["warning"] = "SMB paylaşımı açılamadı (%s); HTTP LAN bağlantısı ve QR hazırlandı." % str(exc)[:120]
+        return result
 
     def share_list(self) -> dict:
         from api.server import _Handler
