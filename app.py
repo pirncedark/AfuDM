@@ -13,6 +13,7 @@ import threading
 import time
 import urllib.parse
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -82,14 +83,43 @@ def open_in_explorer(target: str) -> None:
 class Api:
     """Arayuzun cagirdigi kopru. Her metot JSON'a cevrilebilir sozluk doner."""
 
+    _window: webview.Window | None = None
+    _baslik_dili: str | None = None
+    _windows: Any = None
+    _tepsi: Any = None
+    _cikiliyor: bool = False
+
     def __init__(self, manager: Manager, local_api: LocalAPI,
                  servis: AfuDMServis | None = None) -> None:
+        self._window = None
+        self._baslik_dili = None
         self.manager = manager
         self.local_api = local_api
         # v2.1: is mantigi TEK yerde. Masaustu arayuzu de web paneli de bu
         # servisi cagirir; asagidaki RPC'ler yalnizca ince kabuktur.
         self.servis = servis or AfuDMServis(manager, kip=ornek.KIP_MASAUSTU)
         self.reliability = Reliability(manager)
+        # Alt cizgili: pywebview js_api'nin ozelliklerini DOLASIR; `window.native`
+        # (.NET formu) sonsuz derinlige inip gunlugu "Empty.Empty..." ile dolduruyordu.
+        # Motor indirmeleri: {"ffmpeg": {"durum": "iniyor", "inen": .., "toplam": ..}}
+        self._motor_ilerleme: dict[str, dict] = {}
+        self._ozel_baslik = False  # Windows basligi kaldirildi mi (core/pencere.py)
+        self._chrome = chrome_kurulum.OtomatikEkleme()
+        self._tepsi = None              # pystray simgesi (bkz. build_tray)
+        self._cikiliyor = False           # yalniz tepsi > Cikis gercekten kapatir
+        self._tepsi_bildirimi = lambda: None
+        self._bekleyenler = kaydet.Bekleyenler()
+        self._chrome_baslangic = 0.0
+        self._probe_iptal: threading.Event | None = None
+        self._windows = getattr(manager, "windows", None)
+
+    @property
+    def windows(self) -> Any:
+        return getattr(self, "_windows", None) or getattr(self.manager, "windows", None)
+
+    @windows.setter
+    def windows(self, val: Any) -> None:
+        self._windows = val
 
     # v2.3 Reliability & Security: desktop and HTTP use this shared service.
     def reliability_integrity(self) -> dict: return self.reliability.integrity()
@@ -104,26 +134,14 @@ class Api:
     def security_rotate_token(self) -> dict:
         self.local_api.rotate_token()
         return {"ok": True, "message": "Yeni anahtar etkin; eski anahtar aninda gecersiz."}
-        # Alt cizgili: pywebview js_api'nin ozelliklerini DOLASIR; `window.native`
-        # (.NET formu) sonsuz derinlige inip gunlugu "Empty.Empty..." ile dolduruyordu.
-        self._window: webview.Window | None = None
-        self._baslik_dili: str | None = None
-        # Motor indirmeleri: {"ffmpeg": {"durum": "iniyor", "inen": .., "toplam": ..}}
-        self._motor_ilerleme: dict[str, dict] = {}
-        self._ozel_baslik = False  # Windows basligi kaldirildi mi (core/pencere.py)
-        self._chrome = chrome_kurulum.OtomatikEkleme()
-        self._tepsi = None              # pystray simgesi (bkz. build_tray)
-        self._cikiliyor = False           # yalniz tepsi > Cikis gercekten kapatir
-        self._tepsi_bildirimi = lambda: None
-        self._bekleyenler = kaydet.Bekleyenler()
-        self._chrome_baslangic = 0.0
-        self._probe_iptal: threading.Event | None = None
-        self.windows = getattr(manager, "windows", None)
 
     # --- durum ------------------------------------------------------------
     def snapshot(self) -> dict:
         snap = self.manager.snapshot()
-        self._basligi_esitle(snap.get("lang"))
+        try:
+            self._basligi_esitle(snap.get("lang"))
+        except Exception:
+            pass
         return snap
 
     def _basligi_esitle(self, dil: str | None) -> None:
@@ -132,10 +150,12 @@ class Api:
         Arayuzdeki metinleri app.js ceviriyor ama pencere basligi Windows'un
         elinde — dil nereden degisirse degissin (Ayarlar penceresi, yerel API
         veya Windows dili) her turda burada esitlenir."""
-        if not dil or dil == self._baslik_dili or self._window is None:
+        baslik_dili = getattr(self, "_baslik_dili", None)
+        win = getattr(self, "_window", None)
+        if not dil or dil == baslik_dili or win is None:
             return
         try:
-            self._window.set_title(lang.t("window.title", dil))
+            win.set_title(lang.t("window.title", dil))
             self._baslik_dili = dil
         except Exception:
             pass

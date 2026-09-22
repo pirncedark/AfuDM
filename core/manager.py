@@ -71,7 +71,10 @@ class Manager:
     def __init__(self) -> None:
         paths.ensure_dirs()
         self.store = Store()
-        self.windows = WindowsIntegration(self.store)
+        try:
+            self.windows = WindowsIntegration(self.store)
+        except Exception:
+            self.windows = None
         download_dir = self.store.get("download_dir") or str(paths.default_download_dir())
         Path(download_dir).mkdir(parents=True, exist_ok=True)
         self.daemon = Aria2Daemon(download_dir=download_dir)

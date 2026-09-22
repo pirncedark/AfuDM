@@ -396,7 +396,11 @@ class _Handler(BaseHTTPRequestHandler):
                 },
             })
         elif parsed.path == "/windows-integration":
-            self._send(200, self.manager.windows.status())
+            win = getattr(self.manager, "windows", None)
+            if win:
+                self._send(200, win.status())
+            else:
+                self._hata(503, "KULLANILAMIYOR", "Windows entegrasyonu kullanilamiyor")
         else:
             self._hata(404, "BILINMEYEN_YOL", "bilinmeyen yol")
 
@@ -528,11 +532,15 @@ class _Handler(BaseHTTPRequestHandler):
             elif parsed.path == "/tracker/tara":
                 self._send(200, {"ok": True, **self.manager.tracker_tara(data.get("gid", ""))})
             elif parsed.path == "/windows-integration":
+                win = getattr(self.manager, "windows", None)
+                if not win:
+                    self._hata(503, "KULLANILAMIYOR", "Windows entegrasyonu kullanilamiyor")
+                    return
                 ident = str(data.get("id") or "")
                 action = str(data.get("action") or "")
-                if action == "apply": result = self.manager.windows.apply(ident)
-                elif action == "remove": result = self.manager.windows.remove(ident)
-                elif action == "test": result = self.manager.windows.test(ident)
+                if action == "apply": result = win.apply(ident)
+                elif action == "remove": result = win.remove(ident)
+                elif action == "test": result = win.test(ident)
                 else: raise ValueError("action apply, remove veya test olmali")
                 self._send(200, result)
 
