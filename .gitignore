@@ -18,7 +18,7 @@ dist/
 
 # --- Uretilen / gecici ---
 build_out/
-downloads/
+/downloads/
 __pycache__/
 *.pyc
 *.pyo

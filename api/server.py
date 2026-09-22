@@ -161,7 +161,6 @@ class _Handler(BaseHTTPRequestHandler):
         for ad, deger in (ek_basliklar or {}).items():
             self.send_header(ad, deger)
         self.end_headers()
-        self.end_headers()
         self.wfile.write(govde)
 
     def _dosya_akis_gonder(self, yol) -> None:
