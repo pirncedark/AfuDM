@@ -77,7 +77,7 @@ class DownloadWorker(
                     )
                 )
                 val fi = createForegroundInfo("$percent%  •  ${extractSpeed(line)}", percent)
-                setForeground(fi)
+                setForegroundAsync(fi)
             }
         }
 

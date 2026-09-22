@@ -56,7 +56,10 @@ class UIUXGateTest(unittest.TestCase):
                     pencere_kucult: async () => null,
                     pencere_buyut: async () => null,
                     pencere_kapat: async () => null,
-                    pencere_kenar: async () => null
+                    pencere_kenar: async () => null,
+                    share_create: async () => ({ token: "fakeToken", url: "http://127.0.0.1/s/fakeToken" }),
+                    share_list: async () => ({ shared: {} }),
+                    share_delete: async () => ({ success: true })
                 }
             };
         """)
@@ -179,7 +182,11 @@ class UIUXGateTest(unittest.TestCase):
         set_veil = self.page.locator("#setVeil")
         expect(set_veil).to_be_visible()
 
+        # Open advanced accordions so their contents are visible
+        self.page.evaluate("document.querySelectorAll('.adv-accordion').forEach(el => el.open = true);")
+
         # The settings form must contain every control openSettings populates.
+        set_veil.locator("[data-stab='video']").click()
         for selector in ["#sVideoDosyaSablonu", "#sVideoTarayiciCerezi"]:
             expect(set_veil.locator(selector)).to_be_visible()
 

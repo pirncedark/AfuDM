@@ -1,0 +1,23 @@
+# AfuDM v2.7.0 — Premium UI, Network Sharing, and Mobile Fixes
+
+## 🇹🇷 Türkçe (Turkish)
+AfuDM'nin bu büyük güncellemesinde arayüzü baştan aşağı yeniledik, dosya paylaşımı için harika bir ağ özelliği ekledik ve mobil sorunlarını tamamen çözdük!
+
+### ✨ Yeni Özellikler
+* **Premium Arayüz (UI/UX):** Uygulamaya modern Google fontları (Inter ve Outfit), Glassmorphism (cam efekti), yeni gradient butonlar ve pürüzsüz mikro-animasyonlar eklendi.
+* **Gelişmiş Ayarlar (Accordion):** Eskiden dağınık duran gizli "Gelişmiş" seçenekler; her sekmenin altına şık, katlanabilir (accordion) bir panel olarak taşındı.
+* **Ağda Dosya Paylaşımı (Share Center):** İndirdiğiniz dosyaları veya kendi bilgisayarınızdaki herhangi bir dosyayı aynı ağdaki (Wi-Fi) arkadaşlarınızla WeTransfer kolaylığında paylaşabilirsiniz!
+* **Mobil İndirme Düzeltmeleri:** Telefon üzerinden arayüze bağlanıp dosya indirirken yaşanan uyumluluk ve indirme başlatamama sorunları kökten çözüldü (`window.location.href` yaklaşımı ile tüm mobil tarayıcılar destekleniyor).
+* Uygulamanın tüm çekirdek işlevleri (CI testleri dahil) bu yeni özelliklerle stabil hale getirildi.
+
+---
+
+## 🇬🇧 English
+In this major update for AfuDM, we have completely overhauled the interface, added a fantastic network file-sharing feature, and fully resolved mobile compatibility issues!
+
+### ✨ New Features
+* **Premium Interface (UI/UX):** Modern Google fonts (Inter and Outfit), Glassmorphism effects, new gradient buttons, and smooth micro-animations have been added.
+* **Advanced Settings (Accordion):** The previously scattered "Advanced" options have been neatly organized into a sleek, collapsible accordion panel under each tab.
+* **Network File Sharing (Share Center):** You can now share your downloaded files (or any local file) with friends on the same network (Wi-Fi) with WeTransfer-like simplicity!
+* **Mobile Download Fixes:** Issues with downloading files when accessing the UI from a mobile device have been completely resolved (now utilizing a `window.location.href` approach for universal mobile browser support).
+* All core functionalities (including CI tests) have been stabilized alongside these new features.

@@ -292,6 +292,11 @@ const DICT = {
     "add.go": "İndirmeye başla",
 
     "set.title": "Ayarlar",
+    "set.tabGenel": "Genel",
+    "set.tabIndirme": "İndirme",
+    "set.tabVideo": "Video",
+    "set.tabAg": "Ağ",
+    "set.tabAraclar": "Araçlar",
     "set.lang": "Dil / Language",
     "set.lang.auto": "Otomatik (Windows dili)",
     "set.lang.tr": "Türkçe",
@@ -576,6 +581,7 @@ const DICT = {
     "err.noLink": "En az bir bağlantı gir.",
     "err.noFolder": "Önce bir klasör seç.",
     "err.bridge": "köprü hazır değil",
+    "err.unknownAction": "bilinmeyen eylem",
     "err.timeout": "İşlem zaman aşımına uğradı. Motor yanıt vermiyor olabilir; yeniden dene.",
     "err.failed": "işlem başarısız",
     "err.noRetry": "bu kayıt yeniden başlatılamıyor",
@@ -824,6 +830,8 @@ const DICT = {
   en: {
     "rem.title": "Remove Download",
     "rem.desc": "Are you sure you want to remove this download from the list?",
+    "rem.bulkTitle": "Remove Selected Downloads",
+    "rem.bulkDesc": "Are you sure you want to remove the {n} selected downloads from the list?",
     "rem.files": "Also DELETE downloaded files from disk completely",
     "app.title": "AfuDM — download manager",
 
@@ -1094,6 +1102,11 @@ const DICT = {
     "add.go": "Start download",
 
     "set.title": "Settings",
+    "set.tabGenel": "General",
+    "set.tabIndirme": "Download",
+    "set.tabVideo": "Video",
+    "set.tabAg": "Network",
+    "set.tabAraclar": "Tools",
     "set.lang": "Dil / Language",
     "set.lang.auto": "Automatic (Windows language)",
     "set.lang.tr": "Türkçe",
@@ -1377,6 +1390,7 @@ const DICT = {
     "err.noLink": "Enter at least one link.",
     "err.noFolder": "Pick a folder first.",
     "err.bridge": "bridge not ready",
+    "err.unknownAction": "unknown action",
     "err.timeout": "The operation timed out. The engine may not be responding; try again.",
     "err.failed": "the operation failed",
     "err.noRetry": "this entry cannot be restarted",
