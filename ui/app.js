@@ -619,7 +619,7 @@ $("list").addEventListener("click", async (event) => {
         try {
           const res = await call("share_create", gid);
           if (res.ok) {
-            if (e.target.dataset.direct === "1") {
+            if (button.dataset.direct === "1") {
               const a = document.createElement("a");
               a.href = res.url;
               a.download = res.filename || "download";
