@@ -185,37 +185,27 @@ function renderList() {
       stateText += " " + String(when.getHours()).padStart(2, "0") + ":" +
         String(when.getMinutes()).padStart(2, "0");
     }
-    const kill = '<button data-act="remove" data-gid="' + item.gid + '">' + t("row.remove") + "</button>";
+    const kill = '<button data-act="remove" data-gid="' + item.gid + '">🗑 ' + t("row.remove") + "</button>";
     let right;
     if (item.status === "complete") {
-        if (item.dir && item.dir.includes("Telefona")) {
-          right = '<button data-act="open" data-gid="' + item.gid + '">' + t("row.folder") + "</button>"
-            + '<button style="color:var(--accent);border-color:var(--accent)" data-act="share" data-direct="1" data-gid="' + item.gid + '">📱 Cihaza Kaydet</button>'
-            + '<button data-act="scan" data-gid="' + item.gid + '">' + t("row.scan") + "</button>"
-            + '<button data-act="remove" data-gid="' + item.gid + '">' + t("row.delete") + "</button>";
-        } else {
-          right = '<button data-act="open" data-gid="' + item.gid + '">' + t("row.folder") + "</button>"
-            + '<button data-act="share" data-gid="' + item.gid + '">' + t("row.share") + "</button>"
-            + '<button data-act="scan" data-gid="' + item.gid + '">' + t("row.scan") + "</button>"
-            + '<button data-act="remove" data-gid="' + item.gid + '">' + t("row.delete") + "</button>";
-        }
+      right = '<button data-act="open" data-gid="' + item.gid + '">📂 ' + t("row.folder") + "</button>"
+          + '<button data-act="share" data-gid="' + item.gid + '">📲 ' + t("row.share") + "</button>"
+          + '<button data-act="scan" data-gid="' + item.gid + '">🔍 ' + t("row.scan") + "</button>"
+          + '<button data-act="remove" data-gid="' + item.gid + '">🗑 ' + t("row.delete") + "</button>";
     } else if (item.status === "error") {
-      // Hataya dusen indirme 'unpause' edilemez; kaydi bastan baslatmak gerekir
-      right = '<button data-act="retry" data-id="' + (item.id || "") + '">' + t("row.retry") + "</button>" + kill;
+      right = '<button data-act="retry" data-id="' + (item.id || "") + '">🔄 ' + t("row.retry") + "</button>" + kill;
     } else if (item.status === "paused") {
-      right = '<button data-act="resume" data-gid="' + item.gid + '">' + t("row.resume") + "</button>" + kill;
+      right = '<button data-act="resume" data-gid="' + item.gid + '">▶ ' + t("row.resume") + "</button>" + kill;
     } else if (item.status === "scheduled") {
-      right = kill;  // daha baslamadi: duraklatilacak bir sey yok
+      right = kill;
     } else {
-      right = '<button data-act="pause" data-gid="' + item.gid + '">' + t("row.pause") + "</button>" + kill;
+      right = '<button data-act="pause" data-gid="' + item.gid + '">⏸ ' + t("row.pause") + "</button>" + kill;
     }
-    // Torrentte dosya secimi / agaci dugmesi
     if (item.kind === "torrent") {
-      right = '<button data-act="files" data-gid="' + item.gid + '">' + t("tor.files") + "</button>" + right;
+      right = '<button data-act="files" data-gid="' + item.gid + '">📁 ' + t("tor.files") + "</button>" + right;
     }
-    // Torrentte seed az olabilir: tracker listesini tazeleyen pencere (seedVeil)
     if (item.kind === "torrent" && item.status !== "complete" && item.status !== "error") {
-      right = '<button data-act="seed" data-gid="' + item.gid + '">' + t("row.seed") + "</button>" + right;
+      right = '<button data-act="seed" data-gid="' + item.gid + '">🌱 ' + t("row.seed") + "</button>" + right;
     }
     return (
       '<div class="row ' + rowClass(item) + (state.selected === item.gid ? " sel" : "") +
@@ -233,8 +223,10 @@ function renderList() {
             '<div class="size-line">' + (item.connections ? item.connections + " " + t("row.conn") : "&nbsp;") + "</div>") +
         "</div>" +
         '<div class="num">' + clock(item.eta) + "</div>" +
-        '<div class="state ' + rowClass(item) + '">' + stateText +
-          '<div class="acts">' + right + "</div></div>" +
+        '<div class="state">' +
+          '<span class="state-badge ' + rowClass(item) + '">' + stateText + '</span>' +
+          '<div class="acts">' + right + "</div>" +
+        '</div>' +
       "</div>"
     );
   }).join("");

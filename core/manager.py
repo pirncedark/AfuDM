@@ -692,7 +692,10 @@ class Manager:
         return True
 
     def remove(self, gid: str, delete_files: bool = False) -> bool:
-        row = self.store.by_gid(gid)
+        if gid.startswith("row:"):
+            row = self.store.by_id(int(gid.split(":", 1)[1]))
+        else:
+            row = self.store.by_gid(gid)
         if not row:
             raise KayitYok("kayit bulunamadi: %s" % gid)
         targets: list[Path] = []
@@ -1496,9 +1499,42 @@ class Manager:
             try:
                 self._sync_aria2()
                 self._start_due()
+                self._smart_queue()
                 self._maybe_trackers()
             except Exception as exc:
                 self.last_error = str(exc)
+
+    def _smart_queue(self) -> None:
+        """Indirme hizi dusukse ve bekleyen is varsa eslik sınırını artır."""
+        try:
+            stat = self.rpc.global_stat()
+            num_active = int(stat.get("numActive", 0))
+            num_waiting = int(stat.get("numWaiting", 0))
+            base_limit = int(self.store.get("max_concurrent", 5))
+            if num_waiting > 0 and num_active > 0:
+                speed = int(stat.get("downloadSpeed", 0))
+                speed += sum(
+                    j.speed for j in self.video_jobs.values()
+                    if j.status == "active"
+                )
+                if speed < 1024 * 1024:  # 1 MB/s altinda
+                    new_limit = min(20, num_active + 1)
+                    current_opt = self.rpc.get_global_option()
+                    if int(current_opt.get("max-concurrent-downloads", base_limit)) < new_limit:
+                        self.rpc.change_global_option({"max-concurrent-downloads": str(new_limit)})
+                    return
+            current_opt = self.rpc.get_global_option()
+            cur = int(current_opt.get("max-concurrent-downloads", base_limit))
+            if cur > base_limit:
+                speed = int(stat.get("downloadSpeed", 0))
+                speed += sum(
+                    j.speed for j in self.video_jobs.values()
+                    if j.status == "active"
+                )
+                if num_waiting == 0 or speed >= 1024 * 1024:
+                    self.rpc.change_global_option({"max-concurrent-downloads": str(base_limit)})
+        except Exception:
+            pass
 
     def _sync_aria2(self) -> None:
         try:

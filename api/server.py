@@ -314,8 +314,30 @@ class _Handler(BaseHTTPRequestHandler):
                 pass
             if not yol_str:
                 row = self.manager.store.by_gid(gid)
-                if row and row.get("status") == "complete" and row.get("target_path"):
-                    yol_str = row["target_path"]
+                if not row and gid.startswith("row:"):
+                    try:
+                        row = self.manager.store.by_id(int(gid.split(":")[1]))
+                    except (ValueError, IndexError):
+                        pass
+                if row:
+                    folder = row.get("dest_dir") or row.get("dir") or ""
+                    filename = row.get("filename") or ""
+                    if folder and filename:
+                        from pathlib import Path as _Path
+                        cand = _Path(folder) / filename
+                        if cand.exists() and cand.is_file():
+                            yol_str = str(cand)
+                        else:
+                            import glob as _glob
+                            escaped = _glob.escape(filename)
+                            matches = _glob.glob(str(_Path(folder) / f"{escaped}*"))
+                            for m in matches:
+                                p = _Path(m)
+                                if p.is_file():
+                                    yol_str = str(p)
+                                    break
+                    if not yol_str and row.get("target_path"):
+                        yol_str = row["target_path"]
             if not yol_str:
                 self._hata(404, "HAZIR_DEGIL", "Dosya hazir degil veya yolu bulunamadi")
                 return
