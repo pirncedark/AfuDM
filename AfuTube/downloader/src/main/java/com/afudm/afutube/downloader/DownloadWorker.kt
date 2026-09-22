@@ -17,12 +17,11 @@ import kotlinx.coroutines.withContext
 /**
  * WorkManager tabanlı indirme worker'ı.
  * Foreground service olarak çalışır — Android pil optimizasyonlarından etkilenmez.
- * Android dokümantasyonu uzun süreli işlemler için setForeground() kullanımını öneriyor.
  */
 class DownloadWorker(
-    private val ctx: WorkerParameters,
-    appContext: Context
-) : CoroutineWorker(appContext, ctx) {
+    appContext: Context,
+    private val params: WorkerParameters
+) : CoroutineWorker(appContext, params) {
 
     companion object {
         const val KEY_URL        = "url"
@@ -43,12 +42,12 @@ class DownloadWorker(
         createForegroundInfo("İndiriliyor…", 0)
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        val url       = ctx.inputData.getString(KEY_URL)       ?: return@withContext Result.failure()
-        val formatId  = ctx.inputData.getString(KEY_FORMAT_ID) ?: "bestvideo+bestaudio/best"
-        val outputDir = ctx.inputData.getString(KEY_OUTPUT_DIR)
+        val url       = params.inputData.getString(KEY_URL)       ?: return@withContext Result.failure()
+        val formatId  = params.inputData.getString(KEY_FORMAT_ID) ?: "bestvideo+bestaudio/best"
+        val outputDir = params.inputData.getString(KEY_OUTPUT_DIR)
             ?: applicationContext.getExternalFilesDir(null)?.absolutePath
             ?: return@withContext Result.failure()
-        val mergeAV   = ctx.inputData.getBoolean(KEY_MERGE, true)
+        val mergeAV   = params.inputData.getBoolean(KEY_MERGE, true)
 
         setForeground(createForegroundInfo("Hazırlanıyor…", 0))
 
@@ -58,19 +57,14 @@ class DownloadWorker(
             addOption("--no-playlist")
             if (mergeAV) {
                 addOption("--merge-output-format", "mp4")
-                // FFmpeg otomatik birleştirme için
             }
-            // aria2c çoklu bağlantı
             addOption("--external-downloader", "aria2c")
             addOption("--external-downloader-args", "aria2c:-x 8 -s 8 -k 5M")
         }
 
         var lastPercent = 0
 
-        val response = YoutubeDL.getInstance().execute(
-            request,
-            processId = id.toString()
-        ) { progress, etaInSeconds, line ->
+        val response = YoutubeDL.getInstance().execute(request) { progress, etaInSeconds, line ->
             val percent = progress.toInt().coerceIn(0, 100)
             if (percent != lastPercent) {
                 lastPercent = percent
@@ -82,7 +76,6 @@ class DownloadWorker(
                         PROGRESS_SIZE    to extractSize(line)
                     )
                 )
-                // Bildirim güncelle
                 val fi = createForegroundInfo("$percent%  •  ${extractSpeed(line)}", percent)
                 setForeground(fi)
             }
@@ -91,8 +84,6 @@ class DownloadWorker(
         if (response.exitCode == 0) Result.success()
         else Result.failure(workDataOf("error" to response.err))
     }
-
-    // ── Yardımcı ────────────────────────────────────────────────────────────
 
     private fun createForegroundInfo(text: String, progress: Int): ForegroundInfo {
         createNotifChannel()
