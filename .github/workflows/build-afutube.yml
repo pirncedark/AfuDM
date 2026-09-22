@@ -34,7 +34,7 @@ jobs:
           chmod +x gradlew
 
       - name: Setup Gradle cache
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Build Debug APK
         working-directory: ./AfuTube
