@@ -6,6 +6,7 @@
   --bg-deep: #0f131a;
   --surface: #1c222c;
   --surface-2: #232b37;
+  --bg-hover: #1e2631;
   --line: #2a3340;
   --line-soft: #222a35;
   --text: #e6eaf0;
@@ -19,6 +20,7 @@
   --hold: #f6c445;      /* durdurulmus / zamanlanmis */
   --hold-soft: #f6c4452e;
   --err: #f2678a;       /* hata */
+  --warn: #f59e0b;      /* uyari */
   --done: #46c98b;      /* tamamlandi */
   --done-soft: #46c98b2e;
 
@@ -27,7 +29,7 @@
   --ui-display: "Outfit", "Inter", sans-serif;
   --primary-gradient: linear-gradient(135deg, #5b9dff 0%, #a78bfa 100%);
 
-  --rail-w: 176px;
+  --rail-w: 180px;
   --trace-h: 78px;
 }
 
@@ -182,16 +184,22 @@ button { cursor: pointer; }
   padding: 0 16px 16px;
   font-family: var(--ui-display);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.01em;
+  background: var(--primary-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
-.brand span { color: var(--dl); }
+.brand span { -webkit-text-fill-color: var(--dl); color: var(--dl); }
 .brand small {
   display: block;
   font-family: var(--mono);
   font-size: 10px;
   font-weight: 400;
-  color: var(--dim);
+  -webkit-text-fill-color: var(--muted);
+  color: var(--muted);
+  background: none;
   letter-spacing: 0.04em;
   margin-top: 3px;
 }
@@ -361,10 +369,10 @@ select:focus-visible, button:focus-visible {
 }
 .row {
   display: grid;
-  grid-template-columns: minmax(180px, 2.2fr) 115px 95px 75px minmax(200px, 1.2fr);
+  grid-template-columns: minmax(180px, 2fr) 110px 90px 68px minmax(220px, 1.4fr);
   align-items: center;
-  gap: 12px;
-  padding: 11px 16px;
+  gap: 10px;
+  padding: 11px 14px;
   background: rgba(28, 34, 44, 0.7);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -489,7 +497,7 @@ select:focus-visible, button:focus-visible {
 
 .acts {
   display: flex;
-  gap: 5px;
+  gap: 4px;
   justify-content: flex-end;
   align-items: center;
   flex-wrap: wrap;
@@ -498,10 +506,10 @@ select:focus-visible, button:focus-visible {
 .acts button {
   background: var(--surface-2);
   border: 1px solid var(--line);
-  color: var(--text);
+  color: var(--muted);
   border-radius: 6px;
-  padding: 4px 9px;
-  font-size: 11.5px;
+  padding: 4px 8px;
+  font-size: 11px;
   font-weight: 500;
   display: inline-flex;
   align-items: center;
@@ -511,34 +519,52 @@ select:focus-visible, button:focus-visible {
   box-shadow: 0 1px 2px rgba(0,0,0,0.1);
   white-space: nowrap;
 }
+/* default hover — renksiz butonlar icin mavi */
 .acts button:hover {
-  background: #3b82f6;
-  color: #fff;
-  border-color: #3b82f6;
+  background: rgba(59,130,246,0.15);
+  color: #74afff;
+  border-color: rgba(59,130,246,0.4);
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(59,130,246,0.35);
+  box-shadow: 0 2px 6px rgba(59,130,246,0.2);
 }
+/* silme butonu */
 .acts button[data-act="remove"] {
   background: rgba(242, 103, 138, 0.08);
   border-color: rgba(242, 103, 138, 0.22);
   color: #f2678a;
 }
 .acts button[data-act="remove"]:hover {
-  background: #f2678a;
-  color: #fff;
-  border-color: #f2678a;
-  box-shadow: 0 2px 8px rgba(242,103,138,0.35);
+  background: rgba(242, 103, 138, 0.2);
+  color: #ff8fab;
+  border-color: rgba(242, 103, 138, 0.55);
+  box-shadow: 0 2px 8px rgba(242,103,138,0.3);
+  transform: translateY(-1px);
 }
+/* paylasim butonu */
 .acts button[data-act="share"] {
   background: rgba(167, 139, 250, 0.1);
   border-color: rgba(167, 139, 250, 0.28);
   color: #a78bfa;
 }
 .acts button[data-act="share"]:hover {
-  background: #a78bfa;
-  color: #fff;
-  border-color: #a78bfa;
-  box-shadow: 0 2px 8px rgba(167,139,250,0.35);
+  background: rgba(167, 139, 250, 0.2);
+  color: #c4b0ff;
+  border-color: rgba(167, 139, 250, 0.55);
+  box-shadow: 0 2px 8px rgba(167,139,250,0.3);
+  transform: translateY(-1px);
+}
+/* defender butonu */
+.acts button[data-act="defender"] {
+  background: rgba(70, 201, 139, 0.08);
+  border-color: rgba(70, 201, 139, 0.25);
+  color: #46c98b;
+}
+.acts button[data-act="defender"]:hover {
+  background: rgba(70, 201, 139, 0.18);
+  color: #6eedb0;
+  border-color: rgba(70, 201, 139, 0.5);
+  box-shadow: 0 2px 8px rgba(70,201,139,0.25);
+  transform: translateY(-1px);
 }
 
 .global-model {
@@ -616,7 +642,7 @@ select:focus-visible, button:focus-visible {
   color: var(--dim);
   font-size: 11px;
 }
-.acts button:hover { color: var(--text); border-color: var(--line); background: var(--surface); }
+/* NOT: .acts button:hover artik yukarida tam tanimli, bu satir silindi. */
 
 .empty { padding: 56px 20px; text-align: center; color: var(--dim); }
 .empty p { margin: 0 0 4px; color: var(--muted); }
@@ -1386,18 +1412,28 @@ input:disabled, textarea:disabled, select:disabled { opacity:.52; background:var
 /* ---------- DUYARLI TASARIM (RESPONSIVE) ---------- */
 @media (max-width: 1280px) {
   .row {
-    grid-template-columns: minmax(160px, 1.8fr) 105px 85px 65px minmax(170px, max-content);
-    gap: 10px;
+    grid-template-columns: minmax(150px, 1.7fr) 105px 85px 62px minmax(200px, 1.3fr);
+    gap: 9px;
     padding: 9px 12px;
   }
 }
 
-@media (max-width: 850px) {
+@media (max-width: 1000px) {
   .row {
-    grid-template-columns: 1fr 100px 80px 60px max-content;
+    grid-template-columns: minmax(140px, 1.5fr) 100px 80px 58px minmax(190px, 1.2fr);
     gap: 8px;
     padding: 8px 10px;
   }
+  .acts button { font-size: 10.5px; padding: 3px 7px; }
+}
+
+@media (max-width: 850px) {
+  .row {
+    grid-template-columns: 1fr 96px 76px 56px minmax(170px, max-content);
+    gap: 7px;
+    padding: 8px 10px;
+  }
+  .acts button { font-size: 10px; padding: 3px 6px; }
 }
 
 @media (max-width: 700px) {
