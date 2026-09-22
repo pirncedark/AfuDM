@@ -173,250 +173,296 @@
 <!-- Ayarlar -->
 <div class="veil" id="setVeil">
   <div class="sheet">
-    <h2 data-i18n="set.title">Ayarlar</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-right: 16px;">
+      <h2 data-i18n="set.title" style="margin: 0;">Ayarlar</h2>
+      <div style="display: flex; gap: 16px; align-items: center;">
+        <input id="settingsSearch" type="search" data-i18n-ph="set.search" placeholder="Ayarlarda ara" spellcheck="false" style="width:160px; padding: 6px 12px; font-size: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg-deep); color: var(--text);">
+        <label class="mode-switch" title="Gelişmiş (Uzman) ayarları göster/gizle">
+          <span class="mode-label-off">Normal</span>
+          <input type="checkbox" id="showAdvSet">
+          <span class="mode-slider"></span>
+          <span class="mode-label-on">Gelişmiş</span>
+        </label>
+      </div>
+    </div>
     <div class="body" id="settingsBody">
-      <div class="settings-tools">
-        <input id="settingsSearch" type="search" data-i18n-ph="set.search" placeholder="Ayarlarda ara" spellcheck="false">
-        <label class="adv-toggle"><input type="checkbox" id="showAdvSet"> <span data-i18n="set.advToggle">Gelişmiş ayarlar</span></label>
-        <span id="settingsSearchResult" class="hint"></span>
-      </div>
-      <div>
-        <label for="sLang" data-i18n="set.lang">Dil / Language</label>
-        <select id="sLang">
-          <option value="auto" data-i18n="set.lang.auto">Otomatik (Windows dili)</option>
-          <option value="tr" data-i18n="set.lang.tr">Türkçe</option>
-          <option value="en" data-i18n="set.lang.en">English</option>
-        </select>
-      </div>
-      <div>
-        <label data-i18n="set.engines">Motorlar</label>
-        <div class="engines" id="engines"></div>
-        <div class="hint" data-i18n="set.enginesHint">Küçük paket için video motorları ayrı iniyor.</div>
-      </div>
-      <div>
-        <label for="sDir" data-i18n="set.dir">İndirme klasörü</label>
-        <input id="sDir" type="text" spellcheck="false">
-        <div class="hint" data-i18n="set.dirHint">Boş bırakırsan uygulama klasöründeki downloads kullanılır (portable).</div>
-      </div>
-      <div class="grid2">
-        <div class="adv-only">
-          <label for="sSplit" data-i18n="set.split">Dosya başına parça (split)</label>
-          <input id="sSplit" type="number" min="1" max="128">
+      <div class="settings-tools" style="border-bottom: 1px solid var(--line-soft); padding-bottom: 8px;">
+        <div class="set-tabs" style="overflow: hidden; flex-wrap: wrap;">
+          <button type="button" class="set-tab-btn active" data-stab="genel" data-i18n="set.tabGenel">Genel</button>
+          <button type="button" class="set-tab-btn" data-stab="indirme" data-i18n="set.tabIndirme">İndirme</button>
+          <button type="button" class="set-tab-btn" data-stab="video" data-i18n="set.tabVideo">Video</button>
+          <button type="button" class="set-tab-btn" data-stab="ag" data-i18n="set.tabAg">Ağ & Bağlantı</button>
+          <button type="button" class="set-tab-btn adv-only" data-stab="araclar" data-i18n="set.tabAraclar">Sistem & Araçlar</button>
         </div>
-        <div class="adv-only">
-          <label for="sConn" data-i18n="set.conn">Sunucu başına bağlantı</label>
-          <input id="sConn" type="number" min="1" max="16">
-        </div>
-        <div class="adv-only">
-          <label for="sConc" data-i18n="set.conc">Aynı anda indirme</label>
-          <input id="sConc" type="number" min="1" max="20">
-        </div>
+      </div>
+      <div id="settingsSearchResult" class="hint" style="margin-top: -8px; margin-bottom: 8px;"></div>
+
+      <!-- GENEL SEKME -->
+      <div class="set-pane active" id="sPaneGenel">
         <div>
-          <label for="sSpeed" data-i18n="set.speed">Hız sınırı (KB/s, 0 = sınırsız)</label>
-          <input id="sSpeed" type="number" min="0">
-        </div>
-        <div>
-          <label for="sMode" data-i18n="set.mode">Hız profili</label>
-          <select id="sMode">
-            <option value="turbo" data-i18n="mode.turbo">Turbo — sınırsız</option>
-            <option value="normal" data-i18n="mode.normal">Normal — sınırıma uy</option>
-            <option value="snail" data-i18n="mode.snail">Salyangoz — interneti rahat bırak</option>
+          <label for="sLang" data-i18n="set.lang">Dil / Language</label>
+          <select id="sLang">
+            <option value="auto" data-i18n="set.lang.auto">Otomatik (Windows dili)</option>
+            <option value="tr" data-i18n="set.lang.tr">Türkçe</option>
+            <option value="en" data-i18n="set.lang.en">English</option>
           </select>
         </div>
-        <div class="adv-only">
-          <label for="sSnailSpeed" data-i18n="set.speed.snail">Salyangoz hızı (KB/s)</label>
-          <input id="sSnailSpeed" type="number" min="1">
-          <div class="hint" data-i18n="set.speed.snailHint">Salyangoz profili seçiliyken kullanılan hız. Düşük tut: internet başkasına kalsın.</div>
+        <div style="margin-top: 8px;">
+          <label for="sDir" data-i18n="set.dir">İndirme klasörü</label>
+          <div class="yol-satir">
+            <input id="sDir" type="text" spellcheck="false">
+          </div>
+          <div class="hint" data-i18n="set.dirHint">Boş bırakırsan uygulama klasöründeki downloads kullanılır (portable).</div>
         </div>
+        <div class="opts" style="margin-top: 12px;">
+          <label class="opt"><input type="checkbox" id="sWinNotify"> <span data-i18n="set.winNotify">Windows bildirimi göster</span></label>
+          <label class="opt"><input type="checkbox" id="sTepsi"> <span data-i18n="set.tepsi">X ile kapatınca sistem tepsisine git</span></label>
+          <label class="opt"><input type="checkbox" id="sBaslangic"> <span data-i18n="set.baslangic">Bilgisayar açılınca AfuDM'i başlat</span></label>
+          <label class="opt"><input type="checkbox" id="sBasTepside"> <span data-i18n="set.basTepside">Açılışta pencere açılmasın, tepside başlasın</span></label>
+          <label class="opt"><input type="checkbox" id="sKaydet"> <span data-i18n="set.kaydet">İndirmeden önce kaydetme penceresini göster</span></label>
+        </div>
+        <div class="hint" data-i18n="hint.tepsi" style="margin-top: 4px;">Küçültme normal görev çubuğuna iner. X uygulamayı kapatmaz; simge sağ alttaki ^ okunun altına gider.</div>
+        
+        <div class="adv-only" style="margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
+          <label class="opt"><input type="checkbox" id="sClip"> <span data-i18n="set.clip">Panoya kopyalanan linki yakala</span></label>
+          <div style="margin-top: 8px;">
+            <label for="sClipExts" data-i18n="set.clip.exts">Yakalanacak uzantılar</label>
+            <input id="sClipExts" type="text" spellcheck="false" placeholder="iso,zip,mp4,exe">
+            <div class="hint" data-i18n="set.clip.extsHint">Virgülle ayır. Pano izleme açıkken yalnızca bu uzantılarla biten adresler yakalanır.</div>
+          </div>
+        </div>
+
+        <div class="adv-only" style="margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
+          <div class="grid2">
+            <div>
+              <label for="sChat" data-i18n="set.chat">Telegram sohbet kimliği</label>
+              <input id="sChat" type="text" spellcheck="false">
+            </div>
+            <div>
+              <label for="sToken" data-i18n="set.token">Telegram bot anahtarı (bildirim için)</label>
+              <input id="sToken" type="text" spellcheck="false">
+            </div>
+          </div>
+        </div>
+
+        <div class="seed-kutu adv-only" id="windowsIntegration" style="margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
+          <label data-i18n="winint.title">Windows Integration</label>
+          <div class="hint" data-i18n="winint.hint">Each action reads the current Windows registration; Apply stores the previous value before changing it.</div>
+          <div id="winIntRows" class="winint-rows"></div>
+          <div class="hint" id="winIntError" aria-live="polite"></div>
+        </div>
+
+        <div class="yol-satir" style="margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
+          <button class="btn" id="sVarsayilan" data-i18n="set.varsayilan">Windows varsayılan uygulama ekranını aç</button>
+        </div>
+
+        <div class="surum-kutu" style="margin-top: 12px;">
+          <label data-i18n="set.surum">Sürüm</label>
+          <div class="surum-satir" id="sSurum"></div>
+        </div>
+      </div>
+
+      <!-- İNDİRME SEKME -->
+      <div class="set-pane" id="sPaneIndirme">
+        <div class="grid2">
+          <div>
+            <label for="sSpeed" data-i18n="set.speed">Hız sınırı (KB/s, 0 = sınırsız)</label>
+            <input id="sSpeed" type="number" min="0">
+          </div>
+          <div>
+            <label for="sMode" data-i18n="set.mode">Hız profili</label>
+            <select id="sMode">
+              <option value="turbo" data-i18n="mode.turbo">Turbo — sınırsız</option>
+              <option value="normal" data-i18n="mode.normal">Normal — sınırıma uy</option>
+              <option value="snail" data-i18n="mode.snail">Salyangoz — interneti rahat bırak</option>
+            </select>
+          </div>
+          <div class="adv-only">
+            <label for="sSnailSpeed" data-i18n="set.speed.snail">Salyangoz hızı (KB/s)</label>
+            <input id="sSnailSpeed" type="number" min="1">
+            <div class="hint" data-i18n="set.speed.snailHint">Salyangoz profili seçiliyken kullanılan hız. Düşük tut: internet başkasına kalsın.</div>
+          </div>
+          <div class="adv-only">
+            <label for="sRatio" data-i18n="set.ratio">Seed oranı (torrent)</label>
+            <input id="sRatio" type="number" min="0" step="0.1">
+          </div>
+          <div class="adv-only">
+            <label for="sSplit" data-i18n="set.split">Dosya başına parça (split)</label>
+            <input id="sSplit" type="number" min="1" max="128">
+          </div>
+          <div class="adv-only">
+            <label for="sConn" data-i18n="set.conn">Sunucu başına bağlantı</label>
+            <input id="sConn" type="number" min="1" max="16">
+          </div>
+          <div class="adv-only">
+            <label for="sConc" data-i18n="set.conc">Aynı anda indirme</label>
+            <input id="sConc" type="number" min="1" max="20">
+          </div>
+        </div>
+        <div class="opts" style="margin-top: 12px;">
+          <label class="opt"><input type="checkbox" id="sKategori"> <span data-i18n="set.kategori">Dosyaları kategori klasörlerine ayır</span></label>
+          <label class="opt"><input type="checkbox" id="sTorrent"> <span data-i18n="set.torrent">.torrent ve magnet linklerini AfuDM açsın</span></label>
+          <label class="opt adv-only"><input type="checkbox" id="sTrackers"> <span data-i18n="set.trackers">Tracker listesini günlük güncelle</span></label>
+          <label class="opt adv-only"><input type="checkbox" id="sNotify"> <span data-i18n="set.notify">Bitince Telegram'a haber ver</span></label>
+          <label class="opt adv-only"><input type="checkbox" id="sShutdown"> <span data-i18n="set.shutdown">Hepsi bitince bilgisayarı kapat</span></label>
+          <label class="opt adv-only"><input type="checkbox" id="sSleep"> <span data-i18n="set.sleep">Hepsi bitince bilgisayarı uyut</span></label>
+        </div>
+        <div class="hint" id="torrentHint" style="margin-top: 4px;"></div>
+
+        <!-- Seed listeleri -->
+        <div class="seed-kutu adv-only" style="margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
+          <label data-i18n="set.seedListe">Seed listeleri (tracker .txt dosyaları)</label>
+          <div class="yol-satir">
+            <button class="btn primary" id="sSeedEkle" data-i18n="set.seedEkle">Seed dosyası ekle</button>
+            <button class="btn" id="sSeedKlasor" data-i18n="set.seedKlasor">Klasörü aç</button>
+            <button class="btn" id="sSeedTara" data-i18n="set.seedTara">Şimdi tara</button>
+          </div>
+          <div class="seed-dosyalar" id="sSeedListe"></div>
+          <div class="hint" id="sSeedOzet"></div>
+          <div class="grid2">
+            <div>
+              <label for="sTrackerScanTime" data-i18n="set.tracker.lastScan">Son tarama</label>
+              <input id="sTrackerScanTime" type="text" spellcheck="false" readonly>
+            </div>
+            <div>
+              <label for="sTrackerSummary" data-i18n="set.tracker.summary">Canlı / toplam</label>
+              <input id="sTrackerSummary" type="text" spellcheck="false" readonly>
+            </div>
+          </div>
+          <label for="sSeedEk" data-i18n="set.seedEk" style="margin-top: 8px;">Kendi tracker'ların — elle yapıştır (her satıra bir adres)</label>
+          <textarea id="sSeedEk" spellcheck="false" placeholder="udp://tracker.ornek.org:1337/announce"></textarea>
+          <div class="yol-satir">
+            <button class="btn" id="sSeedEkYapistir" data-i18n="set.seedEkYapistir">Panodan yapıştır</button>
+            <button class="btn primary" id="sSeedEkKaydet" data-i18n="set.seedEkKaydet">Tracker'ları kaydet</button>
+          </div>
+          <div class="hint" id="sSeedEkOzet"></div>
+          <label class="opt"><input type="checkbox" id="sSeedOto"> <span data-i18n="set.seedOto">Seed listelerini günlük tara, ölüleri kullanma</span></label>
+          <div class="hint" data-i18n="set.seedHint">Eklediğin dosyalar trackers/ klasörüne kopyalanır; kaynak dosyaya dokunulmaz. AfuDM hepsini birleştirir, her adrese gerçekten sorar ve yalnızca cevap verenleri — en çok seed bildirenler başta olacak şekilde — torrentlere uygular. Ölüler silinmez, ertesi gün yeniden denenir. Not: tracker eklemek seed SAYISINI artırmaz, var olan seed'leri daha hızlı bulmanı sağlar.</div>
+        </div>
+      </div>
+
+      <!-- VİDEO SEKME -->
+      <div class="set-pane" id="sPaneVideo">
         <div>
-          <label for="sRatio" data-i18n="set.ratio">Seed oranı (torrent)</label>
-          <input id="sRatio" type="number" min="0" step="0.1">
+          <label data-i18n="set.engines">Motorlar</label>
+          <div class="engines" id="engines"></div>
+          <div class="hint" data-i18n="set.enginesHint">Küçük paket için video motorları ayrı iniyor.</div>
         </div>
+        <div class="seed-kutu" style="margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
+          <label data-i18n="vid.title">Video</label>
+          <div class="grid2">
+            <div><label for="sVideoAltyaziDiller" data-i18n="vid.altyaziDiller">Altyazı dilleri</label><input id="sVideoAltyaziDiller" type="text" spellcheck="false" data-i18n-ph="vid.phAltyaziDiller" placeholder="tr,en"></div>
+            <div><label for="sVideoKapsayici" data-i18n="vid.kapsayici">Kapsayıcı</label><select id="sVideoKapsayici"><option value="" data-i18n="vid.varsayilanMp4">Varsayılan (mp4)</option><option value="mkv">mkv</option><option value="webm">webm</option><option value="mp4">mp4</option></select></div>
+            <div><label for="sVideoSesFormati" data-i18n="vid.sesFormati">Ses formatı</label><select id="sVideoSesFormati"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="mp3">mp3</option><option value="m4a">m4a</option><option value="opus">opus</option><option value="flac">flac</option></select></div>
+            <div><label for="sVideoKucukResim" data-i18n="vid.kucukResim">Küçük resim</label><select id="sVideoKucukResim"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="goem" data-i18n="vid.goem">Göm</option><option value="dosya" data-i18n="vid.dosya">Dosya</option></select></div>
+            <div class="adv-only"><label for="sVideoSponsorblock" data-i18n="vid.sponsorblock">SponsorBlock bölümleri</label><input id="sVideoSponsorblock" type="text" spellcheck="false" data-i18n-ph="vid.phSponsorblock" placeholder="sponsor,selfpromo"></div>
+            <div class="adv-only"><label for="sVideoBolumler" data-i18n="vid.bolumler">Bölümler</label><select id="sVideoBolumler"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="goem" data-i18n="vid.goem">Göm</option><option value="ayir" data-i18n="vid.ayir">Ayır</option></select></div>
+            <div class="adv-only"><label for="sVideoBolumAraligi" data-i18n="vid.bolumAraligi">Bölüm aralığı</label><input id="sVideoBolumAraligi" type="text" spellcheck="false" data-i18n-ph="vid.phBolumAraligi" placeholder="00:01:00-00:02:30"></div>
+            <div class="adv-only"><label for="sVideoDosyaSablonu" data-i18n="vid.dosyaSablonu">Dosya adı şablonu</label><input id="sVideoDosyaSablonu" type="text" spellcheck="false" data-i18n-ph="vid.phDosyaSablonu" placeholder=""></div>
+            <div class="adv-only"><label for="sVideoTarayiciCerezi" data-i18n="vid.tarayiciCerezi">Tarayıcı çerezleri</label><select id="sVideoTarayiciCerezi"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="chrome">chrome</option><option value="edge">edge</option><option value="firefox">firefox</option><option value="brave">brave</option></select></div>
+          </div>
+          <div class="opts" style="margin-top: 8px;">
+            <label class="opt"><input type="checkbox" id="sVideoOtoAltyazi"> <span data-i18n="vid.otoAltyazi">Otomatik altyazı yaz</span></label>
+            <label class="opt adv-only"><input type="checkbox" id="sVideoAltyaziGoem"> <span data-i18n="vid.altyaziGoem">Altyazıyı göm</span></label>
+            <label class="opt adv-only"><input type="checkbox" id="sVideoUstveriGoem"> <span data-i18n="vid.ustveriGoem">Üstveriyi göm</span></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- AĞ SEKME -->
+      <div class="set-pane" id="sPaneAg">
         <div class="adv-only">
-          <label for="sChat" data-i18n="set.chat">Telegram sohbet kimliği</label>
-          <input id="sChat" type="text" spellcheck="false">
-        </div>
-      </div>
-      <div class="adv-only">
-        <label for="sToken" data-i18n="set.token">Telegram bot anahtarı (bildirim için)</label>
-        <input id="sToken" type="text" spellcheck="false">
-      </div>
-      <div class="opts">
-        <label class="opt"><input type="checkbox" id="sClip"> <span data-i18n="set.clip">Panoya kopyalanan linki yakala</span></label>
-        <label class="opt"><input type="checkbox" id="sTrackers"> <span data-i18n="set.trackers">Tracker listesini günlük güncelle</span></label>
-        <label class="opt"><input type="checkbox" id="sNotify"> <span data-i18n="set.notify">Bitince Telegram'a haber ver</span></label>
-        <label class="opt"><input type="checkbox" id="sWinNotify"> <span data-i18n="set.winNotify">Windows bildirimi göster</span></label>
-        <label class="opt"><input type="checkbox" id="sShutdown"> <span data-i18n="set.shutdown">Hepsi bitince bilgisayarı kapat</span></label>
-        <label class="opt"><input type="checkbox" id="sSleep"> <span data-i18n="set.sleep">Hepsi bitince bilgisayarı uyut</span></label>
-        <label class="opt"><input type="checkbox" id="sKaydet"> <span data-i18n="set.kaydet">İndirmeden önce kaydetme penceresini göster</span></label>
-        <label class="opt"><input type="checkbox" id="sKategori"> <span data-i18n="set.kategori">Dosyaları kategori klasörlerine ayır</span></label>
-        <label class="opt"><input type="checkbox" id="sTepsi"> <span data-i18n="set.tepsi">X ile kapatınca sistem tepsisine git</span></label>
-        <label class="opt"><input type="checkbox" id="sBaslangic"> <span data-i18n="set.baslangic">Bilgisayar açılınca AfuDM'i başlat</span></label>
-        <label class="opt"><input type="checkbox" id="sTorrent"> <span data-i18n="set.torrent">.torrent ve magnet linklerini AfuDM açsın</span></label>
-        <label class="opt"><input type="checkbox" id="sBasTepside"> <span data-i18n="set.basTepside">Açılışta pencere açılmasın, tepside başlasın</span></label>
-      </div>
-      <!-- v1.7.5 Bolum 3 — pano izleme eki (docs/v175_SOZLESME.md) -->
-      <div class="adv-only">
-        <label for="sClipExts" data-i18n="set.clip.exts">Yakalanacak uzantılar</label>
-        <input id="sClipExts" type="text" spellcheck="false" placeholder="iso,zip,mp4,exe">
-        <div class="hint" data-i18n="set.clip.extsHint">Virgülle ayır. Pano izleme açıkken yalnızca bu uzantılarla biten adresler yakalanır.</div>
-      </div>
-      <div class="adv-only">
-        <label for="sProxy" data-i18n="set.proxy">Sistem Geneli Proxy (http, https, socks5)</label>
-        <input id="sProxy" type="text" spellcheck="false" placeholder="socks5://127.0.0.1:1080">
-      </div>
-      <div class="adv-only">
-        <label for="sApiPort" data-i18n="set.apiPort">API / Arayüz Portu</label>
-        <input id="sApiPort" type="number" min="1024" max="65535" placeholder="8010">
-      </div>
-      <div class="seed-kutu" id="windowsIntegration">
-        <label data-i18n="winint.title">Windows Integration</label>
-        <div class="hint" data-i18n="winint.hint">Each action reads the current Windows registration; Apply stores the previous value before changing it.</div>
-        <div id="winIntRows" class="winint-rows"></div>
-        <div class="hint" id="winIntError" aria-live="polite"></div>
-      </div>
-      <div class="seed-kutu">
-        <label data-i18n="vid.title">Video</label>
-        <div class="grid2">
-          <div><label for="sVideoAltyaziDiller" data-i18n="vid.altyaziDiller">Altyazı dilleri</label><input id="sVideoAltyaziDiller" type="text" spellcheck="false" data-i18n-ph="vid.phAltyaziDiller" placeholder="tr,en"></div>
-          <div><label for="sVideoSponsorblock" data-i18n="vid.sponsorblock">SponsorBlock bölümleri</label><input id="sVideoSponsorblock" type="text" spellcheck="false" data-i18n-ph="vid.phSponsorblock" placeholder="sponsor,selfpromo"></div>
-          <div><label for="sVideoKucukResim" data-i18n="vid.kucukResim">Küçük resim</label><select id="sVideoKucukResim"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="goem" data-i18n="vid.goem">Göm</option><option value="dosya" data-i18n="vid.dosya">Dosya</option></select></div>
-          <div><label for="sVideoBolumler" data-i18n="vid.bolumler">Bölümler</label><select id="sVideoBolumler"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="goem" data-i18n="vid.goem">Göm</option><option value="ayir" data-i18n="vid.ayir">Ayır</option></select></div>
-          <div><label for="sVideoBolumAraligi" data-i18n="vid.bolumAraligi">Bölüm aralığı</label><input id="sVideoBolumAraligi" type="text" spellcheck="false" data-i18n-ph="vid.phBolumAraligi" placeholder="00:01:00-00:02:30"></div>
-          <div><label for="sVideoKapsayici" data-i18n="vid.kapsayici">Kapsayıcı</label><select id="sVideoKapsayici"><option value="" data-i18n="vid.varsayilanMp4">Varsayılan (mp4)</option><option value="mkv">mkv</option><option value="webm">webm</option><option value="mp4">mp4</option></select></div>
-          <div><label for="sVideoSesFormati" data-i18n="vid.sesFormati">Ses formatı</label><select id="sVideoSesFormati"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="mp3">mp3</option><option value="m4a">m4a</option><option value="opus">opus</option><option value="flac">flac</option></select></div>
-          <div><label for="sVideoDosyaSablonu" data-i18n="vid.dosyaSablonu">Dosya adı şablonu</label><input id="sVideoDosyaSablonu" type="text" spellcheck="false" data-i18n-ph="vid.phDosyaSablonu" placeholder=""></div>
-          <div><label for="sVideoTarayiciCerezi" data-i18n="vid.tarayiciCerezi">Tarayıcı çerezleri</label><select id="sVideoTarayiciCerezi"><option value="" data-i18n="vid.kapali">Kapalı</option><option value="chrome">chrome</option><option value="edge">edge</option><option value="firefox">firefox</option><option value="brave">brave</option></select></div>
-          <label class="opt"><input type="checkbox" id="sVideoOtoAltyazi"> <span data-i18n="vid.otoAltyazi">Otomatik altyazı yaz</span></label>
-          <label class="opt"><input type="checkbox" id="sVideoAltyaziGoem"> <span data-i18n="vid.altyaziGoem">Altyazıyı göm</span></label>
-          <label class="opt"><input type="checkbox" id="sVideoUstveriGoem"> <span data-i18n="vid.ustveriGoem">Üstveriyi göm</span></label>
-        </div>
-      </div>
-      <div class="surum-kutu">
-        <label data-i18n="set.surum">Sürüm</label>
-        <div class="surum-satir" id="sSurum"></div>
-      </div>
-      <div class="seed-kutu" id="pluginSecurityPanel">
-        <label data-i18n="set.plg.title">Eklenti Güvenliği</label>
-        <div class="grid2">
-          <div><label for="sPlgMaxSize" data-i18n="set.plg.maxSize">Maks. uncompressed (MB)</label><input id="sPlgMaxSize" type="number" min="10" placeholder="200"></div>
-          <div><label for="sPlgMaxRatio" data-i18n="set.plg.maxRatio">Maks. sıkıştırma (1:N)</label><input id="sPlgMaxRatio" type="number" min="10" placeholder="100"></div>
-        </div>
-        <label class="opt"><input type="checkbox" id="sPlgUnsigned"> <span data-i18n="set.plg.unsigned">İmzasız eklentiye izin ver</span></label>
-      </div>
-      <div class="seed-kutu" id="reliabilityPanel">
-        <label data-i18n="rel.title">Güvenilirlik ve güvenlik</label>
-        <div class="hint"><span class="rozet" data-i18n="apply.now">hemen</span> <span data-i18n="rel.hint">Durumu denetle, yedekle ve destek paketini güvenle hazırla.</span></div>
-        <div class="yol-satir"><button class="btn" id="relIntegrity" data-i18n="rel.integrity">Bütünlüğü denetle</button><button class="btn" id="relBackup" data-i18n="rel.backup">Şimdi yedekle</button><button class="btn" id="relHealth" data-i18n="rel.health">Motor sağlığı</button><button class="btn" id="relRestart" data-i18n="rel.restart">Motoru yeniden başlat</button></div>
-        <div class="yol-satir"><button class="btn" id="relDiagnostic" data-i18n="rel.preview">Maskelenmiş önizleme</button><button class="btn" id="relExport" data-i18n="rel.export">Tanı paketini kaydet</button><button class="btn" id="relBackups" data-i18n="rel.backups">Yedekleri göster</button><button class="btn ghost" id="relToken" data-i18n="rel.rotate">API anahtarını yenile</button></div>
-        <pre class="hint" id="relStatus" style="white-space:pre-wrap;max-height:170px;overflow:auto"></pre><div class="hint" id="relBackupsList"></div>
-      </div>
-      <div class="seed-kutu" id="automationSettings">
-        <label data-i18n="auto.title">Otomasyon</label>
-        <div class="hint" data-i18n="auto.hint">İndirme tamamlanınca seçtiğin adımlar sırayla arka planda çalışır.</div>
-        <div><label for="sAutoSteps" data-i18n="auto.order">Adım sırası (virgülle)</label><input id="sAutoSteps" type="text" spellcheck="false"><div class="hint" data-i18n="auto.orderHint">checksum, extract, move, rename, script, notify, power kullan. Geçersiz adımlar atlanır.</div><span class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</span></div>
-        <label class="opt"><input type="checkbox" id="sAutoEnabled"> <span data-i18n="auto.enabled">Otomasyonu aç</span> <em class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</em></label>
-        <div class="grid2">
-          <label class="opt"><input type="checkbox" id="sAutoChecksum"> <span data-i18n="auto.checksum">Checksum doğrula</span> <em class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</em></label>
-          <label class="opt"><input type="checkbox" id="sAutoExtract"> <span data-i18n="auto.extract">Arşivi çıkar</span> <em class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</em></label>
-        </div>
-        <div><label for="sAutoMove" data-i18n="auto.move">Taşıma klasörü</label><input id="sAutoMove" type="text" spellcheck="false"><span class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</span></div>
-        <div><label for="sAutoRename" data-i18n="auto.rename">Yeniden adlandırma şablonu</label><input id="sAutoRename" type="text" placeholder="{name}-done{ext}" spellcheck="false"><span class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</span></div>
-        <div><label for="sAutoScript" data-i18n="auto.script">Güvenli script komutu</label><input id="sAutoScript" type="text" spellcheck="false"><div class="hint" data-i18n="auto.scriptHint">Yalnızca buraya açıkça yazdığın komut çalışır; indirilen dosya adından komut üretilmez.</div><span class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</span></div>
-        <div class="grid2"><label class="opt"><input type="checkbox" id="sAutoNotify"> <span data-i18n="auto.notify">Bildirim gönder</span> <em class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</em></label><div><label for="sAutoPower" data-i18n="auto.power">Bitince güç eylemi</label><select id="sAutoPower"><option value="none" data-i18n="auto.none">Kapalı</option><option value="sleep" data-i18n="auto.sleep">Uyut</option><option value="shutdown" data-i18n="auto.shutdown">Kapat</option></select><span class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</span></div></div>
-        <div><label for="sAutoSeconds" data-i18n="auto.seconds">Geri sayım (saniye)</label><input id="sAutoSeconds" type="number" min="5"><span class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</span></div>
-      </div>
-      <!-- Seed listeleri (core/tracker_saglik.py) -->
-      <div class="seed-kutu">
-        <label data-i18n="set.seedListe">Seed listeleri (tracker .txt dosyaları)</label>
-        <div class="yol-satir">
-          <button class="btn primary" id="sSeedEkle" data-i18n="set.seedEkle">Seed dosyası ekle</button>
-          <button class="btn" id="sSeedKlasor" data-i18n="set.seedKlasor">Klasörü aç</button>
-          <button class="btn" id="sSeedTara" data-i18n="set.seedTara">Şimdi tara</button>
-        </div>
-        <div class="seed-dosyalar" id="sSeedListe"></div>
-        <div class="hint" id="sSeedOzet"></div>
-        <!-- v1.7.5 Bolum 5 — tracker durumu (salt-okunur) -->
-        <div class="grid2">
-          <div>
-            <label for="sTrackerScanTime" data-i18n="set.tracker.lastScan">Son tarama</label>
-            <input id="sTrackerScanTime" type="text" spellcheck="false" readonly>
+          <h3 data-i18n="set.net.title" style="margin-top: 0;">Ağ</h3>
+          <div class="opts">
+            <label class="opt"><input type="checkbox" id="sSystemProxy"> <span data-i18n="set.net.systemProxy">Sistem proxy'sini kullan</span></label>
           </div>
-          <div>
-            <label for="sTrackerSummary" data-i18n="set.tracker.summary">Canlı / toplam</label>
-            <input id="sTrackerSummary" type="text" spellcheck="false" readonly>
+          <label for="sProxy" data-i18n="set.net.proxy" style="margin-top: 8px;">Proxy adresi</label>
+          <input id="sProxy" type="text" spellcheck="false" placeholder="http://127.0.0.1:8080">
+          <div class="hint" data-i18n="set.net.proxyHint">Boş bırakırsan proxy kullanılmaz. Sistem proxy'si açıkken bu alan devre dışı kalır.</div>
+          <label for="sNetLocations" data-i18n="set.net.locations" style="margin-top: 8px;">Ağ konumları</label>
+          <textarea id="sNetLocations" spellcheck="false" placeholder="\sunucu\paylasim"></textarea>
+        </div>
+
+        <div style="margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
+          <h3 data-i18n="set.remote.title">Uzaktan erişim</h3>
+          <div class="opts">
+            <label class="opt"><input type="checkbox" id="sLanAccess"> <span data-i18n="set.remote.lan">Telefondan bağlan (aynı Wi-Fi)</span></label>
+          </div>
+          <div class="hint" data-i18n="set.remote.lanHint">Kutu kapalıyken AfuDM yerel ağa hiç açılmaz; internete zaten hiç açılmaz. Açınca bu bilgisayar aynı Wi-Fi'daki telefondan yönetilir.</div>
+          <div class="grid2" style="margin-top: 8px;">
+            <div>
+              <label for="sApiPort" data-i18n="set.remote.port">API portu</label>
+              <input id="sApiPort" type="number" min="1024" max="65535">
+              <div id="sPortRestart" class="hint"></div>
+            </div>
+            <div>
+              <label for="sLanAddr" data-i18n="set.remote.addr">Bağlantı adresi</label>
+              <input id="sLanAddr" type="text" spellcheck="false" readonly>
+            </div>
+            <div>
+              <label for="sRunningPort" data-i18n="set.remote.runningPort">Calisan port</label>
+              <input id="sRunningPort" type="text" readonly>
+            </div>
           </div>
         </div>
-        <!-- Elle yapistirma: dosya secmeden, panodaki adresleri dogrudan gir -->
-        <label for="sSeedEk" data-i18n="set.seedEk">Kendi tracker'ların — elle yapıştır (her satıra bir adres)</label>
-        <textarea id="sSeedEk" spellcheck="false" placeholder="udp://tracker.ornek.org:1337/announce"></textarea>
-        <div class="yol-satir">
-          <button class="btn" id="sSeedEkYapistir" data-i18n="set.seedEkYapistir">Panodan yapıştır</button>
-          <button class="btn primary" id="sSeedEkKaydet" data-i18n="set.seedEkKaydet">Tracker'ları kaydet</button>
-        </div>
-        <div class="hint" id="sSeedEkOzet"></div>
-        <label class="opt"><input type="checkbox" id="sSeedOto"> <span data-i18n="set.seedOto">Seed listelerini günlük tara, ölüleri kullanma</span></label>
-        <div class="hint" data-i18n="set.seedHint">Eklediğin dosyalar trackers/ klasörüne kopyalanır; kaynak dosyaya dokunulmaz. AfuDM hepsini birleştirir, her adrese gerçekten sorar ve yalnızca cevap verenleri — en çok seed bildirenler başta olacak şekilde — torrentlere uygular. Ölüler silinmez, ertesi gün yeniden denenir. Not: tracker eklemek seed SAYISINI artırmaz, var olan seed'leri daha hızlı bulmanı sağlar.</div>
-      </div>
-      <div>
-        <label data-i18n="set.wol">Telefondan uyandırma (Wake-on-LAN)</label>
-        <div class="yol-satir">
-          <input id="sMac" type="text" spellcheck="false" readonly>
-          <button class="btn" id="sMacKopya" data-i18n="set.kopyala">Kopyala</button>
-        </div>
-        <div class="hint" id="wolDurum"></div>
-        <div class="hint" data-i18n="set.wolHint">Telefonuna bir Wake-on-LAN uygulaması kur ve bu MAC adresini gir. Bilgisayar uykudayken uyandırır, AfuDM kaldığı yerden devam eder — şifre sorulmaz.</div>
-      </div>
-      <!-- v1.7.5 Bolum 1 — Uzaktan Erisim (docs/v175_SOZLESME.md) -->
-      <div>
-        <h3 data-i18n="set.remote.title">Uzaktan erişim</h3>
-        <div class="opts">
-          <label class="opt"><input type="checkbox" id="sLanAccess"> <span data-i18n="set.remote.lan">Telefondan bağlan (aynı Wi-Fi)</span></label>
-        </div>
-        <div class="hint" data-i18n="set.remote.lanHint">Kutu kapalıyken AfuDM yerel ağa hiç açılmaz; internete zaten hiç açılmaz. Açınca bu bilgisayar aynı Wi-Fi'daki telefondan yönetilir.</div>
-        <div class="grid2">
-          <div>
-            <label for="sApiPort" data-i18n="set.remote.port">API portu</label>
-            <input id="sApiPort" type="number" min="1024" max="65535">
-            <div id="sPortRestart" class="hint"></div>
+
+        <div id="telefonKutu" style="display:none; margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
+          <label data-i18n="set.telefonAdres">Telefonun tarayıcısına bu adresi yaz</label>
+          <div class="yol-satir">
+            <input id="sTelefonAdres" type="text" spellcheck="false" readonly>
+            <button class="btn" id="sTelefonKopya" data-i18n="set.kopyala">Kopyala</button>
           </div>
-          <div>
-            <label for="sLanAddr" data-i18n="set.remote.addr">Bağlantı adresi</label>
-            <input id="sLanAddr" type="text" spellcheck="false" readonly>
+          <div class="telefon-qr"><img id="sTelefonQr" alt=""><span class="hint" data-i18n="set.telefonQr">Telefonun kamerasıyla okut — adresi yazmana gerek kalmaz.</span></div>
+          <div class="hint" data-i18n="set.telefonHint">Adresin sonundaki anahtar olmadan hiçbir şey yapılamaz. Kutu kapalıyken AfuDM yerel ağa hiç açılmaz; internete zaten hiç açılmaz. İndirme bilgisayarda olur.</div>
+        </div>
+        
+        <div class="adv-only" style="margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
+          <label data-i18n="set.wol">Telefondan uyandırma (Wake-on-LAN)</label>
+          <div class="yol-satir">
+            <input id="sMac" type="text" spellcheck="false" readonly>
+            <button class="btn" id="sMacKopya" data-i18n="set.kopyala">Kopyala</button>
           </div>
-          <div>
-            <label for="sRunningPort" data-i18n="set.remote.runningPort">Calisan port</label>
-            <input id="sRunningPort" type="text" readonly>
+          <div class="hint" id="wolDurum"></div>
+          <div class="hint" data-i18n="set.wolHint">Telefonuna bir Wake-on-LAN uygulaması kur ve bu MAC adresini gir. Bilgisayar uykudayken uyandırır, AfuDM kaldığı yerden devam eder — şifre sorulmaz.</div>
+        </div>
+        <div class="hint" id="apiHint"></div>
+      </div>
+
+      <!-- ARAÇLAR SEKME (Gelişmiş) -->
+      <div class="set-pane adv-only" id="sPaneAraclar">
+        <div class="seed-kutu" id="automationSettings">
+          <label data-i18n="auto.title">Otomasyon</label>
+          <div class="hint" data-i18n="auto.hint">İndirme tamamlanınca seçtiğin adımlar sırayla arka planda çalışır.</div>
+          <div><label for="sAutoSteps" data-i18n="auto.order">Adım sırası (virgülle)</label><input id="sAutoSteps" type="text" spellcheck="false"><div class="hint" data-i18n="auto.orderHint">checksum, extract, move, rename, script, notify, power kullan. Geçersiz adımlar atlanır.</div><span class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</span></div>
+          <label class="opt"><input type="checkbox" id="sAutoEnabled"> <span data-i18n="auto.enabled">Otomasyonu aç</span> <em class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</em></label>
+          <div class="grid2">
+            <label class="opt"><input type="checkbox" id="sAutoChecksum"> <span data-i18n="auto.checksum">Checksum doğrula</span> <em class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</em></label>
+            <label class="opt"><input type="checkbox" id="sAutoExtract"> <span data-i18n="auto.extract">Arşivi çıkar</span> <em class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</em></label>
           </div>
+          <div><label for="sAutoMove" data-i18n="auto.move">Taşıma klasörü</label><input id="sAutoMove" type="text" spellcheck="false"><span class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</span></div>
+          <div><label for="sAutoRename" data-i18n="auto.rename">Yeniden adlandırma şablonu</label><input id="sAutoRename" type="text" placeholder="{name}-done{ext}" spellcheck="false"><span class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</span></div>
+          <div><label for="sAutoScript" data-i18n="auto.script">Güvenli script komutu</label><input id="sAutoScript" type="text" spellcheck="false"><div class="hint" data-i18n="auto.scriptHint">Yalnızca buraya açıkça yazdığın komut çalışır; indirilen dosya adından komut üretilmez.</div><span class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</span></div>
+          <div class="grid2"><label class="opt"><input type="checkbox" id="sAutoNotify"> <span data-i18n="auto.notify">Bildirim gönder</span> <em class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</em></label><div><label for="sAutoPower" data-i18n="auto.power">Bitince güç eylemi</label><select id="sAutoPower"><option value="none" data-i18n="auto.none">Kapalı</option><option value="sleep" data-i18n="auto.sleep">Uyut</option><option value="shutdown" data-i18n="auto.shutdown">Kapat</option></select><span class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</span></div></div>
+          <div><label for="sAutoSeconds" data-i18n="auto.seconds">Geri sayım (saniye)</label><input id="sAutoSeconds" type="number" min="5"><span class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</span></div>
+        </div>
+        
+        <div class="seed-kutu" id="pluginSecurityPanel" style="margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
+          <label data-i18n="set.plg.title">Eklenti Güvenliği</label>
+          <div class="grid2">
+            <div><label for="sPlgMaxSize" data-i18n="set.plg.maxSize">Maks. uncompressed (MB)</label><input id="sPlgMaxSize" type="number" min="10" placeholder="200"></div>
+            <div><label for="sPlgMaxRatio" data-i18n="set.plg.maxRatio">Maks. sıkıştırma (1:N)</label><input id="sPlgMaxRatio" type="number" min="10" placeholder="100"></div>
+          </div>
+          <label class="opt"><input type="checkbox" id="sPlgUnsigned"> <span data-i18n="set.plg.unsigned">İmzasız eklentiye izin ver</span></label>
+        </div>
+
+        <div class="seed-kutu" id="reliabilityPanel" style="margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
+          <label data-i18n="rel.title">Güvenilirlik ve güvenlik</label>
+          <div class="hint"><span class="rozet" data-i18n="apply.now">hemen</span> <span data-i18n="rel.hint">Durumu denetle, yedekle ve destek paketini güvenle hazırla.</span></div>
+          <div class="yol-satir"><button class="btn" id="relIntegrity" data-i18n="rel.integrity">Bütünlüğü denetle</button><button class="btn" id="relBackup" data-i18n="rel.backup">Şimdi yedekle</button><button class="btn" id="relHealth" data-i18n="rel.health">Motor sağlığı</button><button class="btn" id="relRestart" data-i18n="rel.restart">Motoru yeniden başlat</button></div>
+          <div class="yol-satir"><button class="btn" id="relDiagnostic" data-i18n="rel.preview">Maskelenmiş önizleme</button><button class="btn" id="relExport" data-i18n="rel.export">Tanı paketini kaydet</button><button class="btn" id="relBackups" data-i18n="rel.backups">Yedekleri göster</button><button class="btn ghost" id="relToken" data-i18n="rel.rotate">API anahtarını yenile</button></div>
+          <pre class="hint" id="relStatus" style="white-space:pre-wrap;max-height:170px;overflow:auto"></pre><div class="hint" id="relBackupsList"></div>
         </div>
       </div>
-      <!-- v1.7.5 Bolum 2 — Ag -->
-      <div>
-        <h3 data-i18n="set.net.title">Ağ</h3>
-        <div class="opts">
-          <label class="opt"><input type="checkbox" id="sSystemProxy"> <span data-i18n="set.net.systemProxy">Sistem proxy'sini kullan</span></label>
-        </div>
-        <label for="sProxy" data-i18n="set.net.proxy">Proxy adresi</label>
-        <input id="sProxy" type="text" spellcheck="false" placeholder="http://127.0.0.1:8080">
-        <div class="hint" data-i18n="set.net.proxyHint">Boş bırakırsan proxy kullanılmaz. Sistem proxy'si açıkken bu alan devre dışı kalır.</div>
-        <label for="sNetLocations" data-i18n="set.net.locations">Ağ konumları</label>
-        <textarea id="sNetLocations" spellcheck="false" placeholder="\sunucu\paylasim"></textarea>
-      </div>
-      <div id="telefonKutu" style="display:none">
-        <label data-i18n="set.telefonAdres">Telefonun tarayıcısına bu adresi yaz</label>
-        <div class="yol-satir">
-          <input id="sTelefonAdres" type="text" spellcheck="false" readonly>
-          <button class="btn" id="sTelefonKopya" data-i18n="set.kopyala">Kopyala</button>
-        </div>
-        <div class="telefon-qr"><img id="sTelefonQr" alt=""><span class="hint" data-i18n="set.telefonQr">Telefonun kamerasıyla okut — adresi yazmana gerek kalmaz.</span></div>
-        <div class="hint" data-i18n="set.telefonHint">Adresin sonundaki anahtar olmadan hiçbir şey yapılamaz. Kutu kapalıyken AfuDM yerel ağa hiç açılmaz; internete zaten hiç açılmaz. İndirme bilgisayarda olur.</div>
-      </div>
-      <div class="yol-satir">
-        <button class="btn" id="sVarsayilan" data-i18n="set.varsayilan">Windows varsayılan uygulama ekranını aç</button>
-      </div>
-      <div class="hint" data-i18n="hint.tepsi">Küçültme normal görev çubuğuna iner. X uygulamayı kapatmaz; simge sağ alttaki ^ okunun altına gider.</div>
-      <div class="hint" id="torrentHint"></div>
-      <div class="hint" id="apiHint"></div>
     </div>
     <div class="foot">
       <button class="btn ghost" id="pairBtn" data-i18n="set.pair">Uzantıyı bağla</button>

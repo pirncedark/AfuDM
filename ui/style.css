@@ -160,10 +160,21 @@ button { cursor: pointer; }
   flex-direction: column;
   overflow-y: auto;
   min-height: 0;
-  scrollbar-width: none; /* Firefox */
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: var(--line) transparent;
 }
 .rail::-webkit-scrollbar {
-  display: none; /* Chrome/Safari/Webkit */
+  width: 4px;
+}
+.rail::-webkit-scrollbar-track {
+  background: transparent;
+}
+.rail::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 4px;
+}
+.rail:hover::-webkit-scrollbar-thumb {
+  background: var(--muted);
 }
 .rail > * { flex-shrink: 0; }
 .brand {
@@ -1146,3 +1157,42 @@ input:disabled, textarea:disabled, select:disabled { opacity:.52; background:var
 .plg-islem[data-durum="iptal"] { color: var(--muted); background: transparent; }
 .plg-islem span { flex: 1; }
 .plg-onay-baslik { font-family: var(--ui-display); font-size: 15px; }
+
+/* --- Settings Tabbed UI & Mode Switch --- */
+.set-tabs {
+  display: flex; gap: 8px; flex: 1; overflow-x: auto; padding-bottom: 2px;
+}
+.set-tab-btn {
+  background: transparent; border: none; color: var(--muted);
+  font-size: 13px; font-family: var(--ui); font-weight: 500;
+  padding: 6px 10px; border-radius: 6px; cursor: pointer;
+  transition: all 0.2s; white-space: nowrap;
+}
+.set-tab-btn:hover { color: var(--text); background: var(--bg-hover); }
+.set-tab-btn.active { color: var(--dl); background: var(--dl-soft); }
+
+.set-pane { display: none; margin-top: 12px; }
+.set-pane.active { display: block; }
+
+/* Custom Switch for Normal/Gelişmiş Mode */
+.mode-switch {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  font-size: 12px; font-family: var(--ui); font-weight: 500; user-select: none;
+}
+.mode-switch input { display: none; }
+.mode-slider {
+  position: relative; width: 36px; height: 20px;
+  background: var(--line); border-radius: 20px; transition: 0.3s;
+}
+.mode-slider::before {
+  content: ""; position: absolute; width: 14px; height: 14px;
+  border-radius: 50%; left: 3px; bottom: 3px;
+  background: white; transition: 0.3s;
+}
+.mode-switch input:checked + .mode-slider { background: var(--dl); }
+.mode-switch input:checked + .mode-slider::before { transform: translateX(16px); }
+
+.mode-label-off { color: var(--text); transition: 0.2s; }
+.mode-label-on { color: var(--muted); transition: 0.2s; }
+.mode-switch input:checked ~ .mode-label-off { color: var(--muted); }
+.mode-switch input:checked ~ .mode-label-on { color: var(--dl); }

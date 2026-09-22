@@ -1768,11 +1768,11 @@ const winIntNames = { context: "winint.context", protocol: "winint.protocol", af
 async function windowsIntegrationDurumu() {
   const root = $("winIntRows");
   if (!root) return;
-  root.textContent = t("winint.loading");
+  if (!root.children.length) root.textContent = t("winint.loading");
   try {
     const out = await call("windows_integration_status");
     const entries = out.integrations || {};
-    root.innerHTML = Object.keys(winIntNames).map((id) => {
+    const newHtml = Object.keys(winIntNames).map((id) => {
       const row = entries[id] || {};
       const registered = !!row.registered;
       return '<div class="winint-row"><div><div class="winint-name">' + escapeHtml(t(winIntNames[id])) +
@@ -1782,6 +1782,9 @@ async function windowsIntegrationDurumu() {
         '<button class="btn" data-winint="test" data-id="' + id + '">' + escapeHtml(t("winint.test")) + '</button>' +
         '<button class="btn ghost" data-winint="remove" data-id="' + id + '">' + escapeHtml(t("winint.remove")) + '</button></div></div>';
     }).join("");
+    if (root.innerHTML !== newHtml) {
+      root.innerHTML = newHtml;
+    }
     const scan = out.scan || {};
     $("winIntError").textContent = scan.state && scan.state !== "idle"
       ? t("winint.scanStatus", { state: scan.state, detail: scan.detail || "" }) : "";
@@ -2076,7 +2079,25 @@ let klasorSoz = null;   // acik secimin cozucusu
 
 $("showAdvSet").onchange = (e) => {
   $("settingsBody").classList.toggle("show-adv", e.target.checked);
+  if (!e.target.checked) {
+    const activeTab = document.querySelector('.set-tab-btn.active');
+    if (activeTab && activeTab.classList.contains('adv-only')) {
+      const genelTab = document.querySelector('.set-tab-btn[data-stab="genel"]');
+      if (genelTab) genelTab.click();
+    }
+  }
 };
+
+document.querySelectorAll('.set-tab-btn').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const targetId = 'sPane' + tab.getAttribute('data-stab').charAt(0).toUpperCase() + tab.getAttribute('data-stab').slice(1);
+    document.querySelectorAll('.set-tab-btn').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    document.querySelectorAll('.set-pane').forEach(p => p.classList.remove('active'));
+    const targetPane = document.getElementById(targetId);
+    if (targetPane) targetPane.classList.add('active');
+  });
+});
 function agacSatiri(oge, derinlik) {
   const satir = document.createElement("div");
   satir.className = "dugum";
