@@ -56,6 +56,54 @@ def parse_start_at(text: str) -> float | None:
     return models.parse_time_spec(text)
 
 
+# Acilis boyutu oncelikleri (bkz. pencere_boyutu): istenen hedef, sol menunun
+# kaydirmasiz sigmasi icin en kucuk boyut ve (hesap hata verirse) eski sabitler.
+PENCERE_HEDEF = (1600, 980)    # sol menu tamami + arac cubugu tek satir
+PENCERE_MIN = (1100, 900)      # sol menunun kaydirmasiz sigacagi en kucuk
+PENCERE_ESKI = (1180, 760)     # v2.7.1 ve oncesi sabit boyut
+PENCERE_ESKI_MIN = (880, 560)
+
+
+def pencere_boyutu() -> tuple[int | None, int | None, int, int, int, int]:
+    """Acilis pencere boyutu: (x, y, w, h, min_w, min_h).
+
+    Hedef 1600x980'tir; gorev cubugu haric calisma alani (SPI_GETWORKAREA)
+    kucukse hedef, calisma alaninin %92'si ile sinirlanir. min_w/min_h sol
+    menunun kaydirmasiz sigmasi icin 1100x900 olur; ekran daha kucukse ekrana
+    siginacak kadar daraltilir (baslangic boyutu hicbir zaman min'in altinda
+    kalmaz). Pencere calisma alanina ortalanir.
+
+    Not: yeni surec/exe ACMAZ — ctypes ayni surecte calisma alanini okur.
+    Hesaplama hata verirse eski sabit degerlere duser; uygulama asla
+    acilmazlik yapmaz."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        rect = wintypes.RECT()
+        if not ctypes.windll.user32.SystemParametersInfoW(
+                0x0030, 0, ctypes.byref(rect), 0):  # SPI_GETWORKAREA
+            raise OSError("SPI_GETWORKAREA basarisiz")
+        wa_w = rect.right - rect.left
+        wa_h = rect.bottom - rect.top
+        # Ekran kucukse calisma alaninin %92'sini gecme; oncelik hedef boyut.
+        w = min(PENCERE_HEDEF[0], int(wa_w * 0.92))
+        h = min(PENCERE_HEDEF[1], int(wa_h * 0.92))
+        # min_size: sol menunun kaydirmasiz sigmasi; ekran kucukse ekrana sigdir.
+        min_w = min(PENCERE_MIN[0], wa_w)
+        min_h = min(PENCERE_MIN[1], wa_h)
+        # Kucuk ekranlarda %92 kesigi min'in altina dusecegi icin baslangic
+        # boyutu min'den kucuk kalmasin (yine de ekrana sigar).
+        w = max(w, min_w)
+        h = max(h, min_h)
+        x = rect.left + (wa_w - w) // 2
+        y = rect.top + (wa_h - h) // 2
+        return x, y, w, h, min_w, min_h
+    except Exception:
+        # Eski sabit degerler; x/y yok sayilir (pywebview kendisi ortalar).
+        return None, None, *PENCERE_ESKI, *PENCERE_ESKI_MIN
+
+
 def protocol_link(argument: str) -> str:
     """`afudm://download?url=...` baglantisini gercek indirme kaynagina cevir.
 
@@ -1388,16 +1436,23 @@ def main() -> int:
         else:
             print("UYARI: yonetim sunucusu acilamadi: %s" % _sonuc.get("error"))
     pencere.webview2_hazirligini_yama()  # CSS app-region: drag, ilk sayfadan once
-    window = webview.create_window(
-        lang.t("window.title", str(manager.store.get("language", "auto"))),
-        str(paths.UI / "index.html"),
+    _px, _py, _pw, _ph, _min_w, _min_h = pencere_boyutu()
+    _pencere_kwargs: dict[str, Any] = dict(
         js_api=api,
-        width=1180,
-        height=760,
-        min_size=(880, 560),
+        width=_pw,
+        height=_ph,
+        min_size=(_min_w, _min_h),
         background_color="#14181F",
         text_select=False,
         hidden=tepside_basla,
+    )
+    if _px is not None and _py is not None:
+        _pencere_kwargs["x"] = _px
+        _pencere_kwargs["y"] = _py
+    window = webview.create_window(
+        lang.t("window.title", str(manager.store.get("language", "auto"))),
+        str(paths.UI / "index.html"),
+        **_pencere_kwargs,
     )
     api._window = window
     from api.server import _Handler as _ApiHandler  # noqa: E402
