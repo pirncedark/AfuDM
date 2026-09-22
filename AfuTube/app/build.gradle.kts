@@ -95,12 +95,10 @@ dependencies {
 
     // ── youtubedl-android (yt-dlp + FFmpeg + aria2 wrapper) ─────────────────
     // Resmi repo: https://github.com/yausername/youtubedl-android
-    implementation("com.github.yausername.youtubedl-android:library:0.17.+") {
-        exclude(group = "com.github.yausername.youtubedl-android", module = "ffmpeg")
-        exclude(group = "com.github.yausername.youtubedl-android", module = "aria2c")
-    }
-    implementation("com.github.yausername.youtubedl-android:ffmpeg:0.17.+")
-    implementation("com.github.yausername.youtubedl-android:aria2c:0.17.+")
+    implementation("com.github.yausername.youtubedl-android:library:0.14.0")
+    implementation("com.github.yausername.youtubedl-android:ffmpeg:0.14.0")
+    implementation("com.github.yausername.youtubedl-android:aria2c:0.14.0")
+
 
     // ── Coil (thumbnail yükleme) ──────────────────────────────────────────
     implementation("io.coil-kt:coil-compose:2.5.0")
