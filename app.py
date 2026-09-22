@@ -1088,6 +1088,20 @@ class Api:
                 return {"ok": True}
         return {"ok": False, "error": lang.t("err.notFound", str(self.manager.store.get("language", "auto")))}
 
+    def _paylasim_url(self, token: str) -> str:
+        """Paylasim icin LAN hostundan tek ve dogru indirme URL'si uretir."""
+        adres = self.local_api.lan_adresi()
+        host = ""
+        if adres:
+            try:
+                parse_edilecek = adres if "://" in adres else f"//{adres}"
+                host = urllib.parse.urlparse(parse_edilecek).hostname or ""
+            except ValueError:
+                host = ""
+        if not host or host.startswith("127."):
+            host = "127.0.0.1"
+        return f"http://{host}:{self.local_api.port}/s/{token}"
+
     def share_create(self, gid: str) -> dict:
         yol = self.manager.resolve_item_path(gid)
         if not yol or not yol.exists() or not yol.is_file():
@@ -1097,10 +1111,7 @@ class Api:
         import time
         token = secrets.token_urlsafe(12)
         _Handler.shared_files[token] = {"path": yol, "created": time.time()}
-        ip = self.local_api.lan_adresi()
-        if not ip or ip.startswith("127."):
-            ip = "127.0.0.1"
-        url = f"http://{ip}:{self.local_api.port}/s/{token}"
+        url = self._paylasim_url(token)
         return {"ok": True, "token": token, "url": url, "filename": yol.name}
 
     def agda_paylas(self, gid: str) -> dict:
@@ -1118,10 +1129,7 @@ class Api:
 
         token = secrets.token_urlsafe(12)
         _Handler.shared_files[token] = {"path": yol, "created": time.time()}
-        ip = self.local_api.lan_adresi() or "127.0.0.1"
-        if ip.startswith("127."):
-            ip = "127.0.0.1"
-        url = f"http://{ip}:{self.local_api.port}/s/{token}"
+        url = self._paylasim_url(token)
         result = {
             "ok": True,
             "transport": "http",
@@ -1146,7 +1154,7 @@ class Api:
                 ["net", "share", f"{share_name}={share_root}", "/GRANT:Everyone,READ"],
                 check=True, capture_output=True, text=True, timeout=15,
             )
-            host = socket.gethostname() or ip
+            host = socket.gethostname() or "127.0.0.1"
             result.update({
                 "transport": "smb",
                 "smb": f"\\\\{host}\\{share_name}\\{yol.name}",
@@ -1158,14 +1166,10 @@ class Api:
 
     def share_list(self) -> dict:
         from api.server import _Handler
-        ip = self.local_api.lan_adresi()
-        if not ip or ip.startswith("127."):
-            ip = "127.0.0.1"
-        
         aktif_paylasimlar = []
         for token, bilgi in _Handler.shared_files.items():
             yol = Path(bilgi["path"])
-            url = f"http://{ip}:{self.local_api.port}/s/{token}"
+            url = self._paylasim_url(token)
             aktif_paylasimlar.append({
                 "token": token,
                 "url": url,
@@ -1196,10 +1200,6 @@ class Api:
         import secrets
         import time
         
-        ip = self.local_api.lan_adresi()
-        if not ip or ip.startswith("127."):
-            ip = "127.0.0.1"
-
         sonuclar = []
         for dosya in secim:
             yol = Path(dosya)
@@ -1207,7 +1207,7 @@ class Api:
                 continue
             token = secrets.token_urlsafe(12)
             _Handler.shared_files[token] = {"path": yol, "created": time.time()}
-            url = f"http://{ip}:{self.local_api.port}/s/{token}"
+            url = self._paylasim_url(token)
             sonuclar.append({"token": token, "url": url, "filename": yol.name})
             
         if not sonuclar:
