@@ -218,8 +218,9 @@ class AfuDMServis:
             elif eylem == "resume":
                 self.manager.resume(gid)
             elif eylem == "remove":
+                df = delete_files.get("delete_files", False) if isinstance(delete_files, dict) else delete_files
                 try:
-                    self.manager.remove(gid, bool(delete_files))
+                    self.manager.remove(gid, bool(df))
                 except Exception as rem_exc:
                     err_msg = str(rem_exc).lower()
                     if "kayit bulunamadi" in err_msg or "not found" in err_msg:

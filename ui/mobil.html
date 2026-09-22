@@ -188,6 +188,7 @@ input[type="text"], select {
     </select>
     <select id="klasor" aria-label="Klasör">
       <option value="">Klasör: varsayılan</option>
+      <option value="__telefon">📱 Telefona indir</option>
     </select>
   </div>
 </div>
@@ -288,6 +289,9 @@ function satir(is) {
     ? '<button data-eylem="resume" data-gid="' + kacir(is.gid) + '">Sürdür</button>'
     : (is.status === "active" || is.status === "waiting"
         ? '<button data-eylem="pause" data-gid="' + kacir(is.gid) + '">Duraklat</button>' : "");
+  const telefonIndir = is.status === "complete"
+    ? '<button data-eylem="telefon" data-gid="' + kacir(is.gid) + '">📱 Telefona indir</button>'
+    : "";
   const durumYazi = is.status === "complete" ? "bitti"
     : is.status === "error" ? (is.errorMessage ? "hata" : "hata")
     : is.status === "paused" ? "duraklatıldı" : "";
@@ -301,8 +305,7 @@ function satir(is) {
       (is.downloadSpeed > 0 ? "<span>" + boyut(is.downloadSpeed) + "/s</span>" : "") +
       (is.downloadSpeed > 0 ? "<span>" + sure(is.eta) + "</span>" : "") +
       (durumYazi ? "<span>" + durumYazi + "</span>" : "") +
-      '<span class="sag">' + durakla +
-        (is.status === "complete" ? '<button data-eylem="indir" data-gid="' + kacir(is.gid) + '" data-ad="' + kacir(is.title || "") + '">Telefona İndir</button>' : "") +
+      '<span class="sag">' + telefonIndir + durakla +
         (is.kind === "torrent" ? '<button data-eylem="dosyalar" data-gid="' + kacir(is.gid) + '">Dosyalar</button>' : "") +
         '<button class="sessiz" data-eylem="remove" data-gid="' + kacir(is.gid) + '">Kaldır</button>' +
       "</span>" +
@@ -420,9 +423,19 @@ $("liste").addEventListener("click", async (olay) => {
     torrentKatmanAc(dugme.dataset.gid);
     return;
   }
-  if (dugme.dataset.eylem === "indir") {
-    const encKey = encodeURIComponent(anahtar);
-    window.location.href = "/indir?gid=" + encodeURIComponent(dugme.dataset.gid) + "&token=" + encKey + "&k=" + encKey;
+  if (dugme.dataset.eylem === "telefon") {
+    // Tarayiciya normal bir indirme yaptiriyoruz: /dosya ucu dosyayi
+    // Content-Disposition: attachment ile akitir, telefon kendi indirilenler
+    // klasorune kaydeder. Anahtar sorguda gider (fetch degil, gezinme).
+    const adres = "/dosya?gid=" + encodeURIComponent(dugme.dataset.gid) +
+                  "&token=" + encodeURIComponent(anahtar);
+    const bag = document.createElement("a");
+    bag.href = adres;
+    bag.download = "";
+    document.body.appendChild(bag);
+    bag.click();
+    bag.remove();
+    bildir("Telefona indiriliyor...");
     return;
   }
   try {
@@ -482,7 +495,8 @@ async function klasorleriDoldur() {
     const veri = await api("/klasorler");
     const secici = $("klasor");
     let yazi = veri.ana ? (veri.ana.length > 20 ? "..." + veri.ana.slice(-17) : veri.ana) : "varsayılan";
-    secici.innerHTML = '<option value="">Klasör: ' + kacir(yazi) + '</option>';
+    secici.innerHTML = '<option value="">Klasör: ' + kacir(yazi) + '</option>' +
+      '<option value="__telefon">📱 Telefona indir</option>';
     if (veri.acik && veri.kategoriler) {
       for (const kat of veri.kategoriler) {
         secici.innerHTML += '<option value="' + kacir(kat.anahtar) + '">' + kacir(kat.ad) + '</option>';
@@ -497,7 +511,11 @@ $("gonder").onclick = async () => {
   const istek = { url };
   if (kalite === "audio") { istek.quality = "audio"; istek.audio_only = true; }
   else if (kalite) { istek.quality = kalite; }
-  if ($("klasor").value) istek.kategori = $("klasor").value;
+  const klasorSecim = $("klasor").value;
+  // "__telefon" gercek bir kategori DEGIL: dosya once PC'ye iner, telefon
+  // bitince satirdaki "Telefona indir" dugmesiyle ceker. Kategori olarak
+  // gonderirsek sunucu bilinmeyen klasor adi gorur.
+  if (klasorSecim && klasorSecim !== "__telefon") istek.kategori = klasorSecim;
   $("gonder").disabled = true;
   try {
     await api("/add", { method: "POST", body: JSON.stringify(istek) });

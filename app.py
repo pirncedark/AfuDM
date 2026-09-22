@@ -839,7 +839,8 @@ class Api:
 
     # --- kontrol ----------------------------------------------------------
     def control(self, action: str, gid: str, delete_files: bool = False) -> dict:
-        return self.servis.kontrol(action, gid, delete_files)
+        df = delete_files.get("delete_files", False) if isinstance(delete_files, dict) else delete_files
+        return self.servis.kontrol(action, gid, bool(df))
 
     def retry(self, row_id: int) -> dict:
         return self.servis.yeniden_dene(row_id)
