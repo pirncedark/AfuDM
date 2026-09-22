@@ -1,6 +1,0 @@
-AfuTube icinden imzali guncelleme ve release hattini ekle
-
-GitHub Releases tabanli uygulama ici guncelleme, SHA-256 dogrulamasi,
-FileProvider kurulumu ve sabit release imzasi eklendi.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
