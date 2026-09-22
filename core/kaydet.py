@@ -36,6 +36,7 @@ KATEGORILER: dict[str, tuple[str, ...]] = {
     "resim": ("jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic", "tiff"),
 }
 KATEGORI_KLASORU = {
+    "telefon": "📱 Telefona İndir",
     "video": "Video", "muzik": "Müzik", "belge": "Belgeler", "program": "Programlar",
     "arsiv": "Arşiv", "resim": "Resimler", "torrent": "Torrent", "genel": "Genel",
 }

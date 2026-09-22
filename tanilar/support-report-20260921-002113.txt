@@ -1,0 +1,224 @@
+﻿AfuDM support report
+Generated: Pzt 21.09.2026  0:21:13,57
+
+[version]
+AfuDM.exe present
+
+[system information]
+
+Host Name:                     AFU
+OS Name:                       Microsoft Windows 11 Pro
+OS Version:                    10.0.26100 N/A Build 26100
+OS Manufacturer:               Microsoft Corporation
+OS Configuration:              Standalone Workstation
+OS Build Type:                 Multiprocessor Free
+Registered Owner:              afuuu
+Registered Organization:       
+Product ID:                    00331-10000-00001-AA131
+Original Install Date:         1.07.2025, 14:26:51
+System Boot Time:              20.09.2026, 21:53:04
+System Manufacturer:           Micro-Star International Co., Ltd.
+System Model:                  MS-7B79
+System Type:                   x64-based PC
+Processor(s):                  1 Processor(s) Installed.
+                               [01]: AMD64 Family 25 Model 33 Stepping 0 AuthenticAMD ~3701 Mhz
+BIOS Version:                  American Megatrends International, LLC. 1.L7, 28.08.2025
+Windows Directory:             C:\WINDOWS
+System Directory:              C:\WINDOWS\system32
+Boot Device:                   \Device\HarddiskVolume1
+System Locale:                 tr;TÃ¼rkÃ§e
+Input Locale:                  tr;TÃ¼rkÃ§e
+Time Zone:                     (UTC+03:00) Ä°stanbul
+Total Physical Memory:         65.459 MB
+Available Physical Memory:     46.716 MB
+Virtual Memory: Max Size:      69.811 MB
+Virtual Memory: Available:     46.302 MB
+Virtual Memory: In Use:        23.509 MB
+Page File Location(s):         C:\pagefile.sys
+Domain:                        WORKGROUP
+Logon Server:                  \\AFU
+Hotfix(s):                     3 Hotfix(s) Installed.
+                               [01]: KB5066131
+                               [02]: KB5068861
+                               [03]: KB5067035
+Network Card(s):               4 NIC(s) Installed.
+                               [01]: Famatech Radmin VPN Ethernet Adapter
+                                     Connection Name: Radmin VPN
+                                     Status:          Hardware not present
+                               [02]: Bluetooth Device (Personal Area Network)
+                                     Connection Name: Bluetooth AÄŸ BaÄŸlantÄ±sÄ± 13
+                                     Status:          Media disconnected
+                               [03]: Realtek PCIe GbE Family Controller
+                                     Connection Name: Ethernet 3
+                                     DHCP Enabled:    No
+                                     IP address(es)
+                                     [01]: 192.168.0.110
+                                     [02]: fe80::d069:5a15:6651:4200
+                               [04]: Wintun Userspace Tunnel
+                                     Connection Name: Tailscale
+                                     DHCP Enabled:    No
+                                     IP address(es)
+                                     [01]: 169.254.83.107
+                                     [02]: fe80::ecba:bfb8:7624:a626
+Virtualization-based security: Status: Running
+                               Required Security Properties:
+                               Available Security Properties:
+                                     Base Virtualization Support
+                                     Secure Boot
+                                     DMA Protection
+                                     Secure Memory Overwrite
+                                     UEFI Code Readonly
+                                     SMM Security Mitigations 1.0
+                                     Mode Based Execution Control
+                               Services Configured:
+                               Services Running:
+                               App Control for Business policy: Enforced
+                               App Control for Business user mode policy: Off
+                               Security Features Enabled:
+Hyper-V Requirements:          A hypervisor has been detected. Features required for Hyper-V will not be displayed.
+
+[engine status]
+aria2c.exe present
+aria2 version 1.37.0
+Copyright (C) 2006, 2019 Tatsuhiro Tsujikawa
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+** Configuration **
+Enabled Features: Async DNS, BitTorrent, Firefox3 Cookie, GZip, HTTPS, Message Digest, Metalink, XML-RPC, SFTP
+Hash Algorithms: sha-1, sha-224, sha-256, sha-384, sha-512, md5, adler32
+Libraries: zlib/1.3 expat/2.5.0 sqlite3/3.43.1 GMP/6.3.0 c-ares/1.19.1 libssh2/1.11.0
+Compiler: mingw-w64 8.0.0 (alpha) / gcc 10-win32 20220113
+  built by  x86_64-pc-linux-gnu
+  targeting x86_64-w64-mingw32
+  on        Nov 15 2023 11:17:49
+System: Windows 6.2 (x86_64) (6.2)
+
+Report bugs to https://github.com/aria2/aria2/issues
+Visit https://aria2.github.io/
+
+[webview2]
+ERROR: The system was unable to find the specified registry key or value.
+ERROR: The system was unable to find the specified registry key or value.
+
+[error summary]
+C:\Users\REDACTED\AfuDM\data\aria2.log:11: 2026-09-18 15:39:07.047631 [ERROR] [AbstractCommand.cc:349] CUID#245 - Download aborted. URI=http://127.0.0.1:51273/devral.zip
+C:\Users\REDACTED\AfuDM\data\aria2.log:12: Exception: [AbstractCommand.cc:351] errorCode=8 URI=http://127.0.0.1:51273/devral.zip
+C:\Users\REDACTED\AfuDM\data\aria2.log:13: -> [HttpResponse.cc:81] errorCode=8 Invalid range header. Request: 1048576-2097151/3145728, Response: 0-3145727/3145728
+C:\Users\REDACTED\AfuDM\data\aria2.log:14: 2026-09-18 15:39:08.266715 [ERROR] [AbstractCommand.cc:349] CUID#282 - Download aborted. URI=http://127.0.0.1:51273/korumali.zip
+C:\Users\REDACTED\AfuDM\data\aria2.log:15: Exception: [AbstractCommand.cc:351] errorCode=8 URI=http://127.0.0.1:51273/korumali.zip
+C:\Users\REDACTED\AfuDM\data\aria2.log:16: -> [HttpResponse.cc:81] errorCode=8 Invalid range header. Request: 1048576-2097151/2097152, Response: 0-2097151/2097152
+C:\Users\REDACTED\AfuDM\data\aria2.log:17: 2026-09-18 15:39:08.738151 [ERROR] [AbstractCommand.cc:349] CUID#312 - Download aborted. URI=http://127.0.0.1:51273/korumali.zip
+C:\Users\REDACTED\AfuDM\data\aria2.log:18: Exception: [AbstractCommand.cc:351] errorCode=22 URI=http://127.0.0.1:51273/korumali.zip
+C:\Users\REDACTED\AfuDM\data\aria2.log:19: -> [HttpSkipResponseCommand.cc:239] errorCode=22 The response status is not successful. status=403
+C:\Users\REDACTED\AfuDM\data\aria2.log:20: 2026-09-18 15:39:38.077356 [ERROR] [AbstractCommand.cc:349] CUID#562 - Download aborted. URI=http://127.0.0.1:50723/devral.zip
+C:\Users\REDACTED\AfuDM\data\aria2.log:21: Exception: [AbstractCommand.cc:351] errorCode=8 URI=http://127.0.0.1:50723/devral.zip
+C:\Users\REDACTED\AfuDM\data\aria2.log:22: -> [HttpResponse.cc:81] errorCode=8 Invalid range header. Request: 2097152-3145727/3145728, Response: 0-3145727/3145728
+C:\Users\REDACTED\AfuDM\data\aria2.log:23: 2026-09-18 15:39:39.246835 [ERROR] [AbstractCommand.cc:349] CUID#602 - Download aborted. URI=http://127.0.0.1:50723/korumali.zip
+C:\Users\REDACTED\AfuDM\data\aria2.log:24: Exception: [AbstractCommand.cc:351] errorCode=8 URI=http://127.0.0.1:50723/korumali.zip
+C:\Users\REDACTED\AfuDM\data\aria2.log:25: -> [HttpResponse.cc:81] errorCode=8 Invalid range header. Request: 1048576-2097151/2097152, Response: 0-2097151/2097152
+C:\Users\REDACTED\AfuDM\data\aria2.log:26: 2026-09-18 15:39:39.785226 [ERROR] [AbstractCommand.cc:349] CUID#632 - Download aborted. URI=http://127.0.0.1:50723/korumali.zip
+C:\Users\REDACTED\AfuDM\data\aria2.log:27: Exception: [AbstractCommand.cc:351] errorCode=22 URI=http://127.0.0.1:50723/korumali.zip
+C:\Users\REDACTED\AfuDM\data\aria2.log:28: -> [HttpSkipResponseCommand.cc:239] errorCode=22 The response status is not successful. status=403
+C:\Users\REDACTED\AfuDM\data\aria2.log:48: 2026-09-19 01:40:15.147209 [ERROR] [HttpListenCommand.cc:112] IPv4 RPC: failed to bind TCP port 6812
+C:\Users\REDACTED\AfuDM\data\aria2.log:49: Exception: [SocketCore.cc:312] errorCode=1 Failed to bind a socket, cause: An attempt was made to access a socket in a way forbidden by its access permissions.
+C:\Users\REDACTED\AfuDM\data\aria2.log:51: 2026-09-19 01:40:15.147209 [ERROR] [MultiUrlRequestInfo.cc:297] Exception caught
+C:\Users\REDACTED\AfuDM\data\aria2.log:52: Exception: [DownloadEngineFactory.cc:219] errorCode=1 Failed to setup RPC server.
+C:\Users\REDACTED\AfuDM\data\aria2.log:53: 2026-09-19 02:53:14.064615 [ERROR] [AbstractCommand.cc:349] CUID#66152 - Download aborted. URI=http://127.0.0.1:65497/korumali.zip
+C:\Users\REDACTED\AfuDM\data\aria2.log:54: Exception: [AbstractCommand.cc:351] errorCode=22 URI=http://127.0.0.1:65497/korumali.zip
+C:\Users\REDACTED\AfuDM\data\aria2.log:55: -> [HttpSkipResponseCommand.cc:239] errorCode=22 The response status is not successful. status=403
+
+[last error]
+--- C:\Users\REDACTED\AfuDM\data\aria2.log ---
+2026-09-18 15:26:53.498568 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 15:27:54.267875 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 15:29:01.735737 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 15:29:24.256885 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 15:29:59.585179 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 15:37:45.536103 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 15:38:47.887236 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 15:39:07.045698 [ERROR] [AbstractCommand.cc:349] CUID#244 - Download aborted. URI=http://127.0.0.1:51273/devral.zip
+Exception: [AbstractCommand.cc:351] errorCode=8 URI=http://127.0.0.1:51273/devral.zip
+  -> [HttpResponse.cc:81] errorCode=8 Invalid range header. Request: 2097152-3145727/3145728, Response: 0-3145727/3145728
+2026-09-18 15:39:07.047631 [ERROR] [AbstractCommand.cc:349] CUID#245 - Download aborted. URI=http://127.0.0.1:51273/devral.zip
+Exception: [AbstractCommand.cc:351] errorCode=8 URI=http://127.0.0.1:51273/devral.zip
+  -> [HttpResponse.cc:81] errorCode=8 Invalid range header. Request: 1048576-2097151/3145728, Response: 0-3145727/3145728
+2026-09-18 15:39:08.266715 [ERROR] [AbstractCommand.cc:349] CUID#282 - Download aborted. URI=http://127.0.0.1:51273/korumali.zip
+Exception: [AbstractCommand.cc:351] errorCode=8 URI=http://127.0.0.1:51273/korumali.zip
+  -> [HttpResponse.cc:81] errorCode=8 Invalid range header. Request: 1048576-2097151/2097152, Response: 0-2097151/2097152
+2026-09-18 15:39:08.738151 [ERROR] [AbstractCommand.cc:349] CUID#312 - Download aborted. URI=http://127.0.0.1:51273/korumali.zip
+Exception: [AbstractCommand.cc:351] errorCode=22 URI=http://127.0.0.1:51273/korumali.zip
+  -> [HttpSkipResponseCommand.cc:239] errorCode=22 The response status is not successful. status=403
+2026-09-18 15:39:38.077356 [ERROR] [AbstractCommand.cc:349] CUID#562 - Download aborted. URI=http://127.0.0.1:50723/devral.zip
+Exception: [AbstractCommand.cc:351] errorCode=8 URI=http://127.0.0.1:50723/devral.zip
+  -> [HttpResponse.cc:81] errorCode=8 Invalid range header. Request: 2097152-3145727/3145728, Response: 0-3145727/3145728
+2026-09-18 15:39:39.246835 [ERROR] [AbstractCommand.cc:349] CUID#602 - Download aborted. URI=http://127.0.0.1:50723/korumali.zip
+Exception: [AbstractCommand.cc:351] errorCode=8 URI=http://127.0.0.1:50723/korumali.zip
+  -> [HttpResponse.cc:81] errorCode=8 Invalid range header. Request: 1048576-2097151/2097152, Response: 0-2097151/2097152
+2026-09-18 15:39:39.785226 [ERROR] [AbstractCommand.cc:349] CUID#632 - Download aborted. URI=http://127.0.0.1:50723/korumali.zip
+Exception: [AbstractCommand.cc:351] errorCode=22 URI=http://127.0.0.1:50723/korumali.zip
+  -> [HttpSkipResponseCommand.cc:239] errorCode=22 The response status is not successful. status=403
+2026-09-18 15:41:10.075904 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 15:44:42.611123 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 15:56:02.792267 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 16:50:41.243870 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 17:27:35.994356 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 17:36:24.037074 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 17:39:26.512827 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 17:43:14.982009 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 17:48:44.877785 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 21:06:09.319854 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 21:09:36.710786 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 21:20:21.387792 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 21:23:15.387009 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-18 21:40:32.304142 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-19 00:14:51.399268 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-19 00:15:29.024105 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-19 00:50:37.206781 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-19 01:06:27.145662 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-19 01:15:37.962060 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-19 01:40:15.147209 [ERROR] [HttpListenCommand.cc:112] IPv4 RPC: failed to bind TCP port 6812
+Exception: [SocketCore.cc:312] errorCode=1 Failed to bind a socket, cause: An attempt was made to access a socket in a way forbidden by its access permissions.
+
+2026-09-19 01:40:15.147209 [ERROR] [MultiUrlRequestInfo.cc:297] Exception caught
+Exception: [DownloadEngineFactory.cc:219] errorCode=1 Failed to setup RPC server.
+2026-09-19 02:53:14.064615 [ERROR] [AbstractCommand.cc:349] CUID#66152 - Download aborted. URI=http://127.0.0.1:65497/korumali.zip
+Exception: [AbstractCommand.cc:351] errorCode=22 URI=http://127.0.0.1:65497/korumali.zip
+  -> [HttpSkipResponseCommand.cc:239] errorCode=22 The response status is not successful. status=403
+2026-09-19 03:32:16.722321 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-20 18:17:44.746087 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-20 18:52:35.969733 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-20 18:57:38.610220 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+2026-09-20 18:58:49.144189 [WARN] [RequestGroup.cc:639] --file-allocation=falloc will use SetFileValidData() API, and aria2 uses uninitialized disk space which may contain confidential data as the download file space. If it is undesirable, --file-allocation=prealloc is slower, but safer option.
+--- C:\Users\REDACTED\AfuDM\data\trackers.txt ---
+udp://tracker.opentrackr.org:1337/announce
+udp://open.stealth.si:80/announce
+udp://tracker.torrent.eu.org:451/announce
+udp://open.demonii.com:1337/announce
+udp://tracker.qu.ax:6969/announce
+udp://exodus.desync.com:6969/announce
+udp://explodie.org:6969/announce
+udp://tracker.nyaa.vc:6969/announce
+udp://tracker.gmi.gd:6969/announce
+udp://tracker.bittor.pw:1337/announce
+udp://retracker01-msk-virt.corbina.net:80/announce
+udp://tracker.corpscorp.online:80/announce
+udp://tracker.ducks.party:1984/announce
+udp://tracker-udp.gbitt.info:80/announce
+udp://tracker.0x7c0.com:6969/announce
+http://tracker.dler.org:6969/announce
+http://tracker.dler.com:6969/announce
+udp://tracker2.dler.org:80/announce
+http://tracker.renfei.net:8080/announce
+udp://t.overflow.biz:6969/announce
+--- C:\Users\REDACTED\AfuDM\data\api_token.txt ---
+REDACTED
+

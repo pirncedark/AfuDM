@@ -1,0 +1,10 @@
+AfuDM — 1 Dakikalık Detaylı Tanıtım (Açık Kaynak Windows İndirme Yöneticisi) 🚀
+
+Eski hantal ve reklamlı indirme yöneticilerini unutun. AfuDM ile:
+1️⃣ aria2 Turbo: Dosyaları 64 parçaya bölüp 16 bağlantıyla hattınızı sonuna kadar zorlar.
+2️⃣ FFmpeg Olmadan 4K Video Muxing: YouTube, TikTok ve Instagram'dan 4K video ve sesi kalite kaybı olmadan birleştirir (46.368 kare birebir doğrulandı).
+3️⃣ BitTorrent Pro: Günlük otomatik tracker yenileme ile ölü torrentleri canlandırır.
+4️⃣ Mobil Kumanda (v2.4.0): Bilgisayarınızdaki indirmeleri yerel Wi-Fi üzerinden telefonunuzdan yönetin, dosyaları doğrudan telefonunuza çekin!
+5️⃣ %100 Taşınabilir: Kurulum yok, kayıt defteri kirliliği yok. Sadece 22 MB!
+
+Hemen GitHub'dan ücretsiz indirin: https://github.com/pirncedark/AfuDM/releases

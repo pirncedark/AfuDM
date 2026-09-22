@@ -346,7 +346,7 @@ select:focus-visible, button:focus-visible {
 .list { flex: 1; overflow-y: auto; }
 .row {
   display: grid;
-  grid-template-columns: 1fr 132px 96px 74px 86px;
+  grid-template-columns: 1fr 132px 96px 74px minmax(100px, max-content);
   align-items: center;
   gap: 14px;
   padding: 9px 14px;
@@ -407,10 +407,13 @@ select:focus-visible, button:focus-visible {
 .state.error { color: var(--err); }
 .state.seeding { color: var(--seed); }
 .state.waiting, .state.scheduled { color: var(--muted); }
-.acts { display: flex; gap: 4px; justify-content: flex-end; }
+.acts { display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap; }
 .acts button {
   background: none;
   border: 1px solid transparent;
+  padding: 4px 6px;
+  margin-top: 2px;
+}
 }
 
 .global-model {
@@ -1212,3 +1215,61 @@ input:disabled, textarea:disabled, select:disabled { opacity:.52; background:var
 .mode-label-on { color: var(--muted); transition: 0.2s; }
 .mode-switch input:checked ~ .mode-label-off { color: var(--muted); }
 .mode-switch input:checked ~ .mode-label-on { color: var(--dl); }
+
+/* ---------- DUYARLI TASARIM (RESPONSIVE) ---------- */
+@media (max-width: 850px) {
+  .row {
+    grid-template-columns: 1fr 100px 80px 60px max-content;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+}
+
+@media (max-width: 700px) {
+  /* Toolbar: arama cubugunu alta at */
+  .bar { padding: 8px 10px; gap: 6px; }
+  .bar .spacer { display: none; }
+  .bar .search { flex: 1 1 100%; order: 99; margin-top: 4px; }
+  
+  /* Satir: Hiz ve ETA'yi gizle (yer kazanmak icin) */
+  .row {
+    grid-template-columns: 1fr 100px max-content;
+  }
+  .row > .num:nth-child(3), .row > .num:nth-child(4) {
+    display: none;
+  }
+}
+
+@media (max-width: 500px) {
+  /* Mobil / Cok Dar Gorunum */
+  .row {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+    gap: 6px;
+    padding: 8px;
+  }
+  .row-name { grid-column: 1 / -1; }
+  
+  .row > .num:nth-child(2) {
+    grid-column: 1 / -1;
+    text-align: left;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .row > .num:nth-child(2) .size-line { margin-left: auto; }
+  
+  .row > .state {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    text-align: left;
+  }
+  .acts { flex: 1; justify-content: flex-end; }
+  
+  .bar .btn { padding: 6px 8px; font-size: 11px; }
+}
+@media (max-width: 900px) { .list { overflow-x: hidden; } }

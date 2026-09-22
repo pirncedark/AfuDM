@@ -129,10 +129,15 @@
   <div class="sheet">
     <h2 data-i18n="add.title">Link ekle</h2>
     <div class="body">
+      <div style="margin-bottom: 12px; display: flex; gap: 16px; align-items: center; background: #ffffff0a; padding: 10px; border-radius: 8px;">
+        <label class="opt"><input type="radio" name="addMode" id="addModePC" checked> <span>💻 AfuDM'ye İndir (PC)</span></label>
+        <label class="opt"><input type="radio" name="addMode" id="addModeMobile"> <span style="color:var(--accent)">📱 Direkt Bu Cihaza (Tarayıcı)</span></label>
+      </div>
       <div>
         <label for="urls" data-i18n="add.urls">Bağlantı (her satıra bir tane — http, magnet veya video sayfası)</label>
         <textarea id="urls" spellcheck="false" placeholder="https://ornek.com/dosya.iso&#10;magnet:?xt=urn:btih:...&#10;https://www.youtube.com/watch?v=..."></textarea>
       </div>
+      <div id="addPcOptions">
       <div class="grid2">
         <div>
           <label for="quality" data-i18n="add.quality">Video kalitesi</label>
@@ -160,6 +165,7 @@
           <input id="dest" type="text" spellcheck="false" placeholder="">
           <button class="btn" id="destPick" data-i18n="add.pick">Değiştir</button>
         </div>
+      </div>
       </div>
       <div class="err-note" id="addErr"></div>
     </div>

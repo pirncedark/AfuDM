@@ -1002,6 +1002,13 @@ class Api:
                 name = item.get("filename") or ""
                 if name:
                     yol = Path(folder) / name
+                    if not yol.exists():
+                        # Yt-dlp gibi araçlar uzantı eklemiş/değiştirmiş olabilir
+                        import glob
+                        escaped = glob.escape(name)
+                        matches = glob.glob(str(Path(folder) / f"{escaped}*"))
+                        if matches:
+                            yol = Path(matches[0])
                 break
         if not yol or not yol.exists() or not yol.is_file():
             return {"ok": False, "error": "Sadece tamamlanmış tekil dosyalar paylaşılabilir veya dosya diskte bulunamadı."}

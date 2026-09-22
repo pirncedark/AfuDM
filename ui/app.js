@@ -188,10 +188,17 @@ function renderList() {
     const kill = '<button data-act="remove" data-gid="' + item.gid + '">' + t("row.remove") + "</button>";
     let right;
     if (item.status === "complete") {
-      right = '<button data-act="open" data-gid="' + item.gid + '">' + t("row.folder") + "</button>"
-        + '<button data-act="share" data-gid="' + item.gid + '">' + t("row.share") + "</button>"
-        + '<button data-act="scan" data-gid="' + item.gid + '">' + t("row.scan") + "</button>"
-        + '<button data-act="remove" data-gid="' + item.gid + '">' + t("row.delete") + "</button>";
+        if (item.dir && item.dir.includes("Telefona")) {
+          right = '<button data-act="open" data-gid="' + item.gid + '">' + t("row.folder") + "</button>"
+            + '<button style="color:var(--accent);border-color:var(--accent)" data-act="share" data-direct="1" data-gid="' + item.gid + '">📱 Cihaza Kaydet</button>'
+            + '<button data-act="scan" data-gid="' + item.gid + '">' + t("row.scan") + "</button>"
+            + '<button data-act="remove" data-gid="' + item.gid + '">' + t("row.delete") + "</button>";
+        } else {
+          right = '<button data-act="open" data-gid="' + item.gid + '">' + t("row.folder") + "</button>"
+            + '<button data-act="share" data-gid="' + item.gid + '">' + t("row.share") + "</button>"
+            + '<button data-act="scan" data-gid="' + item.gid + '">' + t("row.scan") + "</button>"
+            + '<button data-act="remove" data-gid="' + item.gid + '">' + t("row.delete") + "</button>";
+        }
     } else if (item.status === "error") {
       // Hataya dusen indirme 'unpause' edilemez; kaydi bastan baslatmak gerekir
       right = '<button data-act="retry" data-id="' + (item.id || "") + '">' + t("row.retry") + "</button>" + kill;
@@ -570,6 +577,16 @@ $("list").addEventListener("click", async (event) => {
         try {
           const res = await call("share_create", gid);
           if (res.ok) {
+            if (e.target.dataset.direct === "1") {
+              const a = document.createElement("a");
+              a.href = res.url;
+              a.download = res.filename || "download";
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              toast("Telefona indirme başlatılıyor...");
+              return;
+            }
             $("shareLink").value = res.url;
             $("shareErr").textContent = "";
             
@@ -692,9 +709,29 @@ $("addBtn").onclick = () => {
   openVeil("addVeil");
   $("urls").focus();
 };
+$("addModePC").onchange = $("addModeMobile").onchange = () => {
+  $("addPcOptions").style.display = $("addModeMobile").checked ? "none" : "block";
+};
 $("addGo").onclick = async () => {
   const lines = $("urls").value.split("\n").map((s) => s.trim()).filter(Boolean);
   if (!lines.length) { $("addErr").textContent = t("err.noLink"); return; }
+  
+  if ($("addModeMobile").checked) {
+    lines.forEach(url => {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "";
+      a.target = "_blank";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    });
+    toast("Cihaza indirme tetiklendi (" + lines.length + " link)");
+    closeVeil("addVeil");
+    $("urls").value = "";
+    return;
+  }
+
   const payload = {
     urls: lines,
     quality: $("quality").value,

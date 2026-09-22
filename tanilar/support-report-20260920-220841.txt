@@ -1,0 +1,40 @@
+﻿AfuDM support report
+Generated: Paz 20.09.2026 22:08:41,62
+
+[version]
+AfuDM.exe present
+
+[system information]
+
+[engine status]
+aria2c.exe present
+aria2 version 1.37.0
+Copyright (C) 2006, 2019 Tatsuhiro Tsujikawa
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+** Configuration **
+Enabled Features: Async DNS, BitTorrent, Firefox3 Cookie, GZip, HTTPS, Message Digest, Metalink, XML-RPC, SFTP
+Hash Algorithms: sha-1, sha-224, sha-256, sha-384, sha-512, md5, adler32
+Libraries: zlib/1.3 expat/2.5.0 sqlite3/3.43.1 GMP/6.3.0 c-ares/1.19.1 libssh2/1.11.0
+Compiler: mingw-w64 8.0.0 (alpha) / gcc 10-win32 20220113
+  built by  x86_64-pc-linux-gnu
+  targeting x86_64-w64-mingw32
+  on        Nov 15 2023 11:17:49
+System: Windows 6.2 (x86_64) (6.2)
+
+Report bugs to https://github.com/aria2/aria2/issues
+Visit https://aria2.github.io/
+
+[webview2]
+
+[last error]
+
