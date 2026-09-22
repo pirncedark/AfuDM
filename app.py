@@ -113,6 +113,11 @@ class Api:
         self._probe_iptal: threading.Event | None = None
         self._windows = getattr(manager, "windows", None)
 
+        def _otomatik_motorlar():
+            for m in engines.eksikler(sadece_istege_bagli=True):
+                self.motor_indir(m)
+        threading.Thread(target=_otomatik_motorlar, daemon=True).start()
+
     @property
     def windows(self) -> Any:
         return getattr(self, "_windows", None) or getattr(self.manager, "windows", None)
