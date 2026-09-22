@@ -45,6 +45,8 @@ from core import settings_validation  # noqa: E402
 from core.servis import AfuDMServis  # noqa: E402
 from core.windows_integration import WindowsIntegration  # noqa: E402
 from core.reliability import Reliability  # noqa: E402
+from core.paylasim_sunucusu import PaylasimSunucusu  # noqa: E402
+from core.tunel import TunnelError, TunnelManager  # noqa: E402
 from core.manager import AyarGecersiz  # noqa: E402
 from core import settings_validation  # noqa: E402
 
@@ -200,9 +202,14 @@ class Api:
         self._chrome_baslangic = 0.0
         self._probe_iptal: threading.Event | None = None
         self._windows = getattr(manager, "windows", None)
+        from api.server import _Handler
+        self._paylasim_sunucusu = PaylasimSunucusu(_Handler.shared_files)
+        self._tunel = TunnelManager(str(paths.ENGINE / "cloudflared.exe"))
 
         def _otomatik_motorlar():
             for m in engines.eksikler(sadece_istege_bagli=True):
+                if m == "cloudflared":
+                    continue
                 self.motor_indir(m)
         threading.Thread(target=_otomatik_motorlar, daemon=True).start()
 
@@ -968,6 +975,8 @@ class Api:
         """Atomik ayar RPC'si: hata metni degil i18n anahtari tasir."""
         try:
             kayit = self.manager.update_settings(ayarlar)
+            if kayit.get("internet_paylasim") is False:
+                self.paylasim_stop()
             return {"ok": True, "hatalar": [], "ayarlar": kayit, "settings": kayit}
         except AyarGecersiz as exc:
             return {"ok": False, "hatalar": exc.hatalar, "ayarlar": self.manager.store.all_settings()}
@@ -1102,6 +1111,31 @@ class Api:
             host = "127.0.0.1"
         return f"http://{host}:{self.local_api.port}/s/{token}"
 
+    def _internet_linki(self, token: str) -> tuple[str, str]:
+        """Cloudflare yalniz dar paylasim sunucusuna baglanir."""
+        if getattr(self.manager.store, "get", lambda *_args: True)("internet_paylasim", True) is False:
+            return "", ""
+        if not engines.var_mi("cloudflared"):
+            return "", "share.cloudflaredMissing"
+        try:
+            port = self._paylasim_sunucusu.start()
+            adres = self._tunel.start(port)
+            return f"{adres}/s/{token}", ""
+        except Exception:
+            return "", "share.tunnelError"
+
+    def _paylasim_sonucu(self, token: str, yol: Path, warning: str = "") -> dict:
+        yerel = self._paylasim_url(token)
+        internet, internet_hata = self._internet_linki(token)
+        kullanilacak = internet or yerel
+        return {
+            "ok": True, "transport": "http", "token": token,
+            "url": kullanilacak, "local_url": yerel,
+            "internet_url": internet, "qr": self._qr_uret(kullanilacak),
+            "filename": yol.name, "smb": "", "warning": warning,
+            "internet_error_key": internet_hata,
+        }
+
     def share_create(self, gid: str) -> dict:
         yol = self.manager.resolve_item_path(gid)
         if not yol or not yol.exists() or not yol.is_file():
@@ -1111,8 +1145,7 @@ class Api:
         import time
         token = secrets.token_urlsafe(12)
         _Handler.shared_files[token] = {"path": yol, "created": time.time()}
-        url = self._paylasim_url(token)
-        return {"ok": True, "token": token, "url": url, "filename": yol.name}
+        return self._paylasim_sonucu(token, yol)
 
     def agda_paylas(self, gid: str) -> dict:
         """Tamamlanan dosyayi SMB/UNC olarak dene; yetki yoksa HTTP+QR'a dus.
@@ -1126,20 +1159,23 @@ class Api:
             return {"ok": False, "error": "Sadece tamamlanmış tekil dosyalar paylaşılabilir veya dosya diskte bulunamadı."}
         from api.server import _Handler
         import secrets
+        import time
 
         token = secrets.token_urlsafe(12)
         _Handler.shared_files[token] = {"path": yol, "created": time.time()}
         url = self._paylasim_url(token)
-        result = {
+        result = self._paylasim_sonucu(token, yol,
+            "SMB paylasimi icin yonetici izni bulunamadi; HTTP LAN baglantisi hazirlandi.")
+        result.update({
             "ok": True,
             "transport": "http",
             "token": token,
-            "url": url,
-            "qr": self._qr_uret(url),
+            "url": result["url"],
+            "qr": result["qr"],
             "filename": yol.name,
             "smb": "",
             "warning": "SMB paylaşımı için yönetici izni bulunamadı; HTTP LAN bağlantısı hazırlandı.",
-        }
+        })
         if os.name != "nt":
             return result
 
@@ -1169,10 +1205,14 @@ class Api:
         aktif_paylasimlar = []
         for token, bilgi in _Handler.shared_files.items():
             yol = Path(bilgi["path"])
-            url = self._paylasim_url(token)
+            local_url = self._paylasim_url(token)
+            internet_url = (self._tunel.url + f"/s/{token}"
+                            if getattr(self, "_tunel", None) and self._tunel.active else "")
             aktif_paylasimlar.append({
                 "token": token,
-                "url": url,
+                "url": internet_url or local_url,
+                "local_url": local_url,
+                "internet_url": internet_url,
                 "filename": yol.name,
                 "size": yol.stat().st_size if yol.exists() else 0,
                 "created": bilgi["created"]
@@ -1185,6 +1225,11 @@ class Api:
         from api.server import _Handler
         if token in _Handler.shared_files:
             del _Handler.shared_files[token]
+            if not _Handler.shared_files:
+                if hasattr(self, "_tunel"):
+                    self._tunel.stop()
+                if hasattr(self, "_paylasim_sunucusu"):
+                    self._paylasim_sunucusu.stop()
             return {"ok": True}
         return {"ok": False, "error": "Paylaşım bulunamadı."}
 
@@ -1207,13 +1252,18 @@ class Api:
                 continue
             token = secrets.token_urlsafe(12)
             _Handler.shared_files[token] = {"path": yol, "created": time.time()}
-            url = self._paylasim_url(token)
-            sonuclar.append({"token": token, "url": url, "filename": yol.name})
+            sonuclar.append(self._paylasim_sonucu(token, yol))
             
         if not sonuclar:
             return {"ok": False, "error": "Geçerli dosya seçilmedi."}
             
         return {"ok": True, "files": sonuclar}
+
+    def paylasim_stop(self) -> None:
+        if hasattr(self, "_tunel"):
+            self._tunel.stop()
+        if hasattr(self, "_paylasim_sunucusu"):
+            self._paylasim_sunucusu.stop()
 
     def dosya_ac(self, gid: str) -> dict:
         """Inen dosyayi kendi programiyla ac (klasoru degil dosyayi).
@@ -1657,6 +1707,7 @@ def main() -> int:
     finally:
         watcher.stop()
         servis.sunucu_durdur()
+        api.paylasim_stop()
         local_api.stop()
         manager.stop()
         _kilit.birak()

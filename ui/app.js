@@ -611,6 +611,33 @@ if ($("engineRetry")) {
 }
 
 /* ---------- eylemler ---------- */
+async function agdaPaylas(gid) {
+  if (state.settings.internet_paylasim !== false) {
+    $("shareErr").textContent = t("share.internetPreparing");
+  }
+  let sonuc = await call("agda_paylas", gid);
+  if (sonuc.internet_error_key === "share.cloudflaredMissing") {
+    if (!confirm(t("share.downloadTunnelAsk"))) return sonuc;
+    await call("motor_indir", "cloudflared");
+    for (let i = 0; i < 120; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const durum = await call("motor_durumu");
+      if (durum.motorlar.cloudflared && durum.motorlar.cloudflared.var) break;
+    }
+    sonuc = await call("agda_paylas", gid);
+  }
+  return sonuc;
+}
+
+function paylasimModalDoldur(res) {
+  $("shareLink").value = res.local_url || res.url || "";
+  $("shareInternetLink").value = res.internet_url || "";
+  $("shareSmbPath").value = res.smb || "";
+  $("shareQrImg").src = res.qr || "";
+  $("shareQrImg").style.display = res.qr ? "inline-block" : "none";
+  $("shareErr").textContent = res.warning || (res.internet_error_key ? t(res.internet_error_key) : "");
+}
+
 $("list").addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-act]");
   const row = event.target.closest(".row");
@@ -623,7 +650,7 @@ $("list").addEventListener("click", async (event) => {
       if (act === "scan") { await call("defender_scan", gid); toast(t("toast.scanStarted")); return; }
       if (act === "network-share") {
         try {
-          const res = await call("agda_paylas", gid);
+          const res = await agdaPaylas(gid);
           if (res.ok) {
             if (button.dataset.direct === "1") {
               const a = document.createElement("a");
@@ -635,15 +662,7 @@ $("list").addEventListener("click", async (event) => {
               toast("Telefona indirme başlatılıyor...");
               return;
             }
-            $("shareLink").value = res.url || "";
-            $("shareSmbPath").value = res.smb || "";
-            $("shareErr").textContent = "";
-            const qri = $("shareQrImg");
-            if (qri) {
-              qri.src = res.qr || "";
-              qri.style.display = res.qr ? "inline-block" : "none";
-            }
-            if (res.warning) $("shareErr").textContent = res.warning;
+            paylasimModalDoldur(res);
             openVeil("shareVeil");
           }
         } catch(e) {
@@ -1815,6 +1834,7 @@ $("openSettings").onclick = async () => {
   $("sSnailSpeed").value = s.snail_speed_kb ?? 100;
   // v1.7.5 Bolum 1-2: uzaktan erisim + ag (docs/v175_SOZLESME.md)
   $("sLanAccess").checked = s.lan_erisimi ?? false;
+  $("sInternetShare").checked = s.internet_paylasim !== false;
   $("sApiPort").value = s.api_listen_port ?? s.api_port ?? 6811;
   $("sSystemProxy").checked = s.system_proxy ?? false;
   $("sProxy").value = s.proxy ?? "";
@@ -2191,6 +2211,7 @@ $("setGo").onclick = async () => {
     snail_speed_kb: Number($("sSnailSpeed").value) || 100,
     // v1.7.5: uzaktan erisim + ag. api_port araligi disindaysa varsayilana duser.
     lan_erisimi: $("sLanAccess").checked,
+    internet_paylasim: $("sInternetShare").checked,
     api_listen_port: portSayisi($("sApiPort").value),
     system_proxy: $("sSystemProxy").checked,
     proxy: $("sProxy").value.trim(),
@@ -2834,12 +2855,8 @@ document.addEventListener("contextmenu", async (event) => {
     "ayrac",
     { etiket: t("row.share"), pasif: oge.status !== "complete",
       calis: async () => {
-        const res = await call("agda_paylas", gid);
-        $("shareLink").value = res.url || "";
-        $("shareSmbPath").value = res.smb || "";
-        $("shareQrImg").src = res.qr || "";
-        $("shareQrImg").style.display = res.qr ? "inline-block" : "none";
-        $("shareErr").textContent = res.warning || "";
+        const res = await agdaPaylas(gid);
+        paylasimModalDoldur(res);
         openVeil("shareVeil");
       } },
     "ayrac",
@@ -3689,6 +3706,14 @@ $("shareCopy").onclick = async () => {
   try {
     await call("panoya_kopyala", $("shareLink").value);
     toast(t("srv.copied") || "Kopyalandı");
+  } catch (err) { toast(err.message, true); }
+};
+
+$("shareInternetCopy").onclick = async () => {
+  if (!$("shareInternetLink").value) return;
+  try {
+    await call("panoya_kopyala", $("shareInternetLink").value);
+    toast(t("srv.copied"));
   } catch (err) { toast(err.message, true); }
 };
 
