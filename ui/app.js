@@ -702,7 +702,7 @@ function openVeil(id) {
   $(id).classList.add("open");
 }
 function closeVeil(id) {
-  $(id).classList.remove("open");
+  $(id).classList.remove("open", "on");
   const prev = veilFocusMap.get(id);
   if (prev && typeof prev.focus === "function") prev.focus();
   veilFocusMap.delete(id);
@@ -735,8 +735,14 @@ function closeVeil(id) {
     plgState.timer = null;
   }
 }
-document.querySelectorAll("[data-close]").forEach((button) => {
-  button.onclick = () => closeVeil(button.dataset.close);
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-close]");
+  if (!button) return;
+  if (button.dataset.close === "srvVeil" && srvState.timer) {
+    clearInterval(srvState.timer);
+    srvState.timer = null;
+  }
+  closeVeil(button.dataset.close);
 });
 document.querySelectorAll(".veil").forEach((veil) => {
   veil.addEventListener("click", (event) => { if (event.target === veil) closeVeil(veil.id); });
@@ -3606,16 +3612,6 @@ $("openServer").onclick = async () => {
     srvIstemciCiz();
   }, 3000);
 };
-
-/* Sunucu paneli kapanisinda canli yoklamayi durdur (bosuna istek atma).
-   closeVeil'in kendisi degistirilmez; kapatma dugmeleri zaten buradan gecer. */
-document.querySelectorAll("[data-close='srvVeil']").forEach((dugme) => {
-  const eski = dugme.onclick;
-  dugme.onclick = (ev) => {
-    if (srvState.timer) { clearInterval(srvState.timer); srvState.timer = null; }
-    if (eski) eski.call(dugme, ev);
-  };
-});
 
 /* ---------- ac / kapa ---------- */
 $("srvAcik").onchange = async (ev) => {

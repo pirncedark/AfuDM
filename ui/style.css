@@ -794,13 +794,26 @@ select:focus-visible, button:focus-visible {
   font-size: 15px;
   font-weight: 600;
 }
-.modal-head .wc-btn {
+.modal-head .modal-close {
   flex: 0 0 28px;
   width: 28px;
   height: 28px;
   border-radius: 50%;
   margin-left: auto;
 }
+.modal-close {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.modal-close:hover { background: #c42b1c; color: #fff; }
+.modal-close:active { background: #b22a1b; }
 .modal-body { padding: 16px 18px; }
 .share-select { width: 100%; margin-bottom: 20px; }
 .share-list {
@@ -824,7 +837,7 @@ select:focus-visible, button:focus-visible {
 }
 .sheet-head { display:flex; align-items:center; min-height:54px; padding-right:16px; border-bottom:1px solid var(--line); }
 .sheet-head h2 { flex:1; border-bottom:0; }
-.sheet-head .wc-btn { flex:0 0 28px; width:28px; height:28px; border-radius:50%; margin-left:auto; }
+.sheet-head .modal-close { flex:0 0 28px; width:28px; height:28px; border-radius:50%; margin-left:auto; }
 .sheet .body h3 {
   margin: 4px 0 0;
   font-family: var(--ui-display);

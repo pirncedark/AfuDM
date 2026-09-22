@@ -21,6 +21,7 @@ const DICT = {
 
     /* --- WeTransfer Share UI --- */
     "rail.share": "Paylaşım Merkezi",
+    "share.centerTitle": "Dosya Paylaşımı (WeTransfer Tarzı)",
     "share.title": "Dosya Paylaşımı (WeTransfer Tarzı)",
     "share.desc": "Bilgisayarınızdaki herhangi bir dosyayı yerel ağınızda kolayca paylaşabilirsiniz.",
     "share.selectFile": "Dosya Seç & Paylaş",
@@ -842,6 +843,7 @@ const DICT = {
     "set.apiPort": "API / UI Port",
     /* --- WeTransfer Share UI --- */
     "rail.share": "Share Center",
+    "share.centerTitle": "File Sharing (WeTransfer style)",
     "share.title": "File Sharing (WeTransfer style)",
     "share.desc": "Easily share any file from your computer on your local network.",
     "share.selectFile": "Select File & Share",

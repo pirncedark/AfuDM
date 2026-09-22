@@ -67,7 +67,7 @@ class PaylasimTest(unittest.TestCase):
         self.assertIn('call("dosya_sec_ve_paylas")', js)
         self.assertIn('call("share_list")', js)
         self.assertIn(".modal-head", css)
-        self.assertIn(".modal-head .wc-btn", css)
+        self.assertIn(".modal-head .modal-close", css)
         self.assertIn("padding: 16px 18px", css)
 
     def test_paylasim_tokeni_dizin_disina_tasamaz(self):
