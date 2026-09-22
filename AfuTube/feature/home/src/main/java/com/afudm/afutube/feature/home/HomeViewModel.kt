@@ -1,5 +1,6 @@
 package com.afudm.afutube.feature.home
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.afudm.afutube.core.extractor.MediaInfo
@@ -15,12 +16,12 @@ data class HomeState(
     val error     : String    = ""
 )
 
-class HomeViewModel : ViewModel() {
+class HomeViewModel(context: Context) : ViewModel() {
 
     private val _state = MutableStateFlow(HomeState())
     val state: StateFlow<HomeState> = _state
 
-    private val extractor = ExtractorManager.getInstance()
+    private val extractor = ExtractorManager.getInstance(context.applicationContext)
 
     fun onUrlChange(url: String) {
         _state.value = _state.value.copy(url = url, error = "", mediaInfo = null)

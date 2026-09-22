@@ -1,5 +1,6 @@
 package com.afudm.afutube.extractor
 
+import android.content.Context
 import com.afudm.afutube.core.extractor.MediaExtractor
 import com.afudm.afutube.core.extractor.MediaInfo
 import com.afudm.afutube.core.extractor.UrlClassifier
@@ -14,13 +15,13 @@ import com.afudm.afutube.core.extractor.UrlType
  *   1. MediaExtractor'ı implement et
  *   2. Buraya register() ile kaydet
  */
-class ExtractorManager {
+class ExtractorManager private constructor(context: Context) {
 
     private val extractors: MutableList<MediaExtractor> = mutableListOf()
 
     init {
         // Sıralı deneme — önce yt-dlp, fallback olarak DirectUrl
-        register(YtDlpExtractor())
+        register(YtDlpExtractor(context.applicationContext))
         register(DirectUrlExtractor())
     }
 
@@ -44,9 +45,9 @@ class ExtractorManager {
     companion object {
         @Volatile private var INSTANCE: ExtractorManager? = null
 
-        fun getInstance(): ExtractorManager =
+        fun getInstance(context: Context): ExtractorManager =
             INSTANCE ?: synchronized(this) {
-                INSTANCE ?: ExtractorManager().also { INSTANCE = it }
+                INSTANCE ?: ExtractorManager(context.applicationContext).also { INSTANCE = it }
             }
     }
 }

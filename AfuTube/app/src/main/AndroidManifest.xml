@@ -16,6 +16,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
     <application
+        android:name=".AfuTubeApplication"
         android:allowBackup="true"
         android:label="AfuTube"
         android:icon="@android:drawable/ic_dialog_info"
@@ -23,7 +24,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.AfuTube"
         android:networkSecurityConfig="@xml/network_security_config"
-        android:requestLegacyExternalStorage="false">
+        android:requestLegacyExternalStorage="false"
+        android:extractNativeLibs="true">
 
         <!-- ── Ana Activity ──────────────────────────────────────────── -->
         <activity

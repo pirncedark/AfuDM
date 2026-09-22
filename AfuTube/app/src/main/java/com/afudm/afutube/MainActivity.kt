@@ -18,7 +18,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.*
 import com.afudm.afutube.core.extractor.MediaInfo
 import com.afudm.afutube.feature.downloads.DownloadsScreen
@@ -27,11 +26,6 @@ import com.afudm.afutube.core.theme.AfuColors
 import com.afudm.afutube.feature.home.HomeScreen
 import com.afudm.afutube.feature.settings.SettingsScreen
 import com.afudm.afutube.feature.torrent.TorrentPickerScreen
-import com.yausername.aria2c.Aria2c
-import com.yausername.ffmpeg.FFmpeg
-import com.yausername.youtubedl_android.YoutubeDL
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -41,13 +35,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         sharedUrl = extractUrlFromIntent(intent)
-
-        // yt-dlp + FFmpeg + aria2 başlat (IO thread)
-        lifecycleScope.launch(Dispatchers.IO) {
-            runCatching { YoutubeDL.getInstance().init(application) }
-            runCatching { FFmpeg.getInstance().init(application) }
-            runCatching { Aria2c.getInstance().init(application) }
-        }
 
         setContent { AfuTubeApp(sharedUrl) }
     }
