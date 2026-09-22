@@ -64,6 +64,42 @@ PENCERE_ESKI = (1180, 760)     # v2.7.1 ve oncesi sabit boyut
 PENCERE_ESKI_MIN = (880, 560)
 
 
+def _calisma_alani() -> tuple[int, int, int, int, int]:
+    """Birincil monitorun gorev cubugu haric calisma alanini ve DPI'yi doner."""
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    user32.EnumDisplayMonitors.argtypes = [wintypes.HDC, ctypes.POINTER(wintypes.RECT),
+                                           ctypes.c_void_p, wintypes.LPARAM]
+    user32.EnumDisplayMonitors.restype = wintypes.BOOL
+    user32.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.c_void_p]
+    user32.GetMonitorInfoW.restype = wintypes.BOOL
+
+    class MONITORINFO(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT),
+                    ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+
+    monitorlar: list[tuple[int, int, int, int, int]] = []
+    callback_t = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HMONITOR,
+                                    wintypes.HDC, ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)
+
+    @callback_t
+    def monitor_cb(handle, _dc, _rect, _data):
+        bilgi = MONITORINFO()
+        bilgi.cbSize = ctypes.sizeof(MONITORINFO)
+        if user32.GetMonitorInfoW(handle, ctypes.byref(bilgi)):
+            r = bilgi.rcWork
+            monitorlar.append((r.left, r.top, r.right, r.bottom, bilgi.dwFlags))
+        return True
+
+    if not user32.EnumDisplayMonitors(None, None, monitor_cb, 0) or not monitorlar:
+        raise OSError("monitor calisma alani okunamadi")
+    # PRIMARY monitor secilir; yoksa en buyuk calisma alanina dusulur.
+    return max(monitorlar, key=lambda item: (bool(item[4] & 1),
+                                             (item[2] - item[0]) * (item[3] - item[1])))
+
+
 def pencere_boyutu() -> tuple[int | None, int | None, int, int, int, int]:
     """Acilis pencere boyutu: (x, y, w, h, min_w, min_h).
 
@@ -78,26 +114,27 @@ def pencere_boyutu() -> tuple[int | None, int | None, int, int, int, int]:
     acilmazlik yapmaz."""
     try:
         import ctypes
-        from ctypes import wintypes
-
-        rect = wintypes.RECT()
-        if not ctypes.windll.user32.SystemParametersInfoW(
-                0x0030, 0, ctypes.byref(rect), 0):  # SPI_GETWORKAREA
-            raise OSError("SPI_GETWORKAREA basarisiz")
-        wa_w = rect.right - rect.left
-        wa_h = rect.bottom - rect.top
+        user32 = ctypes.windll.user32
+        left, top, right, bottom, _flags = _calisma_alani()
+        wa_w, wa_h = right - left, bottom - top
+        dpi = int(getattr(user32, "GetDpiForSystem", lambda: 96)() or 96)
+        dpi_orani = max(1.0, dpi / 96.0)
+        hedef_w = round(PENCERE_HEDEF[0] * dpi_orani)
+        hedef_h = round(PENCERE_HEDEF[1] * dpi_orani)
+        min_hedef_w = round(PENCERE_MIN[0] * dpi_orani)
+        min_hedef_h = round(PENCERE_MIN[1] * dpi_orani)
         # Ekran kucukse calisma alaninin %92'sini gecme; oncelik hedef boyut.
-        w = min(PENCERE_HEDEF[0], int(wa_w * 0.92))
-        h = min(PENCERE_HEDEF[1], int(wa_h * 0.92))
+        w = min(hedef_w, int(wa_w * 0.92))
+        h = min(hedef_h, int(wa_h * 0.92))
         # min_size: sol menunun kaydirmasiz sigmasi; ekran kucukse ekrana sigdir.
-        min_w = min(PENCERE_MIN[0], wa_w)
-        min_h = min(PENCERE_MIN[1], wa_h)
+        min_w = min(min_hedef_w, wa_w)
+        min_h = min(min_hedef_h, wa_h)
         # Kucuk ekranlarda %92 kesigi min'in altina dusecegi icin baslangic
         # boyutu min'den kucuk kalmasin (yine de ekrana sigar).
         w = max(w, min_w)
         h = max(h, min_h)
-        x = rect.left + (wa_w - w) // 2
-        y = rect.top + (wa_h - h) // 2
+        x = left + (wa_w - w) // 2
+        y = top + (wa_h - h) // 2
         return x, y, w, h, min_w, min_h
     except Exception:
         # Eski sabit degerler; x/y yok sayilir (pywebview kendisi ortalar).
