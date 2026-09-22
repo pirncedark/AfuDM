@@ -330,14 +330,14 @@ button { cursor: pointer; }
   border-radius: 4px;
   text-decoration: none;
   font-weight: 500;
-  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.15s ease, box-shadow 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.btn:hover { background: var(--surface-2); border-color: #35414f; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-.btn:active { transform: translateY(1px); box-shadow: none; }
+.btn:hover { background: var(--surface-2); border-color: #35414f; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.btn:active { box-shadow: none; }
 .btn.primary { background: var(--primary-gradient); border-color: transparent; color: #fff; font-weight: 600; box-shadow: 0 4px 15px rgba(91, 157, 255, 0.2); }
-.btn.primary:hover { background: linear-gradient(135deg, #74afff 0%, #b8a2fa 100%); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(91, 157, 255, 0.35); }
+.btn.primary:hover { background: linear-gradient(135deg, #74afff 0%, #b8a2fa 100%); box-shadow: 0 6px 20px rgba(91, 157, 255, 0.35); }
 .btn.ghost { background: none; border-color: transparent; color: var(--muted); }
-.btn.ghost:hover { color: var(--text); background: #ffffff0a; transform: translateY(-1px); }
+.btn.ghost:hover { color: var(--text); background: #ffffff0a; }
 .btn:disabled { opacity: 0.4; cursor: default; transform: none !important; box-shadow: none !important; }
 .bar .spacer { flex: 1; }
 .bar .btn { flex-shrink: 0; white-space: nowrap; }
@@ -377,18 +377,15 @@ select:focus-visible, button:focus-visible {
   gap: 10px;
   padding: 11px 14px;
   background: rgba(28, 34, 44, 0.7);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 10px;
-  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   min-width: 0;
 }
 .row:hover {
   background: rgba(35, 43, 55, 0.85);
   border-color: rgba(255, 255, 255, 0.1);
-  transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 .row.sel {
@@ -518,7 +515,7 @@ select:focus-visible, button:focus-visible {
   align-items: center;
   gap: 4px;
   cursor: pointer;
-  transition: all 0.13s ease;
+  transition: background-color 0.13s ease, color 0.13s ease, border-color 0.13s ease, box-shadow 0.13s ease;
   box-shadow: 0 1px 2px rgba(0,0,0,0.1);
   white-space: nowrap;
 }
@@ -527,7 +524,6 @@ select:focus-visible, button:focus-visible {
   background: rgba(59,130,246,0.15);
   color: #74afff;
   border-color: rgba(59,130,246,0.4);
-  transform: translateY(-1px);
   box-shadow: 0 2px 6px rgba(59,130,246,0.2);
 }
 /* silme butonu */
@@ -541,7 +537,6 @@ select:focus-visible, button:focus-visible {
   color: #ff8fab;
   border-color: rgba(242, 103, 138, 0.55);
   box-shadow: 0 2px 8px rgba(242,103,138,0.3);
-  transform: translateY(-1px);
 }
 /* paylasim butonu */
 .acts button[data-act="share"] {
@@ -554,7 +549,6 @@ select:focus-visible, button:focus-visible {
   color: #c4b0ff;
   border-color: rgba(167, 139, 250, 0.55);
   box-shadow: 0 2px 8px rgba(167,139,250,0.3);
-  transform: translateY(-1px);
 }
 /* defender butonu */
 .acts button[data-act="defender"] {
@@ -567,7 +561,6 @@ select:focus-visible, button:focus-visible {
   color: #6eedb0;
   border-color: rgba(70, 201, 139, 0.5);
   box-shadow: 0 2px 8px rgba(70,201,139,0.25);
-  transform: translateY(-1px);
 }
 
 .global-model {
