@@ -218,7 +218,13 @@ class AfuDMServis:
             elif eylem == "resume":
                 self.manager.resume(gid)
             elif eylem == "remove":
-                self.manager.remove(gid, bool(delete_files))
+                try:
+                    self.manager.remove(gid, bool(delete_files))
+                except Exception as rem_exc:
+                    err_msg = str(rem_exc).lower()
+                    if "kayit bulunamadi" in err_msg or "not found" in err_msg:
+                        return {"ok": True, "action": "remove", "gid": gid, "orphan": True}
+                    raise
             elif eylem == "pause_all":
                 self.manager.pause_all()
             elif eylem == "resume_all":
@@ -227,6 +233,9 @@ class AfuDMServis:
                 return {"ok": False, "code": "BILINMEYEN_EYLEM",
                         "error": "bilinmeyen eylem: %s" % eylem[:24]}
         except Exception as exc:
+            err_msg = str(exc).lower()
+            if eylem == "remove" and ("kayit bulunamadi" in err_msg or "not found" in err_msg):
+                return {"ok": True, "action": "remove", "gid": gid, "orphan": True}
             return {"ok": False, "code": "ISLEM_HATASI", "error": str(exc)[:300]}
         return {"ok": True, "action": eylem, "gid": gid}
 

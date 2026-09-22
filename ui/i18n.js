@@ -102,6 +102,8 @@ const DICT = {
     "plg.perm.ag": "Ağa (internete) çıkar",
     "rem.title": "İndirmeyi Kaldır",
     "rem.desc": "Bu indirmeyi listeden kaldırmak istiyor musunuz?",
+    "rem.bulkTitle": "Seçilen İndirmeleri Kaldır",
+    "rem.bulkDesc": "Seçtiğiniz {n} adet indirmeyi listeden kaldırmak istiyor musunuz?",
     "rem.files": "İndirilen dosyaları da diskten tamamen SİL",
     "plg.perm.dosya_oku": "Diskten dosya okur",
     "plg.perm.dosya_yaz": "Diske dosya yazar",
@@ -171,6 +173,9 @@ const DICT = {
     "bar.lg": "Link yakala",
     "bar.pauseAll": "Tümünü duraklat",
     "bar.resumeAll": "Tümünü sürdür",
+    "bar.removeSelected": "Seçilenleri Sil ({n})",
+    "bar.selectAll": "Tümünü Seç",
+    "bar.deselectAll": "Seçimi Kaldır",
     "bar.search": "listede ara",
     "bar.clearDone": "Bitenleri temizle",
 
@@ -365,6 +370,8 @@ const DICT = {
 
     "toast.retried": "Yeniden başlatıldı",
     "toast.cleared": "{n} kayıt temizlendi",
+    "toast.removed": "İndirme kaldırıldı",
+    "toast.orphanCleared": "Artık kayıt temizlendi",
     "toast.started": "{n} indirme başlatıldı",
     "toast.scheduled": "{n} indirme zamanlandı",
     "toast.failed": ", {n} başarısız",
@@ -958,6 +965,9 @@ const DICT = {
     "bar.lg": "Grab links",
     "bar.pauseAll": "Pause all",
     "bar.resumeAll": "Resume all",
+    "bar.removeSelected": "Delete Selected ({n})",
+    "bar.selectAll": "Select All",
+    "bar.deselectAll": "Deselect All",
     "bar.search": "search the list",
     "bar.clearDone": "Clear finished",
 
@@ -1152,6 +1162,8 @@ const DICT = {
 
     "toast.retried": "Restarted",
     "toast.cleared": "{n} entries cleared",
+    "toast.removed": "Download removed",
+    "toast.orphanCleared": "Stale record cleaned up",
     "toast.started": "{n} downloads started",
     "toast.scheduled": "{n} downloads scheduled",
     "toast.failed": ", {n} failed",

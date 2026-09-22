@@ -86,6 +86,8 @@ class Manager:
         self._stop = threading.Event()
         self._last_tracker_check = 0.0
         self._known_complete: set[str] = set()
+        self._removed_gids: set[str] = set()
+        self._removed_hashes: set[str] = set()
         self.last_error: str = ""
         # Oturum cerezleri: kayit kimligi -> cerezler. BILEREK veritabaninda degil
         # (bkz. core/cerez.py); is bitince/silinince birakilir.
@@ -692,45 +694,110 @@ class Manager:
         return True
 
     def remove(self, gid: str, delete_files: bool = False) -> bool:
+        if not hasattr(self, "_removed_gids"):
+            self._removed_gids = set()
+        if not hasattr(self, "_removed_hashes"):
+            self._removed_hashes = set()
+
+        if gid:
+            self._removed_gids.add(gid)
+
+        row = None
         if gid.startswith("row:"):
-            row = self.store.by_id(int(gid.split(":", 1)[1]))
+            try:
+                row_id = int(gid.split(":", 1)[1])
+                row = self.store.by_id(row_id)
+            except (ValueError, IndexError):
+                row = None
         else:
             row = self.store.by_gid(gid)
-        if not row:
-            raise KayitYok("kayit bulunamadi: %s" % gid)
+
+        actual_gid = (row.get("gid") if row and row.get("gid") else gid) or gid
+        if actual_gid:
+            self._removed_gids.add(actual_gid)
+
+        if row and row.get("source"):
+            infohash = self.magnet_infohash(row["source"])
+            if infohash:
+                self._removed_hashes.add(infohash.lower())
+
+        gids_to_remove: set[str] = set()
+        if actual_gid:
+            gids_to_remove.add(actual_gid)
+
         targets: list[Path] = []
-        if gid.startswith("yt:"):
-            job = self.video_jobs.pop(gid, None)
+
+        if actual_gid.startswith("yt:"):
+            job = self.video_jobs.pop(actual_gid, None)
             if job:
                 job.stop()
-                if job.filename:
+                if job.filename and job.dest_dir:
                     targets.append(Path(job.dest_dir) / job.filename)
         else:
-            # Silmeden ONCE dosya listesini al: aria2 kaydi silinince kaybolur.
-            if delete_files:
+            # aria2 parent/child GID baglantilari (followedBy / following)
+            try:
+                status = self.rpc.tell_status(actual_gid, ["followedBy", "following", "files", "infoHash"])
+                if status.get("infoHash"):
+                    self._removed_hashes.add(status["infoHash"].lower())
+                followed = status.get("followedBy") or []
+                for child_gid in followed:
+                    if child_gid:
+                        gids_to_remove.add(child_gid)
+                        self._removed_gids.add(child_gid)
+                parent_gid = status.get("following")
+                if parent_gid:
+                    gids_to_remove.add(parent_gid)
+                    self._removed_gids.add(parent_gid)
+
+                if delete_files:
+                    for g in list(gids_to_remove):
+                        try:
+                            g_status = self.rpc.tell_status(g, ["files"])
+                            for entry in g_status.get("files") or []:
+                                if entry.get("path"):
+                                    targets.append(Path(entry["path"]))
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            for g in gids_to_remove:
                 try:
-                    for entry in self.rpc.tell_status(gid).get("files") or []:
-                        if entry.get("path"):
-                            targets.append(Path(entry["path"]))
-                except Aria2Error:
+                    self.rpc.remove(g, force=True)
+                except Exception:
                     pass
+                try:
+                    self.rpc.remove_result(g)
+                except Exception:
+                    pass
+
             try:
-                self.rpc.remove(gid, force=True)
-            except Aria2Error:
+                self.rpc.save_session()
+            except Exception:
                 pass
-            try:
-                self.rpc.remove_result(gid)
-            except Aria2Error:
-                pass
-        if row and row.get("filename") and row.get("dest_dir"):
-            targets.append(Path(row["dest_dir"]) / row["filename"])
-        if delete_files:
+
+        if row:
+            if row.get("filename") and row.get("dest_dir"):
+                targets.append(Path(row["dest_dir"]) / row["filename"])
+            elif row.get("target_path"):
+                targets.append(Path(row["target_path"]))
+
+        if delete_files and targets:
             self._delete_targets(targets, row)
-        if gid.startswith("yt:"):
-            cerez.sil(gid)
+
+        if actual_gid.startswith("yt:"):
+            cerez.sil(actual_gid)
         self._cerez_birak(row)
         if row:
-            self.store.update_by_id(row["id"], status="removed", finished_at=time.time())
+            try:
+                self.store.update_by_id(row["id"], status="removed", finished_at=time.time())
+            except Exception:
+                pass
+        if actual_gid:
+            try:
+                self.store.update_by_gid(actual_gid, status="removed", finished_at=time.time())
+            except Exception:
+                pass
         return True
 
     def _cerez_birak(self, row: dict | None) -> None:
@@ -740,13 +807,17 @@ class Manager:
     @staticmethod
     def _delete_targets(targets: list[Path], row: dict | None) -> None:
         """Dosyalari ve aria2'nin .aria2 kontrol dosyalarini birlikte temizle;
-        yarim kalmis indirmeler klasorde iz birakmasin."""
+        yarim kalmis indirmeler klasorde iz birakmasin. Windows dosya kilitlerine karsi
+        kisa yenileme/tekrar deneme uygular."""
         for target in targets:
             for candidate in (target, Path(str(target) + ".aria2")):
-                try:
-                    candidate.unlink(missing_ok=True)
-                except OSError:
-                    pass
+                for _attempt in range(5):
+                    try:
+                        candidate.unlink(missing_ok=True)
+                        break
+                    except OSError:
+                        time.sleep(0.1)
+
             # Cok dosyali torrent: kontrol dosyasi klasorun YANINDA durur
             # (downloads/Sintel/... icin downloads/Sintel.aria2), klasor
             # bosaldiysa klasorun kendisi de gitmeli.
@@ -756,7 +827,12 @@ class Manager:
                 if base and parent.resolve() != base:
                     Path(str(parent) + ".aria2").unlink(missing_ok=True)
                     if parent.is_dir() and not any(parent.iterdir()):
-                        parent.rmdir()
+                        for _attempt in range(3):
+                            try:
+                                parent.rmdir()
+                                break
+                            except OSError:
+                                time.sleep(0.1)
             except OSError:
                 pass
 
@@ -1102,25 +1178,55 @@ class Manager:
         except Aria2Error as exc:
             self.last_error = str(exc)
             live = []
+        ids_seen: set[int] = set()   # DB id bazli duplicate engeli
         for status in live:
             gid = status.get("gid", "")
-            gids_seen.add(gid)
+            if not gid or gid in self._removed_gids:
+                continue
+            infohash = (status.get("infoHash") or "").lower()
+            if infohash and infohash in self._removed_hashes:
+                continue
             if self.is_metadata_only(status):
                 continue
+            row = self.store.by_gid(gid)
+            if row and row.get("status") == "removed":
+                self._removed_gids.add(gid)
+                continue
+            if row is None and status.get("infoHash"):
+                row = self._reattach_torrent(status)
+                if row and row.get("status") == "removed":
+                    self._removed_gids.add(gid)
+                    continue
+            gids_seen.add(gid)
+            if row:
+                ids_seen.add(row["id"])
             items.append(self._shape_aria2(status))
-        for job in self.video_jobs.values():
-            gids_seen.add(job.job_id)
+        for job in list(self.video_jobs.values()):
+            if job.job_id in self._removed_gids or job.status == "removed":
+                continue
             row = self.store.by_gid(job.job_id)
+            if row and row.get("status") == "removed":
+                self._removed_gids.add(job.job_id)
+                continue
+            gids_seen.add(job.job_id)
             shaped = job.to_dict()
             shaped["id"] = row["id"] if row else None
+            if row:
+                ids_seen.add(row["id"])
             shaped["progress"] = (
                 round(job.downloaded / job.total * 100, 1) if job.total else 0.0
             )
             items.append(shaped)
         # aria2 oturumu unutmus olabilir: DB'deki bitmis/zamanlanmis kayitlar
         for row in self.store.list(limit=200):
-            if row["gid"] and row["gid"] in gids_seen:
+            if row["id"] in ids_seen or row.get("status") == "removed":
                 continue
+            if row["gid"] and (row["gid"] in gids_seen or row["gid"] in self._removed_gids):
+                continue
+            if row.get("source"):
+                h = self.magnet_infohash(row["source"])
+                if h and h in self._removed_hashes:
+                    continue
             if row["status"] in ("complete", "error", "scheduled", "paused"):
                 items.append(self._shape_row(row))
         try:

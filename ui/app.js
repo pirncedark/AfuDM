@@ -12,6 +12,7 @@ const state = {
   torTimer: null,
   search: "",
   selected: null,
+  selectedGids: new Set(),
   activeDTab: "overview",
   items: [],
   settings: {},
@@ -20,6 +21,18 @@ const state = {
   lastDone: new Map(),
   ready: false,
 };
+
+function updateBulkRemoveBtn() {
+  const btn = $("removeSelected");
+  if (!btn) return;
+  const count = state.selectedGids.size;
+  if (count > 0) {
+    btn.style.display = "inline-block";
+    btn.textContent = "🗑 " + t("bar.removeSelected", { n: count });
+  } else {
+    btn.style.display = "none";
+  }
+}
 
 /* ---------- bicimleyiciler ---------- */
 function size(bytes) {
@@ -211,8 +224,10 @@ function renderList() {
       '<div class="row ' + rowClass(item) + (state.selected === item.gid ? " sel" : "") +
         '" data-gid="' + item.gid + '">' +
         '<div class="row-name">' +
-          '<div class="row-title"><span class="kind ' + item.kind + '">' + item.kind + "</span>" +
-            escapeHtml(item.title || item.gid) + "</div>" +
+          '<div class="row-title">' +
+            '<label class="row-cb-label" onclick="event.stopPropagation()"><input type="checkbox" class="row-select-cb" data-gid="' + item.gid + '" ' + (state.selectedGids.has(item.gid) ? 'checked' : '') + '></label>' +
+            '<span class="kind ' + item.kind + '">' + item.kind + '</span><span class="row-title-text" title="' + escapeHtml(item.title || item.gid) + '">' +
+            escapeHtml(item.title || item.gid) + "</span></div>" +
           segbar(item) +
         "</div>" +
         '<div class="num"><span class="big">' + item.progress.toFixed(1) + "%</span>" +
@@ -230,6 +245,21 @@ function renderList() {
       "</div>"
     );
   }).join("");
+
+  list.querySelectorAll(".row-select-cb").forEach((cb) => {
+    cb.onchange = (event) => {
+      event.stopPropagation();
+      const gid = cb.dataset.gid;
+      if (cb.checked) {
+        state.selectedGids.add(gid);
+      } else {
+        state.selectedGids.delete(gid);
+      }
+      updateBulkRemoveBtn();
+    };
+  });
+
+  updateBulkRemoveBtn();
 }
 function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, (c) =>
@@ -604,7 +634,10 @@ $("list").addEventListener("click", async (event) => {
       } else if (act !== "remove") await call("control", act, gid, false);
       else if (act === "remove") {
         $("remFiles").checked = false;
+        $("remGo").dataset.mode = "single";
         $("remGo").dataset.gid = gid;
+        if ($("remTitle")) $("remTitle").textContent = t("rem.title");
+        if ($("remDesc")) $("remDesc").textContent = t("rem.desc");
         openVeil("removeVeil");
       }
     } catch (err) { toast(err.message, true); }
@@ -748,15 +781,73 @@ $("addGo").onclick = async () => {
   } catch (err) { $("addErr").textContent = err.message; }
 };
 
+const removeSelBtn = $("removeSelected");
+if (removeSelBtn) {
+  removeSelBtn.onclick = () => {
+    if (state.selectedGids.size === 0) return;
+    $("remFiles").checked = false;
+    $("remGo").dataset.mode = "bulk";
+    if ($("remTitle")) $("remTitle").textContent = t("rem.bulkTitle");
+    if ($("remDesc")) $("remDesc").textContent = t("rem.bulkDesc", { n: state.selectedGids.size });
+    openVeil("removeVeil");
+  };
+}
+
 $("remGo").onclick = async () => {
+  const mode = $("remGo").dataset.mode || "single";
+  const delFiles = $("remFiles").checked;
+
+  if (mode === "bulk") {
+    const gids = Array.from(state.selectedGids);
+    if (!gids.length) return;
+    let removedCount = 0;
+    for (const gid of gids) {
+      try {
+        await call("control", "remove", gid, { delete_files: delFiles });
+        removedCount++;
+      } catch (_) {}
+      state.items = state.items.filter((i) => i.gid !== gid);
+      state.lastDone.delete(gid);
+      if (state.selected === gid) state.selected = null;
+    }
+    state.selectedGids.clear();
+    closeVeil("removeVeil");
+    renderCounts();
+    renderList();
+    renderDrawer();
+    updateBulkRemoveBtn();
+    toast(t("toast.bulkRemoved", { n: removedCount || gids.length }));
+    return;
+  }
+
   const gid = $("remGo").dataset.gid;
   if (!gid) return;
-  const delFiles = $("remFiles").checked;
+  let isOrphan = false;
   try {
-    await call("control", "remove", gid, { delete_files: delFiles });
-    if (state.selected === gid) state.selected = null;
-    closeVeil("removeVeil");
-  } catch (err) { toast(err.message, true); }
+    const res = await call("control", "remove", gid, { delete_files: delFiles });
+    if (res && res.orphan) isOrphan = true;
+  } catch (err) {
+    const msg = String(err.message || "").toLowerCase();
+    if (msg.includes("kayit bulunamadi") || msg.includes("not found") || msg.includes("404")) {
+      isOrphan = true;
+    } else {
+      toast(err.message, true);
+      return;
+    }
+  }
+
+  state.items = state.items.filter((i) => i.gid !== gid);
+  state.lastDone.delete(gid);
+  state.selectedGids.delete(gid);
+  if (state.selected === gid) state.selected = null;
+
+  closeVeil("removeVeil");
+  renderCounts();
+  renderList();
+  renderDrawer();
+  updateBulkRemoveBtn();
+
+  toast(isOrphan ? t("toast.orphanCleared") : t("toast.removed"));
 };
 
 

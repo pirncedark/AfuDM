@@ -68,6 +68,7 @@
       <button class="btn" id="lgBtn" data-i18n="bar.lg">Link yakala</button>
       <button class="btn" id="pauseAll" data-i18n="bar.pauseAll">Tümünü duraklat</button>
       <button class="btn" id="resumeAll" data-i18n="bar.resumeAll">Tümünü sürdür</button>
+      <button class="btn ghost" id="removeSelected" style="display:none; color: #ff4d4f; border-color: rgba(255,77,79,0.4); font-weight: bold;" data-i18n="bar.removeSelected">🗑 Seçilenleri Sil (0)</button>
       <button class="btn" id="installPwaBtn" style="display:none; color: var(--accent); border-color: var(--accent); font-weight: bold;">📱 Uygulamayı Kur</button>
       <span class="spacer"></span>
       <input class="search" id="search" type="text" data-i18n-ph="bar.search" placeholder="listede ara" spellcheck="false">
@@ -980,9 +981,9 @@
 <!-- Kaldirma onayi -->
 <div class="veil" id="removeVeil">
   <div class="sheet rules-sheet" style="max-width: 400px;">
-    <h2 data-i18n="rem.title">İndirmeyi Kaldır</h2>
+    <h2 id="remTitle" data-i18n="rem.title">İndirmeyi Kaldır</h2>
     <div class="body">
-      <p data-i18n="rem.desc" style="margin-bottom: 12px; color: var(--text);">Bu indirmeyi listeden kaldırmak istiyor musunuz?</p>
+      <p id="remDesc" data-i18n="rem.desc" style="margin-bottom: 12px; color: var(--text);">Bu indirmeyi listeden kaldırmak istiyor musunuz?</p>
       <label class="opt"><input type="checkbox" id="remFiles"> <span data-i18n="rem.files">İndirilen dosyaları da diskten tamamen SİL</span></label>
     </div>
     <div class="foot">
