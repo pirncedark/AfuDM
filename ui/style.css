@@ -113,10 +113,10 @@ button { cursor: pointer; }
    Windows basligi kaldirilinca bant izi basligin yerine gecer: bos alani
    surukle (Snap + cift tikla buyut Windows'tan), dugmeler Windows 11 olculerinde. */
 .wc, .wc-edge { display: none; }
-.ozel-baslik .trace { app-region: drag; }
+.ozel-baslik .trace { app-region: drag; -webkit-app-region: drag; }
 .ozel-baslik .engine,
 .ozel-baslik .wc,
-.ozel-baslik .wc-edge { app-region: no-drag; }
+.ozel-baslik .wc-edge { app-region: no-drag; -webkit-app-region: no-drag; }
 .ozel-baslik .engine { right: 152px; top: 9px; }
 .ozel-baslik .wc {
   display: flex;
@@ -135,6 +135,9 @@ button { cursor: pointer; }
   background: transparent;
   color: var(--muted);
   transition: background-color 90ms linear, color 90ms linear;
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+  cursor: pointer;
 }
 .wc-btn svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; shape-rendering: crispEdges; }
 .wc-btn:hover { background: #ffffff12; color: var(--text); }
