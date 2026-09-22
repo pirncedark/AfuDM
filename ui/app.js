@@ -3815,14 +3815,14 @@ if (installPwaBtnElem) {
 }
 
 /* --- WeTransfer Share UI Logic --- */
-const shareVeil = document.getElementById("shareVeil");
+const shareCenterVeil = document.getElementById("shareCenterVeil");
 const openShare = document.getElementById("openShare");
 const shareSelectBtn = document.getElementById("shareSelectBtn");
 const shareList = document.getElementById("shareList");
 
 if (openShare) {
   openShare.onclick = () => {
-    if (shareVeil) shareVeil.classList.add("on");
+    if (shareCenterVeil) shareCenterVeil.classList.add("on");
     renderShareList();
   };
 }

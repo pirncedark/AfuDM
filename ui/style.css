@@ -781,6 +781,35 @@ select:focus-visible, button:focus-visible {
   transform: translateY(10px);
   transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 54px;
+  padding: 12px 14px 12px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.modal-head strong {
+  font-family: var(--ui-display);
+  font-size: 15px;
+  font-weight: 600;
+}
+.modal-head .wc-btn {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  margin-left: auto;
+}
+.modal-body { padding: 16px 18px; }
+.share-select { width: 100%; margin-bottom: 20px; }
+.share-list {
+  max-height: 250px;
+  overflow-y: auto;
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 10px;
+}
 .veil.open .sheet, .veil.on .sheet,
 .veil.open .modal, .veil.on .modal {
   transform: translateY(0);
