@@ -61,6 +61,11 @@ _TEXTS = {
         "srv.started": "Sunucu acildi",
         "srv.stopped": "Sunucu kapatildi",
         "srv.notRunning": "Sunucu calismiyor",
+        "set.tabGenel": "Genel",
+        "set.tabIndirme": "İndirme",
+        "set.tabVideo": "Video",
+        "set.tabAg": "Ağ & Bağlantı",
+        "set.tabAraclar": "Sistem & Araçlar",
     },
     "en": {
         "window.title": "AfuDM — download manager",
@@ -108,6 +113,11 @@ _TEXTS = {
         "srv.started": "Server started",
         "srv.stopped": "Server stopped",
         "srv.notRunning": "Server is not running",
+        "set.tabGenel": "General",
+        "set.tabIndirme": "Downloads",
+        "set.tabVideo": "Video",
+        "set.tabAg": "Network & Connections",
+        "set.tabAraclar": "System & Tools",
     },
 }
 

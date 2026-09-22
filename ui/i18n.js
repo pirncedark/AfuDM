@@ -19,6 +19,16 @@ const DICT = {
   tr: {
     "app.title": "AfuDM — indirme yöneticisi",
 
+    /* --- WeTransfer Share UI --- */
+    "rail.share": "Paylaşım Merkezi",
+    "share.title": "Dosya Paylaşımı (WeTransfer Tarzı)",
+    "share.desc": "Bilgisayarınızdaki herhangi bir dosyayı yerel ağınızda kolayca paylaşabilirsiniz.",
+    "share.selectFile": "Dosya Seç & Paylaş",
+    "share.activeShares": "Aktif Paylaşımlar",
+    "share.copyLink": "Linki Kopyala",
+    "share.delete": "Kaldır",
+    "share.empty": "Henüz paylaşılan bir dosya yok.",
+
     /* --- v2.0 Plugin Platform (core/eklenti.py) --- */
     "rail.plugins": "Eklentiler",
     "plg.title": "Eklentiler",
@@ -821,6 +831,15 @@ const DICT = {
     "set.advToggle": "Advanced settings",
     "set.proxy": "System-wide Proxy (http, https, socks5)",
     "set.apiPort": "API / UI Port",
+    /* --- WeTransfer Share UI --- */
+    "rail.share": "Share Center",
+    "share.title": "File Sharing (WeTransfer style)",
+    "share.desc": "Easily share any file from your computer on your local network.",
+    "share.selectFile": "Select File & Share",
+    "share.activeShares": "Active Shares",
+    "share.copyLink": "Copy Link",
+    "share.delete": "Remove",
+    "share.empty": "No shared files yet.",
     /* --- v2.0 Plugin Platform (core/eklenti.py) --- */
     "rail.plugins": "Plugins",
     "plg.title": "Plugins",

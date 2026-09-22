@@ -1014,6 +1014,65 @@ class Api:
         url = f"http://{ip}:{self.local_api.port}/s/{token}"
         return {"ok": True, "token": token, "url": url, "filename": yol.name}
 
+    def share_list(self) -> dict:
+        from api.server import _Handler
+        ip = self.local_api.lan_adresi()
+        if not ip or ip.startswith("127."):
+            ip = "127.0.0.1"
+        
+        aktif_paylasimlar = []
+        for token, bilgi in _Handler.shared_files.items():
+            yol = Path(bilgi["path"])
+            url = f"http://{ip}:{self.local_api.port}/s/{token}"
+            aktif_paylasimlar.append({
+                "token": token,
+                "url": url,
+                "filename": yol.name,
+                "size": yol.stat().st_size if yol.exists() else 0,
+                "created": bilgi["created"]
+            })
+        # Yeni olanlar en ustte
+        aktif_paylasimlar.sort(key=lambda x: x["created"], reverse=True)
+        return {"ok": True, "shares": aktif_paylasimlar}
+
+    def share_delete(self, token: str) -> dict:
+        from api.server import _Handler
+        if token in _Handler.shared_files:
+            del _Handler.shared_files[token]
+            return {"ok": True}
+        return {"ok": False, "error": "Paylaşım bulunamadı."}
+
+    def dosya_sec_ve_paylas(self) -> dict:
+        if not self._window:
+            return {"ok": False}
+        import webview
+        secim = self._window.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=True)
+        if not secim:
+            return {"ok": False, "error": "Dosya seçimi iptal edildi."}
+        
+        from api.server import _Handler
+        import secrets
+        import time
+        
+        ip = self.local_api.lan_adresi()
+        if not ip or ip.startswith("127."):
+            ip = "127.0.0.1"
+
+        sonuclar = []
+        for dosya in secim:
+            yol = Path(dosya)
+            if not yol.is_file():
+                continue
+            token = secrets.token_urlsafe(12)
+            _Handler.shared_files[token] = {"path": yol, "created": time.time()}
+            url = f"http://{ip}:{self.local_api.port}/s/{token}"
+            sonuclar.append({"token": token, "url": url, "filename": yol.name})
+            
+        if not sonuclar:
+            return {"ok": False, "error": "Geçerli dosya seçilmedi."}
+            
+        return {"ok": True, "files": sonuclar}
+
     def dosya_ac(self, gid: str) -> dict:
         """Inen dosyayi kendi programiyla ac (klasoru degil dosyayi).
 

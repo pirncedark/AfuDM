@@ -862,7 +862,7 @@ $("remGo").onclick = async () => {
     const res = await call("control", "remove", gid, { delete_files: delFiles });
     if (res && res.orphan) isOrphan = true;
   } catch (err) {
-    const msg = String(err.message || "").toLowerCase();
+    const msg = String(err.message || "").toLocaleLowerCase("tr-TR");
     if (msg.includes("kayit bulunamadi") || msg.includes("not found") || msg.includes("404")) {
       isOrphan = true;
     } else {
@@ -3796,22 +3796,86 @@ async function ayarRozetleriCiz() {
 
 /* PWA (Progressive Web App) Kurulum Olayi */
 let pwaPrompt = null;
+const installPwaBtnElem = document.getElementById('installPwaBtn');
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   pwaPrompt = e;
-  if (installPwaBtn) {
-    installPwaBtn.style.display = 'block';
+  if (installPwaBtnElem) {
+    installPwaBtnElem.style.display = 'block';
   }
 });
 
-if (installPwaBtn) {
-  installPwaBtn.onclick = async () => {
+if (installPwaBtnElem) {
+  installPwaBtnElem.onclick = async () => {
     if (!pwaPrompt) return;
     pwaPrompt.prompt();
     const { outcome } = await pwaPrompt.userChoice;
     if (outcome === 'accepted') {
-      installPwaBtn.style.display = 'none';
+      installPwaBtnElem.style.display = 'none';
     }
     pwaPrompt = null;
+  };
+}
+
+/* --- WeTransfer Share UI Logic --- */
+const shareVeil = document.getElementById("shareVeil");
+const openShare = document.getElementById("openShare");
+const shareSelectBtn = document.getElementById("shareSelectBtn");
+const shareList = document.getElementById("shareList");
+
+if (openShare) {
+  openShare.onclick = () => {
+    if (shareVeil) shareVeil.classList.add("on");
+    renderShareList();
+  };
+}
+
+async function renderShareList() {
+  if (!shareList) return;
+  const res = await call("share_list");
+  if (!res || !res.ok) {
+    shareList.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--error);">${t("err.unknownAction")}</div>`;
+    return;
+  }
+  
+  if (!res.shares || res.shares.length === 0) {
+    shareList.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--text-muted);">${t("share.empty")}</div>`;
+    return;
+  }
+  
+  shareList.innerHTML = res.shares.map(s => {
+    return `<div style="display:flex; justify-content:space-between; align-items:center; padding: 10px; background: var(--surface); margin-bottom: 5px; border-radius: 4px;">
+      <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; margin-right: 10px;">
+        <strong style="display:block; margin-bottom: 2px;">${s.filename}</strong>
+        <a href="${s.url}" target="_blank" style="font-size:11px; color:var(--accent); text-decoration:none;">${s.url}</a>
+      </div>
+      <div style="display: flex; gap: 4px;">
+        <button class="btn" onclick="navigator.clipboard.writeText('${s.url}'); toast(t('share.copyLink'));" title="${t("share.copyLink")}">📋</button>
+        <button class="btn" onclick="deleteShare('${s.token}')" style="color:var(--error);" title="${t("share.delete")}">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+window.deleteShare = async function(token) {
+  const res = await call("share_delete", token);
+  if (res && res.ok) {
+    renderShareList();
+  } else if (res && res.error) {
+    toast(res.error, "error");
+  }
+};
+
+if (shareSelectBtn) {
+  shareSelectBtn.onclick = async () => {
+    const btnText = shareSelectBtn.innerText;
+    shareSelectBtn.innerText = "...";
+    const res = await call("dosya_sec_ve_paylas");
+    shareSelectBtn.innerText = btnText;
+    if (res && res.ok) {
+      renderShareList();
+    } else if (res && res.error) {
+      toast(res.error, "error");
+    }
   };
 }

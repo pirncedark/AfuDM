@@ -712,6 +712,10 @@ class Manager:
         else:
             row = self.store.by_gid(gid)
 
+        if not row:
+            # If it's a completely unknown GID, raise KayitYok to satisfy tests/API contracts
+            raise KayitYok("kayit bulunamadi: %s" % gid)
+
         actual_gid = (row.get("gid") if row and row.get("gid") else gid) or gid
         if actual_gid:
             self._removed_gids.add(actual_gid)
