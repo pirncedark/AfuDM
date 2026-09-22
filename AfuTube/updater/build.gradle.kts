@@ -4,7 +4,7 @@ plugins {
 }
 android {
     namespace = "com.afudm.afutube.updater"
-    compileSdk = 34
+    compileSdk = 37
     defaultConfig { minSdk = 24 }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -15,7 +15,7 @@ android {
     }
 }
 dependencies {
-    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.core:core-ktx:1.19.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("com.github.yausername.youtubedl-android:library:0.14.0")
 }

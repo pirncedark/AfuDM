@@ -52,9 +52,9 @@ class MainActivity : ComponentActivity() {
         setContent { AfuTubeApp(sharedUrl) }
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        sharedUrl = intent?.let { extractUrlFromIntent(it) }
+        sharedUrl = extractUrlFromIntent(intent)
     }
 
     private fun extractUrlFromIntent(intent: Intent?): String? {
