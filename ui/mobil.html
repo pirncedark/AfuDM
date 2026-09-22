@@ -302,7 +302,7 @@ function satir(is) {
       (is.downloadSpeed > 0 ? "<span>" + sure(is.eta) + "</span>" : "") +
       (durumYazi ? "<span>" + durumYazi + "</span>" : "") +
       '<span class="sag">' + durakla +
-        (is.status === "complete" ? '<button data-eylem="indir" data-gid="' + kacir(is.gid) + '">Telefona İndir</button>' : "") +
+        (is.status === "complete" ? '<button data-eylem="indir" data-gid="' + kacir(is.gid) + '" data-ad="' + kacir(is.title || "") + '">Telefona İndir</button>' : "") +
         (is.kind === "torrent" ? '<button data-eylem="dosyalar" data-gid="' + kacir(is.gid) + '">Dosyalar</button>' : "") +
         '<button class="sessiz" data-eylem="remove" data-gid="' + kacir(is.gid) + '">Kaldır</button>' +
       "</span>" +
@@ -424,7 +424,9 @@ $("liste").addEventListener("click", async (olay) => {
     const a = document.createElement("a");
     const encKey = encodeURIComponent(anahtar);
     a.href = "/indir?gid=" + encodeURIComponent(dugme.dataset.gid) + "&token=" + encKey + "&k=" + encKey;
-    a.download = "";
+    if (dugme.dataset.ad) {
+      a.download = dugme.dataset.ad;
+    }
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

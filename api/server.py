@@ -189,7 +189,8 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/octet-stream")
             self.send_header("Accept-Ranges", "bytes")
             gvn_ad = urllib.parse.quote(yol.name)
-            self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{gvn_ad}")
+            ascii_name = yol.name.encode("ascii", "ignore").decode("ascii").replace('"', '') or "indirilen_dosya"
+            self.send_header("Content-Disposition", f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{gvn_ad}')
             self.send_header("Content-Length", str(chunk_size))
             if range_header:
                 self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
@@ -321,7 +322,8 @@ class _Handler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", "application/octet-stream")
                 gvn_ad = urllib.parse.quote(yol.name)
-                self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{gvn_ad}")
+                ascii_name = yol.name.encode("ascii", "ignore").decode("ascii").replace('"', '') or "indirilen_dosya"
+                self.send_header("Content-Disposition", f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{gvn_ad}')
                 self.send_header("Content-Length", str(yol.stat().st_size))
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
