@@ -14,7 +14,7 @@ import json
 
 from . import paths
 
-SURUM = "2.7.0"
+SURUM = "2.7.1"
 
 
 def uzanti_surumu() -> str:

@@ -28,5 +28,9 @@ __pycache__/
 # Yayin sirasinda olusan gecici artiklar (depoya girmemeli)
 temp_hash/
 v*-body.md
-msg[0-9]
+msg*
+diff.patch
+diff.txt
+release_notes.txt
+*.zip
 .afudm_codex_roadmap_plan.txt
