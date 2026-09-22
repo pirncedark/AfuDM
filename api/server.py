@@ -105,6 +105,7 @@ class _Handler(BaseHTTPRequestHandler):
     reliability = None
     rotate_token = None
     _rate: dict[str, list[float]] = {}
+    shared_files: dict[str, dict] = {}
 
     # --- yardimcilar ------------------------------------------------------
     def log_message(self, fmt: str, *args) -> None:  # konsolu kirletmesin
@@ -160,7 +161,52 @@ class _Handler(BaseHTTPRequestHandler):
         for ad, deger in (ek_basliklar or {}).items():
             self.send_header(ad, deger)
         self.end_headers()
+        self.end_headers()
         self.wfile.write(govde)
+
+    def _dosya_akis_gonder(self, yol) -> None:
+        """Bellek dostu (chunked) ve duraklatilabilir (Range) dosya sunumu."""
+        import urllib.parse
+        try:
+            file_size = yol.stat().st_size
+            range_header = self.headers.get("Range", "")
+            start, end = 0, file_size - 1
+            if range_header.startswith("bytes="):
+                try:
+                    ranges = range_header.split("=")[1].split("-")
+                    start = int(ranges[0]) if ranges[0] else 0
+                    end = int(ranges[1]) if len(ranges) > 1 and ranges[1] else file_size - 1
+                except ValueError:
+                    pass
+            if start >= file_size:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{file_size}")
+                self.end_headers()
+                return
+            chunk_size = end - start + 1
+            self.send_response(206 if range_header else 200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Accept-Ranges", "bytes")
+            gvn_ad = urllib.parse.quote(yol.name)
+            self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{gvn_ad}")
+            self.send_header("Content-Length", str(chunk_size))
+            if range_header:
+                self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            with open(yol, "rb") as f:
+                f.seek(start)
+                remaining = chunk_size
+                while remaining > 0:
+                    chunk = f.read(min(65536, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+        except OSError:
+            self._hata(403, "ERISIM_ENGEL", "Dosya okunamadi")
+        except Exception:
+            pass
 
     def _body(self) -> dict:
         length = int(self.headers.get("Content-Length") or 0)
@@ -181,6 +227,14 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
+        if parsed.path.startswith("/s/"):
+            token = parsed.path[3:]
+            if token not in _Handler.shared_files:
+                self._hata(404, "SAYFA_YOK", "Paylasim bulunamadi veya suresi doldu")
+                return
+            bilgi = _Handler.shared_files[token]
+            self._dosya_akis_gonder(bilgi["path"])
+            return
         if not self._rate_allowed(): self._hata(429, "RATE_LIMIT", "cok fazla istek; bir dakika sonra yeniden dene"); return
         if parsed.path == "/ping":
             # Kimlik sagligi: CLI/uzanti endpoint'in bu surece ait oldugunu
@@ -481,6 +535,35 @@ class _Handler(BaseHTTPRequestHandler):
                     self._hata(400, "BILINMEYEN_EYLEM", "bilinmeyen eylem")
                     return
                 self._send(200, {"ok": True, **sonuc})
+            elif parsed.path == "/share_create":
+                gid = data.get("gid", "")
+                if not gid:
+                    self._hata(400, "GID_GEREKLI", "gid gerekli")
+                    return
+                yol_str = ""
+                try:
+                    st = self.manager.rpc.tell_status(gid)
+                    if st and st.get("status") == "complete":
+                        dosyalar = st.get("files") or []
+                        if dosyalar and dosyalar[0].get("path"):
+                            yol_str = dosyalar[0].get("path")
+                except Exception:
+                    pass
+                if not yol_str:
+                    row = self.manager.store.by_gid(gid)
+                    if row and row.get("status") == "complete" and row.get("target_path"):
+                        yol_str = row["target_path"]
+                if not yol_str:
+                    self._hata(404, "HAZIR_DEGIL", "Dosya hazir degil veya yolu bulunamadi")
+                    return
+                from pathlib import Path
+                yol = Path(yol_str)
+                if not yol.exists() or not yol.is_file():
+                    self._hata(404, "BULUNAMADI", "Sadece tekil dosyalar paylasilabilir veya dosya diskte yok")
+                    return
+                token = secrets.token_urlsafe(12)
+                _Handler.shared_files[token] = {"path": yol, "created": time.time()}
+                self._send(200, {"ok": True, "token": token, "filename": yol.name})
             elif parsed.path == "/settings":
                 self._send(200, {"ok": True, "settings": self.manager.update_settings(data)})
             elif parsed.path == "/rules":

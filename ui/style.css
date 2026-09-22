@@ -234,11 +234,27 @@ button { cursor: pointer; }
 .rail-foot button {
   background: none;
   border: 0;
-  padding: 3px 0;
+  padding: 6px 8px;
   text-align: left;
   color: var(--dim);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
-.rail-foot button:hover { color: var(--text); }
+.rail-foot button svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  opacity: 0.8;
+}
+.rail-foot button:hover { 
+  color: var(--text); 
+  background: var(--bg-hover);
+}
+.rail-foot button:hover svg { opacity: 1; }
 .dir-hint {
   font-family: var(--mono);
   font-size: 10px;

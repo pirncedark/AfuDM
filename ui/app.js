@@ -189,6 +189,7 @@ function renderList() {
     let right;
     if (item.status === "complete") {
       right = '<button data-act="open" data-gid="' + item.gid + '">' + t("row.folder") + "</button>"
+        + '<button data-act="share" data-gid="' + item.gid + '">' + t("row.share") + "</button>"
         + '<button data-act="scan" data-gid="' + item.gid + '">' + t("row.scan") + "</button>"
         + '<button data-act="remove" data-gid="' + item.gid + '">' + t("row.delete") + "</button>";
     } else if (item.status === "error") {
@@ -565,6 +566,27 @@ $("list").addEventListener("click", async (event) => {
       if (act === "files") { await torrentVeilAc(gid); return; }
       if (act === "seed") { await seedAc(gid); return; }
       if (act === "scan") { await call("defender_scan", gid); toast(t("toast.scanStarted")); return; }
+      if (act === "share") {
+        try {
+          const res = await call("share_create", gid);
+          if (res.ok) {
+            $("shareLink").value = res.url;
+            $("shareErr").textContent = "";
+            
+            // Try to generate QR code using a simple API if no lib available, or just leave it empty.
+            // Google Chart API is deprecated but works for simple QRs, or just a simple text
+            const qri = $("shareQrImg");
+            if (qri) {
+              qri.src = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=" + encodeURIComponent(res.url);
+              qri.style.display = "inline-block";
+            }
+            openVeil("shareVeil");
+          }
+        } catch(e) {
+          toast(e.message, true);
+        }
+        return;
+      }
       if (act === "open") await call("open_item_folder", gid);
       else if (act === "retry") {
         const rowId = Number(button.dataset.id);
@@ -3501,6 +3523,14 @@ $("srvUrlKopya").onclick = async () => {
   try {
     await call("panoya_kopyala", $("srvUrl").value);
     toast(t("srv.copied"));
+  } catch (err) { toast(err.message, true); }
+};
+
+$("shareCopy").onclick = async () => {
+  if (!$("shareLink").value) return;
+  try {
+    await call("panoya_kopyala", $("shareLink").value);
+    toast(t("srv.copied") || "Kopyalandı");
   } catch (err) { toast(err.message, true); }
 };
 

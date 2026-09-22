@@ -994,6 +994,28 @@ class Api:
                 return {"ok": True}
         return {"ok": False, "error": lang.t("err.notFound", str(self.manager.store.get("language", "auto")))}
 
+    def share_create(self, gid: str) -> dict:
+        yol = None
+        for item in self.manager.snapshot()["items"]:
+            if item["gid"] == gid:
+                folder = item.get("dir") or self.manager.current_download_dir()
+                name = item.get("filename") or ""
+                if name:
+                    yol = Path(folder) / name
+                break
+        if not yol or not yol.exists() or not yol.is_file():
+            return {"ok": False, "error": "Sadece tamamlanmış tekil dosyalar paylaşılabilir veya dosya diskte bulunamadı."}
+        from api.server import _Handler
+        import secrets
+        import time
+        token = secrets.token_urlsafe(12)
+        _Handler.shared_files[token] = {"path": yol, "created": time.time()}
+        ip = self.local_api.lan_adresi()
+        if not ip or ip.startswith("127."):
+            ip = "127.0.0.1"
+        url = f"http://{ip}:{self.local_api.port}/s/{token}"
+        return {"ok": True, "token": token, "url": url, "filename": yol.name}
+
     def dosya_ac(self, gid: str) -> dict:
         """Inen dosyayi kendi programiyla ac (klasoru degil dosyayi).
 
