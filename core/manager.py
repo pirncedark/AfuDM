@@ -71,6 +71,7 @@ class Manager:
     def __init__(self) -> None:
         paths.ensure_dirs()
         self.store = Store()
+        self._recover_orphan_video_jobs()
         try:
             self.windows = WindowsIntegration(self.store)
         except Exception:
@@ -97,6 +98,33 @@ class Manager:
         # ve HTTP API ayni nesneyi kullanir (ayri durum tutulmaz).
         self.eklentiler = eklenti.EklentiServisi(self.store)
         self.windows_notify = None
+
+    def _recover_orphan_video_jobs(self) -> None:
+        """Onceki oturumdan kalmis, artik calisan isi olmayan video kayitlarini duzelt."""
+        rows = self.store.list(limit=100_000)
+        tamamlananlar = {
+            (row.get("source"), row.get("dest_dir"))
+            for row in rows
+            if row.get("kind") == "video" and row.get("status") == "complete"
+        }
+        tamamlanan_basliklar = {
+            (json.loads(row.get("options") or "{}").get("title"), row.get("dest_dir"))
+            for row in rows
+            if row.get("kind") == "video"
+            and row.get("status") == "complete"
+            and json.loads(row.get("options") or "{}").get("title")
+        }
+        for row in rows:
+            if row.get("kind") != "video" or row.get("status") not in ("active", "waiting"):
+                continue
+            # Tamamlanmis kardesi varsa eski/tekrarlanan is gizlenir; dosyalara dokunulmaz.
+            title = json.loads(row.get("options") or "{}").get("title")
+            kardes_tamamlandi = (
+                (row.get("source"), row.get("dest_dir")) in tamamlananlar
+                or (title and (title, row.get("dest_dir")) in tamamlanan_basliklar)
+            )
+            durum = "removed" if kardes_tamamlandi else "paused"
+            self.store.update_by_id(row["id"], status=durum)
 
 
     # --- yasam dongusu ----------------------------------------------------
