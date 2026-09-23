@@ -28,6 +28,8 @@ import com.afudm.afutube.feature.settings.SettingsScreen
 import com.afudm.afutube.feature.torrent.TorrentPickerScreen
 import com.afudm.afutube.updater.AppUpdate
 import com.afudm.afutube.updater.UpdateManager
+import com.afudm.afutube.runtime.MediaRuntime
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -65,14 +67,26 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
 
 @Composable
 fun AfuTubeApp(sharedUrl: String? = null) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val runtimeStatus by MediaRuntime.status.collectAsState()
+    val runtimeScope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) { RuntimeBootstrap.prepare(context) }
+
+    if (runtimeStatus.state != MediaRuntime.RuntimeState.READY) {
+        MotorReadinessScreen(
+            status = runtimeStatus,
+            onRetry = { runtimeScope.launch { RuntimeBootstrap.prepare(context) } }
+        )
+        return
+    }
+
     val navController     = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute      = navBackStackEntry?.destination?.route
 
     var pendingMediaInfo by remember { mutableStateOf<MediaInfo?>(null) }
     var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
-    val context = androidx.compose.ui.platform.LocalContext.current
-
     LaunchedEffect(Unit) {
         if (UpdateManager.shouldCheckAutomatically(context)) {
             UpdateManager.markChecked(context)
@@ -134,6 +148,60 @@ fun AfuTubeApp(sharedUrl: String? = null) {
             }
             composable(Screen.Torrent.route)   {
                 TorrentPickerScreen(onBack = { navController.popBackStack() })
+            }
+        }
+    }
+}
+
+@Composable
+private fun MotorReadinessScreen(
+    status: MediaRuntime.RuntimeStatus,
+    onRetry: () -> Unit
+) {
+    var detailsVisible by remember { mutableStateOf(false) }
+    Box(
+        modifier = Modifier.fillMaxSize().background(AfuColors.bg),
+        contentAlignment = androidx.compose.ui.Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier.padding(28.dp),
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+        ) {
+            Icon(
+                imageVector = if (status.state == MediaRuntime.RuntimeState.FAILED) Icons.Default.Warning else Icons.Default.Download,
+                contentDescription = null,
+                tint = if (status.state == MediaRuntime.RuntimeState.FAILED) AfuColors.error else AfuColors.accent,
+                modifier = Modifier.size(52.dp)
+            )
+            Spacer(Modifier.height(18.dp))
+            Text(
+                text = if (status.state == MediaRuntime.RuntimeState.FAILED) "Medya motoru hazırlanamadı" else "Motor hazırlanıyor",
+                color = AfuColors.text,
+                style = MaterialTheme.typography.titleLarge
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = if (status.state == MediaRuntime.RuntimeState.FAILED) {
+                    "yt-dlp, FFmpeg ve aria2 başlatılamadı."
+                } else {
+                    "Python, yt-dlp, FFmpeg ve aria2 kontrol ediliyor."
+                },
+                color = AfuColors.textMuted
+            )
+            if (status.state != MediaRuntime.RuntimeState.FAILED) {
+                Spacer(Modifier.height(20.dp))
+                CircularProgressIndicator(color = AfuColors.accent)
+            } else {
+                Spacer(Modifier.height(20.dp))
+                Button(onClick = onRetry) { Text("Tekrar dene") }
+            }
+            if (status.details.isNotBlank()) {
+                TextButton(onClick = { detailsVisible = !detailsVisible }) {
+                    Text(if (detailsVisible) "Detayları gizle" else "Detaylar >")
+                }
+                if (detailsVisible) {
+                    Text(status.details, color = AfuColors.textMuted, fontSize = 11.sp)
+                }
             }
         }
     }

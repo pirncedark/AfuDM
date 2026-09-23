@@ -21,6 +21,12 @@ class InitCoordinator<T>(private val initializer: suspend (T) -> Unit) {
                 }
             }
         }
-        deferred.await().getOrThrow()
+        runCatching { deferred.await().getOrThrow() }
+            .onFailure {
+                mutex.withLock {
+                    if (result === deferred) result = null
+                }
+            }
+            .getOrThrow()
     }
 }

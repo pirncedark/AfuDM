@@ -1,7 +1,6 @@
 package com.afudm.afutube
 
 import android.app.Application
-import com.afudm.afutube.runtime.MediaRuntime
 import com.afudm.afutube.updater.ExtractorUpdater
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -13,10 +12,9 @@ class AfuTubeApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        MediaRuntime.start(this)
         scope.launch {
-            runCatching {
-                MediaRuntime.ensureInitialized(this@AfuTubeApplication)
+            val status = RuntimeBootstrap.prepare(this@AfuTubeApplication)
+            if (status.state == com.afudm.afutube.runtime.MediaRuntime.RuntimeState.READY) {
                 ExtractorUpdater.maybeAutoUpdate(this@AfuTubeApplication)
             }
         }
