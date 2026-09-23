@@ -191,7 +191,9 @@ def _v2_torrent_dosya_secimleri(conn: sqlite3.Connection) -> None:
     """)
 
 def _v3_events_gid(conn: sqlite3.Connection) -> None:
-    conn.execute("ALTER TABLE events ADD COLUMN gid TEXT")
+    sutunlar = {satir[1] for satir in conn.execute("PRAGMA table_info(events)")}
+    if "gid" not in sutunlar:
+        conn.execute("ALTER TABLE events ADD COLUMN gid TEXT")
 
 def _v4_automation_jobs(conn: sqlite3.Connection) -> None:
     conn.executescript("""
