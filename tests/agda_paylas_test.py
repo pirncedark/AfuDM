@@ -101,12 +101,33 @@ class AgdaPaylasTest(unittest.TestCase):
                 "lan_adresi": lambda self: "192.168.1.20",
                 "port": 6811,
             })()
-            with patch("subprocess.run") as run:
+            with patch("subprocess.run", return_value=__import__("subprocess").CompletedProcess([], 0)) as run:
                 sonuc = api.agda_paylas("gid-1")
             self.assertTrue(sonuc["ok"])
             self.assertEqual(sonuc["transport"], "smb")
             self.assertTrue(sonuc["smb"].startswith("\\\\"))
             self.assertIn("arsiv.zip", sonuc["smb"])
+            run.assert_called_once()
+
+    def test_nonzero_smb_result_falls_back_without_recording_share(self):
+        from api.server import _Handler
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "file.bin"
+            source.write_bytes(b"AfuDM")
+            api = Api.__new__(Api)
+            api.manager = _Manager(source)
+            api.local_api = type("Local", (), {
+                "lan_adresi": lambda self: "192.168.1.20", "port": 6811,
+            })()
+            _Handler.shared_files.clear()
+            failure = __import__("subprocess").CompletedProcess([], 1, "", "share denied")
+            with patch("app.os.name", "nt"), patch("tempfile.gettempdir", return_value=temp), \
+                    patch("subprocess.run", return_value=failure) as run:
+                result = api.agda_paylas("gid-1")
+            self.assertEqual(result["transport"], "http")
+            token = result["token"]
+            self.assertEqual(_Handler.shared_files[token]["share_name"], "")
+            self.assertFalse((Path(temp) / "AfuDM-network-shares" / token).exists())
             run.assert_called_once()
 
     def test_ui_agda_paylas_bridge_ve_qr_akisini_tanimlar(self):

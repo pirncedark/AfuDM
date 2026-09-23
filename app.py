@@ -1187,11 +1187,16 @@ class Api:
         try:
             shutil.copy2(yol, staged)
             share_name = "AfuDM_" + token.replace("-", "")[:12]
-            subprocess.run(
+            share_result = subprocess.run(
                 ["net", "share", f"{share_name}={share_root}", "/GRANT:Everyone,READ"],
                 check=True, capture_output=True, text=True, timeout=15,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
+            if share_result.returncode:
+                raise subprocess.CalledProcessError(
+                    share_result.returncode, share_result.args,
+                    output=share_result.stdout, stderr=share_result.stderr,
+                )
             _Handler.shared_files[token].update({
                 "share_name": share_name, "staging_path": str(share_root),
             })
