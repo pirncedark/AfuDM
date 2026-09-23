@@ -146,6 +146,19 @@ kontrol("her sebep anahtari sozlukte var", not yok, ", ".join(yok))
 kontrol("content.js sebebi kullaniyor",
         "yanit.reason" in (KOK / "extension/content.js").read_text(encoding="utf-8"))
 
+print("6) mobil ve paylasim bildirimleri")
+gerekli = ("share.downloadingToPhone", "mobile.torrentTitle", "mobile.loading",
+           "mobile.filesNotReady", "mobile.filesNotFound", "mobile.filesLoadFailed")
+kontrol("mobil metinleri tr/en sozluklerinde var",
+        all(k in tr and k in en for k in gerekli),
+        ", ".join(k for k in gerekli if k not in tr or k not in en))
+app = (KOK / "ui/app.js").read_text(encoding="utf-8")
+mobile = (KOK / "ui/mobil.html").read_text(encoding="utf-8")
+kontrol("telefon bildirimi i18n anahtarini kullaniyor", 't("share.downloadingToPhone")' in app)
+kontrol("mobil sayfa i18n sozlugunu yukluyor", '<script src="i18n.js"></script>' in mobile)
+kontrol("mobil torrent metinleri i18n anahtarlarini kullaniyor",
+        all(f't("{k}")' in mobile for k in gerekli[1:]))
+
 print()
 if hatalar:
     print("BASARISIZ:", ", ".join(hatalar))

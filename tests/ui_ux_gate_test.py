@@ -106,6 +106,19 @@ class UIUXGateTest(unittest.TestCase):
         expect(self.page.locator("#list")).to_be_visible()
         expect(self.page.locator(".rail")).to_be_visible()
 
+    def test_share_filename_is_rendered_as_text_without_script_execution(self):
+        self.page.evaluate("""() => {
+            window.__xss = undefined;
+            window.pywebview.api.share_list = async () => ({ok: true, shares: [{
+              filename: '<img src=x onerror=window.__xss=1>',
+              url: 'http://127.0.0.1/s/test', token: 'test'
+            }]});
+        }""")
+        self.page.locator("#openShare").click()
+        expect(self.page.locator("#shareList")).to_contain_text("<img src=x onerror=window.__xss=1>")
+        self.assertEqual(self.page.evaluate("window.__xss"), None)
+        self.assertEqual(self.page.locator("#shareList img").count(), 0)
+
     def test_mobile_page_script_parses_clean(self):
         """Mobil arayuz (mobil.html) scripti hatasiz yuklenmeli.
 

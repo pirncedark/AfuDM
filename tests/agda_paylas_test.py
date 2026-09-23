@@ -15,8 +15,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class _Store:
+    def __init__(self):
+        self.logs = []
+
     def get(self, key, default=None):
         return default
+
+    def log(self, level, message):
+        self.logs.append((level, message))
 
 
 class _Manager:
@@ -29,6 +35,70 @@ class _Manager:
 
 
 class AgdaPaylasTest(unittest.TestCase):
+    def test_share_delete_revoke_mocked_share_and_remove_staging(self):
+        from api.server import _Handler
+        with tempfile.TemporaryDirectory() as temp:
+            staging = Path(temp) / "stage"
+            staging.mkdir()
+            api = Api.__new__(Api)
+            api.manager = _Manager(Path(temp) / "file.txt")
+            api._tunel = type("Tunnel", (), {"stop": lambda self: None})()
+            api._paylasim_sunucusu = type("Server", (), {"stop": lambda self: None})()
+            _Handler.shared_files.clear()
+            _Handler.shared_files["cleanup-token"] = {
+                "path": Path(temp) / "file.txt", "created": 1,
+                "share_name": "AfuDM_test", "staging_path": str(staging),
+            }
+            with patch("subprocess.run", return_value=__import__("subprocess").CompletedProcess([], 0)) as run:
+                result = api.share_delete("cleanup-token")
+            self.assertTrue(result["ok"])
+            self.assertEqual(run.call_args.args[0], ["net", "share", "AfuDM_test", "/delete", "/y"])
+            self.assertFalse(staging.exists())
+            self.assertNotIn("cleanup-token", _Handler.shared_files)
+
+    def test_app_close_cleans_share_with_mocked_subprocess(self):
+        from api.server import _Handler
+        with tempfile.TemporaryDirectory() as temp:
+            staging = Path(temp) / "stage"
+            staging.mkdir()
+            api = Api.__new__(Api)
+            api.manager = _Manager(Path(temp) / "file.txt")
+            api._tepsi_bildirimi = lambda: None
+            api._Handler = _Handler
+            _Handler.shared_files.clear()
+            _Handler.shared_files["shutdown-token"] = {
+                "path": Path(temp) / "file.txt", "created": 1,
+                "share_name": "AfuDM_shutdown", "staging_path": str(staging),
+            }
+            with patch("subprocess.run", return_value=__import__("subprocess").CompletedProcess([], 0)) as run:
+                api.paylasim_stop()
+            self.assertEqual(run.call_args.args[0], ["net", "share", "AfuDM_shutdown", "/delete", "/y"])
+            self.assertFalse(staging.exists())
+            self.assertNotIn("shutdown-token", _Handler.shared_files)
+
+    def test_app_close_reports_cleanup_failure_in_tray_notification(self):
+        from api.server import _Handler
+        with tempfile.TemporaryDirectory() as temp:
+            staging = Path(temp) / "stage"
+            staging.mkdir()
+            notifications = []
+            api = Api.__new__(Api)
+            api.manager = _Manager(Path(temp) / "file.txt")
+            api._window = None
+            api._tepsi = type("Tray", (), {"notify": lambda self, message, title: notifications.append((message, title))})()
+            _Handler.shared_files.clear()
+            _Handler.shared_files["shutdown-failure-token"] = {
+                "path": Path(temp) / "file.txt", "created": 1,
+                "share_name": "AfuDM_denied", "staging_path": str(staging),
+            }
+            failure = __import__("subprocess").CompletedProcess([], 1, "", "access denied")
+            with patch("subprocess.run", return_value=failure):
+                api.paylasim_stop()
+            self.assertTrue(notifications)
+            self.assertIn("access denied", notifications[0][0])
+            self.assertEqual(notifications[0][1], "AfuDM")
+            self.assertTrue(api.manager.store.logs)
+
     def test_backend_smb_yetkisi_yoksa_http_qr_fallback(self):
         with tempfile.TemporaryDirectory() as temp:
             dosya = Path(temp) / "telefon.pdf"
@@ -57,12 +127,33 @@ class AgdaPaylasTest(unittest.TestCase):
                 "lan_adresi": lambda self: "192.168.1.20",
                 "port": 6811,
             })()
-            with patch("subprocess.run") as run:
+            with patch("subprocess.run", return_value=__import__("subprocess").CompletedProcess([], 0)) as run:
                 sonuc = api.agda_paylas("gid-1")
             self.assertTrue(sonuc["ok"])
             self.assertEqual(sonuc["transport"], "smb")
             self.assertTrue(sonuc["smb"].startswith("\\\\"))
             self.assertIn("arsiv.zip", sonuc["smb"])
+            run.assert_called_once()
+
+    def test_nonzero_smb_result_falls_back_without_recording_share(self):
+        from api.server import _Handler
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "file.bin"
+            source.write_bytes(b"AfuDM")
+            api = Api.__new__(Api)
+            api.manager = _Manager(source)
+            api.local_api = type("Local", (), {
+                "lan_adresi": lambda self: "192.168.1.20", "port": 6811,
+            })()
+            _Handler.shared_files.clear()
+            failure = __import__("subprocess").CompletedProcess([], 1, "", "share denied")
+            with patch("app.os.name", "nt"), patch("tempfile.gettempdir", return_value=temp), \
+                    patch("subprocess.run", return_value=failure) as run:
+                result = api.agda_paylas("gid-1")
+            self.assertEqual(result["transport"], "http")
+            token = result["token"]
+            self.assertEqual(_Handler.shared_files[token]["share_name"], "")
+            self.assertFalse((Path(temp) / "AfuDM-network-shares" / token).exists())
             run.assert_called_once()
 
     def test_ui_agda_paylas_bridge_ve_qr_akisini_tanimlar(self):

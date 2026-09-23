@@ -30,6 +30,12 @@ const DICT = {
     "share.delete": "Kaldır",
     "share.empty": "Henüz paylaşılan bir dosya yok.",
     "share.selectError": "Dosya seçilip paylaşılamadı.",
+    "share.downloadingToPhone": "Telefona indirme ba\u015flat\u0131l\u0131yor...",
+    "mobile.torrentTitle": "Torrent dosyalar\u0131",
+    "mobile.loading": "Y\u00fckleniyor...",
+    "mobile.filesNotReady": "Dosya listesi hen\u00fcz haz\u0131r de\u011fil.",
+    "mobile.filesNotFound": "Dosya bulunamad\u0131.",
+    "mobile.filesLoadFailed": "Dosyalar al\u0131namad\u0131.",
     "tor.filesError": "Torrent dosyaları yüklenemedi.",
 
     /* --- v2.0 Plugin Platform (core/eklenti.py) --- */
@@ -863,6 +869,12 @@ const DICT = {
     "share.delete": "Remove",
     "share.empty": "No shared files yet.",
     "share.selectError": "Could not select and share the file.",
+    "share.downloadingToPhone": "Starting the download on your phone...",
+    "mobile.torrentTitle": "Torrent files",
+    "mobile.loading": "Loading...",
+    "mobile.filesNotReady": "The file list is not ready yet.",
+    "mobile.filesNotFound": "No files found.",
+    "mobile.filesLoadFailed": "Could not load files.",
     "tor.filesError": "Could not load torrent files.",
     /* --- v2.0 Plugin Platform (core/eklenti.py) --- */
     "rail.plugins": "Plugins",

@@ -12,6 +12,7 @@ anahtarsiz hicbir sey yapilamaz.
 from __future__ import annotations
 
 import json
+import ipaddress
 import logging
 import ntpath
 import os
@@ -83,6 +84,14 @@ def _origin_izinli(origin: str) -> bool:
         normalized = f"{parsed.scheme}://{host}" + (f":{int(port)}" if port is not None else "")
         return origin == normalized
     except ValueError:
+        return False
+
+
+def _loopback_istemci(client_address) -> bool:
+    """Pair endpoint may expose the full API token only to local clients."""
+    try:
+        return ipaddress.ip_address(client_address[0]).is_loopback
+    except (IndexError, ValueError, TypeError):
         return False
 
 
@@ -433,6 +442,9 @@ class _Handler(BaseHTTPRequestHandler):
                 "application/manifest+json; charset=utf-8", "no-cache",
             )
             return
+        if parsed.path == "/i18n.js":
+            self._sayfa_gonder(paths.UI / "i18n.js", "text/javascript; charset=utf-8", "no-cache")
+            return
         if parsed.path == "/sw.js":
             # Worker tum kok yolu kapsayabilsin ve her acilista kontrol edilsin.
             self._sayfa_gonder(
@@ -451,7 +463,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/pair":
             # Anahtari SADECE eslestirme penceresi acikken ver.
-            if time.time() < _Handler.pair_until:
+            if not _loopback_istemci(self.client_address):
+                self._hata(403, "ESLESME_YEREL_GEREKLI", "uzanti eslestirmesi yalniz bu bilgisayardan yapilabilir")
+            elif time.time() < _Handler.pair_until:
                 _Handler.son_eslesme = time.time()
                 self._send(200, {"ok": True, "token": self.token})
             else:
