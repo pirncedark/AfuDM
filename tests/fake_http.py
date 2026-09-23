@@ -25,6 +25,7 @@ from typing import Any
 class SunucuAyarlari:
     veri: bytes = b""
     temel_auth: tuple[str, str] | None = None  # (kullanici, sifre) -> 401
+    zorunlu_cerez: str | None = None            # Cookie basligi birebir eslesmeli
     yasakli: bool = False                      # -> 403
     yonlendir: str | None = None               # -> 302 Location
     drop_sonrasi_bayt: int | None = None       # N bayt sonra baglantiyi kes
@@ -77,6 +78,10 @@ class _FakeHandler(BaseHTTPRequestHandler):
             if self.headers.get("Authorization") != beklenen:
                 self._kisa(401, b"", {"WWW-Authenticate": 'Basic realm="fake"'})
                 return
+
+        if ay.zorunlu_cerez and ay.zorunlu_cerez not in self.headers.get("Cookie", ""):
+            self._kisa(403, b"cookie gerekli", {})
+            return
 
         if ay.yonlendir and self.path != ay.yonlendir:
             self._kisa(302, b"", {"Location": ay.yonlendir})
