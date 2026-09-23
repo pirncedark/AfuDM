@@ -96,7 +96,7 @@ class DownloadWorker(
 
         if (response.exitCode == 0) {
             val printedPath = response.out.lineSequence().map { it.trim() }.lastOrNull { it.isNotBlank() }
-            val outputFile = printedPath?.let(::java.io.File)?.takeIf { it.isFile }
+            val outputFile = printedPath?.let { java.io.File(it) }?.takeIf { it.isFile }
                 ?: outputRoot.listFiles()?.asSequence()
                     ?.filter { file ->
                         file.isFile && file.name !in setOf(".", "..") &&
