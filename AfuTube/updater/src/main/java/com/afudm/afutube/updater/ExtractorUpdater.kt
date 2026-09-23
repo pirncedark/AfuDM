@@ -1,6 +1,7 @@
 package com.afudm.afutube.updater
 
 import android.content.Context
+import com.afudm.afutube.runtime.MediaRuntime
 import com.yausername.youtubedl_android.YoutubeDL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -25,6 +26,7 @@ object ExtractorUpdater {
     /** Mevcut yt-dlp sürümünü döndürür */
     suspend fun currentVersion(context: Context): String = withContext(Dispatchers.IO) {
         runCatching {
+            MediaRuntime.ensureInitialized(context)
             YoutubeDL.getInstance().version(context) ?: "bilinmiyor"
         }.getOrElse { "hata: ${it.localizedMessage}" }
     }

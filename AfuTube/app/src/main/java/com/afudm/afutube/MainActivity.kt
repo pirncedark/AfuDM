@@ -18,7 +18,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.*
 import com.afudm.afutube.core.extractor.MediaInfo
 import com.afudm.afutube.feature.downloads.DownloadsScreen
@@ -27,11 +26,8 @@ import com.afudm.afutube.core.theme.AfuColors
 import com.afudm.afutube.feature.home.HomeScreen
 import com.afudm.afutube.feature.settings.SettingsScreen
 import com.afudm.afutube.feature.torrent.TorrentPickerScreen
-import com.yausername.aria2c.Aria2c
-import com.yausername.ffmpeg.FFmpeg
-import com.yausername.youtubedl_android.YoutubeDL
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import com.afudm.afutube.updater.AppUpdate
+import com.afudm.afutube.updater.UpdateManager
 
 class MainActivity : ComponentActivity() {
 
@@ -41,13 +37,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         sharedUrl = extractUrlFromIntent(intent)
-
-        // yt-dlp + FFmpeg + aria2 başlat (IO thread)
-        lifecycleScope.launch(Dispatchers.IO) {
-            runCatching { YoutubeDL.getInstance().init(application) }
-            runCatching { FFmpeg.getInstance().init(application) }
-            runCatching { Aria2c.getInstance().init(application) }
-        }
 
         setContent { AfuTubeApp(sharedUrl) }
     }
@@ -81,6 +70,25 @@ fun AfuTubeApp(sharedUrl: String? = null) {
     val currentRoute      = navBackStackEntry?.destination?.route
 
     var pendingMediaInfo by remember { mutableStateOf<MediaInfo?>(null) }
+    var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    LaunchedEffect(Unit) {
+        if (UpdateManager.shouldCheckAutomatically(context)) {
+            UpdateManager.markChecked(context)
+            runCatching { UpdateManager.check(BuildConfig.VERSION_CODE) }.getOrNull()?.let { availableUpdate = it }
+        }
+    }
+
+    availableUpdate?.let { update ->
+        AlertDialog(
+            onDismissRequest = { availableUpdate = null },
+            title = { Text("Yeni AfuTube surumu bulundu") },
+            text = { Text("Surum: ${update.versionName}\n\n${update.releaseNotes.ifBlank { "Yeni hata duzeltmeleri ve gelistirmeler." }}") },
+            confirmButton = { TextButton(onClick = { availableUpdate = null; UpdateManager.enqueueDownload(context, update) }) { Text("Indir ve kur") } },
+            dismissButton = { TextButton(onClick = { availableUpdate = null }) { Text("Daha sonra") } }
+        )
+    }
 
     val bottomScreens = listOf(Screen.Home, Screen.Torrent, Screen.Downloads, Screen.Settings)
     val showBottomBar = currentRoute in bottomScreens.map { it.route }
@@ -121,7 +129,9 @@ fun AfuTubeApp(sharedUrl: String? = null) {
                 }
             }
             composable(Screen.Downloads.route) { DownloadsScreen() }
-            composable(Screen.Settings.route)  { SettingsScreen() }
+            composable(Screen.Settings.route)  {
+                SettingsScreen(currentVersionCode = BuildConfig.VERSION_CODE, onUpdateFound = { availableUpdate = it })
+            }
             composable(Screen.Torrent.route)   {
                 TorrentPickerScreen(onBack = { navController.popBackStack() })
             }

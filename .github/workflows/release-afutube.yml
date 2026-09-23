@@ -1,0 +1,87 @@
+name: Release AfuTube
+
+on:
+  push:
+    tags:
+      - 'afutube-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Install Gradle and generate wrapper
+        working-directory: ./AfuTube
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-9.6.0-bin.zip -O /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /tmp
+          export PATH="/tmp/gradle-9.6.0/bin:$PATH"
+          gradle wrapper --gradle-version 9.6.0 --distribution-type bin
+          chmod +x gradlew
+
+      - name: Prepare signing keystore
+        env:
+          AFUTUBE_KEYSTORE_B64: ${{ secrets.AFUTUBE_KEYSTORE_B64 }}
+        run: echo "$AFUTUBE_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/afutube-release.jks"
+
+      - name: Run unit tests and build signed universal APK
+        working-directory: ./AfuTube
+        env:
+          AFUTUBE_KEYSTORE_PATH: ${{ runner.temp }}/afutube-release.jks
+          AFUTUBE_KEYSTORE_PASS: ${{ secrets.AFUTUBE_KEYSTORE_PASS }}
+          AFUTUBE_KEY_ALIAS: ${{ secrets.AFUTUBE_KEY_ALIAS }}
+          AFUTUBE_KEY_PASS: ${{ secrets.AFUTUBE_KEY_PASS }}
+        run: |
+          VERSION_NAME="${GITHUB_REF_NAME#afutube-v}"
+          VERSION_CODE=$(echo "$VERSION_NAME" | awk -F. '{print ($1*1000000)+($2*1000)+$3}')
+          ./gradlew test assembleRelease --no-daemon --stacktrace -PversionCode="$VERSION_CODE" -PversionName="$VERSION_NAME"
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          cp AfuTube/app/build/outputs/apk/release/*universal*.apk release-assets/AfuTube-universal.apk
+          sha256sum release-assets/AfuTube-universal.apk > release-assets/AfuTube-universal.apk.sha256
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: AfuTube ${{ github.ref_name }}
+          body: |
+            # AfuTube ${{ github.ref_name }}
+
+            This release adds signed in-app updates for AfuTube. The universal APK is verified with SHA-256 before installation.
+
+            ## Highlights
+            - Signed universal APK with a stable release key.
+            - In-app update check from GitHub Releases.
+            - Turkish update errors and configurable daily startup checks.
+
+            ## Install
+            Download `AfuTube-universal.apk`. Existing debug builds must be removed once before installing the signed release.
+
+            ---
+
+            ## Türkçe
+            Bu sürüm AfuTube için imzalı uygulama içi güncellemeleri ekler. Kurulumdan önce universal APK SHA-256 ile doğrulanır.
+
+            ## Öne çıkanlar
+            - Sabit release anahtarıyla imzalı universal APK.
+            - GitHub Releases üzerinden uygulama içi güncelleme denetimi.
+            - Türkçe hata mesajları ve ayarlanabilir günlük açılış denetimi.
+
+            ## Kurulum
+            `AfuTube-universal.apk` dosyasını indirin. Mevcut debug sürümü imza farkı nedeniyle bir kez kaldırıp imzalı sürümü kurun.
+          files: |
+            release-assets/AfuTube-universal.apk
+            release-assets/AfuTube-universal.apk.sha256

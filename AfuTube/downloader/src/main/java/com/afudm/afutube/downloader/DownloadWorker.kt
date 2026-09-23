@@ -1,5 +1,6 @@
 package com.afudm.afutube.downloader
 
+import com.afudm.afutube.runtime.MediaRuntime
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
@@ -42,6 +43,13 @@ class DownloadWorker(
         createForegroundInfo("İndiriliyor…", 0)
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        try {
+            MediaRuntime.ensureInitialized(applicationContext)
+        } catch (error: MediaRuntime.MediaInitializationException) {
+            return@withContext Result.failure(
+                workDataOf("error" to (error.message ?: "Medya motoru başlatılamadı"))
+            )
+        }
         val url       = params.inputData.getString(KEY_URL)       ?: return@withContext Result.failure()
         val formatId  = params.inputData.getString(KEY_FORMAT_ID) ?: "bestvideo+bestaudio/best"
         val outputDir = params.inputData.getString(KEY_OUTPUT_DIR)

@@ -16,6 +16,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -30,7 +31,8 @@ fun HomeScreen(
     sharedUrl   : String?    = null,
     onNavigateToFormats: (MediaInfo) -> Unit = {}
 ) {
-    val viewModel = remember { HomeViewModel() }
+    val context = LocalContext.current
+    val viewModel = remember(context) { HomeViewModel(context.applicationContext) }
     val state     by viewModel.state.collectAsState()
     val clipboard = LocalClipboardManager.current
 

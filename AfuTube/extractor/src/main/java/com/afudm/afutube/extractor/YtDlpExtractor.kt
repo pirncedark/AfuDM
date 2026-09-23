@@ -1,8 +1,10 @@
 package com.afudm.afutube.extractor
 
+import android.content.Context
 import com.afudm.afutube.core.extractor.MediaExtractor
 import com.afudm.afutube.core.extractor.MediaFormat
 import com.afudm.afutube.core.extractor.MediaInfo
+import com.afudm.afutube.runtime.MediaRuntime
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.Dispatchers
@@ -14,7 +16,7 @@ import org.json.JSONObject
  * youtubedl-android kütüphanesi üzerinden yt-dlp çalıştıran extractor.
  * 1800+ siteyi destekler.
  */
-class YtDlpExtractor : MediaExtractor {
+class YtDlpExtractor(private val context: Context) : MediaExtractor {
 
     /**
      * yt-dlp hemen hemen her URL'yi deneyebilir.
@@ -23,6 +25,7 @@ class YtDlpExtractor : MediaExtractor {
     override suspend fun supports(url: String): Boolean = true
 
     override suspend fun extract(url: String): MediaInfo = withContext(Dispatchers.IO) {
+        MediaRuntime.ensureInitialized(context)
         val request = YoutubeDLRequest(url).apply {
             addOption("--dump-json")
             addOption("--no-playlist")
