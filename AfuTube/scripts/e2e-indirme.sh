@@ -29,6 +29,9 @@ dump url; tap tap-text "$OUT/url.xml" "Analiz Et" || { echo "HATA: Analiz Et yok
 
 bekle 120 format tap-text "Format Seç"; r=$?
 [ $r = 0 ] || { echo "HATA: format ekrani gelmedi (kod $r)"; bitir format; exit 1; }
+if grep -Eqi 'vp9|avc1|av01' "$OUT/format.xml"; then
+  echo "HATA: ham codec etiketi kapali Tüm formatlar bolumunde gorunuyor"; bitir format-codec; exit 1
+fi
 tap tap-after "$OUT/format.xml" "Video" "Ses" || { echo "HATA: secilecek format yok"; bitir format; exit 1; }
 sleep 1; dump secili
 tap tap-text "$OUT/secili.xml" "İndir —" || { echo "HATA: Indir dugmesi yok"; bitir indir; exit 1; }
