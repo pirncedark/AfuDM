@@ -22,6 +22,9 @@ object DownloadPolicies {
     fun shouldRetry(message: String, attempt: Int): Boolean =
         attempt < MAX_HTTP_ATTEMPTS - 1 && isRateLimitedOrForbidden(message)
 
+    fun shouldRetryFailure(message: String?, attempt: Int, cancelled: Boolean): Boolean =
+        !cancelled && !message.isNullOrBlank() && shouldRetry(message, attempt)
+
     fun retryDelayMillis(retryNumber: Int): Long =
         1_000L shl retryNumber.coerceIn(0, MAX_HTTP_ATTEMPTS - 2)
 

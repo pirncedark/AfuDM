@@ -94,7 +94,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
         AlertDialog(
             onDismissRequest = { availableUpdate = null },
             title = { Text("Yeni AfuTube surumu bulundu") },
-            text = { Text("Surum: ${update.versionName}\n\n${update.releaseNotes.ifBlank { "Yeni hata duzeltmeleri ve gelistirmeler." }}") },
+                        text = { Text("Sürüm: ${update.versionName}\n\n${update.releaseNotes.ifBlank { "Yeni hata düzeltmeleri ve geliştirmeler." }}") },
             confirmButton = { TextButton(onClick = {
                 availableUpdate = null
                 if (android.os.Build.VERSION.SDK_INT >= 33 &&

@@ -91,15 +91,15 @@ fun SettingsScreen(
                 }
             }
             item {
-                SettingsCard(title = "Uygulama guncellemeleri") {
+                SettingsCard(title = "Uygulama güncellemeleri") {
                     if (currentVersionName.isNotBlank()) {
                         Text("Yüklü sürüm: $currentVersionName", color = AfuColors.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(6.dp))
                     }
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Guncellemeleri denetle", color = AfuColors.text, fontSize = 14.sp)
-                            Text("Acilista gunde bir sessizce kontrol et", color = AfuColors.textMuted, fontSize = 12.sp)
+                            Text("Güncellemeleri denetle", color = AfuColors.text, fontSize = 14.sp)
+                            Text("Açılışta günde bir sessizce kontrol et", color = AfuColors.textMuted, fontSize = 12.sp)
                         }
                         Switch(checked = autoUpdate, onCheckedChange = {
                             autoUpdate = it
@@ -122,12 +122,12 @@ fun SettingsScreen(
                             appUpdateStatus = "Denetleniyor..."
                             runCatching { UpdateManager.check(currentVersionCode, includePrereleases) }
                                 .onSuccess { update ->
-                                    if (update == null) appUpdateStatus = "Uygulama guncel"
-                                    else { appUpdateStatus = "Yeni surum bulundu"; onUpdateFound(update) }
+                                    if (update == null) appUpdateStatus = "Uygulama güncel"
+                                    else { appUpdateStatus = "Yeni sürüm bulundu"; onUpdateFound(update) }
                                 }
-                                .onFailure { appUpdateStatus = "Denetleme basarisiz: ${it.localizedMessage ?: "ag hatasi"}" }
+                                .onFailure { appUpdateStatus = "Denetleme başarısız: ${it.localizedMessage ?: "ağ hatası"}" }
                         }
-                    }, modifier = Modifier.fillMaxWidth()) { Text("Guncellemeleri denetle") }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Güncellemeleri denetle") }
                     if (appUpdateStatus.isNotBlank()) Text(appUpdateStatus, color = AfuColors.textMuted, fontSize = 12.sp)
                 }
             }

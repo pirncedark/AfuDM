@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import java.io.File
 import java.util.UUID
+import org.json.JSONObject
 
 /**
  * İndirme motorunun dış arayüzü.
@@ -57,6 +58,8 @@ class DownloadEngine(private val context: Context) {
             .addTag("afutube_download")
             .addTag("title:${request.title.take(50)}")
             .build()
+
+        saveRequest(workRequest.id, request)
 
         workManager.enqueueUniqueWork(
             "download:${request.url.hashCode()}",
@@ -120,16 +123,55 @@ class DownloadEngine(private val context: Context) {
     fun retry(info: WorkInfo): UUID = requeue(info)
 
     private fun requeue(info: WorkInfo): UUID {
+        val savedRequest = prefs.getString(requestKey(info.id), null)
+            ?: throw IllegalStateException("Download request is unavailable for ${info.id}")
+        val requestJson = JSONObject(savedRequest)
+        val url = requestJson.getString(DownloadWorker.KEY_URL)
+        val title = requestJson.optString(DownloadWorker.KEY_TITLE, "Download")
+        val inputData = Data.Builder()
+            .putString(DownloadWorker.KEY_URL, url)
+            .putString(DownloadWorker.KEY_FORMAT_ID, requestJson.optString(DownloadWorker.KEY_FORMAT_ID, "bestvideo+bestaudio/best"))
+            .putBoolean(DownloadWorker.KEY_MERGE, requestJson.optBoolean(DownloadWorker.KEY_MERGE, true))
+            .putString(DownloadWorker.KEY_AUDIO_FORMAT, requestJson.optString(DownloadWorker.KEY_AUDIO_FORMAT, ""))
+            .putBoolean(DownloadWorker.KEY_EMBED_THUMBNAIL, requestJson.optBoolean(DownloadWorker.KEY_EMBED_THUMBNAIL, false))
+            .putBoolean(DownloadWorker.KEY_EMBED_CHAPTERS, requestJson.optBoolean(DownloadWorker.KEY_EMBED_CHAPTERS, false))
+            .apply { if (requestJson.has(DownloadWorker.KEY_OUTPUT_DIR)) putString(DownloadWorker.KEY_OUTPUT_DIR, requestJson.getString(DownloadWorker.KEY_OUTPUT_DIR)) }
+            .build()
         val request = OneTimeWorkRequestBuilder<DownloadWorker>()
-            .setInputData(Data.Builder().putAll(info.inputData).build())
+            .setInputData(inputData)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .addTag("afutube_download")
-            .addTag("title:${info.tags.firstOrNull { it.startsWith("title:") }?.removePrefix("title:") ?: "Download"}")
+            .addTag("title:${title.take(50)}")
             .build()
-        val url = info.inputData.getString(DownloadWorker.KEY_URL).orEmpty()
+        saveRequest(request.id, DownloadRequest(
+            url = url,
+            formatId = requestJson.optString(DownloadWorker.KEY_FORMAT_ID, "bestvideo+bestaudio/best"),
+            title = title,
+            outputDir = if (requestJson.has(DownloadWorker.KEY_OUTPUT_DIR)) requestJson.getString(DownloadWorker.KEY_OUTPUT_DIR) else null,
+            mergeAV = requestJson.optBoolean(DownloadWorker.KEY_MERGE, true),
+            audioFormat = requestJson.optString(DownloadWorker.KEY_AUDIO_FORMAT, ""),
+            embedThumbnail = requestJson.optBoolean(DownloadWorker.KEY_EMBED_THUMBNAIL, false),
+            embedChapters = requestJson.optBoolean(DownloadWorker.KEY_EMBED_CHAPTERS, false)
+        ))
         workManager.enqueueUniqueWork("download:${url.hashCode()}", ExistingWorkPolicy.REPLACE, request)
+        prefs.edit().remove(requestKey(info.id)).apply()
         return request.id
     }
+
+    private fun saveRequest(workId: UUID, request: DownloadRequest) {
+        val json = JSONObject()
+            .put(DownloadWorker.KEY_URL, request.url)
+            .put(DownloadWorker.KEY_TITLE, request.title)
+            .put(DownloadWorker.KEY_FORMAT_ID, request.formatId.ifBlank { "bestvideo+bestaudio/best" })
+            .put(DownloadWorker.KEY_MERGE, request.mergeAV)
+            .put(DownloadWorker.KEY_AUDIO_FORMAT, request.audioFormat)
+            .put(DownloadWorker.KEY_EMBED_THUMBNAIL, request.embedThumbnail)
+            .put(DownloadWorker.KEY_EMBED_CHAPTERS, request.embedChapters)
+        request.outputDir?.let { json.put(DownloadWorker.KEY_OUTPUT_DIR, it) }
+        prefs.edit().putString(requestKey(workId), json.toString()).apply()
+    }
+
+    private fun requestKey(workId: UUID) = "request_${workId}"
 
     /** Tüm HTTP indirmeleri durdur */
     fun cancelAll() = workManager.cancelAllWorkByTag("afutube_download")

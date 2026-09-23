@@ -1,4 +1,9 @@
 <resources>
     <string name="youtube_403_download_error">YouTube erişimi indirmeyi reddetti (403). Bağlantıyı veya hesabınızı kontrol edip yeniden deneyin.</string>
     <string name="youtube_429_download_error">YouTube çok fazla istek algıladı (429). Bir süre bekleyip yeniden deneyin.</string>
+    <string name="download_notification_downloading">İndiriliyor…</string>
+    <string name="download_notification_preparing">Hazırlanıyor…</string>
+    <string name="download_notification_progress">%1$d%% • %2$s</string>
+    <string name="download_notification_channel">AfuTube indirmeleri</string>
+    <string name="download_cancelled">İndirme durduruldu.</string>
 </resources>

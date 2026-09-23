@@ -12,10 +12,17 @@ import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.yausername.youtubedl_android.YoutubeDL
+import com.yausername.youtubedl_android.YoutubeDLException
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import com.afudm.afutube.updater.ExtractorUpdater
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -29,6 +36,7 @@ class DownloadWorker(
 
     companion object {
         const val KEY_URL        = "url"
+        const val KEY_TITLE      = "title"
         const val KEY_FORMAT_ID  = "format_id"
         const val KEY_OUTPUT_DIR = "output_dir"
         const val KEY_AUDIO_FORMAT = "audio_format"
@@ -46,7 +54,8 @@ class DownloadWorker(
     }
 
     override suspend fun getForegroundInfo(): ForegroundInfo =
-        createForegroundInfo("İndiriliyor…", 0)
+        createForegroundInfo(applicationContext.getString(R.string.download_notification_downloading), 0)
+    private val processId: String get() = params.id.toString()
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
@@ -66,7 +75,7 @@ class DownloadWorker(
         val rateLimit = applicationContext.getSharedPreferences("afutube_downloads", Context.MODE_PRIVATE)
             .getInt("rate_limit_kbps", 0)
 
-        setForeground(createForegroundInfo("Hazırlanıyor…", 0))
+        setForeground(createForegroundInfo(applicationContext.getString(R.string.download_notification_preparing), 0))
 
         val request = YoutubeDLRequest(url).apply {
             addOption("-f", formatId)
@@ -89,22 +98,36 @@ class DownloadWorker(
 
         var lastError = ""
         for (attempt in 0 until DownloadPolicies.MAX_HTTP_ATTEMPTS) {
-            val response = YoutubeDL.getInstance().execute(request) { progress, etaInSeconds, line ->
-                val percent = progress.toInt().coerceIn(0, 100)
-                if (percent != lastPercent) {
-                    lastPercent = percent
-                    setProgressAsync(workDataOf(
-                        PROGRESS_PERCENT to percent,
-                        PROGRESS_ETA to etaInSeconds,
-                        PROGRESS_SPEED to extractSpeed(line),
-                        PROGRESS_SIZE to extractSize(line)
-                    ))
-                    setForegroundAsync(createForegroundInfo("$percent%  ?  ${extractSpeed(line)}", percent))
+            try {
+                if (isStopped) throw CancellationException("Download stopped")
+                val response = executeWithStopMonitoring(request) { progress, etaInSeconds, line ->
+                    val percent = progress.toInt().coerceIn(0, 100)
+                    if (percent != lastPercent) {
+                        lastPercent = percent
+                        setProgressAsync(workDataOf(
+                            PROGRESS_PERCENT to percent,
+                            PROGRESS_ETA to etaInSeconds,
+                            PROGRESS_SPEED to extractSpeed(line),
+                            PROGRESS_SIZE to extractSize(line)
+                        ))
+                        setForegroundAsync(createForegroundInfo(
+                            applicationContext.getString(R.string.download_notification_progress, percent, extractSpeed(line)), percent
+                        ))
+                    }
                 }
+                if (response.exitCode == 0) return@withContext Result.success()
+                lastError = response.err
+            } catch (cancelled: CancellationException) {
+                YoutubeDL.getInstance().destroyProcessById(processId)
+                throw cancelled
+            } catch (cancelled: YoutubeDL.CanceledException) {
+                YoutubeDL.getInstance().destroyProcessById(processId)
+                if (isStopped) throw CancellationException("Download stopped", cancelled)
+                return@withContext Result.failure(workDataOf("error" to applicationContext.getString(R.string.download_cancelled)))
+            } catch (error: YoutubeDLException) {
+                lastError = error.message.orEmpty()
             }
-            if (response.exitCode == 0) return@withContext Result.success()
-            lastError = response.err
-            if (!DownloadPolicies.shouldRetry(lastError, attempt)) break
+            if (!DownloadPolicies.shouldRetryFailure(lastError, attempt, cancelled = isStopped)) break
             if (attempt == 0) runCatching {
                 ExtractorUpdater.checkAndUpdate(
                     applicationContext,
@@ -120,6 +143,25 @@ class DownloadWorker(
             else -> lastError
         }
         Result.failure(workDataOf("error" to userMessage))
+    }
+
+    private suspend fun executeWithStopMonitoring(
+        request: YoutubeDLRequest,
+        callback: (Float, Long, String) -> Unit
+    ) = withContext(Dispatchers.IO) {
+        val watcher = CoroutineScope(Dispatchers.IO).launch {
+            while (isActive) {
+                if (isStopped) {
+                    if (YoutubeDL.getInstance().destroyProcessById(processId)) break
+                }
+                delay(150)
+            }
+        }
+        try {
+            YoutubeDL.getInstance().execute(request, processId, false, callback)
+        } finally {
+            withContext(NonCancellable) { watcher.cancelAndJoin() }
+        }
     }
 
     private fun createForegroundInfo(text: String, progress: Int): ForegroundInfo {
@@ -145,7 +187,7 @@ class DownloadWorker(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 NOTIF_CHANNEL,
-                "AfuTube Downloads",
+                applicationContext.getString(R.string.download_notification_channel),
                 NotificationManager.IMPORTANCE_LOW
             )
             applicationContext

@@ -26,6 +26,17 @@ class DownloadPoliciesTest {
         assertFalse(DownloadPolicies.shouldRetry("socket timeout", 0))
     }
 
+    @Test fun detectsForbiddenStatusInYoutubeDlExceptionMessage() {
+        val exceptionMessage = "HTTP Error 403: Forbidden"
+        assertTrue(DownloadPolicies.shouldRetryFailure(exceptionMessage, 0, cancelled = false))
+        assertFalse(DownloadPolicies.shouldRetryFailure(exceptionMessage, 2, cancelled = false))
+    }
+
+    @Test fun cancellationIsNeverTreatedAsRetryableFailure() {
+        assertFalse(DownloadPolicies.shouldRetryFailure("HTTP Error 429: Too Many Requests", 0, cancelled = true))
+        assertFalse(DownloadPolicies.shouldRetryFailure(null, 0, cancelled = false))
+    }
+
     @Test fun usesExponentialBackoffForThreeTotalAttempts() {
         assertEquals(1_000L, DownloadPolicies.retryDelayMillis(0))
         assertEquals(2_000L, DownloadPolicies.retryDelayMillis(1))
