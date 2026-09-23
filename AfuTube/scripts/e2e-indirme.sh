@@ -49,6 +49,8 @@ echo "BASARILI: İzle ile oynatici acildi, Dinle modu gorunuyor"
 tap tap-desc "$OUT/oynatici.xml" "Dinle" || { echo "HATA: Dinle modu dugmesi yok"; bitir dinle; exit 1; }
 sleep 1; dump oynatici-dinle; adb exec-out screencap -p > "$OUT/oynatici-dinle.png"
 cokme_var && { echo "HATA: Dinle moduna geciste uygulama coktu"; bitir dinle-cokme; exit 1; }
+# Kisa test klibi HOME kontrolu gelmeden bitmesin; arka plan calmasini bastan test et.
+adb shell input keyevent KEYCODE_MEDIA_PREVIOUS; sleep 1; adb shell input keyevent KEYCODE_MEDIA_PLAY; sleep 1
 adb shell input keyevent KEYCODE_HOME; sleep 3
 cokme_var && { echo "HATA: HOME sonrasi uygulama coktu"; bitir home-cokme; exit 1; }
 adb shell dumpsys media_session > "$OUT/media-session.txt"
