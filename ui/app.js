@@ -399,7 +399,7 @@ async function renderDetailTabContent(gid, tabName) {
             '<div class="tor-metrik-kutu"><span class="tor-metrik-lbl">' + t("tor.trackers") + '</span><b>' + (m.tracker_sayisi || 0) + ' (' + (m.canli_tracker || 0) + ' ' + t("eng.installed") + ')</b></div>' +
             '</div>';
         } else {
-          tContent.innerHTML = '<div class="hint">' + (met.neden || t("tor.metaNotReady")) + '</div>';
+          tContent.innerHTML = '<div class="hint">' + escapeHtml(met.neden || t("tor.metaNotReady")) + '</div>';
         }
       } catch (_) {
         tContent.innerHTML = "";
@@ -1932,7 +1932,7 @@ const ruleActions = ["dest_dir","proxy","max_speed_kb","split","start_after","au
 const ruleId = () => "rule-" + Date.now() + "-" + Math.random().toString(16).slice(2);
 function rulesRender() {
   const root=$("rulesList"); if(!rulesDraft.length){root.innerHTML='<div class="empty">'+escapeHtml(t("rules.empty"))+'</div>';return;}
-  root.innerHTML=rulesDraft.map((r,i)=>{const cs=(r.conditions||[]).map((c,j)=>'<div class="rule-row"><select data-f="'+i+'" data-j="'+j+'">'+ruleFields.map(v=>'<option '+(c.field===v?'selected':'')+'>'+v+'</option>').join('')+'</select><select data-o="'+i+'" data-j="'+j+'">'+ruleOps.map(v=>'<option '+(c.op===v?'selected':'')+'>'+v+'</option>').join('')+'</select><input data-v="'+i+'" data-j="'+j+'" value="'+escapeHtml(Array.isArray(c.value)?c.value.join(','):c.value||'')+'"><button data-cdel="'+i+'" data-j="'+j+'">×</button></div>').join('');const as=Object.entries(r.actions||{}).map(([k,v])=>'<div class="rule-row"><select data-a="'+i+'" data-k="'+k+'">'+ruleActions.map(x=>'<option '+(x===k?'selected':'')+'>'+x+'</option>').join('')+'</select><input data-av="'+i+'" data-k="'+k+'" value="'+escapeHtml(v)+'"><button data-adel="'+i+'" data-k="'+k+'">×</button></div>').join('');return '<div class="rule-card"><div class="rule-head"><input type="checkbox" data-active="'+i+'" '+(r.active?'checked':'')+'><input data-name="'+i+'" value="'+escapeHtml(r.name||'')+'" placeholder="'+escapeHtml(t("rules.name"))+'"><select data-match="'+i+'"><option value="all">'+escapeHtml(t("rules.all"))+'</option><option value="any" '+(r.match_type==='any'?'selected':'')+'>'+escapeHtml(t("rules.any"))+'</option></select><button data-up="'+i+'">↑</button><button data-down="'+i+'">↓</button><button data-copy="'+i+'">'+escapeHtml(t("rules.copy"))+'</button><button data-del="'+i+'">'+escapeHtml(t("rules.delete"))+'</button></div><div class="rule-rows">'+cs+'<button data-addc="'+i+'">'+escapeHtml(t("rules.addCondition"))+'</button></div><div class="rule-rows">'+as+'<button data-adda="'+i+'">'+escapeHtml(t("rules.addAction"))+'</button></div></div>';}).join('');
+  root.innerHTML=rulesDraft.map((r,i)=>{const cs=(r.conditions||[]).map((c,j)=>'<div class="rule-row"><select data-f="'+i+'" data-j="'+j+'">'+ruleFields.map(v=>'<option '+(c.field===v?'selected':'')+'>'+v+'</option>').join('')+'</select><select data-o="'+i+'" data-j="'+j+'">'+ruleOps.map(v=>'<option '+(c.op===v?'selected':'')+'>'+v+'</option>').join('')+'</select><input data-v="'+i+'" data-j="'+j+'" value="'+escapeHtml(Array.isArray(c.value)?c.value.join(','):c.value||'')+'"><button data-cdel="'+i+'" data-j="'+j+'">×</button></div>').join('');const as=Object.entries(r.actions||{}).map(([k,v])=>'<div class="rule-row"><select data-a="'+i+'" data-k="'+escapeHtml(k)+'">'+ruleActions.map(x=>'<option '+(x===k?'selected':'')+'>'+x+'</option>').join('')+'</select><input data-av="'+i+'" data-k="'+escapeHtml(k)+'" value="'+escapeHtml(v)+'"><button data-adel="'+i+'" data-k="'+escapeHtml(k)+'">×</button></div>').join('');return '<div class="rule-card"><div class="rule-head"><input type="checkbox" data-active="'+i+'" '+(r.active?'checked':'')+'><input data-name="'+i+'" value="'+escapeHtml(r.name||'')+'" placeholder="'+escapeHtml(t("rules.name"))+'"><select data-match="'+i+'"><option value="all">'+escapeHtml(t("rules.all"))+'</option><option value="any" '+(r.match_type==='any'?'selected':'')+'>'+escapeHtml(t("rules.any"))+'</option></select><button data-up="'+i+'">↑</button><button data-down="'+i+'">↓</button><button data-copy="'+i+'">'+escapeHtml(t("rules.copy"))+'</button><button data-del="'+i+'">'+escapeHtml(t("rules.delete"))+'</button></div><div class="rule-rows">'+cs+'<button data-addc="'+i+'">'+escapeHtml(t("rules.addCondition"))+'</button></div><div class="rule-rows">'+as+'<button data-adda="'+i+'">'+escapeHtml(t("rules.addAction"))+'</button></div></div>';}).join('');
 }
 $("rulesOpen").onclick=async()=>{
     // Panel HER ZAMAN acilir; veri arkadan yuklenir. Kopru cagrisi dusse bile
@@ -3873,28 +3873,65 @@ if (openShare) {
 async function renderShareList() {
   if (!shareList) return;
   const res = await call("share_list");
+  shareList.replaceChildren();
   if (!res || !res.ok) {
-    shareList.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--error);">${t("err.unknownAction")}</div>`;
+    const message = document.createElement("div");
+    message.style.cssText = "text-align:center;padding:20px;color:var(--error)";
+    message.textContent = t("err.unknownAction");
+    shareList.appendChild(message);
     return;
   }
-  
   if (!res.shares || res.shares.length === 0) {
-    shareList.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--text-muted);">${t("share.empty")}</div>`;
+    const message = document.createElement("div");
+    message.style.cssText = "text-align:center;padding:20px;color:var(--text-muted)";
+    message.textContent = t("share.empty");
+    shareList.appendChild(message);
     return;
   }
-  
-  shareList.innerHTML = res.shares.map(s => {
-    return `<div style="display:flex; justify-content:space-between; align-items:center; padding: 10px; background: var(--surface); margin-bottom: 5px; border-radius: 4px;">
-      <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; margin-right: 10px;">
-        <strong style="display:block; margin-bottom: 2px;">${s.filename}</strong>
-        <a href="${s.url}" target="_blank" style="font-size:11px; color:var(--accent); text-decoration:none;">${s.url}</a>
-      </div>
-      <div style="display: flex; gap: 4px;">
-        <button class="btn" onclick="navigator.clipboard.writeText('${s.url}'); toast(t('share.copyLink'));" title="${t("share.copyLink")}">📋</button>
-        <button class="btn" onclick="deleteShare('${s.token}')" style="color:var(--error);" title="${t("share.delete")}">🗑</button>
-      </div>
-    </div>`;
-  }).join('');
+  res.shares.forEach((share) => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--surface);margin-bottom:5px;border-radius:4px";
+    const details = document.createElement("div");
+    details.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;margin-right:10px";
+    const filename = document.createElement("strong");
+    filename.style.cssText = "display:block;margin-bottom:2px";
+    filename.textContent = String(share.filename || "");
+    details.appendChild(filename);
+    const urlText = String(share.url || "");
+    let parsedUrl;
+    try { parsedUrl = new URL(urlText, window.location.href); } catch (_) { parsedUrl = null; }
+    if (parsedUrl && (parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:")) {
+      const link = document.createElement("a");
+      link.href = parsedUrl.href;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.style.cssText = "font-size:11px;color:var(--accent);text-decoration:none";
+      link.textContent = urlText;
+      details.appendChild(link);
+    } else {
+      const linkText = document.createElement("span");
+      linkText.style.cssText = "font-size:11px;color:var(--accent)";
+      linkText.textContent = urlText;
+      details.appendChild(linkText);
+    }
+    row.appendChild(details);
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;gap:4px";
+    const copy = document.createElement("button");
+    copy.className = "btn";
+    copy.title = t("share.copyLink");
+    copy.textContent = "??";
+    copy.addEventListener("click", () => navigator.clipboard.writeText(urlText).then(() => toast(t("share.copyLink"))));
+    const remove = document.createElement("button");
+    remove.className = "btn";
+    remove.style.color = "var(--error)";
+    remove.title = t("share.delete");
+    remove.textContent = "??";
+    remove.addEventListener("click", () => window.deleteShare(String(share.token || "")));
+    actions.append(copy, remove);
+    row.appendChild(actions);
+    shareList.appendChild(row);
+  });
 }
 
 window.deleteShare = async function(token) {
