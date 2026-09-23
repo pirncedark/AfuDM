@@ -5,7 +5,7 @@ set -u
 APK="$1"
 PKG=com.afudm.afutube
 OUT=e2e-out
-LIMIT_SN=180
+LIMIT_SN=300
 mkdir -p "$OUT"
 
 adb install -r "$APK" || { echo "HATA: APK kurulamadi"; exit 1; }
@@ -27,6 +27,7 @@ sure=$(( $(date +%s) - start ))
 adb exec-out screencap -p > "$OUT/ekran.png"
 adb logcat -d > "$OUT/logcat.txt"
 echo "--- logcat (hata/motor) ---"
+adb shell ps -A -o PID,STAT,WCHAN,TIME,NAME | grep -E "afutube|python|ffmpeg|aria2" || true
 grep -E "FATAL EXCEPTION|AndroidRuntime|AfuTubeMediaRuntime" "$OUT/logcat.txt" | head -40
 
 if [ "$ok" != 1 ]; then

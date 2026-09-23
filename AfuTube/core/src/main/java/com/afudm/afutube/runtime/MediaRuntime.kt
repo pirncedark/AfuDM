@@ -28,9 +28,17 @@ object MediaRuntime {
     val status: StateFlow<RuntimeStatus> = _status.asStateFlow()
 
     private val coordinator = InitCoordinator<Context> { context ->
-        YoutubeDL.getInstance().init(context)
-        FFmpeg.getInstance().init(context)
-        Aria2c.getInstance().init(context)
+        timed("yt-dlp/Python") { YoutubeDL.getInstance().init(context) }
+        timed("FFmpeg") { FFmpeg.getInstance().init(context) }
+        timed("aria2") { Aria2c.getInstance().init(context) }
+    }
+
+    // Acilis tanisi: hangi motor adimi ne kadar surdu (logcat: AfuTubeMediaRuntime).
+    private inline fun timed(step: String, block: () -> Unit) {
+        val start = System.currentTimeMillis()
+        Log.i(TAG, "init $step basladi")
+        block()
+        Log.i(TAG, "init $step bitti: ${System.currentTimeMillis() - start} ms")
     }
 
     @Volatile
@@ -60,9 +68,12 @@ object MediaRuntime {
     suspend fun prepare(context: Context): RuntimeStatus = prepareMutex.withLock {
         if (_status.value.state == RuntimeState.READY) return@withLock _status.value
         _status.value = RuntimeStatus(RuntimeState.INITIALIZING)
+        val start = System.currentTimeMillis()
+        Log.i(TAG, "prepare basladi")
         try {
             ensureInitialized(context.applicationContext)
             _status.value = RuntimeStatus(RuntimeState.READY, details = "Python / yt-dlp / FFmpeg / aria2 hazır.")
+            Log.i(TAG, "READY: ${System.currentTimeMillis() - start} ms")
         } catch (error: Throwable) {
             initializationError = error
             _status.value = RuntimeStatus(
