@@ -1022,7 +1022,7 @@ function lgRender() {
     const onceki = o.oncekiIndirme ? ` <span class="lg-onceki">⚠ ${t("lg.uyariOnceki")}</span>` : "";
     return `<label class="lg-satir${o.secili ? " secili" : ""}${o.oncekiIndirme ? " onceki" : ""}">
       <input type="checkbox" data-i="${i}" ${o.secili ? "checked" : ""}>
-      <span class="lg-tur ${o.tur}">${lgTurEtiketi(o.tur)}</span>
+      <span class="lg-tur ${escapeHtml(o.tur)}">${lgTurEtiketi(o.tur)}</span>
       <span class="lg-ad">${escapeHtml(ad)}${onceki}</span>
       <span class="lg-boyut">${o.probed ? boyut : "…"}</span>
       <span class="lg-url">${escapeHtml(o.url)}</span>
