@@ -1318,11 +1318,18 @@ class Api:
                     self.manager.store.log("error", mesaj)
                 except Exception:
                     pass
-                try:
-                    if self._window:
+                if self._window:
+                    try:
                         self._window.evaluate_js("toast(" + json.dumps(mesaj) + ", true)")
-                    self._tepsi_bildirimi()
-                except Exception:
+                    except Exception:
+                        pass
+                tepsi = getattr(self, "_tepsi", None)
+                if tepsi:
+                    try:
+                        tepsi.notify(mesaj, "AfuDM")
+                    except Exception:
+                        print(mesaj)
+                elif not self._window:
                     print(mesaj)
             else:
                 _Handler.shared_files.pop(token, None)

@@ -15,11 +15,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class _Store:
+    def __init__(self):
+        self.logs = []
+
     def get(self, key, default=None):
         return default
 
     def log(self, level, message):
-        return None
+        self.logs.append((level, message))
 
 
 class _Manager:
@@ -72,6 +75,29 @@ class AgdaPaylasTest(unittest.TestCase):
             self.assertEqual(run.call_args.args[0], ["net", "share", "AfuDM_shutdown", "/delete", "/y"])
             self.assertFalse(staging.exists())
             self.assertNotIn("shutdown-token", _Handler.shared_files)
+
+    def test_app_close_reports_cleanup_failure_in_tray_notification(self):
+        from api.server import _Handler
+        with tempfile.TemporaryDirectory() as temp:
+            staging = Path(temp) / "stage"
+            staging.mkdir()
+            notifications = []
+            api = Api.__new__(Api)
+            api.manager = _Manager(Path(temp) / "file.txt")
+            api._window = None
+            api._tepsi = type("Tray", (), {"notify": lambda self, message, title: notifications.append((message, title))})()
+            _Handler.shared_files.clear()
+            _Handler.shared_files["shutdown-failure-token"] = {
+                "path": Path(temp) / "file.txt", "created": 1,
+                "share_name": "AfuDM_denied", "staging_path": str(staging),
+            }
+            failure = __import__("subprocess").CompletedProcess([], 1, "", "access denied")
+            with patch("subprocess.run", return_value=failure):
+                api.paylasim_stop()
+            self.assertTrue(notifications)
+            self.assertIn("access denied", notifications[0][0])
+            self.assertEqual(notifications[0][1], "AfuDM")
+            self.assertTrue(api.manager.store.logs)
 
     def test_backend_smb_yetkisi_yoksa_http_qr_fallback(self):
         with tempfile.TemporaryDirectory() as temp:
