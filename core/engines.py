@@ -16,6 +16,7 @@ aninda soylemek icin `EKSIK_NE_YAPAMAZ` metinleri burada duruyor.
 from __future__ import annotations
 
 import os
+import hashlib
 import shutil
 import subprocess
 import tempfile
@@ -38,6 +39,7 @@ class Motor:
     indirme_boyutu_mb: int      # kullaniciya gosterilecek kaba boyut
     zorunlu: bool
     ne_icin: str
+    sha256: str | None = None
 
 
 MOTORLAR: dict[str, Motor] = {
@@ -69,6 +71,17 @@ MOTORLAR: dict[str, Motor] = {
         indirme_boyutu_mb=164,
         zorunlu=False,
         ne_icin="ses+video birlestirme (1080p ve ustu) ve mp3'e cevirme",
+    ),
+    "cloudflared": Motor(
+        ad="cloudflared",
+        dosya="cloudflared.exe",
+        adres="https://github.com/cloudflare/cloudflared/releases/download/2026.9.1/"
+              "cloudflared-windows-amd64.exe",
+        zip_icinde=None,
+        indirme_boyutu_mb=21,
+        zorunlu=False,
+        ne_icin="farkli aglardan guvenli dosya paylasimi",
+        sha256="2837888cc0f5d58f15b6dc478376de90b4d3ba5241c7947455d1e0a0df429712",
     ),
 }
 
@@ -198,6 +211,14 @@ def indir(ad: str, ilerleme=None) -> dict:
                 with z.open(uye) as kaynak, cikan.open("wb") as f:
                     shutil.copyfileobj(kaynak, f)
             inen = cikan
+
+        if motor.sha256:
+            ozet = hashlib.sha256()
+            with inen.open("rb") as f:
+                for parca in iter(lambda: f.read(1024 * 1024), b""):
+                    ozet.update(parca)
+            if ozet.hexdigest().lower() != motor.sha256.lower():
+                raise RuntimeError(f"{motor.dosya} SHA-256 dogrulamasi basarisiz")
 
         if not _dogrula(inen):
             raise RuntimeError(f"{motor.dosya} indi ama calismadi (bozuk indirme?)")

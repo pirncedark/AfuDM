@@ -233,7 +233,7 @@ class UIUXGateTest(unittest.TestCase):
 
     def test_share_center_modal_lifecycle(self):
         """Paylaşım Merkezi opens, renders the empty state, and closes with Escape."""
-        share_veil = self.page.locator("#shareVeil").first
+        share_veil = self.page.locator("#shareCenterVeil").first
         self.page.locator("#openShare").click()
         expect(share_veil).to_be_visible()
         empty_text = "Henüz paylaşılan bir dosya yok." if self.test_lang == "tr" else "No shared files yet."

@@ -117,6 +117,7 @@ DEFAULTS: dict[str, Any] = {
     "tracker_otomatik_tara": True,
     # Telefondan baglan: yerel API 0.0.0.0'a acilir (VARSAYILAN KAPALI)
     "lan_erisimi": False,
+    "internet_paylasim": True,
     # Kullanicinin ekledigi ag konumlari (her satirda bir UNC yolu)
     "ag_konumlari": "",
     # Network Core v1.4: proxy katmanlari (bkz. core/proxy.py)

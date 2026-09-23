@@ -7,8 +7,11 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -42,6 +45,8 @@ from core import settings_validation  # noqa: E402
 from core.servis import AfuDMServis  # noqa: E402
 from core.windows_integration import WindowsIntegration  # noqa: E402
 from core.reliability import Reliability  # noqa: E402
+from core.paylasim_sunucusu import PaylasimSunucusu  # noqa: E402
+from core.tunel import TunnelError, TunnelManager  # noqa: E402
 from core.manager import AyarGecersiz  # noqa: E402
 from core import settings_validation  # noqa: E402
 
@@ -54,6 +59,91 @@ def parse_start_at(text: str) -> float | None:
 
     Tek kaynak: core/models.parse_time_spec (v1.4 Foundation)."""
     return models.parse_time_spec(text)
+
+
+# Acilis boyutu oncelikleri (bkz. pencere_boyutu): istenen hedef, sol menunun
+# kaydirmasiz sigmasi icin en kucuk boyut ve (hesap hata verirse) eski sabitler.
+PENCERE_HEDEF = (1600, 980)    # sol menu tamami + arac cubugu tek satir
+PENCERE_MIN = (1100, 900)      # sol menunun kaydirmasiz sigacagi en kucuk
+PENCERE_ESKI = (1180, 760)     # v2.7.1 ve oncesi sabit boyut
+PENCERE_ESKI_MIN = (880, 560)
+
+
+def _calisma_alani() -> tuple[int, int, int, int, int]:
+    """Birincil monitorun gorev cubugu haric calisma alanini ve DPI'yi doner."""
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    user32.EnumDisplayMonitors.argtypes = [wintypes.HDC, ctypes.POINTER(wintypes.RECT),
+                                           ctypes.c_void_p, wintypes.LPARAM]
+    user32.EnumDisplayMonitors.restype = wintypes.BOOL
+    user32.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.c_void_p]
+    user32.GetMonitorInfoW.restype = wintypes.BOOL
+
+    class MONITORINFO(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT),
+                    ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+
+    monitorlar: list[tuple[int, int, int, int, int]] = []
+    callback_t = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HMONITOR,
+                                    wintypes.HDC, ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)
+
+    @callback_t
+    def monitor_cb(handle, _dc, _rect, _data):
+        bilgi = MONITORINFO()
+        bilgi.cbSize = ctypes.sizeof(MONITORINFO)
+        if user32.GetMonitorInfoW(handle, ctypes.byref(bilgi)):
+            r = bilgi.rcWork
+            monitorlar.append((r.left, r.top, r.right, r.bottom, bilgi.dwFlags))
+        return True
+
+    if not user32.EnumDisplayMonitors(None, None, monitor_cb, 0) or not monitorlar:
+        raise OSError("monitor calisma alani okunamadi")
+    # PRIMARY monitor secilir; yoksa en buyuk calisma alanina dusulur.
+    return max(monitorlar, key=lambda item: (bool(item[4] & 1),
+                                             (item[2] - item[0]) * (item[3] - item[1])))
+
+
+def pencere_boyutu() -> tuple[int | None, int | None, int, int, int, int]:
+    """Acilis pencere boyutu: (x, y, w, h, min_w, min_h).
+
+    Hedef 1600x980'tir; gorev cubugu haric calisma alani (SPI_GETWORKAREA)
+    kucukse hedef, calisma alaninin %92'si ile sinirlanir. min_w/min_h sol
+    menunun kaydirmasiz sigmasi icin 1100x900 olur; ekran daha kucukse ekrana
+    siginacak kadar daraltilir (baslangic boyutu hicbir zaman min'in altinda
+    kalmaz). Pencere calisma alanina ortalanir.
+
+    Not: yeni surec/exe ACMAZ — ctypes ayni surecte calisma alanini okur.
+    Hesaplama hata verirse eski sabit degerlere duser; uygulama asla
+    acilmazlik yapmaz."""
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        left, top, right, bottom, _flags = _calisma_alani()
+        wa_w, wa_h = right - left, bottom - top
+        dpi = int(getattr(user32, "GetDpiForSystem", lambda: 96)() or 96)
+        dpi_orani = max(1.0, dpi / 96.0)
+        hedef_w = round(PENCERE_HEDEF[0] * dpi_orani)
+        hedef_h = round(PENCERE_HEDEF[1] * dpi_orani)
+        min_hedef_w = round(PENCERE_MIN[0] * dpi_orani)
+        min_hedef_h = round(PENCERE_MIN[1] * dpi_orani)
+        # Ekran kucukse calisma alaninin %92'sini gecme; oncelik hedef boyut.
+        w = min(hedef_w, int(wa_w * 0.92))
+        h = min(hedef_h, int(wa_h * 0.92))
+        # min_size: sol menunun kaydirmasiz sigmasi; ekran kucukse ekrana sigdir.
+        min_w = min(min_hedef_w, wa_w)
+        min_h = min(min_hedef_h, wa_h)
+        # Kucuk ekranlarda %92 kesigi min'in altina dusecegi icin baslangic
+        # boyutu min'den kucuk kalmasin (yine de ekrana sigar).
+        w = max(w, min_w)
+        h = max(h, min_h)
+        x = left + (wa_w - w) // 2
+        y = top + (wa_h - h) // 2
+        return x, y, w, h, min_w, min_h
+    except Exception:
+        # Eski sabit degerler; x/y yok sayilir (pywebview kendisi ortalar).
+        return None, None, *PENCERE_ESKI, *PENCERE_ESKI_MIN
 
 
 def protocol_link(argument: str) -> str:
@@ -112,9 +202,14 @@ class Api:
         self._chrome_baslangic = 0.0
         self._probe_iptal: threading.Event | None = None
         self._windows = getattr(manager, "windows", None)
+        from api.server import _Handler
+        self._paylasim_sunucusu = PaylasimSunucusu(_Handler.shared_files)
+        self._tunel = TunnelManager(str(paths.ENGINE / "cloudflared.exe"))
 
         def _otomatik_motorlar():
             for m in engines.eksikler(sadece_istege_bagli=True):
+                if m == "cloudflared":
+                    continue
                 self.motor_indir(m)
         threading.Thread(target=_otomatik_motorlar, daemon=True).start()
 
@@ -880,6 +975,8 @@ class Api:
         """Atomik ayar RPC'si: hata metni degil i18n anahtari tasir."""
         try:
             kayit = self.manager.update_settings(ayarlar)
+            if kayit.get("internet_paylasim") is False:
+                self.paylasim_stop()
             return {"ok": True, "hatalar": [], "ayarlar": kayit, "settings": kayit}
         except AyarGecersiz as exc:
             return {"ok": False, "hatalar": exc.hatalar, "ayarlar": self.manager.store.all_settings()}
@@ -1000,6 +1097,45 @@ class Api:
                 return {"ok": True}
         return {"ok": False, "error": lang.t("err.notFound", str(self.manager.store.get("language", "auto")))}
 
+    def _paylasim_url(self, token: str) -> str:
+        """Paylasim icin LAN hostundan tek ve dogru indirme URL'si uretir."""
+        adres = self.local_api.lan_adresi()
+        host = ""
+        if adres:
+            try:
+                parse_edilecek = adres if "://" in adres else f"//{adres}"
+                host = urllib.parse.urlparse(parse_edilecek).hostname or ""
+            except ValueError:
+                host = ""
+        if not host or host.startswith("127."):
+            host = "127.0.0.1"
+        return f"http://{host}:{self.local_api.port}/s/{token}"
+
+    def _internet_linki(self, token: str) -> tuple[str, str]:
+        """Cloudflare yalniz dar paylasim sunucusuna baglanir."""
+        if getattr(self.manager.store, "get", lambda *_args: True)("internet_paylasim", True) is False:
+            return "", ""
+        if not engines.var_mi("cloudflared"):
+            return "", "share.cloudflaredMissing"
+        try:
+            port = self._paylasim_sunucusu.start()
+            adres = self._tunel.start(port)
+            return f"{adres}/s/{token}", ""
+        except Exception:
+            return "", "share.tunnelError"
+
+    def _paylasim_sonucu(self, token: str, yol: Path, warning: str = "") -> dict:
+        yerel = self._paylasim_url(token)
+        internet, internet_hata = self._internet_linki(token)
+        kullanilacak = internet or yerel
+        return {
+            "ok": True, "transport": "http", "token": token,
+            "url": kullanilacak, "local_url": yerel,
+            "internet_url": internet, "qr": self._qr_uret(kullanilacak),
+            "filename": yol.name, "smb": "", "warning": warning,
+            "internet_error_key": internet_hata,
+        }
+
     def share_create(self, gid: str) -> dict:
         yol = self.manager.resolve_item_path(gid)
         if not yol or not yol.exists() or not yol.is_file():
@@ -1009,25 +1145,74 @@ class Api:
         import time
         token = secrets.token_urlsafe(12)
         _Handler.shared_files[token] = {"path": yol, "created": time.time()}
-        ip = self.local_api.lan_adresi()
-        if not ip or ip.startswith("127."):
-            ip = "127.0.0.1"
-        url = f"http://{ip}:{self.local_api.port}/s/{token}"
-        return {"ok": True, "token": token, "url": url, "filename": yol.name}
+        return self._paylasim_sonucu(token, yol)
+
+    def agda_paylas(self, gid: str) -> dict:
+        """Tamamlanan dosyayi SMB/UNC olarak dene; yetki yoksa HTTP+QR'a dus.
+
+        `net share` Windows sistem ayaridir; bu nedenle gercek paylasim yalnızca
+        kullanici eylemiyle burada denenir ve testlerde subprocess sahte olur.
+        SMB basarisiz olsa bile LocalAPI linki calisan bir alternatif olarak kalir.
+        """
+        yol = self.manager.resolve_item_path(gid)
+        if not yol or not yol.exists() or not yol.is_file():
+            return {"ok": False, "error": "Sadece tamamlanmış tekil dosyalar paylaşılabilir veya dosya diskte bulunamadı."}
+        from api.server import _Handler
+        import secrets
+        import time
+
+        token = secrets.token_urlsafe(12)
+        _Handler.shared_files[token] = {"path": yol, "created": time.time()}
+        url = self._paylasim_url(token)
+        result = self._paylasim_sonucu(token, yol,
+            "SMB paylasimi icin yonetici izni bulunamadi; HTTP LAN baglantisi hazirlandi.")
+        result.update({
+            "ok": True,
+            "transport": "http",
+            "token": token,
+            "url": result["url"],
+            "qr": result["qr"],
+            "filename": yol.name,
+            "smb": "",
+            "warning": "SMB paylaşımı için yönetici izni bulunamadı; HTTP LAN bağlantısı hazırlandı.",
+        })
+        if os.name != "nt":
+            return result
+
+        # Dosyanın bulunduğu klasörü değil, yalnızca bu dosyanın kopyasını paylaş.
+        share_root = Path(tempfile.gettempdir()) / "AfuDM-network-shares" / token
+        share_root.mkdir(parents=True, exist_ok=True)
+        staged = share_root / yol.name
+        try:
+            shutil.copy2(yol, staged)
+            share_name = "AfuDM_" + token.replace("-", "")[:12]
+            subprocess.run(
+                ["net", "share", f"{share_name}={share_root}", "/GRANT:Everyone,READ"],
+                check=True, capture_output=True, text=True, timeout=15,
+            )
+            host = socket.gethostname() or "127.0.0.1"
+            result.update({
+                "transport": "smb",
+                "smb": f"\\\\{host}\\{share_name}\\{yol.name}",
+                "warning": "",
+            })
+        except (OSError, subprocess.SubprocessError) as exc:
+            result["warning"] = "SMB paylaşımı açılamadı (%s); HTTP LAN bağlantısı ve QR hazırlandı." % str(exc)[:120]
+        return result
 
     def share_list(self) -> dict:
         from api.server import _Handler
-        ip = self.local_api.lan_adresi()
-        if not ip or ip.startswith("127."):
-            ip = "127.0.0.1"
-        
         aktif_paylasimlar = []
         for token, bilgi in _Handler.shared_files.items():
             yol = Path(bilgi["path"])
-            url = f"http://{ip}:{self.local_api.port}/s/{token}"
+            local_url = self._paylasim_url(token)
+            internet_url = (self._tunel.url + f"/s/{token}"
+                            if getattr(self, "_tunel", None) and self._tunel.active else "")
             aktif_paylasimlar.append({
                 "token": token,
-                "url": url,
+                "url": internet_url or local_url,
+                "local_url": local_url,
+                "internet_url": internet_url,
                 "filename": yol.name,
                 "size": yol.stat().st_size if yol.exists() else 0,
                 "created": bilgi["created"]
@@ -1040,6 +1225,11 @@ class Api:
         from api.server import _Handler
         if token in _Handler.shared_files:
             del _Handler.shared_files[token]
+            if not _Handler.shared_files:
+                if hasattr(self, "_tunel"):
+                    self._tunel.stop()
+                if hasattr(self, "_paylasim_sunucusu"):
+                    self._paylasim_sunucusu.stop()
             return {"ok": True}
         return {"ok": False, "error": "Paylaşım bulunamadı."}
 
@@ -1055,10 +1245,6 @@ class Api:
         import secrets
         import time
         
-        ip = self.local_api.lan_adresi()
-        if not ip or ip.startswith("127."):
-            ip = "127.0.0.1"
-
         sonuclar = []
         for dosya in secim:
             yol = Path(dosya)
@@ -1066,13 +1252,18 @@ class Api:
                 continue
             token = secrets.token_urlsafe(12)
             _Handler.shared_files[token] = {"path": yol, "created": time.time()}
-            url = f"http://{ip}:{self.local_api.port}/s/{token}"
-            sonuclar.append({"token": token, "url": url, "filename": yol.name})
+            sonuclar.append(self._paylasim_sonucu(token, yol))
             
         if not sonuclar:
             return {"ok": False, "error": "Geçerli dosya seçilmedi."}
             
         return {"ok": True, "files": sonuclar}
+
+    def paylasim_stop(self) -> None:
+        if hasattr(self, "_tunel"):
+            self._tunel.stop()
+        if hasattr(self, "_paylasim_sunucusu"):
+            self._paylasim_sunucusu.stop()
 
     def dosya_ac(self, gid: str) -> dict:
         """Inen dosyayi kendi programiyla ac (klasoru degil dosyayi).
@@ -1392,16 +1583,23 @@ def main() -> int:
         else:
             print("UYARI: yonetim sunucusu acilamadi: %s" % _sonuc.get("error"))
     pencere.webview2_hazirligini_yama()  # CSS app-region: drag, ilk sayfadan once
-    window = webview.create_window(
-        lang.t("window.title", str(manager.store.get("language", "auto"))),
-        str(paths.UI / "index.html"),
+    _px, _py, _pw, _ph, _min_w, _min_h = pencere_boyutu()
+    _pencere_kwargs: dict[str, Any] = dict(
         js_api=api,
-        width=1180,
-        height=760,
-        min_size=(880, 560),
+        width=_pw,
+        height=_ph,
+        min_size=(_min_w, _min_h),
         background_color="#14181F",
         text_select=False,
         hidden=tepside_basla,
+    )
+    if _px is not None and _py is not None:
+        _pencere_kwargs["x"] = _px
+        _pencere_kwargs["y"] = _py
+    window = webview.create_window(
+        lang.t("window.title", str(manager.store.get("language", "auto"))),
+        str(paths.UI / "index.html"),
+        **_pencere_kwargs,
     )
     api._window = window
     from api.server import _Handler as _ApiHandler  # noqa: E402
@@ -1513,6 +1711,7 @@ def main() -> int:
     finally:
         watcher.stop()
         servis.sunucu_durdur()
+        api.paylasim_stop()
         local_api.stop()
         manager.stop()
         _kilit.birak()

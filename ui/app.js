@@ -222,7 +222,7 @@ function renderList() {
     let right;
     if (item.status === "complete") {
       right = '<button data-act="open" data-gid="' + item.gid + '">📂 ' + t("row.folder") + "</button>"
-          + '<button data-act="share" data-gid="' + item.gid + '">📲 ' + t("row.share") + "</button>"
+          + '<button data-act="network-share" data-gid="' + item.gid + '">📲 ' + t("row.share") + "</button>"
           + '<button data-act="scan" data-gid="' + item.gid + '">🔍 ' + t("row.scan") + "</button>"
           + '<button data-act="remove" data-gid="' + item.gid + '">🗑 ' + t("row.delete") + "</button>";
     } else if (item.status === "error") {
@@ -611,6 +611,33 @@ if ($("engineRetry")) {
 }
 
 /* ---------- eylemler ---------- */
+async function agdaPaylas(gid) {
+  if (state.settings.internet_paylasim !== false) {
+    $("shareErr").textContent = t("share.internetPreparing");
+  }
+  let sonuc = await call("agda_paylas", gid);
+  if (sonuc.internet_error_key === "share.cloudflaredMissing") {
+    if (!confirm(t("share.downloadTunnelAsk"))) return sonuc;
+    await call("motor_indir", "cloudflared");
+    for (let i = 0; i < 120; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const durum = await call("motor_durumu");
+      if (durum.motorlar.cloudflared && durum.motorlar.cloudflared.var) break;
+    }
+    sonuc = await call("agda_paylas", gid);
+  }
+  return sonuc;
+}
+
+function paylasimModalDoldur(res) {
+  $("shareLink").value = res.local_url || res.url || "";
+  $("shareInternetLink").value = res.internet_url || "";
+  $("shareSmbPath").value = res.smb || "";
+  $("shareQrImg").src = res.qr || "";
+  $("shareQrImg").style.display = res.qr ? "inline-block" : "none";
+  $("shareErr").textContent = res.warning || (res.internet_error_key ? t(res.internet_error_key) : "");
+}
+
 $("list").addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-act]");
   const row = event.target.closest(".row");
@@ -621,9 +648,9 @@ $("list").addEventListener("click", async (event) => {
       if (act === "files") { await torrentVeilAc(gid); return; }
       if (act === "seed") { await seedAc(gid); return; }
       if (act === "scan") { await call("defender_scan", gid); toast(t("toast.scanStarted")); return; }
-      if (act === "share") {
+      if (act === "network-share") {
         try {
-          const res = await call("share_create", gid);
+          const res = await agdaPaylas(gid);
           if (res.ok) {
             if (button.dataset.direct === "1") {
               const a = document.createElement("a");
@@ -635,16 +662,7 @@ $("list").addEventListener("click", async (event) => {
               toast("Telefona indirme başlatılıyor...");
               return;
             }
-            $("shareLink").value = res.url;
-            $("shareErr").textContent = "";
-            
-            // Try to generate QR code using a simple API if no lib available, or just leave it empty.
-            // Google Chart API is deprecated but works for simple QRs, or just a simple text
-            const qri = $("shareQrImg");
-            if (qri) {
-              qri.src = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=" + encodeURIComponent(res.url);
-              qri.style.display = "inline-block";
-            }
+            paylasimModalDoldur(res);
             openVeil("shareVeil");
           }
         } catch(e) {
@@ -703,7 +721,7 @@ function openVeil(id) {
   $(id).classList.add("open");
 }
 function closeVeil(id) {
-  $(id).classList.remove("open");
+  $(id).classList.remove("open", "on");
   const prev = veilFocusMap.get(id);
   if (prev && typeof prev.focus === "function") prev.focus();
   veilFocusMap.delete(id);
@@ -736,8 +754,14 @@ function closeVeil(id) {
     plgState.timer = null;
   }
 }
-document.querySelectorAll("[data-close]").forEach((button) => {
-  button.onclick = () => closeVeil(button.dataset.close);
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-close]");
+  if (!button) return;
+  if (button.dataset.close === "srvVeil" && srvState.timer) {
+    clearInterval(srvState.timer);
+    srvState.timer = null;
+  }
+  closeVeil(button.dataset.close);
 });
 document.querySelectorAll(".veil").forEach((veil) => {
   veil.addEventListener("click", (event) => { if (event.target === veil) closeVeil(veil.id); });
@@ -1810,6 +1834,7 @@ $("openSettings").onclick = async () => {
   $("sSnailSpeed").value = s.snail_speed_kb ?? 100;
   // v1.7.5 Bolum 1-2: uzaktan erisim + ag (docs/v175_SOZLESME.md)
   $("sLanAccess").checked = s.lan_erisimi ?? false;
+  $("sInternetShare").checked = s.internet_paylasim !== false;
   $("sApiPort").value = s.api_listen_port ?? s.api_port ?? 6811;
   $("sSystemProxy").checked = s.system_proxy ?? false;
   $("sProxy").value = s.proxy ?? "";
@@ -2186,6 +2211,7 @@ $("setGo").onclick = async () => {
     snail_speed_kb: Number($("sSnailSpeed").value) || 100,
     // v1.7.5: uzaktan erisim + ag. api_port araligi disindaysa varsayilana duser.
     lan_erisimi: $("sLanAccess").checked,
+    internet_paylasim: $("sInternetShare").checked,
     api_listen_port: portSayisi($("sApiPort").value),
     system_proxy: $("sSystemProxy").checked,
     proxy: $("sProxy").value.trim(),
@@ -2826,6 +2852,13 @@ document.addEventListener("contextmenu", async (event) => {
     { etiket: t("ctx.openFile"), pasif: oge.status !== "complete",
       calis: () => call("dosya_ac", gid) },
     { etiket: t("ctx.openFolder"), calis: () => call("open_item_folder", gid) },
+    "ayrac",
+    { etiket: t("row.share"), pasif: oge.status !== "complete",
+      calis: async () => {
+        const res = await agdaPaylas(gid);
+        paylasimModalDoldur(res);
+        openVeil("shareVeil");
+      } },
     "ayrac",
     { etiket: t("ctx.again"), pasif: !adres,
       calis: async () => {
@@ -3597,16 +3630,6 @@ $("openServer").onclick = async () => {
   }, 3000);
 };
 
-/* Sunucu paneli kapanisinda canli yoklamayi durdur (bosuna istek atma).
-   closeVeil'in kendisi degistirilmez; kapatma dugmeleri zaten buradan gecer. */
-document.querySelectorAll("[data-close='srvVeil']").forEach((dugme) => {
-  const eski = dugme.onclick;
-  dugme.onclick = (ev) => {
-    if (srvState.timer) { clearInterval(srvState.timer); srvState.timer = null; }
-    if (eski) eski.call(dugme, ev);
-  };
-});
-
 /* ---------- ac / kapa ---------- */
 $("srvAcik").onchange = async (ev) => {
   const acik = !!ev.target.checked;
@@ -3683,6 +3706,14 @@ $("shareCopy").onclick = async () => {
   try {
     await call("panoya_kopyala", $("shareLink").value);
     toast(t("srv.copied") || "Kopyalandı");
+  } catch (err) { toast(err.message, true); }
+};
+
+$("shareInternetCopy").onclick = async () => {
+  if (!$("shareInternetLink").value) return;
+  try {
+    await call("panoya_kopyala", $("shareInternetLink").value);
+    toast(t("srv.copied"));
   } catch (err) { toast(err.message, true); }
 };
 
@@ -3815,14 +3846,14 @@ if (installPwaBtnElem) {
 }
 
 /* --- WeTransfer Share UI Logic --- */
-const shareVeil = document.getElementById("shareVeil");
+const shareCenterVeil = document.getElementById("shareCenterVeil");
 const openShare = document.getElementById("openShare");
 const shareSelectBtn = document.getElementById("shareSelectBtn");
 const shareList = document.getElementById("shareList");
 
 if (openShare) {
   openShare.onclick = () => {
-    if (shareVeil) openVeil("shareVeil");
+    if (shareCenterVeil) shareCenterVeil.classList.add("on");
     renderShareList();
   };
 }

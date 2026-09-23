@@ -565,6 +565,9 @@
             </div>
           </div>
 
+          <label class="opt" style="margin-top: 12px;"><input type="checkbox" id="sInternetShare"> <span data-i18n="set.internetShare">Internetten paylasim (Cloudflare Tunnel)</span></label>
+          <div class="hint" data-i18n="set.internetShareHint">Link bilen herkes dosyayi indirebilir.</div>
+
           <div id="telefonKutu"
             style="display:none; margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
             <label data-i18n="set.telefonAdres">Telefonun tarayıcısına bu adresi yaz</label>
@@ -1267,17 +1270,17 @@
       </div>
     </div>
   </div>
-  <div class="veil" id="shareVeil">
+  <div class="veil" id="shareCenterVeil">
     <div class="modal">
       <div class="modal-head">
-        <strong data-i18n="share.title">Dosya Paylaşımı (WeTransfer Tarzı)</strong>
-        <button class="wc-btn wc-close" data-close="shareVeil">×</button>
+        <strong data-i18n="share.centerTitle">Dosya Paylaşımı (WeTransfer Tarzı)</strong>
+        <button class="modal-close" data-close="shareCenterVeil" aria-label="Kapat">×</button>
       </div>
-      <div class="modal-body" style="padding-top: 10px;">
+      <div class="modal-body">
         <p style="margin-bottom: 20px; color: var(--text-muted);" data-i18n="share.desc">Bilgisayarınızdaki herhangi bir
           dosyayı yerel ağınızda kolayca paylaşabilirsiniz.</p>
 
-        <button class="btn primary" id="shareSelectBtn" style="margin-bottom: 20px; width: 100%;"
+        <button class="btn primary share-select" id="shareSelectBtn"
           data-i18n="share.selectFile">Dosya Seç & Paylaş</button>
 
         <h3 style="margin-bottom: 10px; color: var(--accent);" data-i18n="share.activeShares">Aktif Paylaşımlar</h3>
@@ -1309,13 +1312,20 @@
 
   <div class="veil" id="shareVeil">
     <div class="sheet">
-      <h2 data-i18n="share.title">Ağda Paylaş</h2>
+      <div class="sheet-head"><h2 data-i18n="share.title">Ağda Paylaş</h2><button class="modal-close" data-close="shareVeil" aria-label="Kapat">×</button></div>
       <div class="body">
         <div class="hint" data-i18n="share.hint">Aşağıdaki linki aynı ağdaki arkadaşlarına göndererek bu dosyayı
           doğrudan senin bilgisayarından indirmelerini sağlayabilirsin.</div>
+        <label data-i18n="share.localLink">Yerel ag linki</label>
         <div class="yol-satir" style="margin-top: 16px;"><input id="shareLink" type="text" readonly spellcheck="false"
             style="font-size: 14px; padding: 8px; font-weight: bold; color: var(--accent);"><button class="btn primary"
             id="shareCopy" data-i18n="srv.copy">Kopyala</button></div>
+        <label data-i18n="share.internetLink">Internet linki</label>
+        <div class="yol-satir"><input id="shareInternetLink" type="text" readonly spellcheck="false"
+            style="font-size: 14px; padding: 8px; font-weight: bold; color: var(--accent);"><button class="btn primary"
+            id="shareInternetCopy" data-i18n="srv.copy">Kopyala</button></div>
+        <label for="shareSmbPath" data-i18n="share.smbPath">SMB / UNC yolu</label>
+        <input id="shareSmbPath" type="text" readonly spellcheck="false" placeholder="\\bilgisayar\AfuDM_...\dosya">
         <div id="shareQrBox" style="margin-top: 20px; text-align: center;"><img id="shareQrImg"
             style="display:none; max-width: 200px; border-radius: 8px; margin:0 auto;"></div>
       </div>
