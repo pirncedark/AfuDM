@@ -712,9 +712,18 @@ class Manager:
         else:
             row = self.store.by_gid(gid)
 
+        live_status: dict | None = None
         if not row:
-            # If it's a completely unknown GID, raise KayitYok to satisfy tests/API contracts
-            raise KayitYok("kayit bulunamadi: %s" % gid)
+            # Aria2'daki eski/ayrilmis kayitlar DB satiri olmadan da silinebilir.
+            # RPC kaydi da yoksa bu zaten idempotent bir orphan silmedir.
+            try:
+                aday = self.rpc.tell_status(gid, ["followedBy", "following", "files", "infoHash"])
+                if isinstance(aday, dict) and aday:
+                    live_status = aday
+                else:
+                    return True
+            except Exception:
+                return True
 
         actual_gid = (row.get("gid") if row and row.get("gid") else gid) or gid
         if actual_gid:
@@ -740,7 +749,8 @@ class Manager:
         else:
             # aria2 parent/child GID baglantilari (followedBy / following)
             try:
-                status = self.rpc.tell_status(actual_gid, ["followedBy", "following", "files", "infoHash"])
+                status = live_status or self.rpc.tell_status(
+                    actual_gid, ["followedBy", "following", "files", "infoHash"])
                 if status.get("infoHash"):
                     self._removed_hashes.add(status["infoHash"].lower())
                 followed = status.get("followedBy") or []

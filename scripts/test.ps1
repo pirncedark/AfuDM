@@ -76,6 +76,8 @@ if (`$parseHatalari) {
         "tests/fake_http_test.py",
         "tests/netcheck_test.py",
         "tests/manager_test.py",
+        "tests/orphan_remove_test.py",
+        "tests/bulk_and_parent_remove_test.py",
         "tests/i18n_test.py",
         "tests/format_test.py",
         "tests/mux_ayristirma_test.py",
