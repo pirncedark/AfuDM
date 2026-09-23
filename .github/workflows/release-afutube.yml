@@ -74,6 +74,8 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          make_latest: false  # AfuDM masaustu surumu Latest kalsin
+          prerelease: ${{ contains(github.ref_name, '-') }}
           name: AfuTube ${{ github.ref_name }}
           body: |
             # AfuTube ${{ github.ref_name }}
