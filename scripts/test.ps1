@@ -112,6 +112,7 @@ if (`$parseHatalari) {
         "tests/torrent_onekle_test.py",
         "tests/torrent_duzeltme_test.py",
         "tests/v175_ayar_test.py",
+        "tests/ayar_dogrulama_ui_test.py",
         "tests/v175_mobil_test.py",
         "tests/tr_arama_test.py",
         "tests/pwa_test.py",
