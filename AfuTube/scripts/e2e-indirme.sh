@@ -54,10 +54,13 @@ echo "BASARILI: HOME sonrasi arka plan ses oturumu PLAYING (state=3)"
 adb shell monkey -p "$PKG" 1 >/dev/null 2>&1; sleep 2; dump dinleye-don
 cokme_var && { echo "HATA: uygulamaya donuste uygulama coktu"; bitir dinle-donus-cokme; exit 1; }
 tap tap-desc "$OUT/dinleye-don.xml" "İzle" || { echo "HATA: İzle modu dugmesi yok"; bitir izle-modu-yok; exit 1; }
-sleep 1; adb shell input keyevent KEYCODE_HOME; sleep 3
+# Test videosu ~10 sn: onceki calma bitmis olabilir. Yeniden acilinca calma BASTAN baslamali (PLAYING), sonra HOME.
+oturum_durumu() { adb shell dumpsys media_session > "$OUT/$1.txt"; grep -A20 "com.afudm.afutube" "$OUT/$1.txt" | grep -m1 -oE 'state=[A-Z]+\([0-9]\)|state=[0-9]'; }
+t=0; until oturum_durumu media-session-izle-once | grep -Eq '3'; do sleep 1; t=$((t+1)); [ $t -ge 15 ] && { echo "HATA: İzle ile yeniden acilinca calma baslamadi ($(oturum_durumu media-session-izle-once))"; grep -E "AfuTubePlayer" <(adb logcat -d) | tail -5; bitir izle-baslamadi; exit 1; }; done
+echo "BASARILI: İzle ile yeniden acilinca calma basladi"
+adb shell input keyevent KEYCODE_HOME
 cokme_var && { echo "HATA: İzle HOME sonrasi uygulama coktu"; bitir izle-home-cokme; exit 1; }
-adb shell dumpsys media_session > "$OUT/media-session-izle.txt"
-grep -A20 "com.afudm.afutube" "$OUT/media-session-izle.txt" | grep -Eq 'state=2|state=PAUSED\(2\)' || { echo "HATA: İzle modunda HOME sonrasi media session PAUSED degil"; bitir izle-arkaplan; exit 1; }
+t=0; until oturum_durumu media-session-izle | grep -Eq '2'; do sleep 1; t=$((t+1)); [ $t -ge 6 ] && { echo "HATA: İzle modunda HOME sonrasi media session PAUSED degil ($(oturum_durumu media-session-izle))"; bitir izle-arkaplan; exit 1; }; done
 echo "BASARILI: İzle modunda HOME sonrasi media session PAUSED (state=2)"
 adb shell monkey -p "$PKG" 1 >/dev/null 2>&1; sleep 2; adb shell input keyevent KEYCODE_BACK; sleep 2; dump listeye-don
 cokme_var && { echo "HATA: listeye donuste uygulama coktu"; bitir liste-cokme; exit 1; }

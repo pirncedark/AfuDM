@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.view.WindowManager
 import android.content.res.ColorStateList
@@ -55,7 +56,7 @@ class PlayerActivity : Activity() {
                     val requestedPath = path
                     if (!explicitPath) {
                         val item = player.currentMediaItem
-                        path = item?.localConfiguration?.uri?.path.orEmpty()
+                        path = item?.mediaId?.takeIf { File(it).isFile } ?: item?.localConfiguration?.uri?.path.orEmpty()
                         title = item?.mediaMetadata?.title?.toString()?.takeIf(String::isNotBlank) ?: File(path).nameWithoutExtension
                     }
                     if (path.isBlank() || !File(path).isFile) {
@@ -77,8 +78,8 @@ class PlayerActivity : Activity() {
                     buildUi()
                     playerView?.player = player
                     audioControls?.player = player
-                    if (explicitPath && player.currentMediaItem?.localConfiguration?.uri?.path != requestedPath) {
-                        player.setMediaItem(MediaItem.Builder().setUri(requestedPath).setMediaMetadata(MediaMetadata.Builder().setTitle(title).build()).build())
+                    if (explicitPath && player.currentMediaItem?.mediaId != requestedPath) {
+                        player.setMediaItem(MediaItem.Builder().setMediaId(requestedPath).setUri(requestedPath).setMediaMetadata(MediaMetadata.Builder().setTitle(title).build()).build())
                         player.prepare()
                         player.play()
                     } else if (explicitPath && (player.playbackState == Player.STATE_ENDED || player.playbackState == Player.STATE_IDLE)) {
@@ -87,7 +88,7 @@ class PlayerActivity : Activity() {
                         player.seekTo(0)
                         player.play()
                     }
-                }
+                }.onFailure { Log.e("AfuTubePlayer", "Oynatici baglantisi basarisiz", it) }
             }, Executor { it.run() })
         }
     }
