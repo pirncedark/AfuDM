@@ -11,6 +11,13 @@ jobs:
   quality-gate:
     uses: ./.github/workflows/quality-gate.yml
     secrets: inherit
+    # Cagrilan is akisi (ve icindeki security/codeql) bu izinleri ister; ust
+    # duzeyde yalniz contents:write oldugundan vermezsek calisma hic baslamaz
+    # (startup_failure — v2.7.2 tag'inde yasandi).
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
 
   gate:
     needs: quality-gate
