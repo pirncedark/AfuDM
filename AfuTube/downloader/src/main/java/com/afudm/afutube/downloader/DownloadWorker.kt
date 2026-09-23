@@ -78,6 +78,8 @@ class DownloadWorker(
                 addOption("--audio-quality", "0")
             } else if (mergeAV) {
                 addOption("--merge-output-format", "mp4")
+                // Tek dosyali kaynak webm/mkv gelirse de sonuc MP4 olsun.
+                addOption("--remux-video", "mp4")
             }
             addOption("--external-downloader", "aria2c")
             addOption("--external-downloader-args", "aria2c:-x 8 -s 8 -k 5M")

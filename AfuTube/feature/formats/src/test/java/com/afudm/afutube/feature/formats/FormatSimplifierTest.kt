@@ -8,7 +8,7 @@ import org.junit.Test
 
 class FormatSimplifierTest {
     @Test
-    fun simplifiesThirtyCodecVariantsIntoSixVideoAndTwoAudioChoices() {
+    fun simplifiesThirtyCodecVariantsIntoThreeMp4AndOneMp3Choice() {
         val formats = buildList {
             listOf(2160, 1440, 1080, 720, 480, 360).forEach { height ->
                 listOf("vp9", "avc1", "av01", "vp9").forEachIndexed { codecIndex, codec ->
@@ -27,17 +27,16 @@ class FormatSimplifierTest {
         val result = FormatSimplifier.simplify(formats)
 
         assertEquals(30, formats.size)
-        assertEquals(listOf(2160, 1440, 1080, 720, 480, 360), result.videoOptions.map { it.height })
-        assertEquals(8, result.videoOptions.size + result.audioOptions.size)
-        assertEquals("2160p (4K)", result.videoOptions.first().label)
-        assertEquals("1080p 60", result.videoOptions[2].label)
-        assertTrue(result.videoOptions[3].formatId.contains("bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]"))
-        assertTrue(result.videoOptions[3].mergeAV)
+        assertEquals(listOf(1080, 720, 480), result.videoOptions.map { it.height })
+        assertEquals(4, result.videoOptions.size + result.audioOptions.size)
+        assertEquals("1080p 60", result.videoOptions[0].label)
+        assertTrue(result.videoOptions[1].formatId.contains("bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]"))
+        assertTrue(result.videoOptions[1].mergeAV)
         assertEquals(FormatOption.MP3, result.audioOptions[0].audioFormat)
-        assertEquals(FormatOption.M4A, result.audioOptions[1].audioFormat)
-        assertEquals("~11 MB", result.videoOptions[3].estimatedSize)
+        assertEquals(1, result.audioOptions.size)
+        assertEquals("~11 MB", result.videoOptions[1].estimatedSize)
         assertEquals("~4 MB", result.audioOptions[0].estimatedSize)
-        assertEquals(result.videoOptions[3], result.defaultVideoOption)
+        assertEquals(result.videoOptions[1], result.defaultVideoOption)
     }
 
     @Test
@@ -46,7 +45,7 @@ class FormatSimplifierTest {
 
         assertEquals(listOf("En iyi kalite"), result.videoOptions.map { it.label })
         assertEquals("best", result.videoOptions.single().formatId)
-        assertEquals(2, result.audioOptions.size)
+        assertEquals(listOf("MP3"), result.audioOptions.map { it.label })
     }
 
     @Test
