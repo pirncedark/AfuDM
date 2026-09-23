@@ -8,7 +8,12 @@ permissions:
   contents: write
 
 jobs:
+  quality-gate:
+    uses: ./.github/workflows/quality-gate.yml
+    secrets: inherit
+
   gate:
+    needs: quality-gate
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7

@@ -6,6 +6,7 @@ on:
       - 'AfuTube/**'
       - '.github/workflows/build-afutube.yml'
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   build:

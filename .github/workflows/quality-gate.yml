@@ -1,0 +1,165 @@
+name: Quality Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  desktop-tests:
+    name: desktop-tests
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+      AFUDM_TEST_BROWSER: chromium
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install desktop test dependencies
+        run: python -m pip install --quiet pywebview pystray pillow qrcode playwright
+      - name: Install Playwright Chromium
+        run: python -m playwright install chromium
+      - name: Run offline desktop tests
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File scripts/test.ps1
+
+  ui-gate:
+    name: ui-gate (${{ matrix.viewport }}, dpr=${{ matrix.dpr }}, lang=${{ matrix.lang }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        viewport: ["1280x720", "1366x768", "1920x1080"]
+        dpr: ["1", "1.5", "2"]
+        lang: [tr, en]
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+      AFUDM_TEST_BROWSER: chromium
+      AFUDM_TEST_VIEWPORT: ${{ matrix.viewport }}
+      AFUDM_TEST_DPR: ${{ matrix.dpr }}
+      AFUDM_TEST_LANG: ${{ matrix.lang }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install Playwright
+        run: python -m pip install --quiet playwright
+      - name: Install Playwright Chromium
+        run: python -m playwright install chromium
+      - name: Run UI/UX, modal, and sharing gates
+        run: python tests/ui_ux_gate_test.py
+
+  deletion-recovery:
+    name: deletion-recovery
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Run B1 deletion and recovery tests
+        shell: pwsh
+        run: |
+          python tests/orphan_remove_test.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tests/bulk_and_parent_remove_test.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  android-build:
+    name: android-build
+    uses: ./.github/workflows/build-afutube.yml
+
+  security:
+    name: security
+    uses: ./.github/workflows/security.yml
+    secrets: inherit
+
+  package-verify:
+    name: package-verify
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install packaging dependencies
+        run: python -m pip install --quiet pyinstaller pywebview pystray pillow qrcode
+      - name: Prepare required aria2c engine
+        run: python -c "from core import engines; engines.indir('aria2c')"
+      - name: Build PyInstaller executable
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File scripts/build_exe.ps1 -Temiz
+      - name: Build release package
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File scripts/build_release.ps1
+      - name: Verify release package and smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = & python scripts\surum_oku.py
+          $zip = "build_out\AfuDM-v$version-win64.zip"
+          Compress-Archive -Path build_out\paket\AfuDM -DestinationPath $zip -Force
+          powershell -ExecutionPolicy Bypass -File scripts\verify_release.ps1 $zip
+          if ($LASTEXITCODE -ne 0) { throw "verify_release failed ($LASTEXITCODE)" }
+          powershell -ExecutionPolicy Bypass -File scripts\smoke_test.ps1 $zip
+          if ($LASTEXITCODE -ne 0) { throw "smoke_test failed ($LASTEXITCODE)" }
+
+  quality-gate:
+    name: quality-gate
+    if: ${{ always() }}
+    needs:
+      - desktop-tests
+      - ui-gate
+      - deletion-recovery
+      - android-build
+      - security
+      - package-verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: quality-gate PASS/FAIL
+        shell: bash
+        env:
+          DESKTOP_TESTS: ${{ needs.desktop-tests.result }}
+          UI_GATE: ${{ needs.ui-gate.result }}
+          DELETION_RECOVERY: ${{ needs.deletion-recovery.result }}
+          ANDROID_BUILD: ${{ needs.android-build.result }}
+          SECURITY: ${{ needs.security.result }}
+          PACKAGE_VERIFY: ${{ needs.package-verify.result }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for result in \
+            "desktop-tests=$DESKTOP_TESTS" \
+            "ui-gate=$UI_GATE" \
+            "deletion-recovery=$DELETION_RECOVERY" \
+            "android-build=$ANDROID_BUILD" \
+            "security=$SECURITY" \
+            "package-verify=$PACKAGE_VERIFY"; do
+            echo "$result"
+            if [[ "$result" != *=success ]]; then
+              failed=1
+            fi
+          done
+          if [[ "$failed" -ne 0 ]]; then
+            echo "QUALITY GATE: FAIL"
+            exit 1
+          fi
+          echo "QUALITY GATE: PASS"

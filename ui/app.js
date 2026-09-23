@@ -3822,7 +3822,7 @@ const shareList = document.getElementById("shareList");
 
 if (openShare) {
   openShare.onclick = () => {
-    if (shareVeil) shareVeil.classList.add("on");
+    if (shareVeil) openVeil("shareVeil");
     renderShareList();
   };
 }
