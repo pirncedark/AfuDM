@@ -14,12 +14,22 @@ adb shell svc data disable
 adb logcat -c
 adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
 
+# CI APK surumu 0.0.<run> oldugu icin yayindaki surumu "yeni" sanip guncelleme penceresi acabilir; test dismiss eder.
+guncelleme_kapat() {
+  if grep -q 'Daha sonra' "$1"; then
+    xy=$(python3 AfuTube/scripts/ui.py tap-text "$1" "Daha sonra") && adb shell input tap $xy && echo "NOT: guncelleme penceresi kapatildi (Daha sonra)"
+    sleep 2; return 0
+  fi
+  return 1
+}
+
 ok=0
 start=$(date +%s)
 while [ $(( $(date +%s) - start )) -lt $LIMIT_SN ]; do
   sleep 3
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
   adb shell cat /sdcard/ui.xml > "$OUT/ui.xml" 2>/dev/null
+  guncelleme_kapat "$OUT/ui.xml" && continue
   if grep -q 'Ana Ekran' "$OUT/ui.xml"; then ok=1; break; fi
 done
 sure=$(( $(date +%s) - start ))
@@ -38,6 +48,10 @@ fi
 sleep 20
 adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
 adb shell cat /sdcard/ui.xml > "$OUT/ui-20sn-sonra.xml" 2>/dev/null
+if guncelleme_kapat "$OUT/ui-20sn-sonra.xml"; then
+  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+  adb shell cat /sdcard/ui.xml > "$OUT/ui-20sn-sonra.xml" 2>/dev/null
+fi
 adb exec-out screencap -p > "$OUT/ekran-20sn-sonra.png"
 grep -q 'Ana Ekran' "$OUT/ui-20sn-sonra.xml" || { echo "HATA: ana ekran geldi ama 20 sn sonra kayboldu"; exit 1; }
 adb shell pidof "$PKG" >/dev/null || { echo "HATA: ana ekrandan sonra uygulama kapandi"; exit 1; }
