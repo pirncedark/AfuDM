@@ -29,6 +29,8 @@ const DICT = {
     "share.copyLink": "Linki Kopyala",
     "share.delete": "Kaldır",
     "share.empty": "Henüz paylaşılan bir dosya yok.",
+    "share.selectError": "Dosya seçilip paylaşılamadı.",
+    "tor.filesError": "Torrent dosyaları yüklenemedi.",
 
     /* --- v2.0 Plugin Platform (core/eklenti.py) --- */
     "rail.plugins": "Eklentiler",
@@ -860,6 +862,8 @@ const DICT = {
     "share.copyLink": "Copy Link",
     "share.delete": "Remove",
     "share.empty": "No shared files yet.",
+    "share.selectError": "Could not select and share the file.",
+    "tor.filesError": "Could not load torrent files.",
     /* --- v2.0 Plugin Platform (core/eklenti.py) --- */
     "rail.plugins": "Plugins",
     "plg.title": "Plugins",
