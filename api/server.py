@@ -11,6 +11,7 @@ anahtarsiz hicbir sey yapilamaz.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import secrets
 import socket
@@ -23,6 +24,8 @@ from pathlib import Path
 
 from core import models, paths
 from core.hata import hata_json
+
+_LOG = logging.getLogger(__name__)
 
 
 def _yol_kok_icinde(yol, kok) -> bool:
@@ -65,7 +68,7 @@ def _dosya_iznini_kisitla(yol) -> None:
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     except Exception:
-        pass
+        _LOG.exception("API dosya izinleri kisitlanamadi: %s", yol)
 
 
 def _zamanla(s) -> float | None:
@@ -280,10 +283,14 @@ class _Handler(BaseHTTPRequestHandler):
                         break
                     self.wfile.write(chunk)
                     remaining -= len(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            _LOG.info("Dosya akis istemcisi baglantiyi kapatti: %s", yol)
         except OSError:
-            self._hata(403, "ERISIM_ENGEL", "Dosya okunamadi")
+            _LOG.exception("Dosya akisinda IO hatasi: %s", yol)
+            self._hata(500, "AKIS_HATASI", "Dosya aktarimi baslatilamadi")
         except Exception:
-            pass
+            _LOG.exception("Dosya akisinda beklenmeyen hata: %s", yol)
+            self._hata(500, "AKIS_HATASI", "Dosya aktarimi baslatilamadi")
 
     def _body(self) -> dict:
         length = int(self.headers.get("Content-Length") or 0)
@@ -430,10 +437,15 @@ class _Handler(BaseHTTPRequestHandler):
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 shutil.copyfileobj(dosya, self.wfile)
+            except (BrokenPipeError, ConnectionResetError):
+                _LOG.info("/indir istemcisi aktarimi iptal etti: %s", gid)
             except Exception:
-                pass
+                _LOG.exception("/indir aktarim hatasi: %s", gid)
             finally:
-                dosya.close()
+                try:
+                    dosya.close()
+                except OSError:
+                    _LOG.exception("/indir dosyasi kapatilamadi: %s", gid)
             return
         if not self._authorized(query):
             self._hata(401, "GECERSIZ_TOKEN", "gecersiz token")
@@ -906,11 +918,11 @@ class LocalAPI:
         try:
             httpd.shutdown()
         except Exception:
-            pass
+            _LOG.exception("LocalAPI HTTP sunucusu kapatilamadi")
         try:
             httpd.server_close()
         except Exception:
-            pass
+            _LOG.exception("LocalAPI socket temizligi basarisiz")
         if thread is not None and thread.is_alive():
             thread.join(timeout=5)
 
