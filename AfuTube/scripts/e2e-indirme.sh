@@ -57,7 +57,7 @@ tap tap-desc "$OUT/dinleye-don.xml" "İzle" || { echo "HATA: İzle modu dugmesi 
 # Test videosu ~10 sn: Dinle'den kalan calma bitmek uzere olabilir. Oynatici baglansin, sonra medya tuslariyla
 # bastan calmaya al (PREVIOUS -> basa sar, PLAY) ve konum < 6 sn iken HOME bas.
 oturum_durumu() { adb shell dumpsys media_session > "$OUT/$1.txt"; grep -A20 "com.afudm.afutube" "$OUT/$1.txt" | grep -m1 -oE 'state=[A-Z]+\([0-9]\)|state=[0-9]'; }
-oturum_konum() { grep -A20 "com.afudm.afutube" "$OUT/$1.txt" | grep -m1 -oE 'position=[0-9]+' | cut -d= -f2 | tr -dc '0-9'; }
+oturum_konum() { grep -A20 "com.afudm.afutube" "$OUT/$1.txt" | grep -m1 -oE 'position=[0-9]+' | head -1 | cut -d= -f2 | tr -dc '0-9'; }
 sleep 3
 t=0
 while :; do
