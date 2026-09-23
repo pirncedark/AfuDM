@@ -97,7 +97,10 @@ class Senaryolar(unittest.TestCase):
         self.wait_complete(row)
         errors = []
         if title not in row.inner_text(): errors.append("satir basligi X degil")
-        if f"{len(content)} B" not in row.inner_text(): errors.append(f"boyut satiri X.mp4 boyutu {len(content)} B degil: {row.inner_text()}")
+        # UI boyutu KB/MB bicimiyle gosterir: 73728 B -> "72 KB / 72 KB". Parca (ses izi) boyutu kalmamali.
+        if "72 KB / 72 KB" not in row.inner_text(): errors.append(f"boyut satiri X.mp4 boyutu (72 KB / 72 KB) degil: {row.inner_text()}")
+        kayit = self.k.manager.store.by_gid(gid)
+        if kayit is None or kayit["total_bytes"] != len(content): errors.append(f"DB total_bytes {kayit and kayit['total_bytes']} != {len(content)}")
         row.locator('[data-act="open"]').click()
         row.click(button="right")
         self.page.get_by_role("button", name="Dosyayı aç").click()
