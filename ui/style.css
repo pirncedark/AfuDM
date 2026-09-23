@@ -467,15 +467,17 @@ select:focus-visible, button:focus-visible {
   color: var(--muted);
 }
 .num.big { color: var(--text); font-weight: 500; }
-.size-line { color: var(--dim); font-size: 11px; margin-top: 2px; }
+.size-line { color: var(--dim); font-size: 11px; margin-top: 2px; white-space: nowrap; }
 
 .state {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
   min-width: 0;
   width: 100%;
+  container-type: inline-size;
 }
 .state-badge {
   display: inline-flex;
@@ -500,8 +502,8 @@ select:focus-visible, button:focus-visible {
   gap: 4px;
   justify-content: flex-end;
   align-items: center;
-  flex-wrap: wrap;
-  width: 100%;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 .acts button {
   background: var(--surface-2);
@@ -518,6 +520,19 @@ select:focus-visible, button:focus-visible {
   transition: background-color 0.13s ease, color 0.13s ease, border-color 0.13s ease, box-shadow 0.13s ease;
   box-shadow: 0 1px 2px rgba(0,0,0,0.1);
   white-space: nowrap;
+}
+.acts button .ic { font-size: 12px; line-height: 1; }
+/* Yer daralinca satir dugmeleri ikon moduna gecer (etiket title ipucunda kalir);
+   boylece Sil alta kaymaz, rozet + dugmeler tek satirda kalir. */
+@container (max-width: 470px) {
+  .acts button[data-act="network-share"], .acts button[data-act="scan"],
+  .acts button[data-act="files"], .acts button[data-act="seed"] { padding: 5px 7px; }
+  .acts button[data-act="network-share"] .lbl, .acts button[data-act="scan"] .lbl,
+  .acts button[data-act="files"] .lbl, .acts button[data-act="seed"] .lbl { display: none; }
+}
+@container (max-width: 250px) {
+  .acts button { padding: 5px 7px; }
+  .acts button .lbl { display: none; }
 }
 /* default hover — renksiz butonlar icin mavi */
 .acts button:hover {
@@ -539,24 +554,24 @@ select:focus-visible, button:focus-visible {
   box-shadow: 0 2px 8px rgba(242,103,138,0.3);
 }
 /* paylasim butonu */
-.acts button[data-act="share"] {
+.acts button[data-act="network-share"] {
   background: rgba(167, 139, 250, 0.1);
   border-color: rgba(167, 139, 250, 0.28);
   color: #a78bfa;
 }
-.acts button[data-act="share"]:hover {
+.acts button[data-act="network-share"]:hover {
   background: rgba(167, 139, 250, 0.2);
   color: #c4b0ff;
   border-color: rgba(167, 139, 250, 0.55);
   box-shadow: 0 2px 8px rgba(167,139,250,0.3);
 }
 /* defender butonu */
-.acts button[data-act="defender"] {
+.acts button[data-act="scan"] {
   background: rgba(70, 201, 139, 0.08);
   border-color: rgba(70, 201, 139, 0.25);
   color: #46c98b;
 }
-.acts button[data-act="defender"]:hover {
+.acts button[data-act="scan"]:hover {
   background: rgba(70, 201, 139, 0.18);
   color: #6eedb0;
   border-color: rgba(70, 201, 139, 0.5);
@@ -1470,7 +1485,7 @@ input:disabled, textarea:disabled, select:disabled { opacity:.52; background:var
 
 @media (max-width: 850px) {
   .row {
-    grid-template-columns: 1fr 96px 76px 56px minmax(170px, max-content);
+    grid-template-columns: 1fr 96px 76px 56px minmax(170px, 36%);
     gap: 7px;
     padding: 8px 10px;
   }
@@ -1485,7 +1500,7 @@ input:disabled, textarea:disabled, select:disabled { opacity:.52; background:var
   
   /* Satir: Hiz ve ETA'yi gizle (yer kazanmak icin) */
   .row {
-    grid-template-columns: 1fr 100px max-content;
+    grid-template-columns: 1fr 100px minmax(170px, 42%);
   }
   .row > .num:nth-child(3), .row > .num:nth-child(4) {
     display: none;
