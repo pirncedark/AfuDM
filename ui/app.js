@@ -372,7 +372,9 @@ async function renderDetailTabContent(gid, tabName) {
               '</div>';
           }
         }
-      } catch (_) {}
+      } catch (err) {
+        toast(err && err.message ? err.message : t("tor.filesError"), true);
+      }
     } else {
       fContent.innerHTML = '<div class="kv"><div>' + t("kv.file") + '<b>' + escapeHtml(item.filename || "—") + '</b></div>' +
         '<div>' + t("kv.folder") + '<b>' + escapeHtml(item.dir || "—") + '</b></div></div>';
@@ -766,15 +768,25 @@ document.addEventListener("click", (event) => {
 document.querySelectorAll(".veil").forEach((veil) => {
   veil.addEventListener("click", (event) => { if (event.target === veil) closeVeil(veil.id); });
 });
+const drawer = $("drawer");
+function closeDrawer() {
+  state.selected = null;
+  renderList();
+  renderDrawer();
+}
+if (drawer) drawer.addEventListener("click", (event) => {
+  if (event.target === drawer) closeDrawer();
+});
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
-    document.querySelectorAll(".veil.open").forEach((v) => {
+    document.querySelectorAll(".veil.open, .veil.on").forEach((v) => {
       if (v.id === "klasorVeil" && typeof klasorSoz !== "undefined" && klasorSoz) {
         klasorKapat("");
       } else {
         closeVeil(v.id);
       }
     });
+    if ($("drawer").classList.contains("open")) closeDrawer();
   }
 });
 
@@ -3898,12 +3910,17 @@ if (shareSelectBtn) {
   shareSelectBtn.onclick = async () => {
     const btnText = shareSelectBtn.innerText;
     shareSelectBtn.innerText = "...";
-    const res = await call("dosya_sec_ve_paylas");
-    shareSelectBtn.innerText = btnText;
-    if (res && res.ok) {
-      renderShareList();
-    } else if (res && res.error) {
-      toast(res.error, "error");
+    try {
+      const res = await call("dosya_sec_ve_paylas");
+      if (res && res.ok) {
+        renderShareList();
+      } else if (res && res.error) {
+        toast(res.error, true);
+      }
+    } catch (err) {
+      toast(err && err.message ? err.message : t("share.selectError"), true);
+    } finally {
+      shareSelectBtn.innerText = btnText;
     }
   };
 }
