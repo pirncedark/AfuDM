@@ -81,6 +81,11 @@ class PlayerActivity : Activity() {
                         player.setMediaItem(MediaItem.Builder().setUri(requestedPath).setMediaMetadata(MediaMetadata.Builder().setTitle(title).build()).build())
                         player.prepare()
                         player.play()
+                    } else if (explicitPath && (player.playbackState == Player.STATE_ENDED || player.playbackState == Player.STATE_IDLE)) {
+                        // Ayni dosya listeden yeniden acildi ama calma bitmis/durmus: bastan baslat.
+                        if (player.playbackState == Player.STATE_IDLE) player.prepare()
+                        player.seekTo(0)
+                        player.play()
                     }
                 }
             }, Executor { it.run() })
