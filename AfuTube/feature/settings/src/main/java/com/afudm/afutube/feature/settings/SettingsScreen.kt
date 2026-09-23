@@ -22,6 +22,7 @@ import com.afudm.afutube.updater.ExtractorUpdater
 import com.afudm.afutube.updater.AppUpdate
 import com.afudm.afutube.updater.UpdateManager
 import kotlinx.coroutines.launch
+import com.afudm.afutube.downloader.DownloadPolicies
 
 @Composable
 fun SettingsScreen(
@@ -39,6 +40,8 @@ fun SettingsScreen(
     var autoUpdate   by remember { mutableStateOf(UpdateManager.autoCheckEnabled(context)) }
     var appUpdateStatus by remember { mutableStateOf("") }
     var includePrereleases by remember { mutableStateOf(UpdateManager.includePrereleases(context)) }
+    val downloadPrefs = remember { context.getSharedPreferences("afutube_downloads", Context.MODE_PRIVATE) }
+    var rateLimit by remember { mutableStateOf(downloadPrefs.getInt("rate_limit_kbps", 0).toString()) }
 
     LaunchedEffect(Unit) {
         ytdlpVersion = ExtractorUpdater.currentVersion(context)
@@ -62,6 +65,23 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item {
+                SettingsCard(title = context.getString(R.string.download_speed_limit)) {
+                    Text(context.getString(R.string.download_speed_limit_help), color = AfuColors.textMuted, fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = rateLimit,
+                        onValueChange = { rateLimit = it.filter(Char::isDigit).take(7) },
+                        label = { Text(context.getString(R.string.kilobytes_per_second)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(onClick = {
+                        val kbps = DownloadPolicies.parseRateLimitKbps(rateLimit)
+                        rateLimit = kbps.toString()
+                        downloadPrefs.edit().putInt("rate_limit_kbps", kbps).apply()
+                    }) { Text(context.getString(R.string.save)) }
+                }
+            }
+            item {
                 LastAnalysisErrorStore.get()?.let { error ->
                     SettingsCard(title = "Tanı / Son hata") {
                         Text(error.categoryLabel, color = AfuColors.warning, fontSize = 13.sp)
@@ -71,15 +91,15 @@ fun SettingsScreen(
                 }
             }
             item {
-                SettingsCard(title = "Uygulama guncellemeleri") {
+                SettingsCard(title = "Uygulama güncellemeleri") {
                     if (currentVersionName.isNotBlank()) {
                         Text("Yüklü sürüm: $currentVersionName", color = AfuColors.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(6.dp))
                     }
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Guncellemeleri denetle", color = AfuColors.text, fontSize = 14.sp)
-                            Text("Acilista gunde bir sessizce kontrol et", color = AfuColors.textMuted, fontSize = 12.sp)
+                            Text("Güncellemeleri denetle", color = AfuColors.text, fontSize = 14.sp)
+                            Text("Açılışta günde bir sessizce kontrol et", color = AfuColors.textMuted, fontSize = 12.sp)
                         }
                         Switch(checked = autoUpdate, onCheckedChange = {
                             autoUpdate = it
@@ -102,12 +122,12 @@ fun SettingsScreen(
                             appUpdateStatus = "Denetleniyor..."
                             runCatching { UpdateManager.check(currentVersionCode, includePrereleases) }
                                 .onSuccess { update ->
-                                    if (update == null) appUpdateStatus = "Uygulama guncel"
-                                    else { appUpdateStatus = "Yeni surum bulundu"; onUpdateFound(update) }
+                                    if (update == null) appUpdateStatus = "Uygulama güncel"
+                                    else { appUpdateStatus = "Yeni sürüm bulundu"; onUpdateFound(update) }
                                 }
-                                .onFailure { appUpdateStatus = "Denetleme basarisiz: ${it.localizedMessage ?: "ag hatasi"}" }
+                                .onFailure { appUpdateStatus = "Denetleme başarısız: ${it.localizedMessage ?: "ağ hatası"}" }
                         }
-                    }, modifier = Modifier.fillMaxWidth()) { Text("Guncellemeleri denetle") }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Güncellemeleri denetle") }
                     if (appUpdateStatus.isNotBlank()) Text(appUpdateStatus, color = AfuColors.textMuted, fontSize = 12.sp)
                 }
             }

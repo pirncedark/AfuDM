@@ -1,0 +1,6 @@
+<resources>
+    <string name="audio_only">Audio only</string>
+    <string name="embed_thumbnail">Embed thumbnail</string>
+    <string name="embed_chapters">Embed chapters</string>
+    <string name="download_audio">Download audio</string>
+</resources>

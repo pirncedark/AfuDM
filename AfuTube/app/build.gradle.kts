@@ -135,7 +135,6 @@ dependencies {
     implementation(project(":feature:downloads"))
     implementation(project(":feature:history"))
     implementation(project(":feature:settings"))
-    implementation(project(":feature:torrent"))
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test:2.2.20")
 }

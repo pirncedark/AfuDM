@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-data class ShareIntentEvent(val sequence: Long, val url: String)
+data class ShareIntentEvent(val sequence: Long, val urls: List<String>) { val url: String get() = urls.first() }
 data class ShareIntentPayload(
     val action: String? = null,
     val text: String? = null,
@@ -30,11 +30,16 @@ object ShareUrlExtractor {
     }
 
     fun firstHttpUrl(payload: ShareIntentPayload): String? {
+        return allHttpUrls(payload).firstOrNull()
+    }
+
+    fun allHttpUrls(payload: ShareIntentPayload): List<String> {
         val candidates = listOfNotNull(payload.text, payload.subject, payload.data)
         return candidates.asSequence()
             .flatMap { value -> urlPattern.findAll(value).map { it.value } }
             .map { it.replace(trailingPunctuation, "") }
-            .firstOrNull()
+            .distinct()
+            .toList()
     }
 }
 
@@ -44,17 +49,22 @@ class ShareIntentViewModel : ViewModel() {
     private var sequence = 0L
 
     fun publish(intent: Intent?) {
-        val url = ShareUrlExtractor.firstHttpUrl(intent) ?: return
-        publishUrl(url)
+        if (intent == null) return
+        publishUrls(ShareUrlExtractor.allHttpUrls(ShareIntentPayload(
+            action = intent.action,
+            text = intent.getStringExtra(Intent.EXTRA_TEXT),
+            subject = intent.getStringExtra(Intent.EXTRA_SUBJECT),
+            data = intent.data?.toString()
+        )))
     }
 
     fun publish(payload: ShareIntentPayload) {
-        val url = ShareUrlExtractor.firstHttpUrl(payload) ?: return
-        publishUrl(url)
+        publishUrls(ShareUrlExtractor.allHttpUrls(payload))
     }
 
-    private fun publishUrl(url: String) {
+    private fun publishUrls(urls: List<String>) {
+        if (urls.isEmpty()) return
         sequence += 1
-        _events.value = ShareIntentEvent(sequence, url)
+        _events.value = ShareIntentEvent(sequence, urls)
     }
 }

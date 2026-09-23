@@ -30,10 +30,15 @@ import com.afudm.afutube.core.theme.AfuColors
 fun FormatPickerScreen(
     mediaInfo  : MediaInfo,
     onBack     : () -> Unit = {},
-    onDownload : (MediaFormat) -> Unit = {}
+    onDownload : (MediaFormat) -> Unit = {},
+    onDownloadQueued: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var selectedFormat by remember { mutableStateOf<MediaFormat?>(null) }
+    var audioOnly by remember { mutableStateOf(false) }
+    var audioFormat by remember { mutableStateOf("m4a") }
+    var embedThumbnail by remember { mutableStateOf(false) }
+    var embedChapters by remember { mutableStateOf(false) }
 
     val videoFormats = remember(mediaInfo) {
         mediaInfo.formats.filter { !it.isAudioOnly }
@@ -75,8 +80,30 @@ fun FormatPickerScreen(
                 MediaInfoCard(mediaInfo)
             }
 
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = audioOnly, onCheckedChange = { audioOnly = it })
+                        Text(context.getString(R.string.audio_only), color = AfuColors.text)
+                    }
+                    if (audioOnly) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf("m4a", "mp3", "opus").forEach { ext ->
+                            FilterChip(selected = audioFormat == ext, onClick = { audioFormat = ext }, label = { Text(ext) })
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = embedThumbnail, onCheckedChange = { embedThumbnail = it })
+                        Text(context.getString(R.string.embed_thumbnail), color = AfuColors.text)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = embedChapters, onCheckedChange = { embedChapters = it })
+                        Text(context.getString(R.string.embed_chapters), color = AfuColors.text)
+                    }
+                }
+            }
+
             // ── Video formatları ────────────────────────────────────────────
-            if (videoFormats.isNotEmpty()) {
+            if (!audioOnly && videoFormats.isNotEmpty()) {
                 item {
                     SectionHeader("🎬 Video", videoFormats.size)
                 }
@@ -90,7 +117,7 @@ fun FormatPickerScreen(
             }
 
             // ── Ses formatları ─────────────────────────────────────────────
-            if (audioFormats.isNotEmpty()) {
+            if (!audioOnly && audioFormats.isNotEmpty()) {
                 item {
                     SectionHeader("🎵 Ses / Audio", audioFormats.size)
                 }
@@ -107,8 +134,8 @@ fun FormatPickerScreen(
             item {
                 Spacer(Modifier.height(8.dp))
                 Button(
-                    onClick  = { selectedFormat?.let { onDownload(it); startDownload(context, mediaInfo, it) } },
-                    enabled  = selectedFormat != null,
+                    onClick  = { if (audioOnly) { startDownload(context, mediaInfo, null, true, audioFormat, embedThumbnail, embedChapters); onDownloadQueued() } else selectedFormat?.let { onDownload(it); startDownload(context, mediaInfo, it, false, audioFormat, embedThumbnail, embedChapters) } },
+                    enabled  = audioOnly || selectedFormat != null,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp),
@@ -279,13 +306,16 @@ private fun formatDuration(seconds: Int): String {
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
 }
 
-private fun startDownload(context: Context, info: MediaInfo, format: MediaFormat) {
+private fun startDownload(context: Context, info: MediaInfo, format: MediaFormat?, audioOnly: Boolean, audioFormat: String, embedThumbnail: Boolean, embedChapters: Boolean) {
     DownloadEngine.getInstance(context).enqueue(
         DownloadEngine.DownloadRequest(
             url      = info.sourceUrl,
-            formatId = format.formatId,
+            formatId = if (audioOnly) "bestaudio/best" else format?.formatId ?: "bestvideo+bestaudio/best",
             title    = info.title,
-            mergeAV  = !format.isAudioOnly
+            mergeAV  = !audioOnly && format?.isAudioOnly != true,
+            audioFormat = if (audioOnly) audioFormat else "",
+            embedThumbnail = embedThumbnail,
+            embedChapters = embedChapters
         )
     )
 }

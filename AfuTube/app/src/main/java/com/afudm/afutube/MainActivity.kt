@@ -26,7 +26,6 @@ import com.afudm.afutube.feature.formats.FormatPickerScreen
 import com.afudm.afutube.core.theme.AfuColors
 import com.afudm.afutube.feature.home.HomeScreen
 import com.afudm.afutube.feature.settings.SettingsScreen
-import com.afudm.afutube.feature.torrent.TorrentPickerScreen
 import com.afudm.afutube.updater.AppUpdate
 import com.afudm.afutube.updater.UpdateManager
 import com.afudm.afutube.runtime.MediaRuntime
@@ -54,7 +53,6 @@ class MainActivity : ComponentActivity() {
 
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
     object Home      : Screen("home",      "Ana Ekran",   Icons.Default.Home)
-    object Torrent   : Screen("torrent",   "Torrent",     Icons.Default.MoveToInbox)
     object Downloads : Screen("downloads", "İndirmeler",  Icons.Default.Download)
     object Settings  : Screen("settings",  "Ayarlar",     Icons.Default.Settings)
 }
@@ -96,7 +94,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
         AlertDialog(
             onDismissRequest = { availableUpdate = null },
             title = { Text("Yeni AfuTube surumu bulundu") },
-            text = { Text("Surum: ${update.versionName}\n\n${update.releaseNotes.ifBlank { "Yeni hata duzeltmeleri ve gelistirmeler." }}") },
+                        text = { Text("Sürüm: ${update.versionName}\n\n${update.releaseNotes.ifBlank { "Yeni hata düzeltmeleri ve geliştirmeler." }}") },
             confirmButton = { TextButton(onClick = {
                 availableUpdate = null
                 if (android.os.Build.VERSION.SDK_INT >= 33 &&
@@ -109,7 +107,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
         )
     }
 
-    val bottomScreens = listOf(Screen.Home, Screen.Torrent, Screen.Downloads, Screen.Settings)
+    val bottomScreens = listOf(Screen.Home, Screen.Downloads, Screen.Settings)
     val showBottomBar = currentRoute in bottomScreens.map { it.route }
 
     Scaffold(
@@ -132,6 +130,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
             composable(Screen.Home.route) {
                 HomeScreen(
                     sharedUrl = shareEvent?.url,
+                    sharedUrls = shareEvent?.urls,
                     sharedEventId = shareEvent?.sequence,
                     onNavigateToFormats = { info ->
                         pendingMediaInfo = info
@@ -144,16 +143,14 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
                     FormatPickerScreen(
                         mediaInfo  = info,
                         onBack     = { navController.popBackStack() },
-                        onDownload = { navController.navigate(Screen.Downloads.route) { launchSingleTop = true } }
+                        onDownload = { navController.navigate(Screen.Downloads.route) { launchSingleTop = true } },
+                        onDownloadQueued = { navController.navigate(Screen.Downloads.route) { launchSingleTop = true } }
                     )
                 }
             }
             composable(Screen.Downloads.route) { DownloadsScreen() }
             composable(Screen.Settings.route)  {
                 SettingsScreen(currentVersionCode = BuildConfig.VERSION_CODE, currentVersionName = BuildConfig.VERSION_NAME, onUpdateFound = { availableUpdate = it })
-            }
-            composable(Screen.Torrent.route)   {
-                TorrentPickerScreen(onBack = { navController.popBackStack() })
             }
         }
     }

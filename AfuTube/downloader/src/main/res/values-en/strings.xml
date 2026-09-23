@@ -1,0 +1,9 @@
+<resources>
+    <string name="youtube_403_download_error">YouTube denied this download (403). Check the link or account and try again.</string>
+    <string name="youtube_429_download_error">YouTube detected too many requests (429). Wait a while and try again.</string>
+    <string name="download_notification_downloading">Downloading…</string>
+    <string name="download_notification_preparing">Preparing…</string>
+    <string name="download_notification_progress">%1$d%% • %2$s</string>
+    <string name="download_notification_channel">AfuTube downloads</string>
+    <string name="download_cancelled">Download stopped.</string>
+</resources>

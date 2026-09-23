@@ -1,0 +1,5 @@
+<resources>
+    <string name="resume_download">Resume</string>
+    <string name="retry_download">Retry</string>
+    <string name="pause_download">Pause</string>
+</resources>
