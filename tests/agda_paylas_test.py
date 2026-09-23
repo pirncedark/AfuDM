@@ -160,7 +160,7 @@ class AgdaPaylasTest(unittest.TestCase):
         js = (ROOT / "ui/app.js").read_text(encoding="utf-8")
         html = (ROOT / "ui/index.html").read_text(encoding="utf-8")
         self.assertIn('call("agda_paylas", gid)', js)
-        self.assertIn('data-act="network-share"', js)
+        self.assertIn('btn("network-share"', js)
         self.assertIn('id="shareQrImg"', html)
         self.assertIn('id="shareSmbPath"', html)
 

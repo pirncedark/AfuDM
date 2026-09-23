@@ -218,27 +218,31 @@ function renderList() {
       stateText += " " + String(when.getHours()).padStart(2, "0") + ":" +
         String(when.getMinutes()).padStart(2, "0");
     }
-    const kill = '<button data-act="remove" data-gid="' + item.gid + '">🗑 ' + t("row.remove") + "</button>";
+    // Satir dugmesi: ikon + etiket; dar alanda etiket gizlenir, title ipucu kalir.
+    const btn = (act, attr, val, icon, label) =>
+      '<button data-act="' + act + '" data-' + attr + '="' + val + '" title="' + escapeHtml(label) + '">' +
+      '<span class="ic">' + icon + '</span><span class="lbl">' + escapeHtml(label) + "</span></button>";
+    const kill = btn("remove", "gid", item.gid, "🗑", t("row.remove"));
     let right;
     if (item.status === "complete") {
-      right = '<button data-act="open" data-gid="' + item.gid + '">📂 ' + t("row.folder") + "</button>"
-          + '<button data-act="network-share" data-gid="' + item.gid + '">📲 ' + t("row.share") + "</button>"
-          + '<button data-act="scan" data-gid="' + item.gid + '">🔍 ' + t("row.scan") + "</button>"
-          + '<button data-act="remove" data-gid="' + item.gid + '">🗑 ' + t("row.delete") + "</button>";
+      right = btn("open", "gid", item.gid, "📂", t("row.folder"))
+          + btn("network-share", "gid", item.gid, "📲", t("row.share"))
+          + btn("scan", "gid", item.gid, "🔍", t("row.scan"))
+          + btn("remove", "gid", item.gid, "🗑", t("row.delete"));
     } else if (item.status === "error") {
-      right = '<button data-act="retry" data-id="' + (item.id || "") + '">🔄 ' + t("row.retry") + "</button>" + kill;
+      right = btn("retry", "id", item.id || "", "🔄", t("row.retry")) + kill;
     } else if (item.status === "paused") {
-      right = '<button data-act="resume" data-gid="' + item.gid + '">▶ ' + t("row.resume") + "</button>" + kill;
+      right = btn("resume", "gid", item.gid, "▶", t("row.resume")) + kill;
     } else if (item.status === "scheduled") {
       right = kill;
     } else {
-      right = '<button data-act="pause" data-gid="' + item.gid + '">⏸ ' + t("row.pause") + "</button>" + kill;
+      right = btn("pause", "gid", item.gid, "⏸", t("row.pause")) + kill;
     }
     if (item.kind === "torrent") {
-      right = '<button data-act="files" data-gid="' + item.gid + '">📁 ' + t("tor.files") + "</button>" + right;
+      right = btn("files", "gid", item.gid, "📁", t("tor.files")) + right;
     }
     if (item.kind === "torrent" && item.status !== "complete" && item.status !== "error") {
-      right = '<button data-act="seed" data-gid="' + item.gid + '">🌱 ' + t("row.seed") + "</button>" + right;
+      right = btn("seed", "gid", item.gid, "🌱", t("row.seed")) + right;
     }
     return (
       '<div class="row ' + rowClass(item) + (state.selected === item.gid ? " sel" : "") +
@@ -253,11 +257,11 @@ function renderList() {
         '<div class="num"><span class="big">' + item.progress.toFixed(1) + "%</span>" +
           '<div class="size-line">' + size(item.completedLength) + " / " +
             (item.totalLength ? size(item.totalLength) : "?") + "</div></div>" +
-        '<div class="num big">' + speed(item.downloadSpeed) +
+        '<div class="num big">' + (item.status === "complete" ? "" : speed(item.downloadSpeed)) +
           (seeding ? '<div class="size-line">' + item.numSeeders + " " + t("row.seed") + "</div>" :
             '<div class="size-line">' + (item.connections ? item.connections + " " + t("row.conn") : "&nbsp;") + "</div>") +
         "</div>" +
-        '<div class="num">' + clock(item.eta) + "</div>" +
+        '<div class="num eta">' + (item.status === "complete" ? "" : clock(item.eta)) + "</div>" +
         '<div class="state">' +
           '<span class="state-badge ' + rowClass(item) + '">' + stateText + '</span>' +
           '<div class="acts">' + right + "</div>" +
