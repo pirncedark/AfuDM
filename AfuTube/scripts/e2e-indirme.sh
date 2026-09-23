@@ -44,7 +44,7 @@ sleep 5; dump oynatici
 cokme_var && { echo "HATA: oynatici acilinca uygulama coktu"; bitir oynatici-cokme; exit 1; }
 grep -q "Dinle" "$OUT/oynatici.xml" || { echo "HATA: oynaticida Dinle modu gorunmuyor"; bitir dinle-yok; exit 1; }
 echo "BASARILI: İzle ile oynatici acildi, Dinle modu gorunuyor"
-tap tap-text "$OUT/oynatici.xml" "Dinle" || { echo "HATA: Dinle modu dugmesi yok"; bitir dinle; exit 1; }
+tap tap-desc "$OUT/oynatici.xml" "Dinle" || { echo "HATA: Dinle modu dugmesi yok"; bitir dinle; exit 1; }
 sleep 1; cokme_var && { echo "HATA: Dinle moduna geciste uygulama coktu"; bitir dinle-cokme; exit 1; }
 adb shell input keyevent KEYCODE_HOME; sleep 3
 cokme_var && { echo "HATA: HOME sonrasi uygulama coktu"; bitir home-cokme; exit 1; }

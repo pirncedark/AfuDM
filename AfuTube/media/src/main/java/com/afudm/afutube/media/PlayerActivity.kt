@@ -34,6 +34,7 @@ class PlayerActivity : Activity() {
     private var fullscreenButton: Button? = null
     private var fullscreen = false
     private var audioOnly = false
+    private var sourceAudioOnly = false
     private lateinit var path: String
     private lateinit var title: String
 
@@ -45,7 +46,8 @@ class PlayerActivity : Activity() {
             setContentView(TextView(this).apply { text = "Dosya bulunamadı"; setTextColor(AfuColors.text.toArgb()); textSize = 20f; setPadding(32, 48, 32, 32); setBackgroundColor(AfuColors.bg.toArgb()) })
             return
         }
-        audioOnly = MediaFileTypeDetector.fromPath(path, this) == MediaFileType.AUDIO
+        sourceAudioOnly = MediaFileTypeDetector.fromPath(path, this) == MediaFileType.AUDIO
+        audioOnly = sourceAudioOnly
         if (intent.getBooleanExtra(EXTRA_LISTEN, false)) audioOnly = true
         if (audioOnly) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         buildUi()
@@ -108,8 +110,8 @@ class PlayerActivity : Activity() {
         playerView?.visibility = if (listen) View.GONE else View.VISIBLE
         audioControls?.visibility = View.VISIBLE
         requestedOrientation = if (listen) ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED else ActivityInfo.SCREEN_ORIENTATION_SENSOR
-        videoButton?.isEnabled = !listen && MediaFileTypeDetector.fromPath(path) != MediaFileType.AUDIO
-        audioButton?.isEnabled = listen
+        videoButton?.isEnabled = !sourceAudioOnly
+        audioButton?.isEnabled = true
         fullscreenButton?.visibility = if (listen) View.GONE else View.VISIBLE
     }
 
