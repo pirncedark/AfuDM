@@ -1,7 +1,8 @@
 """Yerel HTTP API — varsayilan 127.0.0.1, token zorunlu.
 
 Tarayici uzantisi, Telegram kopru scripti veya baska bir araci buradan
-AfuDM'e is verir. Her istek X-AfuDM-Token (veya ?token=) ile dogrulanir.
+AfuDM'e is verir. API istekleri X-AfuDM-Token ile dogrulanir; mobil dosya
+indirmesinin tarayici baglantisi geriye uyumluluk icin query token kullanir.
 
 Kullanici Ayarlar'dan "Telefondan baglan" derse sunucu YEREL AGA acilir
 (0.0.0.0) ve `/m` adresinde telefon arayuzu (ui/mobil.html) servis edilir.
@@ -222,6 +223,7 @@ class _Handler(BaseHTTPRequestHandler):
                 try:
                     self.wfile.write(parca)
                 except (BrokenPipeError, ConnectionResetError):
+                    _LOG.info("Dosya akis istemcisi baglantiyi kapatti: %s", dosya)
                     return  # telefon indirmeyi iptal etti
 
     def _authorized(self, query: dict, allow_query: bool = False) -> bool:
@@ -261,6 +263,7 @@ class _Handler(BaseHTTPRequestHandler):
     def _dosya_akis_gonder(self, yol) -> None:
         """Bellek dostu (chunked) ve duraklatilabilir (Range) dosya sunumu."""
         import urllib.parse
+        yanit_basladi = False
         try:
             file_size = yol.stat().st_size
             range_header = self.headers.get("Range", "")
@@ -289,6 +292,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
             self._cors()
             self.end_headers()
+            yanit_basladi = True
             with open(yol, "rb") as f:
                 f.seek(start)
                 remaining = chunk_size
@@ -302,10 +306,12 @@ class _Handler(BaseHTTPRequestHandler):
             _LOG.info("Dosya akis istemcisi baglantiyi kapatti: %s", yol)
         except OSError:
             _LOG.exception("Dosya akisinda IO hatasi: %s", yol)
-            self._hata(500, "AKIS_HATASI", "Dosya aktarimi baslatilamadi")
+            if not yanit_basladi:
+                self._hata(500, "AKIS_HATASI", "Dosya aktarimi baslatilamadi")
         except Exception:
             _LOG.exception("Dosya akisinda beklenmeyen hata: %s", yol)
-            self._hata(500, "AKIS_HATASI", "Dosya aktarimi baslatilamadi")
+            if not yanit_basladi:
+                self._hata(500, "AKIS_HATASI", "Dosya aktarimi baslatilamadi")
 
     def _body(self) -> dict:
         length = int(self.headers.get("Content-Length") or 0)
@@ -443,6 +449,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self._hata(403, "ERISIM_ENGEL", "Erisim engellendi")
                 return
             try:
+                yanit_basladi = False
                 self.send_response(200)
                 self.send_header("Content-Type", "application/octet-stream")
                 gvn_ad = urllib.parse.quote(yol.name)
@@ -451,11 +458,14 @@ class _Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Length", str(yol.stat().st_size))
                 self._cors()
                 self.end_headers()
+                yanit_basladi = True
                 shutil.copyfileobj(dosya, self.wfile)
             except (BrokenPipeError, ConnectionResetError):
                 _LOG.info("/indir istemcisi aktarimi iptal etti: %s", gid)
             except Exception:
                 _LOG.exception("/indir aktarim hatasi: %s", gid)
+                if not yanit_basladi:
+                    self._hata(500, "AKIS_HATASI", "Dosya aktarimi baslatilamadi")
             finally:
                 try:
                     dosya.close()

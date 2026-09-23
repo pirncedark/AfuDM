@@ -18,8 +18,14 @@ class APIGuvenlikTest(unittest.TestCase):
         self.assertFalse(server._yol_kok_icinde(kok.parent / "disari", kok))
 
     def test_indir_yolu_kok_dizinde_olmali(self):
+        from types import SimpleNamespace
         kok = ROOT / "indirilenler"
-        self.assertFalse(server._yol_kok_icinde(kok.parent / "gizli.txt", kok))
+        manager = SimpleNamespace(
+            resolve_item_path=lambda gid: kok.parent / "gizli.txt",
+            current_download_dir=lambda: kok,
+        )
+        with self.assertRaises(PermissionError):
+            server._indir_yolu(manager, "gizli")
 
     def test_cors_yalniz_uzanti_ve_loopback(self):
         self.assertTrue(server._origin_izinli("chrome-extension://abcdefghijklmnop"))
