@@ -25,7 +25,7 @@ from .dosya_adi import resolve_filename
 from . import cerez, eklenti, lang, models, paths, trackers, rules, settings_validation
 from .automation import AutomationWorker
 from . import proxy as P
-from .daemon import Aria2Daemon
+from .daemon import Aria2Daemon, save_auth_required
 from .db import Store
 from .windows_integration import WindowsIntegration
 from .hata import BadSource, KayitYok, RenewDesteklenmez
@@ -93,6 +93,7 @@ class Manager:
         # Oturum cerezleri: kayit kimligi -> cerezler. BILEREK veritabaninda degil
         # (bkz. core/cerez.py); is bitince/silinince birakilir.
         self._cerezler: dict[int, list[dict]] = {}
+        self._auth_required_gids: set[str] = set()
         self.automation = AutomationWorker(self.store, self.notify_telegram)
         # v2.0 Plugin Platform: eklenti servisi TEK kaynak — pywebview koprusu
         # ve HTTP API ayni nesneyi kullanir (ayri durum tutulmaz).
@@ -132,6 +133,13 @@ class Manager:
         cerez.artiklari_temizle()
         try:
             self.rpc = self.daemon.start()
+            auth_file = paths.SESSION_FILE.with_name("aria2.auth-required.json")
+            try:
+                self._auth_required_gids = {
+                    str(gid) for gid in json.loads(auth_file.read_text("utf-8")) if gid
+                }
+            except (OSError, ValueError, TypeError):
+                self._auth_required_gids = set()
         except Exception as exc:
             self.last_error = f"aria2c baslatilamadi: {exc}"
             self.store.log("warn", self.last_error)
@@ -710,6 +718,8 @@ class Manager:
         return True
 
     def resume(self, gid: str) -> bool:
+        if gid in getattr(self, "_auth_required_gids", set()):
+            raise ValueError("Kaydedilen oturumdaki giris bilgisi silindi; yeni bilgilerle indirmeyi Yenile.")
         if not self.store.by_gid(gid):
             raise KayitYok("kayit bulunamadi: %s" % gid)
         if gid.startswith("yt:"):
@@ -814,7 +824,7 @@ class Manager:
                     pass
 
             try:
-                self.rpc.save_session()
+                self.daemon.save_session()
             except Exception:
                 pass
         if row:
@@ -847,6 +857,7 @@ class Manager:
         if actual_gid.startswith("yt:"):
             cerez.sil(actual_gid)
         self._cerez_birak(row)
+        self._auth_gerekli_temizle(actual_gid)
         if row:
             try:
                 self.store.update_by_id(row["id"], status="removed", finished_at=time.time())
@@ -963,6 +974,13 @@ class Manager:
         if row:
             self._cerezler.pop(row["id"], None)
 
+    def _auth_gerekli_temizle(self, gid: str) -> None:
+        gids = getattr(self, "_auth_required_gids", None)
+        if gids is None or str(gid) not in gids:
+            return
+        gids.discard(str(gid))
+        save_auth_required(self._auth_required_gids)
+
     @staticmethod
     def _delete_targets(targets: list[Path], row: dict | None) -> None:
         """Dosyalari, klasorleri, temp/part ve .aria2 kontrol dosyalarini temizle;
@@ -1077,10 +1095,25 @@ class Manager:
                 self.pause(gid)
 
     def resume_all(self) -> None:
-        try:
-            self.rpc.unpause_all()
-        except Aria2Error:
-            pass
+        auth_required = getattr(self, "_auth_required_gids", set())
+        if auth_required:
+            try:
+                statuses = (self.rpc.tell_active() + self.rpc.tell_waiting(0, 1000)
+                            + self.rpc.tell_stopped(0, 1000))
+                for status in statuses:
+                    gid = status.get("gid", "")
+                    if gid and gid not in auth_required and status.get("status") == "paused":
+                        try:
+                            self.rpc.unpause(gid)
+                        except Aria2Error:
+                            pass
+            except Aria2Error:
+                pass
+        else:
+            try:
+                self.rpc.unpause_all()
+            except Aria2Error:
+                pass
         for row in self.store.list():
             if row["status"] == "paused" and (row["gid"] or "").startswith("yt:"):
                 self.resume(row["gid"])
@@ -1089,6 +1122,8 @@ class Manager:
         row = self.store.by_id(row_id)
         if not row:
             raise ValueError("kayit bulunamadi")
+        if row.get("gid") in getattr(self, "_auth_required_gids", set()):
+            raise ValueError("Bu indirme yeni giris bilgisi gerektiriyor; Yenile akisini kullanin.")
         self.store.update_by_id(row_id, status="queued", gid=None, error=None)
         return self._launch(self.store.by_id(row_id))  # type: ignore[arg-type]
 
@@ -1192,6 +1227,7 @@ class Manager:
             error=None,
             status="active" if (aktif or hatali) else durum,
         )
+        self._auth_gerekli_temizle(gid)
         if aktif or hatali:
             try:
                 self.rpc.unpause(gid)
@@ -1497,7 +1533,8 @@ class Manager:
             "id": row["id"] if row else None,
             "gid": gid,
             "kind": "torrent" if is_torrent else (row["kind"] if row else "http"),
-            "status": status.get("status", "unknown"),
+            "status": ("error" if gid in getattr(self, "_auth_required_gids", set())
+                       else status.get("status", "unknown")),
             "title": self.clean_title(bt_name or name or (row["title"] if row else gid)),
             "filename": name,
             "totalLength": total,
@@ -1510,7 +1547,11 @@ class Manager:
             "seeder": status.get("seeder") == "true",
             "eta": eta,
             "dir": status.get("dir", ""),
-            "errorMessage": status.get("errorMessage", ""),
+            "errorMessage": (
+                "Kaydedilen oturumdaki Cookie/Authorization güvenlik için silindi. Yeni giriş bilgileriyle indirmeyi Yenile."
+                if gid in getattr(self, "_auth_required_gids", set())
+                else status.get("errorMessage", "") or (row or {}).get("error", "")
+            ),
             "infoHash": status.get("infoHash", ""),
             "numPieces": int(status.get("numPieces", 0) or 0),
             "source": row["source"] if row else "",
@@ -1892,11 +1933,16 @@ class Manager:
                 if name:
                     fields["filename"] = name
                 if state == "error":
-                    fields["error"] = status.get("errorMessage", "")[:500]
+                    fields["error"] = (
+                        "Kaydedilen oturumdaki Cookie/Authorization guvenlik icin silindi. Yeni giris bilgileriyle indirmeyi Yenile."
+                        if gid in getattr(self, "_auth_required_gids", set())
+                        else status.get("errorMessage", "")[:500]
+                    )
                     fields["finished_at"] = time.time()
                 if state == "complete":
                     fields["finished_at"] = time.time()
                     self._cerez_birak(row)
+                    self._auth_gerekli_temizle(gid)
                 self.store.update_by_gid(gid, **fields)
             # magnet -> gercek torrent: aria2 yeni GID uretir, kaydi tasiyoruz
             followed = status.get("followedBy") or []
