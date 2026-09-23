@@ -49,7 +49,7 @@ sleep 1; cokme_var && { echo "HATA: Dinle moduna geciste uygulama coktu"; bitir 
 adb shell input keyevent KEYCODE_HOME; sleep 3
 cokme_var && { echo "HATA: HOME sonrasi uygulama coktu"; bitir home-cokme; exit 1; }
 adb shell dumpsys media_session > "$OUT/media-session.txt"
-grep -A20 "com.afudm.afutube" "$OUT/media-session.txt" | grep -Eq 'state=3|PlaybackState \{state=3' || { echo "HATA: HOME sonrasi media session PLAYING degil"; bitir arkaplan; exit 1; }
+grep -A20 "com.afudm.afutube" "$OUT/media-session.txt" | grep -Eq 'state=3|state=PLAYING\(3\)' || { echo "HATA: HOME sonrasi media session PLAYING degil"; bitir arkaplan; exit 1; }
 echo "BASARILI: HOME sonrasi arka plan ses oturumu PLAYING (state=3)"
 adb shell monkey -p "$PKG" 1 >/dev/null 2>&1; sleep 2; adb shell input keyevent KEYCODE_BACK; sleep 2; dump listeye-don
 cokme_var && { echo "HATA: listeye donuste uygulama coktu"; bitir liste-cokme; exit 1; }
