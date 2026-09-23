@@ -199,11 +199,28 @@ private fun DownloadCard(
             }
             if (outputPath != null) {
                 val audioOnly = MediaFileTypeDetector.fromPath(outputPath) == MediaFileType.AUDIO
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (!audioOnly) TextButton(onClick = { onPlay(outputPath, false) }) { Text("İzle", modifier = Modifier.semantics { contentDescription = "İzle" }) }
-                    TextButton(onClick = { onPlay(outputPath, true) }) { Text("Dinle", modifier = Modifier.semantics { contentDescription = "Dinle" }) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (!audioOnly) PlayPill(label = "İzle", listen = false, onClick = { onPlay(outputPath, false) })
+                    PlayPill(label = "Dinle", listen = true, onClick = { onPlay(outputPath, true) })
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PlayPill(label: String, listen: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(50)
+    Surface(
+        onClick = onClick,
+        shape = shape,
+        color = if (listen) AfuColors.surface else AfuColors.accent,
+        border = if (listen) androidx.compose.foundation.BorderStroke(1.dp, AfuColors.accent) else null,
+        modifier = Modifier.height(34.dp).semantics { contentDescription = label }
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Icon(if (listen) Icons.Default.Headphones else Icons.Default.PlayArrow, null, tint = if (listen) AfuColors.accent else AfuColors.text, modifier = Modifier.size(16.dp))
+            Text(label, color = AfuColors.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
