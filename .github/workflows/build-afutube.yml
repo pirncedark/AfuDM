@@ -64,6 +64,14 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload all ABI APKs for emulator test
+        uses: actions/upload-artifact@v7
+        with:
+          name: AfuTube-All-APKs
+          path: AfuTube/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 3
+
       - name: Upload build logs on failure
         uses: actions/upload-artifact@v7
         if: failure()
@@ -73,3 +81,54 @@ jobs:
             AfuTube/app/build/reports/
             AfuTube/build/reports/
           retention-days: 7
+
+  # "HAZIR" demeden once: uygulama emulatorde AG KAPALIYKEN acilip ana ekrani gostermeli.
+  e2e-acilis:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: AfuTube-All-APKs
+          path: apks
+
+      - name: Pick APK for x86_64 emulator
+        run: |
+          ls -la apks
+          APK=$(ls apks/*x86_64*.apk 2>/dev/null | head -1)
+          if [ -n "$APK" ] && unzip -l "$APK" | grep -q 'lib/x86_64/'; then
+            echo "x86_64 native kutuphaneli APK: $APK"
+          else
+            APK=$(ls apks/*universal*.apk | head -1)
+            echo "x86_64 split yok/bos; universal (ARM ceviri ile): $APK"
+          fi
+          cp "$APK" apks/secilen.apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Offline startup smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash AfuTube/scripts/e2e-acilis.sh apks/secilen.apk
+
+      - name: Upload e2e evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: AfuTube-e2e-acilis
+          path: e2e-out/
+          retention-days: 14
