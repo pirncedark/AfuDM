@@ -37,6 +37,7 @@ fun SettingsScreen(
     var extractorAutoUpdate by remember { mutableStateOf(ExtractorUpdater.autoUpdateEnabled(context)) }
     var autoUpdate   by remember { mutableStateOf(UpdateManager.autoCheckEnabled(context)) }
     var appUpdateStatus by remember { mutableStateOf("") }
+    var includePrereleases by remember { mutableStateOf(UpdateManager.includePrereleases(context)) }
 
     LaunchedEffect(Unit) {
         ytdlpVersion = ExtractorUpdater.currentVersion(context)
@@ -80,11 +81,21 @@ fun SettingsScreen(
                             UpdateManager.setAutoCheckEnabled(context, it)
                         })
                     }
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Test sürümlerini göster", color = AfuColors.text, fontSize = 14.sp)
+                            Text("Pre-release APK güncellemelerini listele", color = AfuColors.textMuted, fontSize = 12.sp)
+                        }
+                        Switch(checked = includePrereleases, onCheckedChange = {
+                            includePrereleases = it
+                            UpdateManager.setIncludePrereleases(context, it)
+                        })
+                    }
                     Spacer(Modifier.height(8.dp))
                     Button(onClick = {
                         scope.launch {
                             appUpdateStatus = "Denetleniyor..."
-                            runCatching { UpdateManager.check(currentVersionCode) }
+                            runCatching { UpdateManager.check(currentVersionCode, includePrereleases) }
                                 .onSuccess { update ->
                                     if (update == null) appUpdateStatus = "Uygulama guncel"
                                     else { appUpdateStatus = "Yeni surum bulundu"; onUpdateFound(update) }

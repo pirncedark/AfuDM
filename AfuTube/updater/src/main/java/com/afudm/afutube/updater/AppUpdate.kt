@@ -22,7 +22,10 @@ data class AppUpdate(
     val versionCode: Int,
     val releaseNotes: String,
     val apkUrl: String,
-    val checksumUrl: String
+    val checksumUrl: String,
+    val minSdk: Int = 24,
+    val sha256: String = "",
+    val prerelease: Boolean = false
 )
 
 object AppVersion {
@@ -36,12 +39,14 @@ object AppVersion {
 }
 
 object AppUpdateParser {
-    fun latest(json: String, currentVersionCode: Int): AppUpdate? {
+    fun latest(json: String, currentVersionCode: Int, includePrereleases: Boolean = false): AppUpdate? {
         val releases = JSONArray(json)
         val candidates = (0 until releases.length()).mapNotNull { index ->
             val release = releases.optJSONObject(index) ?: return@mapNotNull null
             val tag = release.optString("tag_name")
-            val version = Regex("^afutube-v(\\d+\\.\\d+\\.\\d+)$").find(tag)?.groupValues?.get(1)
+            val prerelease = release.optBoolean("prerelease", false)
+            if (prerelease && !includePrereleases) return@mapNotNull null
+            val version = Regex("^afutube-v(\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?)$").find(tag)?.groupValues?.get(1)
                 ?: return@mapNotNull null
             val assets = release.optJSONArray("assets") ?: return@mapNotNull null
             var apkUrl = ""
@@ -54,7 +59,7 @@ object AppUpdateParser {
                 }
             }
             if (apkUrl.isBlank() || checksumUrl.isBlank()) return@mapNotNull null
-            AppUpdate(version, AppVersion.code(version), release.optString("body"), apkUrl, checksumUrl)
+            AppUpdate(version, AppVersion.code(version), release.optString("body"), apkUrl, checksumUrl, prerelease = prerelease)
         }
         return candidates.maxByOrNull { it.versionCode }?.takeIf { it.versionCode > currentVersionCode }
     }
@@ -77,13 +82,14 @@ object UpdateManager {
     private const val AUTO = "auto_check"
     private const val LAST_CHECK = "last_check"
     private const val DAY_MS = 24L * 60 * 60 * 1000
+    private const val INCLUDE_PRERELEASES = "include_prereleases"
 
-    suspend fun check(currentVersionCode: Int): AppUpdate? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    suspend fun check(currentVersionCode: Int, includePrereleases: Boolean = false): AppUpdate? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val connection = URL(API).openConnection() as HttpURLConnection
         connection.setRequestProperty("Accept", "application/vnd.github+json")
         connection.connectTimeout = 10_000
         connection.readTimeout = 15_000
-        connection.inputStream.bufferedReader().use { AppUpdateParser.latest(it.readText(), currentVersionCode) }
+        connection.inputStream.bufferedReader().use { AppUpdateParser.latest(it.readText(), currentVersionCode, includePrereleases) }
     }
 
     fun autoCheckEnabled(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -99,6 +105,12 @@ object UpdateManager {
 
     fun markChecked(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         .edit().putLong(LAST_CHECK, System.currentTimeMillis()).apply()
+
+    fun includePrereleases(context: Context): Boolean = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .getBoolean(INCLUDE_PRERELEASES, false)
+
+    fun setIncludePrereleases(context: Context, enabled: Boolean) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .edit().putBoolean(INCLUDE_PRERELEASES, enabled).apply()
 
     fun enqueueDownload(context: Context, update: AppUpdate) {
         val data = Data.Builder().putString("apkUrl", update.apkUrl).putString("checksumUrl", update.checksumUrl).build()

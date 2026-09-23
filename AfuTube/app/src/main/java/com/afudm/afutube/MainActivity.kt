@@ -76,7 +76,7 @@ fun AfuTubeApp(sharedUrl: String? = null) {
     LaunchedEffect(Unit) {
         if (UpdateManager.shouldCheckAutomatically(context)) {
             UpdateManager.markChecked(context)
-            runCatching { UpdateManager.check(BuildConfig.VERSION_CODE) }.getOrNull()?.let { availableUpdate = it }
+            runCatching { UpdateManager.check(BuildConfig.VERSION_CODE, UpdateManager.includePrereleases(context)) }.getOrNull()?.let { availableUpdate = it }
         }
     }
 
