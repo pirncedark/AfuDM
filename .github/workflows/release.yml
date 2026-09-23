@@ -58,6 +58,9 @@ jobs:
       - name: Motorlari indir
         run: python -c "from core import engines; engines.indir('aria2c')"
 
+      - name: PyInstaller ile EXE derle
+        run: python -m PyInstaller --noconfirm --clean AfuDM.spec
+
       - name: Surum kapisi + paket
         shell: pwsh
         run: |

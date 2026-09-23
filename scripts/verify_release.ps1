@@ -24,10 +24,13 @@ if (-not $ZipPath) {
 # Kontrol release.yml icinde, yayinlama adiminin HEMEN ONUNDE yapilir.
 
 if (-not (Test-Path $ZipPath)) { Write-Host "zip yok: $ZipPath"; exit 1 }
+$surum = & python (Join-Path $kok "scripts\surum_oku.py")
+if ($LASTEXITCODE -ne 0) { Write-Host "surum.py okunamadi"; exit 1 }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+$tempDir = Join-Path ([IO.Path]::GetTempPath()) ("afudm-verify-" + [guid]::NewGuid().ToString("N"))
 try {
-    $adlar = $zip.Entries | ForEach-Object { $_.FullName }
+    $adlar = $zip.Entries | ForEach-Object { $_.FullName.Replace('\', '/') }
     $gerekli = @(
         "AfuDM.exe",
         "afuadm.py",
@@ -49,6 +52,12 @@ try {
         $adlar | ForEach-Object { Write-Host "  $_" }
         exit 1
     }
+    $exeEntry = $zip.Entries | Where-Object { $_.FullName -like "*AfuDM.exe" } | Select-Object -First 1
+    New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+    $exePath = Join-Path $tempDir "AfuDM.exe"
+    [System.IO.Compression.ZipFileExtensions]::ExtractToFile($exeEntry, $exePath)
+    & python (Join-Path $kok "scripts\verify_exe.py") --exe $exePath --version $surum
+    if ($LASTEXITCODE -ne 0) { Write-Host "GATE HATA: embedded EXE verification failed"; exit 1 }
     $boyut = (Get-Item $ZipPath).Length / 1MB
     $boyutMetin = "{0:N1} MB" -f $boyut
     Write-Host "verify OK: $ZipPath ($boyutMetin), gerekli dosyalar mevcut"
@@ -56,4 +65,5 @@ try {
     exit 0
 } finally {
     $zip.Dispose()
+    if (Test-Path $tempDir) { Remove-Item -LiteralPath $tempDir -Recurse -Force }
 }

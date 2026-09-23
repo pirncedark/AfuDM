@@ -48,6 +48,7 @@ jobs:
       - name: Paket
         run: |
           python -m pip install --quiet pyinstaller
+          python -m PyInstaller --noconfirm --clean AfuDM.spec
           powershell -ExecutionPolicy Bypass -File scripts/build_release.ps1
       - name: Zip + dogrulama + checksum
         shell: pwsh
