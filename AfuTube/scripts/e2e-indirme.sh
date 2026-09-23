@@ -71,14 +71,16 @@ adb shell input keyevent KEYCODE_HOME
 cokme_var && { echo "HATA: İzle HOME sonrasi uygulama coktu"; bitir izle-home-cokme; exit 1; }
 t=0; until oturum_durumu media-session-izle | grep -Eq '2'; do sleep 1; t=$((t+1)); [ $t -ge 6 ] && { echo "HATA: İzle modunda HOME sonrasi media session PAUSED degil ($(oturum_durumu media-session-izle))"; bitir izle-arkaplan; exit 1; }; done
 echo "BASARILI: İzle modunda HOME sonrasi media session PAUSED (state=2)"
-adb shell monkey -p "$PKG" 1 >/dev/null 2>&1; sleep 2; adb shell input keyevent KEYCODE_BACK; sleep 2; dump listeye-don
+# MainActivity singleTask: simgeden acilis ustteki oynaticiyi kapatip listeyi gosterir. Geri tusu YALNIZ
+# oynatici ekrandaysa basilir (listede basmak uygulamadan cikarir, yeniden acilis Ana Ekran sekmesine duser).
+adb shell monkey -p "$PKG" 1 >/dev/null 2>&1; sleep 2; dump listeye-don
 cokme_var && { echo "HATA: listeye donuste uygulama coktu"; bitir liste-cokme; exit 1; }
 for tur in 1 2 3; do
   grep -q "Tamamland" "$OUT/listeye-don.xml" && break
-  adb shell monkey -p "$PKG" 1 >/dev/null 2>&1; sleep 2; dump listeye-don
-  grep -q "Tamamland" "$OUT/listeye-don.xml" && break
-  adb shell input keyevent KEYCODE_BACK; sleep 2; dump listeye-don
- done
+  if grep -q "Tam ekran" "$OUT/listeye-don.xml"; then adb shell input keyevent KEYCODE_BACK
+  else adb shell monkey -p "$PKG" 1 >/dev/null 2>&1; fi
+  sleep 2; dump listeye-don
+done
 grep -q "Tamamland" "$OUT/listeye-don.xml" || { echo "HATA: indirme listesine donulemedi"; bitir liste-yok; exit 1; }
 
 echo "BASARILI: oynaticidan indirme listesine donuldu"
