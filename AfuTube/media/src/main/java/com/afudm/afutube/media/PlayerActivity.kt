@@ -41,6 +41,7 @@ class PlayerActivity : Activity() {
     private lateinit var path: String
     private lateinit var title: String
     private var explicitPath = false
+    private var visible = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,6 +89,8 @@ class PlayerActivity : Activity() {
                         player.seekTo(0)
                         player.play()
                     }
+                    // Kullanici baglanti kurulmadan ekrandan ciktiysa: Izle modunda arka planda calma.
+                    if (!visible && !audioOnly) player.pause()
                 }.onFailure { Log.e("AfuTubePlayer", "Oynatici baglantisi basarisiz", it) }
             }, Executor { it.run() })
         }
@@ -153,7 +156,13 @@ class PlayerActivity : Activity() {
         fullscreenButton?.visibility = if (listen) View.GONE else View.VISIBLE
     }
 
+    override fun onStart() {
+        super.onStart()
+        visible = true
+    }
+
     override fun onStop() {
+        visible = false
         if (!isChangingConfigurations && !audioOnly) controller?.pause()
         super.onStop()
     }
