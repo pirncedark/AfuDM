@@ -103,6 +103,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
                     context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
                 ) notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                 UpdateManager.enqueueDownload(context, update)
+                android.widget.Toast.makeText(context, "Güncelleme indiriliyor — bildirimden takip edebilirsin", android.widget.Toast.LENGTH_LONG).show()
             }) { Text("Indir ve kur") } },
             dismissButton = { TextButton(onClick = { availableUpdate = null }) { Text("Daha sonra") } }
         )
@@ -149,7 +150,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
             }
             composable(Screen.Downloads.route) { DownloadsScreen() }
             composable(Screen.Settings.route)  {
-                SettingsScreen(currentVersionCode = BuildConfig.VERSION_CODE, onUpdateFound = { availableUpdate = it })
+                SettingsScreen(currentVersionCode = BuildConfig.VERSION_CODE, currentVersionName = BuildConfig.VERSION_NAME, onUpdateFound = { availableUpdate = it })
             }
             composable(Screen.Torrent.route)   {
                 TorrentPickerScreen(onBack = { navController.popBackStack() })
