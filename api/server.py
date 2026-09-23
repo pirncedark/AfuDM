@@ -594,11 +594,6 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             if parsed.path == "/add":
                 url = data.get("url") or data.get("source") or ""
-                if (_boolean_al(data, "interactive") and _Handler.on_ask and url.strip()
-                        and self.manager.store.get("kaydetme_penceresi")):
-                    kimlik = _Handler.on_ask(data)
-                    self._send(200, {"ok": True, "pending": True, "id": kimlik})
-                    return
                 hedef = data.get("dest_dir")
                 if hedef:
                     kok = self.manager.current_download_dir()
@@ -606,6 +601,11 @@ class _Handler(BaseHTTPRequestHandler):
                         self._hata(403, "HEDEF_DISARIDA", "hedef klasor indirme kokunun disinda")
                         return
                     hedef = str(Path(hedef).resolve())
+                if (_boolean_al(data, "interactive") and _Handler.on_ask and url.strip()
+                        and self.manager.store.get("kaydetme_penceresi")):
+                    kimlik = _Handler.on_ask(data)
+                    self._send(200, {"ok": True, "pending": True, "id": kimlik})
+                    return
                 if not hedef and data.get("kategori"):
                     # Telefon/uzanti kategori yollayabilir; tam yolu burada kurariz
                     from core import kaydet
