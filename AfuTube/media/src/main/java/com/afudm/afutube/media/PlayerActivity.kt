@@ -14,6 +14,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import androidx.media3.ui.PlayerControlView
@@ -107,6 +108,10 @@ class PlayerActivity : Activity() {
 
     private fun showMode(listen: Boolean) {
         audioOnly = listen
+        if (listen && controller?.playbackState == Player.STATE_ENDED) {
+            controller?.seekTo(0)
+            controller?.play()
+        }
         playerView?.visibility = if (listen) View.GONE else View.VISIBLE
         audioControls?.visibility = View.VISIBLE
         requestedOrientation = if (listen) ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED else ActivityInfo.SCREEN_ORIENTATION_SENSOR
