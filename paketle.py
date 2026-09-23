@@ -45,9 +45,24 @@ def klasor_boyutu(yol: Path) -> int:
     return sum(f.stat().st_size for f in yol.rglob("*") if f.is_file())
 
 
+def _exe_kilit_kontrolu(hedef: Path) -> None:
+    """Silmeden once paketteki her exe'nin yazmaya acilabildigini dogrula."""
+    if not hedef.exists():
+        return
+    for exe in sorted(hedef.rglob("*.exe")):
+        try:
+            with exe.open("r+b"):
+                pass
+        except PermissionError as exc:
+            raise SystemExit(
+                f"HATA: {exe} calisiyor, kapatip tekrar deneyin: {exe.name}"
+            ) from exc
+
+
 def paketle(tam: bool) -> Path:
     hedef = CIKTI / "AfuDM"
     if CIKTI.exists():
+        _exe_kilit_kontrolu(hedef)
         shutil.rmtree(CIKTI)
     hedef.mkdir(parents=True)
 

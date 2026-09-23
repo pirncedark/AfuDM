@@ -71,6 +71,7 @@ class Manager:
     def __init__(self) -> None:
         paths.ensure_dirs()
         self.store = Store()
+        self._recover_orphan_video_jobs()
         try:
             self.windows = WindowsIntegration(self.store)
         except Exception:
@@ -97,6 +98,33 @@ class Manager:
         # ve HTTP API ayni nesneyi kullanir (ayri durum tutulmaz).
         self.eklentiler = eklenti.EklentiServisi(self.store)
         self.windows_notify = None
+
+    def _recover_orphan_video_jobs(self) -> None:
+        """Onceki oturumdan kalmis, artik calisan isi olmayan video kayitlarini duzelt."""
+        rows = self.store.list(limit=100_000)
+        tamamlananlar = {
+            (row.get("source"), row.get("dest_dir"))
+            for row in rows
+            if row.get("kind") == "video" and row.get("status") == "complete"
+        }
+        tamamlanan_basliklar = {
+            (json.loads(row.get("options") or "{}").get("title"), row.get("dest_dir"))
+            for row in rows
+            if row.get("kind") == "video"
+            and row.get("status") == "complete"
+            and json.loads(row.get("options") or "{}").get("title")
+        }
+        for row in rows:
+            if row.get("kind") != "video" or row.get("status") not in ("active", "waiting"):
+                continue
+            # Tamamlanmis kardesi varsa eski/tekrarlanan is gizlenir; dosyalara dokunulmaz.
+            title = json.loads(row.get("options") or "{}").get("title")
+            kardes_tamamlandi = (
+                (row.get("source"), row.get("dest_dir")) in tamamlananlar
+                or (title and (title, row.get("dest_dir")) in tamamlanan_basliklar)
+            )
+            durum = "removed" if kardes_tamamlandi else "paused"
+            self.store.update_by_id(row["id"], status=durum)
 
 
     # --- yasam dongusu ----------------------------------------------------
@@ -853,11 +881,23 @@ class Manager:
             dest_dir = row.get("dest_dir") or row.get("dir") or ""
             filename = row.get("filename") or ""
             if dest_dir and filename:
-                candidates.append(Path(dest_dir) / filename)
-                escaped = glob.escape(filename)
-                matches = glob.glob(str(Path(dest_dir) / f"{escaped}*"))
-                for m in matches:
-                    candidates.append(Path(m))
+                merged = ytdlp.birlesik_dosya_bul(dest_dir, filename)
+                if merged and merged.name != filename:
+                    try:
+                        self.store.update_by_id(
+                            row["id"],
+                            filename=merged.name,
+                            total_bytes=merged.stat().st_size,
+                        )
+                    except (OSError, KeyError):
+                        pass
+                    candidates.append(merged)
+                else:
+                    candidates.append(Path(dest_dir) / filename)
+                    escaped = glob.escape(filename)
+                    matches = glob.glob(str(Path(dest_dir) / f"{escaped}*"))
+                    for m in matches:
+                        candidates.append(Path(m))
 
         # 3. Video jobs (yt-dlp)
         if gid in self.video_jobs:
@@ -879,11 +919,15 @@ class Manager:
                     if item.get("target_path"):
                         candidates.append(Path(item["target_path"]))
                     if dest_dir and filename:
-                        candidates.append(Path(dest_dir) / filename)
-                        escaped = glob.escape(filename)
-                        matches = glob.glob(str(Path(dest_dir) / f"{escaped}*"))
-                        for m in matches:
-                            candidates.append(Path(m))
+                        merged = ytdlp.birlesik_dosya_bul(dest_dir, filename)
+                        if merged and merged.name != filename:
+                            candidates.append(merged)
+                        else:
+                            candidates.append(Path(dest_dir) / filename)
+                            escaped = glob.escape(filename)
+                            matches = glob.glob(str(Path(dest_dir) / f"{escaped}*"))
+                            for m in matches:
+                                candidates.append(Path(m))
         except Exception:
             pass
 
