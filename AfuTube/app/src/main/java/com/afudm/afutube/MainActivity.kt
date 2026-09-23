@@ -87,12 +87,23 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
         }
     }
 
+    // Android 13+: indirme bitince "Kurmak icin dokun" bildirimi gorunebilsin diye izin iste.
+    val notificationPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { }
+
     availableUpdate?.let { update ->
         AlertDialog(
             onDismissRequest = { availableUpdate = null },
             title = { Text("Yeni AfuTube surumu bulundu") },
             text = { Text("Surum: ${update.versionName}\n\n${update.releaseNotes.ifBlank { "Yeni hata duzeltmeleri ve gelistirmeler." }}") },
-            confirmButton = { TextButton(onClick = { availableUpdate = null; UpdateManager.enqueueDownload(context, update) }) { Text("Indir ve kur") } },
+            confirmButton = { TextButton(onClick = {
+                availableUpdate = null
+                if (android.os.Build.VERSION.SDK_INT >= 33 &&
+                    context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                UpdateManager.enqueueDownload(context, update)
+            }) { Text("Indir ve kur") } },
             dismissButton = { TextButton(onClick = { availableUpdate = null }) { Text("Daha sonra") } }
         )
     }
