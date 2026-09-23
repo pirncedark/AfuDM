@@ -62,10 +62,13 @@ echo "BASARILI: İzle modunda HOME sonrasi media session PAUSED (state=2)"
 adb shell monkey -p "$PKG" 1 >/dev/null 2>&1; sleep 2; adb shell input keyevent KEYCODE_BACK; sleep 2; dump listeye-don
 cokme_var && { echo "HATA: listeye donuste uygulama coktu"; bitir liste-cokme; exit 1; }
 for tur in 1 2 3; do
-  grep -q "Tamamlandı" "$OUT/listeye-don.xml" && break
+  grep -q "Tamamland?" "$OUT/listeye-don.xml" && break
+  adb shell monkey -p "$PKG" 1 >/dev/null 2>&1; sleep 2; dump listeye-don
+  grep -q "Tamamland?" "$OUT/listeye-don.xml" && break
   adb shell input keyevent KEYCODE_BACK; sleep 2; dump listeye-don
  done
-grep -q "Tamamlandı" "$OUT/listeye-don.xml" || { echo "HATA: indirme listesine donulemedi"; bitir liste-yok; exit 1; }
+grep -q "Tamamland?" "$OUT/listeye-don.xml" || { echo "HATA: indirme listesine donulemedi"; bitir liste-yok; exit 1; }
+
 echo "BASARILI: oynaticidan indirme listesine donuldu"
 
 dump sil-oncesi
