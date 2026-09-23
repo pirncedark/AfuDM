@@ -107,11 +107,23 @@ class Manager:
             for row in rows
             if row.get("kind") == "video" and row.get("status") == "complete"
         }
+        tamamlanan_basliklar = {
+            (json.loads(row.get("options") or "{}").get("title"), row.get("dest_dir"))
+            for row in rows
+            if row.get("kind") == "video"
+            and row.get("status") == "complete"
+            and json.loads(row.get("options") or "{}").get("title")
+        }
         for row in rows:
             if row.get("kind") != "video" or row.get("status") not in ("active", "waiting"):
                 continue
             # Tamamlanmis kardesi varsa eski/tekrarlanan is gizlenir; dosyalara dokunulmaz.
-            durum = "removed" if (row.get("source"), row.get("dest_dir")) in tamamlananlar else "paused"
+            title = json.loads(row.get("options") or "{}").get("title")
+            kardes_tamamlandi = (
+                (row.get("source"), row.get("dest_dir")) in tamamlananlar
+                or (title and (title, row.get("dest_dir")) in tamamlanan_basliklar)
+            )
+            durum = "removed" if kardes_tamamlandi else "paused"
             self.store.update_by_id(row["id"], status=durum)
 
 
