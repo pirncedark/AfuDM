@@ -34,7 +34,8 @@ class DownloadEngine(private val context: Context) {
         val title     : String,
         val outputDir : String? = null,
         val mergeAV   : Boolean = true,
-        val kind      : Kind    = Kind.HTTP
+        val kind      : Kind    = Kind.HTTP,
+        val audioFormat: String? = null
     )
 
     /** İndirmeyi kuyruğa ekler, WorkRequest ID'sini döndürür */
@@ -49,6 +50,7 @@ class DownloadEngine(private val context: Context) {
                     .putString(DownloadWorker.KEY_URL,       request.url)
                     .putString(DownloadWorker.KEY_FORMAT_ID, request.formatId.ifBlank { "bestvideo+bestaudio/best" })
                     .putBoolean(DownloadWorker.KEY_MERGE,    request.mergeAV)
+                    .putString(DownloadWorker.KEY_AUDIO_FORMAT, request.audioFormat)
                     .apply { request.outputDir?.let { putString(DownloadWorker.KEY_OUTPUT_DIR, it) } }
                     .build()
 

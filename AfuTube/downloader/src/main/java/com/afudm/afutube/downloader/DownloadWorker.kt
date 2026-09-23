@@ -31,6 +31,7 @@ class DownloadWorker(
         const val KEY_OUTPUT_DIR = "output_dir"
         const val KEY_MERGE      = "merge_av"   // video+audio ayrı stream → FFmpeg merge
 
+        const val KEY_AUDIO_FORMAT = "audio_format"
         const val PROGRESS_PERCENT = "progress_percent"
         const val PROGRESS_SPEED   = "progress_speed"
         const val PROGRESS_ETA     = "progress_eta"
@@ -57,6 +58,7 @@ class DownloadWorker(
             ?: applicationContext.getExternalFilesDir(null)?.absolutePath
             ?: return@withContext Result.failure()
         val mergeAV   = params.inputData.getBoolean(KEY_MERGE, true)
+        val audioFormat = params.inputData.getString(KEY_AUDIO_FORMAT)?.lowercase()
         val outputRoot = java.io.File(outputDir)
         val before = outputRoot.listFiles()?.associate { it.absolutePath to (it.lastModified() to it.length()) }.orEmpty()
 
@@ -70,7 +72,11 @@ class DownloadWorker(
             // --print yt-dlp'yi sessiz moda sokar (ilerleme kaybolur); dosya yolu ayri dosyaya yazilir.
             addCommands(listOf("--print-to-file", "after_move:filepath", pathFile.absolutePath))
             addOption("--no-playlist")
-            if (mergeAV) {
+            if (audioFormat != null) {
+                addOption("-x")
+                addOption("--audio-format", audioFormat)
+                addOption("--audio-quality", "0")
+            } else if (mergeAV) {
                 addOption("--merge-output-format", "mp4")
             }
             addOption("--external-downloader", "aria2c")

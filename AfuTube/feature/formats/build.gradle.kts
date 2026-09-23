@@ -19,4 +19,5 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.5.0")
     implementation(project(":core"))
     implementation(project(":downloader"))
+    testImplementation("junit:junit:4.13.2")
 }

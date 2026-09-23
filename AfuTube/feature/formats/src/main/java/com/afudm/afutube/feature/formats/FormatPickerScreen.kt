@@ -1,8 +1,8 @@
 package com.afudm.afutube.feature.formats
 
 import android.content.Context
-import androidx.compose.animation.*
-import androidx.compose.foundation.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,109 +23,97 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.afudm.afutube.core.extractor.MediaFormat
 import com.afudm.afutube.core.extractor.MediaInfo
-import com.afudm.afutube.downloader.DownloadEngine
 import com.afudm.afutube.core.theme.AfuColors
+import com.afudm.afutube.downloader.DownloadEngine
 
 @Composable
 fun FormatPickerScreen(
-    mediaInfo  : MediaInfo,
-    onBack     : () -> Unit = {},
-    onDownload : (MediaFormat) -> Unit = {}
+    mediaInfo: MediaInfo,
+    onBack: () -> Unit = {},
+    onDownload: (MediaFormat) -> Unit = {}
 ) {
     val context = LocalContext.current
-    var selectedFormat by remember { mutableStateOf<MediaFormat?>(null) }
+    val simplified = remember(mediaInfo.formats) { FormatSimplifier.simplify(mediaInfo.formats) }
+    var selectedOption by remember(mediaInfo) { mutableStateOf(simplified.defaultVideoOption) }
+    var allFormatsExpanded by remember(mediaInfo) { mutableStateOf(false) }
 
-    val videoFormats = remember(mediaInfo) {
-        mediaInfo.formats.filter { !it.isAudioOnly }
-    }
-    val audioFormats = remember(mediaInfo) {
-        mediaInfo.formats.filter { it.isAudioOnly }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(AfuColors.bg)
-    ) {
-        // ── Toolbar ──────────────────────────────────────────────────────────
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, null, tint = AfuColors.text)
-            }
-            Text(
-                text  = "Format Seç",
-                color = AfuColors.text,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 18.sp
-            )
+    Column(Modifier.fillMaxSize().background(AfuColors.bg)) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null, tint = AfuColors.text) }
+            Text("Format Seç", color = AfuColors.text, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
         }
-
         LazyColumn(
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // ── Medya bilgisi ──────────────────────────────────────────────
+            item { MediaInfoCard(mediaInfo) }
+            if (simplified.videoOptions.isNotEmpty()) {
+                item { SectionHeader("Video") }
+                items(simplified.videoOptions) { option ->
+                    SimpleFormatRow(option, selectedOption == option) { selectedOption = option }
+                }
+            }
+            if (simplified.hasAudio) {
+                item { SectionHeader("Ses") }
+                items(simplified.audioOptions) { option ->
+                    SimpleFormatRow(option, selectedOption == option) { selectedOption = option }
+                }
+            }
             item {
-                MediaInfoCard(mediaInfo)
-            }
-
-            // ── Video formatları ────────────────────────────────────────────
-            if (videoFormats.isNotEmpty()) {
-                item {
-                    SectionHeader("🎬 Video", videoFormats.size)
-                }
-                items(videoFormats) { fmt ->
-                    FormatRow(
-                        format     = fmt,
-                        isSelected = selectedFormat == fmt,
-                        onClick    = { selectedFormat = if (selectedFormat == fmt) null else fmt }
-                    )
+                TextButton(onClick = { allFormatsExpanded = !allFormatsExpanded }) {
+                    Text("${if (allFormatsExpanded) "⌄" else "›"} Tüm formatlar (${mediaInfo.formats.size})", color = AfuColors.textMuted)
                 }
             }
-
-            // ── Ses formatları ─────────────────────────────────────────────
-            if (audioFormats.isNotEmpty()) {
-                item {
-                    SectionHeader("🎵 Ses / Audio", audioFormats.size)
-                }
-                items(audioFormats) { fmt ->
-                    FormatRow(
-                        format     = fmt,
-                        isSelected = selectedFormat == fmt,
-                        onClick    = { selectedFormat = if (selectedFormat == fmt) null else fmt }
-                    )
+            if (allFormatsExpanded) {
+                items(mediaInfo.formats) { format ->
+                    FormatRow(format, selectedOption?.sourceFormat == format) {
+                        selectedOption = FormatOption(
+                            label = format.label,
+                            formatId = format.formatId,
+                            estimatedSize = format.fileSizeMB,
+                            mergeAV = !format.isAudioOnly,
+                            sourceFormat = format
+                        )
+                    }
                 }
             }
-
-            // ── İndir butonu ────────────────────────────────────────────────
             item {
                 Spacer(Modifier.height(8.dp))
                 Button(
-                    onClick  = { selectedFormat?.let { onDownload(it); startDownload(context, mediaInfo, it) } },
-                    enabled  = selectedFormat != null,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    colors   = ButtonDefaults.buttonColors(
-                        containerColor         = AfuColors.accent,
+                    onClick = {
+                        selectedOption?.let { option ->
+                            val callbackFormat = option.sourceFormat ?: MediaFormat(
+                                formatId = option.formatId,
+                                ext = if (option.audioFormat == null) "mp4" else option.audioFormat,
+                                quality = option.label,
+                                resolution = "",
+                                fps = 0,
+                                vcodec = if (option.audioFormat == null) "unknown" else "none",
+                                acodec = if (option.audioFormat == null) "none" else "unknown",
+                                fileSizeB = 0,
+                                url = ""
+                            )
+                            onDownload(callbackFormat)
+                            startDownload(context, mediaInfo, option)
+                        }
+                    },
+                    enabled = selectedOption != null,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = AfuColors.accent,
                         disabledContainerColor = AfuColors.surface
                     ),
-                    shape    = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(Icons.Default.Download, null, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text       = if (selectedFormat != null) "İndir — ${selectedFormat!!.label}" else "Format seç",
-                        fontSize   = 15.sp,
+                        text = selectedOption?.let { "İndir — ${it.label}" } ?: "Format seç",
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines   = 1,
-                        overflow   = TextOverflow.Ellipsis
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
                 Spacer(Modifier.height(32.dp))
@@ -136,141 +124,73 @@ fun FormatPickerScreen(
 
 @Composable
 private fun MediaInfoCard(info: MediaInfo) {
-    Card(
-        modifier  = Modifier.fillMaxWidth(),
-        colors    = CardDefaults.cardColors(containerColor = AfuColors.card),
-        shape     = RoundedCornerShape(14.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = AfuColors.card), shape = RoundedCornerShape(14.dp)) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             if (info.thumbnail.isNotBlank()) {
-                AsyncImage(
-                    model   = info.thumbnail,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(70.dp, 52.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                )
+                AsyncImage(info.thumbnail, null, modifier = Modifier.size(70.dp, 52.dp).clip(RoundedCornerShape(8.dp)))
                 Spacer(Modifier.width(12.dp))
             }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text       = info.title,
-                    color      = AfuColors.text,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize   = 14.sp,
-                    maxLines   = 2,
-                    overflow   = TextOverflow.Ellipsis
-                )
-                if (info.uploader.isNotBlank()) {
-                    Spacer(Modifier.height(3.dp))
-                    Text(info.uploader, color = AfuColors.textMuted, fontSize = 12.sp)
-                }
-                if (info.duration > 0) {
-                    Text(formatDuration(info.duration), color = AfuColors.textMuted, fontSize = 12.sp)
-                }
+            Column(Modifier.weight(1f)) {
+                Text(info.title, color = AfuColors.text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (info.uploader.isNotBlank()) Text(info.uploader, color = AfuColors.textMuted, fontSize = 12.sp)
+                if (info.duration > 0) Text(formatDuration(info.duration), color = AfuColors.textMuted, fontSize = 12.sp)
             }
         }
     }
 }
 
 @Composable
-private fun SectionHeader(title: String, count: Int) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(title, color = AfuColors.text, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-        Spacer(Modifier.width(8.dp))
-        Text(
-            "$count format",
-            color    = AfuColors.textMuted,
-            fontSize = 12.sp,
-            modifier = Modifier
-                .clip(RoundedCornerShape(6.dp))
-                .background(AfuColors.surface)
-                .padding(horizontal = 6.dp, vertical = 2.dp)
-        )
-    }
+private fun SectionHeader(title: String) {
+    Text(title, color = AfuColors.text, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp))
 }
 
 @Composable
-private fun FormatRow(
-    format     : MediaFormat,
-    isSelected : Boolean,
-    onClick    : () -> Unit
-) {
+private fun SimpleFormatRow(option: FormatOption, isSelected: Boolean, onClick: () -> Unit) {
     val borderColor = if (isSelected) AfuColors.accent else Color.Transparent
-    val bgColor     = if (isSelected) AfuColors.accent.copy(alpha = 0.08f) else AfuColors.card
-
     Card(
-        onClick  = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, borderColor, RoundedCornerShape(12.dp)),
-        colors   = CardDefaults.cardColors(containerColor = bgColor),
-        shape    = RoundedCornerShape(12.dp)
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().border(1.dp, borderColor, RoundedCornerShape(12.dp)),
+        colors = CardDefaults.cardColors(containerColor = if (isSelected) AfuColors.accent.copy(alpha = 0.08f) else AfuColors.card),
+        shape = RoundedCornerShape(12.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Format bilgisi
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text       = format.label,
-                    color      = if (isSelected) AfuColors.accent else AfuColors.text,
-                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                    fontSize   = 14.sp
-                )
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(option.label, color = if (isSelected) AfuColors.accent else AfuColors.text, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal, fontSize = 14.sp, modifier = Modifier.weight(1f))
+            if (option.estimatedSize.isNotBlank()) Text(option.estimatedSize, color = AfuColors.textMuted, fontSize = 12.sp)
+            Spacer(Modifier.width(8.dp))
+            Icon(if (isSelected) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, null,
+                tint = if (isSelected) AfuColors.accent else AfuColors.textMuted, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+/** Original extractor row, retained inside the collapsed all-formats section. */
+@Composable
+private fun FormatRow(format: MediaFormat, isSelected: Boolean, onClick: () -> Unit) {
+    val borderColor = if (isSelected) AfuColors.accent else Color.Transparent
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth().border(1.dp, borderColor, RoundedCornerShape(12.dp)),
+        colors = CardDefaults.cardColors(containerColor = if (isSelected) AfuColors.accent.copy(alpha = 0.08f) else AfuColors.card),
+        shape = RoundedCornerShape(12.dp)) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(format.label, color = if (isSelected) AfuColors.accent else AfuColors.text, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal, fontSize = 14.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FormatChip(format.ext.uppercase())
-                    if (!format.isAudioOnly && format.vcodec.isNotBlank() && format.vcodec != "unknown")
-                        FormatChip(format.vcodec.substringBefore('.'))
-                    if (format.acodec.isNotBlank() && format.acodec != "none" && format.acodec != "unknown")
-                        FormatChip(format.acodec.substringBefore('.'))
+                    if (!format.isAudioOnly && format.vcodec.isNotBlank() && format.vcodec != "unknown") FormatChip(format.vcodec.substringBefore('.'))
+                    if (format.acodec.isNotBlank() && format.acodec != "none" && format.acodec != "unknown") FormatChip(format.acodec.substringBefore('.'))
                 }
             }
             Spacer(Modifier.width(8.dp))
-            // Seçim göstergesi
-            if (isSelected) {
-                Icon(
-                    Icons.Default.CheckCircle,
-                    null,
-                    tint = AfuColors.accent,
-                    modifier = Modifier.size(22.dp)
-                )
-            } else {
-                Icon(
-                    Icons.Default.RadioButtonUnchecked,
-                    null,
-                    tint = AfuColors.textMuted,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
+            Icon(if (isSelected) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, null,
+                tint = if (isSelected) AfuColors.accent else AfuColors.textMuted, modifier = Modifier.size(22.dp))
         }
     }
 }
 
 @Composable
 private fun FormatChip(label: String) {
-    Text(
-        text     = label,
-        color    = AfuColors.textMuted,
-        fontSize = 10.sp,
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(AfuColors.surface)
-            .padding(horizontal = 5.dp, vertical = 2.dp)
-    )
+    Text(label, color = AfuColors.textMuted, fontSize = 10.sp,
+        modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(AfuColors.surface).padding(horizontal = 5.dp, vertical = 2.dp))
 }
-
-// ── Yardımcılar ───────────────────────────────────────────────────────────────
 
 private fun formatDuration(seconds: Int): String {
     val h = seconds / 3600
@@ -279,14 +199,18 @@ private fun formatDuration(seconds: Int): String {
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
 }
 
-private fun startDownload(context: Context, info: MediaInfo, format: MediaFormat) {
+private fun startDownload(context: Context, info: MediaInfo, option: FormatOption) {
+    val format = option.sourceFormat
+    val formatId = if (format != null) {
+        if (!format.isAudioOnly && format.acodec == "none") "${format.formatId}+bestaudio/${format.formatId}" else format.formatId
+    } else option.formatId
     DownloadEngine.getInstance(context).enqueue(
         DownloadEngine.DownloadRequest(
-            url      = info.sourceUrl,
-            // Yalniz goruntu iceren format (YouTube DASH) secilirse en iyi sesi ekle; yoksa sessiz video iner.
-            formatId = if (!format.isAudioOnly && format.acodec == "none") "${format.formatId}+bestaudio/${format.formatId}" else format.formatId,
-            title    = info.title,
-            mergeAV  = !format.isAudioOnly
+            url = info.sourceUrl,
+            formatId = formatId,
+            title = info.title,
+            mergeAV = if (format != null) !format.isAudioOnly else option.mergeAV,
+            audioFormat = option.audioFormat
         )
     )
 }
