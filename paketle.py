@@ -28,7 +28,7 @@ CIKTI = KOK / "build_out" / "paket"
 KOPYALANACAK_DOSYALAR = ("AfuDM.exe", "README.md", "THIRD_PARTY_NOTICES.md",
                          "afuadm.py", "afuadm.bat", "headless.py",
                          "tani.bat", "web_panel_baslat.bat", "debug_modu.bat")
-KOPYALANACAK_KLASORLER = ("ui", "extension", "trackers", "core", "api")
+KOPYALANACAK_KLASORLER = ("ui", "extension", "trackers", "core", "api", "video")
 
 CEKIRDEK_MOTORLAR = ("aria2c.exe",)
 TAM_MOTORLAR = ("aria2c.exe", "yt-dlp.exe", "ffmpeg.exe")
