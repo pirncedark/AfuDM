@@ -18,10 +18,34 @@ from core.manager import Manager  # noqa: E402
 from fake_http import SunucuAyarlari, baslat  # noqa: E402
 
 
+def _yalniz_temizleme() -> int:
+    """aria2 yokken (CI) motor gerektirmeyen session temizligini dogrular."""
+    root = Path(tempfile.mkdtemp(prefix="afudm_cookie_session_unit_"))
+    try:
+        paths.DATA = root
+        paths.SESSION_FILE = root / "aria2.session"
+        paths.SESSION_FILE.write_text(
+            "http://127.0.0.1/a.bin\n gid=aaaa000000000001\n header=Cookie: s=gizli\n"
+            " header=Authorization: Bearer gizli\n header=User-Agent: test\n\n"
+            "http://127.0.0.1/b.bin\n gid=aaaa000000000002\n",
+            encoding="utf-8")
+        gerekli = sanitize_session_file()
+        metin = paths.SESSION_FILE.read_text(encoding="utf-8")
+        assert "gizli" not in metin, metin
+        assert "User-Agent: test" in metin, metin
+        assert "pause=true" in metin, metin
+        assert "aaaa000000000001" in gerekli, gerekli
+        assert "aaaa000000000002" not in gerekli, gerekli
+        print("GECTI: session temizligi (aria2 olmadan)")
+        return 0
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def main() -> int:
     if not paths.ARIA2C.is_file():
-        print(f"ATLANDI: bundled aria2 yok: {paths.ARIA2C}")
-        return 1
+        print(f"ATLANDI: bundled aria2 yok: {paths.ARIA2C} — yalniz temizleme dogrulaniyor")
+        return _yalniz_temizleme()
     root = Path(tempfile.mkdtemp(prefix="afudm_cookie_session_"))
     data, downloads = root / "data", root / "downloads"
     paths.DATA, paths.DOWNLOADS, paths.PLUGINS = data, downloads, root / "plugins"
