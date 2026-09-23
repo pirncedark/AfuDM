@@ -10,6 +10,8 @@ android {
     compileSdk = 37
 
     defaultConfig {
+        // GitHub sideload is the only distribution today. Add a Play flavor before Play publication;
+        // Play must disable APK self-update and external executable-code downloads.
         applicationId = "com.afudm.afutube"
         minSdk = 24
         targetSdk = 37
