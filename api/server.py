@@ -1,7 +1,8 @@
 """Yerel HTTP API — varsayilan 127.0.0.1, token zorunlu.
 
 Tarayici uzantisi, Telegram kopru scripti veya baska bir araci buradan
-AfuDM'e is verir. Her istek X-AfuDM-Token (veya ?token=) ile dogrulanir.
+AfuDM'e is verir. API istekleri X-AfuDM-Token ile dogrulanir; mobil dosya
+indirmesinin tarayici baglantisi geriye uyumluluk icin query token kullanir.
 
 Kullanici Ayarlar'dan "Telefondan baglan" derse sunucu YEREL AGA acilir
 (0.0.0.0) ve `/m` adresinde telefon arayuzu (ui/mobil.html) servis edilir.
@@ -11,6 +12,8 @@ anahtarsiz hicbir sey yapilamaz.
 from __future__ import annotations
 
 import json
+import logging
+import ntpath
 import os
 import secrets
 import socket
@@ -19,9 +22,79 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
+from pathlib import Path
 
 from core import models, paths
 from core.hata import hata_json
+
+_LOG = logging.getLogger(__name__)
+
+
+def _yol_kok_icinde(yol, kok) -> bool:
+    """Syntactically contain paths before touching the filesystem; then check symlinks."""
+    try:
+        def syntax(value):
+            if not isinstance(value, (str, os.PathLike)):
+                return None
+            raw = os.fspath(value)
+            if not isinstance(raw, str) or not raw or "\x00" in raw:
+                return None
+            # Reject network/device namespaces before abspath/resolve can probe them.
+            if raw.startswith(("\\\\", "//")) or raw.startswith(("\\\\?\\", "\\\\.\\")):
+                return None
+            drive, _ = ntpath.splitdrive(raw)
+            return os.path.normcase(os.path.normpath(os.path.abspath(raw))), drive
+
+        y = syntax(yol)
+        k = syntax(kok)
+        if y is None or k is None:
+            return False
+        yp, yd = y
+        kp, kd = k
+        if yd and (not kd or os.path.normcase(yd) != os.path.normcase(kd)):
+            return False
+        if os.path.commonpath([kp, yp]) != kp:
+            return False
+        # Filesystem access happens only after all hostile path syntax is rejected.
+        resolved_y = Path(yp).resolve()
+        resolved_k = Path(kp).resolve()
+        return os.path.commonpath([os.path.normcase(str(resolved_k)),
+                                   os.path.normcase(str(resolved_y))]) == os.path.normcase(str(resolved_k))
+    except (OSError, RuntimeError, ValueError, TypeError):
+        return False
+
+
+def _origin_izinli(origin: str) -> bool:
+    """Allow CORS only for browser extensions and loopback web clients."""
+    import re
+    from urllib.parse import urlparse
+    if not isinstance(origin, str) or any(ord(ch) < 32 for ch in origin):
+        return False
+    if origin.startswith("chrome-extension://"):
+        return re.fullmatch(r"chrome-extension://[a-p]{32}", origin) is not None
+    try:
+        parsed = urlparse(origin)
+        if parsed.scheme not in ("http", "https") or parsed.hostname not in ("127.0.0.1", "localhost", "::1"):
+            return False
+        port = parsed.port
+        host = parsed.hostname
+        if host == "::1":
+            host = "[::1]"
+        normalized = f"{parsed.scheme}://{host}" + (f":{int(port)}" if port is not None else "")
+        return origin == normalized
+    except ValueError:
+        return False
+
+
+def _indir_yolu(manager, gid):
+    """Return a resolved download only when it remains under the active root."""
+    yol = manager.resolve_item_path(gid)
+    if not yol:
+        return None
+    kok = manager.current_download_dir()
+    if not _yol_kok_icinde(yol, kok):
+        raise PermissionError("dosya indirme kokunun disinda")
+    return Path(yol).resolve()
 
 
 def _dosya_iznini_kisitla(yol) -> None:
@@ -44,7 +117,7 @@ def _dosya_iznini_kisitla(yol) -> None:
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     except Exception:
-        pass
+        _LOG.exception("API dosya izinleri kisitlanamadi: %s", yol)
 
 
 def _zamanla(s) -> float | None:
@@ -112,7 +185,10 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
     def _cors(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self.headers.get("Origin", "")
+        if origin and _origin_izinli(origin):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, X-AfuDM-Token")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 
@@ -141,6 +217,7 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             durum = self.manager.rpc.tell_status(gid) or {}
         except Exception:
+            _LOG.exception("/dosya icin indirme durumu alinamadi: %s", gid)
             durum = {}
         dosyalar = durum.get("files") or []
         ham = ""
@@ -153,10 +230,10 @@ class _Handler(BaseHTTPRequestHandler):
             ham = str(kayit.get("path") or "")
         if not ham:
             raise FileNotFoundError(gid)
+        kok = self.manager.current_download_dir()
+        if not _yol_kok_icinde(ham, kok):
+            raise PermissionError(str(ham))
         dosya = Path(ham).resolve()
-        kok = Path(self.manager.current_download_dir()).resolve()
-        if not dosya.is_relative_to(kok):
-            raise PermissionError(str(dosya))
         if not dosya.is_file():
             raise FileNotFoundError(str(dosya))
         return dosya
@@ -183,12 +260,13 @@ class _Handler(BaseHTTPRequestHandler):
                 try:
                     self.wfile.write(parca)
                 except (BrokenPipeError, ConnectionResetError):
+                    _LOG.info("Dosya akis istemcisi baglantiyi kapatti: %s", dosya)
                     return  # telefon indirmeyi iptal etti
 
-    def _authorized(self, query: dict) -> bool:
+    def _authorized(self, query: dict, allow_query: bool = False) -> bool:
         header = self.headers.get("X-AfuDM-Token", "")
         supplied = header
-        if not supplied and query:
+        if allow_query and not supplied and query:
             supplied = query.get("token", [""])[0] or query.get("k", [""])[0]
         return bool(self.token) and secrets.compare_digest(supplied, self.token)
 
@@ -222,6 +300,7 @@ class _Handler(BaseHTTPRequestHandler):
     def _dosya_akis_gonder(self, yol) -> None:
         """Bellek dostu (chunked) ve duraklatilabilir (Range) dosya sunumu."""
         import urllib.parse
+        yanit_basladi = False
         try:
             file_size = yol.stat().st_size
             range_header = self.headers.get("Range", "")
@@ -248,8 +327,9 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(chunk_size))
             if range_header:
                 self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._cors()
             self.end_headers()
+            yanit_basladi = True
             with open(yol, "rb") as f:
                 f.seek(start)
                 remaining = chunk_size
@@ -259,10 +339,16 @@ class _Handler(BaseHTTPRequestHandler):
                         break
                     self.wfile.write(chunk)
                     remaining -= len(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            _LOG.info("Dosya akis istemcisi baglantiyi kapatti: %s", yol)
         except OSError:
-            self._hata(403, "ERISIM_ENGEL", "Dosya okunamadi")
+            _LOG.exception("Dosya akisinda IO hatasi: %s", yol)
+            if not yanit_basladi:
+                self._hata(500, "AKIS_HATASI", "Dosya aktarimi baslatilamadi")
         except Exception:
-            pass
+            _LOG.exception("Dosya akisinda beklenmeyen hata: %s", yol)
+            if not yanit_basladi:
+                self._hata(500, "AKIS_HATASI", "Dosya aktarimi baslatilamadi")
 
     def _body(self) -> dict:
         length = int(self.headers.get("Content-Length") or 0)
@@ -317,7 +403,7 @@ class _Handler(BaseHTTPRequestHandler):
             # sunucu kendisi bulur. Bulunan yol indirme kokunun ICINDE olmak
             # zorundadir; disari cikan istek reddedilir (v2.1'de eklenen
             # kisitlamayi delmemek icin ayni kural burada da uygulanir).
-            if not self._authorized(query):
+            if not self._authorized(query, allow_query=True):
                 self._hata(401, "ANAHTAR_GEREKLI", "anahtar gerekli")
                 return
             gid = query.get("gid", [""])[0]
@@ -383,7 +469,11 @@ class _Handler(BaseHTTPRequestHandler):
             if not gid:
                 self._hata(400, "GID_GEREKLI", "gid gerekli")
                 return
-            yol = self.manager.resolve_item_path(gid)
+            try:
+                yol = _indir_yolu(self.manager, gid)
+            except PermissionError:
+                self._hata(403, "HEDEF_DISARIDA", "dosya indirme kokunun disinda")
+                return
             if not yol or not yol.exists() or not yol.is_file():
                 self._hata(404, "BULUNAMADI", "Dosya diskte yok veya hazir degil")
                 return
@@ -396,19 +486,28 @@ class _Handler(BaseHTTPRequestHandler):
                 self._hata(403, "ERISIM_ENGEL", "Erisim engellendi")
                 return
             try:
+                yanit_basladi = False
                 self.send_response(200)
                 self.send_header("Content-Type", "application/octet-stream")
                 gvn_ad = urllib.parse.quote(yol.name)
                 ascii_name = yol.name.encode("ascii", "ignore").decode("ascii").replace('"', '') or "indirilen_dosya"
                 self.send_header("Content-Disposition", f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{gvn_ad}')
                 self.send_header("Content-Length", str(yol.stat().st_size))
-                self.send_header("Access-Control-Allow-Origin", "*")
+                self._cors()
                 self.end_headers()
+                yanit_basladi = True
                 shutil.copyfileobj(dosya, self.wfile)
+            except (BrokenPipeError, ConnectionResetError):
+                _LOG.info("/indir istemcisi aktarimi iptal etti: %s", gid)
             except Exception:
-                pass
+                _LOG.exception("/indir aktarim hatasi: %s", gid)
+                if not yanit_basladi:
+                    self._hata(500, "AKIS_HATASI", "Dosya aktarimi baslatilamadi")
             finally:
-                dosya.close()
+                try:
+                    dosya.close()
+                except OSError:
+                    _LOG.exception("/indir dosyasi kapatilamadi: %s", gid)
             return
         if not self._authorized(query):
             self._hata(401, "GECERSIZ_TOKEN", "gecersiz token")
@@ -531,12 +630,18 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             if parsed.path == "/add":
                 url = data.get("url") or data.get("source") or ""
+                hedef = data.get("dest_dir")
+                if hedef:
+                    kok = self.manager.current_download_dir()
+                    if not _yol_kok_icinde(hedef, kok):
+                        self._hata(403, "HEDEF_DISARIDA", "hedef klasor indirme kokunun disinda")
+                        return
+                    hedef = str(Path(hedef).resolve())
                 if (_boolean_al(data, "interactive") and _Handler.on_ask and url.strip()
                         and self.manager.store.get("kaydetme_penceresi")):
                     kimlik = _Handler.on_ask(data)
                     self._send(200, {"ok": True, "pending": True, "id": kimlik})
                     return
-                hedef = data.get("dest_dir")
                 if not hedef and data.get("kategori"):
                     # Telefon/uzanti kategori yollayabilir; tam yolu burada kurariz
                     from core import kaydet
@@ -610,7 +715,7 @@ class _Handler(BaseHTTPRequestHandler):
                         if dosyalar and dosyalar[0].get("path"):
                             yol_str = dosyalar[0].get("path")
                 except Exception:
-                    pass
+                    _LOG.exception("Paylasim icin indirme dosya yolu alinamadi: %s", gid)
                 if not yol_str:
                     row = self.manager.store.by_gid(gid)
                     if row and row.get("status") == "complete" and row.get("target_path"):
@@ -619,7 +724,10 @@ class _Handler(BaseHTTPRequestHandler):
                     self._hata(404, "HAZIR_DEGIL", "Dosya hazir degil veya yolu bulunamadi")
                     return
                 from pathlib import Path
-                yol = Path(yol_str)
+                if not _yol_kok_icinde(yol_str, self.manager.current_download_dir()):
+                    self._hata(403, "HEDEF_DISARIDA", "dosya indirme kokunun disinda")
+                    return
+                yol = Path(yol_str).resolve()
                 if not yol.exists() or not yol.is_file():
                     self._hata(404, "BULUNAMADI", "Sadece tekil dosyalar paylasilabilir veya dosya diskte yok")
                     return
@@ -875,11 +983,11 @@ class LocalAPI:
         try:
             httpd.shutdown()
         except Exception:
-            pass
+            _LOG.exception("LocalAPI HTTP sunucusu kapatilamadi")
         try:
             httpd.server_close()
         except Exception:
-            pass
+            _LOG.exception("LocalAPI socket temizligi basarisiz")
         if thread is not None and thread.is_alive():
             thread.join(timeout=5)
 
@@ -910,6 +1018,7 @@ class LocalAPI:
             try:
                 self.start()
             except Exception:
+                _LOG.exception("LocalAPI yeniden baslatma rollback'i basarisiz")
                 self.stop()
             return {
                 "ok": False,
