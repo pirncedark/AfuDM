@@ -661,7 +661,7 @@ $("list").addEventListener("click", async (event) => {
               document.body.appendChild(a);
               a.click();
               a.remove();
-              toast("Telefona indirme başlatılıyor...");
+              toast(t("share.downloadingToPhone"));
               return;
             }
             paylasimModalDoldur(res);

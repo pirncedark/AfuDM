@@ -442,6 +442,9 @@ class _Handler(BaseHTTPRequestHandler):
                 "application/manifest+json; charset=utf-8", "no-cache",
             )
             return
+        if parsed.path == "/i18n.js":
+            self._sayfa_gonder(paths.UI / "i18n.js", "text/javascript; charset=utf-8", "no-cache")
+            return
         if parsed.path == "/sw.js":
             # Worker tum kok yolu kapsayabilsin ve her acilista kontrol edilsin.
             self._sayfa_gonder(

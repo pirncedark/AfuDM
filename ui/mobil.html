@@ -193,7 +193,9 @@ input[type="text"], select {
   </div>
 </div>
 
+<script src="i18n.js"></script>
 <script>
+setLang((navigator.language || "tr").toLowerCase().startsWith("tr") ? "tr" : "en");
 /* ---- anahtar: adresten gelir, telefonda kalir ---- */
 const ANAHTAR_AD = "afudm_anahtar";
 function anahtarAl() {
@@ -358,8 +360,8 @@ async function torrentMetrikTazele(gid) {
 async function torrentKatmanAc(gid) {
   torrentKatmanKapat();
   acikTorrentGid = gid;
-  $("torrentBaslik").textContent = "Torrent dosyalari";
-  $("torrentDosyalar").textContent = "Yukleniyor...";
+  $("torrentBaslik").textContent = t("mobile.torrentTitle");
+  $("torrentDosyalar").textContent = t("mobile.loading");
   $("seedOzet").innerHTML = "";
   $("torrentKaydet").disabled = false;
   $("torrentKatman").hidden = false;
@@ -369,20 +371,20 @@ async function torrentKatmanAc(gid) {
       api("/torrent/dosyalar?gid=" + encodeURIComponent(gid)),
       api("/seed?gid=" + encodeURIComponent(gid)),
     ]);
-    $("torrentBaslik").textContent = seedVeri.baslik || "Torrent dosyalari";
+    $("torrentBaslik").textContent = seedVeri.baslik || t("mobile.torrentTitle");
     seedOzetGoster(seedVeri);
     const dosyalar = dosyaVeri.dosyalar || [];
     if (dosyaVeri.hazir_degil) {
-      $("torrentDosyalar").textContent = dosyaVeri.neden || "Dosya listesi henuz hazir degil.";
+      $("torrentDosyalar").textContent = dosyaVeri.neden || t("mobile.filesNotReady");
       $("torrentKaydet").disabled = true;
       return;
     }
     $("torrentDosyalar").innerHTML = dosyalar.map((dosya) =>
       '<label class="torrent-dosya"><input type="checkbox" value="' + Number(dosya.indeks) + '"' +
       (dosya.secili ? " checked" : "") + '><span><b>' + kacir(dosya.ad) + "</b><small>" +
-      boyut(dosya.boyut) + "</small></span></label>").join("") || "Dosya bulunamadi.";
+      boyut(dosya.boyut) + "</small></span></label>").join("") || t("mobile.filesNotFound");
   } catch (err) {
-    $("torrentDosyalar").textContent = "Dosyalar alinamadi.";
+    $("torrentDosyalar").textContent = t("mobile.filesLoadFailed");
     bildir(err.message, true);
   }
 }
