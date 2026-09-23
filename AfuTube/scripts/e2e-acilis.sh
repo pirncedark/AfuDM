@@ -34,5 +34,11 @@ if [ "$ok" != 1 ]; then
   echo "HATA: ag kapaliyken ana ekran ${LIMIT_SN} sn icinde gelmedi (ekran: $OUT/ekran.png)"
   exit 1
 fi
+# Arka plan isleri (yt-dlp guncelleme denetimi vb.) ekrani geri "Motor hazirlaniyor"a dusurmemeli.
+sleep 20
+adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+adb shell cat /sdcard/ui.xml > "$OUT/ui-20sn-sonra.xml" 2>/dev/null
+adb exec-out screencap -p > "$OUT/ekran-20sn-sonra.png"
+grep -q 'Ana Ekran' "$OUT/ui-20sn-sonra.xml" || { echo "HATA: ana ekran geldi ama 20 sn sonra kayboldu"; exit 1; }
 adb shell pidof "$PKG" >/dev/null || { echo "HATA: ana ekrandan sonra uygulama kapandi"; exit 1; }
 echo "BASARILI: ag kapaliyken ana ekran ${sure} sn icinde acildi"

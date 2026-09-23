@@ -50,7 +50,9 @@ object MediaRuntime {
 
     suspend fun ensureInitialized(context: Context) = withContext(Dispatchers.IO) {
         try {
-            _status.value = _status.value.copy(state = RuntimeState.INITIALIZING)
+            // Durumu burada INITIALIZING'e CEKME: analiz/indirme/guncelleme de bu fonksiyonu cagirir ve
+            // READY'yi geri alirsa ekran "Motor hazirlaniyor"da kilitlenir (v1.1.0 - v1.1.2 hatasi).
+            // Durumun sahibi prepare().
             coordinator.ensureInitialized(context.applicationContext)
         } catch (error: Throwable) {
             initializationError = error
