@@ -283,7 +283,8 @@ private fun startDownload(context: Context, info: MediaInfo, format: MediaFormat
     DownloadEngine.getInstance(context).enqueue(
         DownloadEngine.DownloadRequest(
             url      = info.sourceUrl,
-            formatId = format.formatId,
+            // Yalniz goruntu iceren format (YouTube DASH) secilirse en iyi sesi ekle; yoksa sessiz video iner.
+            formatId = if (!format.isAudioOnly && format.acodec == "none") "${format.formatId}+bestaudio/${format.formatId}" else format.formatId,
             title    = info.title,
             mergeAV  = !format.isAudioOnly
         )
