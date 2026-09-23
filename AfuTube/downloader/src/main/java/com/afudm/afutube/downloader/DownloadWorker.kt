@@ -57,12 +57,16 @@ class DownloadWorker(
             ?: applicationContext.getExternalFilesDir(null)?.absolutePath
             ?: return@withContext Result.failure()
         val mergeAV   = params.inputData.getBoolean(KEY_MERGE, true)
+        val outputRoot = java.io.File(outputDir)
+        val before = outputRoot.listFiles()?.associate { it.absolutePath to (it.lastModified() to it.length()) }.orEmpty()
 
         setForeground(createForegroundInfo("Hazırlanıyor…", 0))
 
         val request = YoutubeDLRequest(url).apply {
             addOption("-f", formatId)
             addOption("-o", "$outputDir/%(title)s.%(ext)s")
+            addOption("--print", "after_move:filepath")
+            addOption("--no-simulate")
             addOption("--no-playlist")
             if (mergeAV) {
                 addOption("--merge-output-format", "mp4")
@@ -90,8 +94,19 @@ class DownloadWorker(
             }
         }
 
-        if (response.exitCode == 0) Result.success()
-        else Result.failure(workDataOf("error" to response.err))
+        if (response.exitCode == 0) {
+            val printedPath = response.out.lineSequence().map { it.trim() }.lastOrNull { it.isNotBlank() }
+            val outputFile = printedPath?.let { java.io.File(it) }?.takeIf { it.isFile }
+                ?: outputRoot.listFiles()?.asSequence()
+                    ?.filter { file ->
+                        file.isFile && file.name !in setOf(".", "..") &&
+                            listOf(".part", ".ytdl", ".temp", ".aria2").none { file.name.endsWith(it, true) } &&
+                            (before[file.absolutePath] == null || before[file.absolutePath] != (file.lastModified() to file.length()))
+                    }
+                    ?.maxByOrNull { it.lastModified() }
+            if (outputFile != null) Result.success(workDataOf("output_path" to outputFile.absolutePath))
+            else Result.failure(workDataOf("error" to "İndirme tamamlandı ancak dosya yolu bulunamadı"))
+        } else Result.failure(workDataOf("error" to response.err))
     }
 
     private fun createForegroundInfo(text: String, progress: Int): ForegroundInfo {

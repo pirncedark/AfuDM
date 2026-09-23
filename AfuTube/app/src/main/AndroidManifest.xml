@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Android 9 ve altı için -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
@@ -80,6 +81,11 @@
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
+
+        <activity android:name="com.afudm.afutube.media.PlayerActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
+        <service android:name="com.afudm.afutube.media.PlaybackService" android:exported="false" android:foregroundServiceType="mediaPlayback">
+            <intent-filter><action android:name="androidx.media3.session.MediaSessionService" /></intent-filter>
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"
