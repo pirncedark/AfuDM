@@ -156,12 +156,12 @@ class PlayerActivity : ComponentActivity() {
                 delay(500)
             }
         }
-        BackHandler(enabled = fullscreen) { setFullscreen(false) }
+        BackHandler(enabled = fullscreen) { applyFullscreen(false) }
 
         MaterialTheme(colorScheme = darkColorScheme(background = AfuColors.bg, surface = AfuColors.surface, primary = AfuColors.accent, onBackground = AfuColors.text, onSurface = AfuColors.text)) {
             Column(Modifier.fillMaxSize().background(AfuColors.bg).systemBarsPadding()) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { if (fullscreen) setFullscreen(false) else finish() }) {
+                    IconButton(onClick = { if (fullscreen) applyFullscreen(false) else finish() }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Geri", tint = AfuColors.text)
                     }
                     Text(title, color = AfuColors.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 12.dp))
@@ -193,7 +193,7 @@ class PlayerActivity : ComponentActivity() {
                             update = { it.player = player },
                             modifier = Modifier.fillMaxWidth().then(if (fullscreen) Modifier.fillMaxHeight() else Modifier.aspectRatio(16f / 9f).clip(RoundedCornerShape(16.dp))).background(Color.Black)
                         )
-                        IconButton(onClick = { setFullscreen(!fullscreen) }, modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp).size(44.dp).clip(RoundedCornerShape(14.dp)).background(AfuColors.surface.copy(alpha = 0.9f)).semantics { contentDescription = "Tam ekran" }) {
+                        IconButton(onClick = { applyFullscreen(!fullscreen) }, modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp).size(44.dp).clip(RoundedCornerShape(14.dp)).background(AfuColors.surface.copy(alpha = 0.9f)).semantics { contentDescription = "Tam ekran" }) {
                             Icon(if (fullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription = null, tint = AfuColors.text)
                         }
                     }
@@ -241,7 +241,7 @@ class PlayerActivity : ComponentActivity() {
         requestedOrientation = if (listen) ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED else ActivityInfo.SCREEN_ORIENTATION_SENSOR
     }
 
-    private fun setFullscreen(enabled: Boolean) {
+    private fun applyFullscreen(enabled: Boolean) {
         fullscreen = enabled
         requestedOrientation = if (enabled) ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_SENSOR
         val bars = WindowInsetsControllerCompat(window, window.decorView)
