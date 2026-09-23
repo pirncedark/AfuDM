@@ -19,9 +19,18 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
+from pathlib import Path
 
 from core import models, paths
 from core.hata import hata_json
+
+
+def _yol_kok_icinde(yol, kok) -> bool:
+    """Resolve both paths before checking containment (including symlinks)."""
+    try:
+        return Path(yol).resolve().is_relative_to(Path(kok).resolve())
+    except (OSError, RuntimeError, ValueError, TypeError):
+        return False
 
 
 def _dosya_iznini_kisitla(yol) -> None:
@@ -537,6 +546,12 @@ class _Handler(BaseHTTPRequestHandler):
                     self._send(200, {"ok": True, "pending": True, "id": kimlik})
                     return
                 hedef = data.get("dest_dir")
+                if hedef:
+                    kok = self.manager.current_download_dir()
+                    if not _yol_kok_icinde(hedef, kok):
+                        self._hata(403, "HEDEF_DISARIDA", "hedef klasor indirme kokunun disinda")
+                        return
+                    hedef = str(Path(hedef).resolve())
                 if not hedef and data.get("kategori"):
                     # Telefon/uzanti kategori yollayabilir; tam yolu burada kurariz
                     from core import kaydet
