@@ -158,13 +158,17 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _origin_uygun(self) -> bool:
         """Origin yoksa (curl/CLI) gecerdir; VARSA allowlist'te olmalidir."""
-        origin = (self.headers.get("Origin") or "").strip().rstrip("/")
+        ham = self.headers.get("Origin") or ""
+        if any(ord(ch) < 32 for ch in ham):
+            return False
+        origin = ham.strip().rstrip("/")
         if not origin:
             return True
         return origin in self._izinli_originler()
 
     def _cors(self) -> None:
-        origin = (self.headers.get("Origin") or "").strip().rstrip("/")
+        ham = self.headers.get("Origin") or ""
+        origin = "" if any(ord(ch) < 32 for ch in ham) else ham.strip().rstrip("/")
         if origin and origin in self._izinli_originler():
             # JOKER YOK: yalnizca izinli origin yansitilir.
             self.send_header("Access-Control-Allow-Origin", origin)

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import ntpath
 import os
 import secrets
 import socket
@@ -30,21 +31,57 @@ _LOG = logging.getLogger(__name__)
 
 
 def _yol_kok_icinde(yol, kok) -> bool:
-    """Resolve both paths before checking containment (including symlinks)."""
+    """Syntactically contain paths before touching the filesystem; then check symlinks."""
     try:
-        return Path(yol).resolve().is_relative_to(Path(kok).resolve())
+        def syntax(value):
+            if not isinstance(value, (str, os.PathLike)):
+                return None
+            raw = os.fspath(value)
+            if not isinstance(raw, str) or not raw or "\x00" in raw:
+                return None
+            # Reject network/device namespaces before abspath/resolve can probe them.
+            if raw.startswith(("\\\\", "//")) or raw.startswith(("\\\\?\\", "\\\\.\\")):
+                return None
+            drive, _ = ntpath.splitdrive(raw)
+            return os.path.normcase(os.path.normpath(os.path.abspath(raw))), drive
+
+        y = syntax(yol)
+        k = syntax(kok)
+        if y is None or k is None:
+            return False
+        yp, yd = y
+        kp, kd = k
+        if yd and (not kd or os.path.normcase(yd) != os.path.normcase(kd)):
+            return False
+        if os.path.commonpath([kp, yp]) != kp:
+            return False
+        # Filesystem access happens only after all hostile path syntax is rejected.
+        resolved_y = Path(yp).resolve()
+        resolved_k = Path(kp).resolve()
+        return os.path.commonpath([os.path.normcase(str(resolved_k)),
+                                   os.path.normcase(str(resolved_y))]) == os.path.normcase(str(resolved_k))
     except (OSError, RuntimeError, ValueError, TypeError):
         return False
 
 
 def _origin_izinli(origin: str) -> bool:
     """Allow CORS only for browser extensions and loopback web clients."""
+    import re
     from urllib.parse import urlparse
+    if not isinstance(origin, str) or any(ord(ch) < 32 for ch in origin):
+        return False
     if origin.startswith("chrome-extension://"):
-        return bool(origin.removeprefix("chrome-extension://"))
+        return re.fullmatch(r"chrome-extension://[a-p]{32}", origin) is not None
     try:
         parsed = urlparse(origin)
-        return parsed.scheme in ("http", "https") and parsed.hostname in ("127.0.0.1", "localhost", "::1")
+        if parsed.scheme not in ("http", "https") or parsed.hostname not in ("127.0.0.1", "localhost", "::1"):
+            return False
+        port = parsed.port
+        host = parsed.hostname
+        if host == "::1":
+            host = "[::1]"
+        normalized = f"{parsed.scheme}://{host}" + (f":{int(port)}" if port is not None else "")
+        return origin == normalized
     except ValueError:
         return False
 
@@ -54,14 +91,10 @@ def _indir_yolu(manager, gid):
     yol = manager.resolve_item_path(gid)
     if not yol:
         return None
-    try:
-        yol = Path(yol).resolve()
-        kok = Path(manager.current_download_dir()).resolve()
-    except (OSError, RuntimeError, ValueError, TypeError) as exc:
-        raise PermissionError("gecersiz dosya yolu") from exc
-    if not yol.is_relative_to(kok):
+    kok = manager.current_download_dir()
+    if not _yol_kok_icinde(yol, kok):
         raise PermissionError("dosya indirme kokunun disinda")
-    return yol
+    return Path(yol).resolve()
 
 
 def _dosya_iznini_kisitla(yol) -> None:
@@ -197,10 +230,10 @@ class _Handler(BaseHTTPRequestHandler):
             ham = str(kayit.get("path") or "")
         if not ham:
             raise FileNotFoundError(gid)
+        kok = self.manager.current_download_dir()
+        if not _yol_kok_icinde(ham, kok):
+            raise PermissionError(str(ham))
         dosya = Path(ham).resolve()
-        kok = Path(self.manager.current_download_dir()).resolve()
-        if not dosya.is_relative_to(kok):
-            raise PermissionError(str(dosya))
         if not dosya.is_file():
             raise FileNotFoundError(str(dosya))
         return dosya
@@ -691,7 +724,10 @@ class _Handler(BaseHTTPRequestHandler):
                     self._hata(404, "HAZIR_DEGIL", "Dosya hazir degil veya yolu bulunamadi")
                     return
                 from pathlib import Path
-                yol = Path(yol_str)
+                if not _yol_kok_icinde(yol_str, self.manager.current_download_dir()):
+                    self._hata(403, "HEDEF_DISARIDA", "dosya indirme kokunun disinda")
+                    return
+                yol = Path(yol_str).resolve()
                 if not yol.exists() or not yol.is_file():
                     self._hata(404, "BULUNAMADI", "Sadece tekil dosyalar paylasilabilir veya dosya diskte yok")
                     return
