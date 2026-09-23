@@ -60,13 +60,15 @@ class DownloadWorker(
         val outputRoot = java.io.File(outputDir)
         val before = outputRoot.listFiles()?.associate { it.absolutePath to (it.lastModified() to it.length()) }.orEmpty()
 
+        val pathFile = java.io.File(applicationContext.cacheDir, "afutube-path-$id.txt").apply { delete() }
+
         setForeground(createForegroundInfo("Hazırlanıyor…", 0))
 
         val request = YoutubeDLRequest(url).apply {
             addOption("-f", formatId)
             addOption("-o", "$outputDir/%(title)s.%(ext)s")
-            addOption("--print", "after_move:filepath")
-            addOption("--no-simulate")
+            // --print yt-dlp'yi sessiz moda sokar (ilerleme kaybolur); dosya yolu ayri dosyaya yazilir.
+            addCommands(listOf("--print-to-file", "after_move:filepath", pathFile.absolutePath))
             addOption("--no-playlist")
             if (mergeAV) {
                 addOption("--merge-output-format", "mp4")
@@ -77,7 +79,7 @@ class DownloadWorker(
 
         var lastPercent = 0
 
-        val response = YoutubeDL.getInstance().execute(request) { progress, etaInSeconds, line ->
+        val response = try { YoutubeDL.getInstance().execute(request) { progress, etaInSeconds, line ->
             val percent = progress.toInt().coerceIn(0, 100)
             if (percent != lastPercent) {
                 lastPercent = percent
@@ -92,10 +94,19 @@ class DownloadWorker(
                 val fi = createForegroundInfo("$percent%  •  ${extractSpeed(line)}", percent)
                 setForegroundAsync(fi)
             }
+        } } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: YoutubeDL.CanceledException) {
+            return@withContext Result.failure(workDataOf("error" to "İndirme iptal edildi"))
+        } catch (e: Exception) {
+            // yt-dlp sifirdan farkli kodla cikinca kutuphane istisna atar; nedeni kullaniciya goster.
+            return@withContext Result.failure(workDataOf("error" to okunurHata(e.message)))
         }
 
         if (response.exitCode == 0) {
-            val printedPath = response.out.lineSequence().map { it.trim() }.lastOrNull { it.isNotBlank() }
+            val printedPath = runCatching { pathFile.readLines() }.getOrNull()
+                ?.map { it.trim() }?.lastOrNull { it.isNotBlank() }
+            pathFile.delete()
             val outputFile = printedPath?.let { java.io.File(it) }?.takeIf { it.isFile }
                 ?: outputRoot.listFiles()?.asSequence()
                     ?.filter { file ->
@@ -106,7 +117,15 @@ class DownloadWorker(
                     ?.maxByOrNull { it.lastModified() }
             if (outputFile != null) Result.success(workDataOf("output_path" to outputFile.absolutePath))
             else Result.failure(workDataOf("error" to "İndirme tamamlandı ancak dosya yolu bulunamadı"))
-        } else Result.failure(workDataOf("error" to response.err))
+        } else Result.failure(workDataOf("error" to okunurHata(response.err)))
+    }
+
+    /** yt-dlp stderr'inden kartta gosterilecek kisa neden (son ERROR satiri). */
+    private fun okunurHata(err: String?): String {
+        val satirlar = err.orEmpty().lines().map { it.trim() }.filter { it.isNotBlank() }
+        val neden = satirlar.lastOrNull { it.startsWith("ERROR:") }?.removePrefix("ERROR:")?.trim()
+            ?: satirlar.lastOrNull()
+        return neden?.take(300)?.ifBlank { null } ?: "İndirme başarısız (yt-dlp ayrıntı vermedi)"
     }
 
     private fun createForegroundInfo(text: String, progress: Int): ForegroundInfo {
