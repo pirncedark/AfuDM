@@ -63,18 +63,28 @@ def birlesik_dosya_bul(dest_dir: str | Path, filename: str) -> Path | None:
     if not filename:
         return None
     klasor = Path(dest_dir)
-    mevcut = klasor / filename
-    if mevcut.is_file():
-        return mevcut
     eslesme = _SPLIT_FILENAME_RE.match(filename)
     if not eslesme:
-        return None
+        mevcut = klasor / filename
+        try:
+            mevcut.resolve().relative_to(klasor.resolve())
+        except (OSError, ValueError):
+            return None
+        return mevcut if mevcut.is_file() else None
     govde = eslesme.group("stem")
+    adaylar = []
     for uzanti in (".mp4", ".mkv", ".webm"):
         aday = klasor / (govde + uzanti)
+        try:
+            aday.resolve().relative_to(klasor.resolve())
+        except (OSError, ValueError):
+            continue
         if aday.is_file():
-            return aday
-    return None
+            adaylar.append(aday)
+    if not adaylar:
+        return None
+    oncelik = {".mp4": 2, ".mkv": 1, ".webm": 0}
+    return max(adaylar, key=lambda p: (p.stat().st_mtime_ns, oncelik[p.suffix.lower()]))
 
 
 def ffmpeg_hazir() -> bool:
@@ -396,7 +406,10 @@ class VideoJob:
 
     _DEST_RE = re.compile(
         r"\[(?P<tag>download|Merger|VideoRemuxer|VideoConvertor|ExtractAudio|Fixup[^\]]*)\]"
-        r".*?(?:(?:Destination:|to:?|into)\s*(?P<target>.+)|\bof\s+(?P<quoted>\"[^\"]+\"))$"
+        r"(?:"
+        r".*(?:(?:Destination:|\bto\b|\binto\b)\s*(?P<target>.+)"
+        r"|\bof\s+(?P<quoted>\"[^\"]+\"))"
+        r"|(?P<already>.+?)\s+has already been downloaded)$"
     )
     # aria2c dis indirici olarak calisirken yt-dlp kendi ilerleme satirini
     # BASMAZ; aktaran aria2c oldugu icin ilerleme onun ozet satirindan gelir:
@@ -570,7 +583,8 @@ class VideoJob:
         match = self._DEST_RE.search(line)
         if not match:
             return
-        hedef = (match.group("target") or match.group("quoted") or "").strip()
+        hedef = (match.group("target") or match.group("quoted")
+                 or match.group("already") or "").strip()
         if len(hedef) >= 2 and hedef[0] == hedef[-1] == '"':
             hedef = hedef[1:-1]
         if not hedef:

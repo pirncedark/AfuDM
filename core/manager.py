@@ -853,11 +853,6 @@ class Manager:
             dest_dir = row.get("dest_dir") or row.get("dir") or ""
             filename = row.get("filename") or ""
             if dest_dir and filename:
-                candidates.append(Path(dest_dir) / filename)
-                escaped = glob.escape(filename)
-                matches = glob.glob(str(Path(dest_dir) / f"{escaped}*"))
-                for m in matches:
-                    candidates.append(Path(m))
                 merged = ytdlp.birlesik_dosya_bul(dest_dir, filename)
                 if merged and merged.name != filename:
                     try:
@@ -869,6 +864,12 @@ class Manager:
                     except (OSError, KeyError):
                         pass
                     candidates.append(merged)
+                else:
+                    candidates.append(Path(dest_dir) / filename)
+                    escaped = glob.escape(filename)
+                    matches = glob.glob(str(Path(dest_dir) / f"{escaped}*"))
+                    for m in matches:
+                        candidates.append(Path(m))
 
         # 3. Video jobs (yt-dlp)
         if gid in self.video_jobs:
@@ -890,14 +891,15 @@ class Manager:
                     if item.get("target_path"):
                         candidates.append(Path(item["target_path"]))
                     if dest_dir and filename:
-                        candidates.append(Path(dest_dir) / filename)
-                        escaped = glob.escape(filename)
-                        matches = glob.glob(str(Path(dest_dir) / f"{escaped}*"))
-                        for m in matches:
-                            candidates.append(Path(m))
                         merged = ytdlp.birlesik_dosya_bul(dest_dir, filename)
-                        if merged:
+                        if merged and merged.name != filename:
                             candidates.append(merged)
+                        else:
+                            candidates.append(Path(dest_dir) / filename)
+                            escaped = glob.escape(filename)
+                            matches = glob.glob(str(Path(dest_dir) / f"{escaped}*"))
+                            for m in matches:
+                                candidates.append(Path(m))
         except Exception:
             pass
 
