@@ -19,4 +19,5 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.0")
     implementation(project(":core"))
     implementation(project(":downloader"))
+    implementation(project(":media"))
 }

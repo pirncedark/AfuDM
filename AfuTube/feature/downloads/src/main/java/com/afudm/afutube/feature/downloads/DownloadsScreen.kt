@@ -2,6 +2,7 @@ package com.afudm.afutube.feature.downloads
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,12 +18,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.work.WorkInfo
 import com.afudm.afutube.downloader.DownloadEngine
 import com.afudm.afutube.downloader.DownloadProgress
 import com.afudm.afutube.core.theme.AfuColors
+import com.afudm.afutube.media.MediaFileType
+import com.afudm.afutube.media.MediaFileTypeDetector
+import com.afudm.afutube.media.PlayerActivity
 import java.util.UUID
 
 @Composable
@@ -84,8 +90,16 @@ fun DownloadsScreen() {
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(workInfos, key = { it.id }) { workInfo ->
+                    val outputPath = workInfo.outputData.getString("output_path")
+                    val playable = workInfo.state == WorkInfo.State.SUCCEEDED && !outputPath.isNullOrBlank()
                     DownloadCard(
                         workInfo = workInfo,
+                        outputPath = outputPath.takeIf { playable },
+                        onPlay = { path, listen ->
+                            val playIntent = PlayerActivity.intent(context, path, workInfo.tags.firstOrNull { it.startsWith("title:") }?.removePrefix("title:") ?: java.io.File(path).nameWithoutExtension)
+                            if (listen) playIntent.putExtra(PlayerActivity.EXTRA_LISTEN, true)
+                            context.startActivity(playIntent)
+                        },
                         onCancel = { engine.cancel(workInfo.id) },
                         onRemove = { title ->
                             engine.remove(workInfo.id, title, finished = workInfo.state == WorkInfo.State.SUCCEEDED)
@@ -100,6 +114,8 @@ fun DownloadsScreen() {
 @Composable
 private fun DownloadCard(
     workInfo : WorkInfo,
+    outputPath: String?,
+    onPlay: (String, Boolean) -> Unit,
     onCancel : () -> Unit,
     onRemove : (title: String) -> Unit
 ) {
@@ -121,7 +137,7 @@ private fun DownloadCard(
     }
 
     Card(
-        modifier  = Modifier.fillMaxWidth(),
+        modifier  = Modifier.fillMaxWidth().then(if (outputPath != null) Modifier.clickable { onPlay(outputPath, MediaFileTypeDetector.fromPath(outputPath) == MediaFileType.AUDIO) } else Modifier),
         colors    = CardDefaults.cardColors(containerColor = AfuColors.card),
         shape     = RoundedCornerShape(14.dp)
     ) {
@@ -179,6 +195,13 @@ private fun DownloadCard(
                 Text(stateLabel, color = stateColor, fontSize = 12.sp)
                 workInfo.outputData.getString("error")?.let { err ->
                     if (err.isNotBlank()) Text(err, color = AfuColors.error, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            if (outputPath != null) {
+                val audioOnly = MediaFileTypeDetector.fromPath(outputPath) == MediaFileType.AUDIO
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (!audioOnly) TextButton(onClick = { onPlay(outputPath, false) }) { Text("İzle", modifier = Modifier.semantics { contentDescription = "İzle" }) }
+                    TextButton(onClick = { onPlay(outputPath, true) }) { Text("Dinle", modifier = Modifier.semantics { contentDescription = "Dinle" }) }
                 }
             }
         }
