@@ -37,7 +37,7 @@ class YtDlpExtractor(private val context: Context) : MediaExtractor {
         }
 
         val response = try {
-            YoutubeDL.getInstance().execute(request)
+            MediaRuntime.withEngine { YoutubeDL.getInstance().execute(request) }
         } catch (error: Throwable) {
             val version = runCatching { YoutubeDL.getInstance().version(context) ?: "bilinmiyor" }
                 .getOrDefault("bilinmiyor")

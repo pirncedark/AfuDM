@@ -9,6 +9,7 @@ import com.afudm.afutube.core.diagnostics.LastAnalysisErrorStore
 import com.afudm.afutube.core.extractor.MediaInfo
 import com.afudm.afutube.extractor.ExtractorManager
 import com.afudm.afutube.extractor.YtDlpExtractor
+import com.afudm.afutube.updater.ExtractorUpdater
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -22,9 +23,10 @@ data class HomeState(
 )
 
 class HomeViewModel(context: Context) : ViewModel() {
+    private val appContext = context.applicationContext
     private val _state = MutableStateFlow(HomeState())
     val state: StateFlow<HomeState> = _state
-    private val extractor = ExtractorManager.getInstance(context.applicationContext)
+    private val extractor = ExtractorManager.getInstance(appContext)
 
     fun onUrlChange(url: String) {
         _state.value = _state.value.copy(url = url, error = "", analysisError = null, mediaInfo = null)
@@ -34,7 +36,9 @@ class HomeViewModel(context: Context) : ViewModel() {
         if (url.isBlank()) return
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = "", analysisError = null, mediaInfo = null)
-            val result = extractor.extract(url.trim())
+            val normalizedUrl = url.trim()
+            val firstResult = extractor.extract(normalizedUrl)
+            val result = retryAfterExtractorUpdateIfEligible(normalizedUrl, firstResult)
             _state.value = if (result.isSuccess) {
                 _state.value.copy(isLoading = false, mediaInfo = result.getOrNull())
             } else {
@@ -55,5 +59,24 @@ class HomeViewModel(context: Context) : ViewModel() {
                 )
             }
         }
+    }
+
+    private suspend fun retryAfterExtractorUpdateIfEligible(
+        url: String,
+        firstResult: Result<MediaInfo>
+    ): Result<MediaInfo> {
+        val exception = firstResult.exceptionOrNull() ?: return firstResult
+        val analysisError = (exception as? YtDlpExtractor.AnalysisException)?.analysisError
+            ?: return firstResult
+        if (!ExtractorUpdater.shouldUpdateForAnalysis(appContext, analysisError.category, System.currentTimeMillis())) {
+            return firstResult
+        }
+
+        val update = ExtractorUpdater.checkAndUpdate(
+            context = appContext,
+            channel = ExtractorUpdater.selectedChannel(appContext),
+            force = false
+        )
+        return if (update.error.isBlank()) extractor.extract(url) else firstResult
     }
 }

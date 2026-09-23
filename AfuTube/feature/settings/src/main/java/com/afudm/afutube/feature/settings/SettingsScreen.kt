@@ -33,7 +33,8 @@ fun SettingsScreen(
     var ytdlpVersion by remember { mutableStateOf("…") }
     var updateStatus by remember { mutableStateOf("") }
     var isUpdating   by remember { mutableStateOf(false) }
-    var channel      by remember { mutableStateOf(ExtractorUpdater.Channel.STABLE) }
+    var channel      by remember { mutableStateOf(ExtractorUpdater.selectedChannel(context)) }
+    var extractorAutoUpdate by remember { mutableStateOf(ExtractorUpdater.autoUpdateEnabled(context)) }
     var autoUpdate   by remember { mutableStateOf(UpdateManager.autoCheckEnabled(context)) }
     var appUpdateStatus by remember { mutableStateOf("") }
 
@@ -97,6 +98,17 @@ fun SettingsScreen(
             // ── Extractor güncelleyici ──────────────────────────────────────
             item {
                 SettingsCard(title = "🔧 Extractor (yt-dlp)") {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Otomatik motor güncellemesi", color = AfuColors.text, fontSize = 14.sp)
+                            Text("Açılışta günde bir kontrol eder", color = AfuColors.textMuted, fontSize = 12.sp)
+                        }
+                        Switch(checked = extractorAutoUpdate, onCheckedChange = {
+                            extractorAutoUpdate = it
+                            ExtractorUpdater.setAutoUpdateEnabled(context, it)
+                        })
+                    }
+                    Spacer(Modifier.height(8.dp))
                     // Versiyon
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -118,7 +130,7 @@ fun SettingsScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
                             selected = channel == ExtractorUpdater.Channel.STABLE,
-                            onClick  = { channel = ExtractorUpdater.Channel.STABLE },
+                            onClick  = { channel = ExtractorUpdater.Channel.STABLE; ExtractorUpdater.setSelectedChannel(context, ExtractorUpdater.Channel.STABLE) },
                             label    = { Text("Stable") },
                             colors   = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = AfuColors.accent,
@@ -127,7 +139,7 @@ fun SettingsScreen(
                         )
                         FilterChip(
                             selected = channel == ExtractorUpdater.Channel.NIGHTLY,
-                            onClick  = { channel = ExtractorUpdater.Channel.NIGHTLY },
+                            onClick  = { channel = ExtractorUpdater.Channel.NIGHTLY; ExtractorUpdater.setSelectedChannel(context, ExtractorUpdater.Channel.NIGHTLY) },
                             label    = { Text("Nightly") },
                             colors   = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = AfuColors.accentAlt,
@@ -144,7 +156,8 @@ fun SettingsScreen(
                             scope.launch {
                                 isUpdating   = true
                                 updateStatus = ""
-                                val result = ExtractorUpdater.checkAndUpdate(context, channel)
+                                ExtractorUpdater.setSelectedChannel(context, channel)
+                                val result = ExtractorUpdater.checkAndUpdate(context, channel, force = true)
                                 ytdlpVersion = result.newVersion
                                 updateStatus = if (result.updated) "✓ Güncellendi" else if (result.error.isNotBlank()) "Hata: ${result.error}" else "Zaten güncel"
                                 isUpdating   = false
@@ -165,6 +178,13 @@ fun SettingsScreen(
                             Text("yt-dlp'yi Güncelle", color = AfuColors.text)
                         }
                     }
+                    val lastUpdate = ExtractorUpdater.lastUpdateAt(context)
+                    Text(
+                        if (lastUpdate == 0L) "Son motor güncellemesi: yok"
+                        else "Son motor güncellemesi: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(lastUpdate))}",
+                        color = AfuColors.textMuted,
+                        fontSize = 11.sp
+                    )
                 }
             }
 

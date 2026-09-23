@@ -10,12 +10,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 object MediaRuntime {
     private const val TAG = "AfuTubeMediaRuntime"
     private const val FAILURE_MESSAGE = "Medya motoru başlatılamadı. Uygulamayı yeniden açıp tekrar deneyin."
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val engineMutex = Mutex()
     private val coordinator = InitCoordinator<Context> { context ->
         YoutubeDL.getInstance().init(context)
         FFmpeg.getInstance().init(context)
@@ -47,6 +50,8 @@ object MediaRuntime {
     }
 
     fun lastError(): Throwable? = initializationError
+
+    suspend fun <T> withEngine(block: suspend () -> T): T = engineMutex.withLock { block() }
 
     class MediaInitializationException(message: String, cause: Throwable) : RuntimeException(message, cause)
 }
