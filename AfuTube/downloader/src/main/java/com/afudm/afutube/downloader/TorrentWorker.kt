@@ -3,6 +3,7 @@ package com.afudm.afutube.downloader
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
@@ -151,7 +152,13 @@ class TorrentWorker(
             .setOngoing(true)
             .setSilent(true)
             .build()
-        return ForegroundInfo(NOTIF_ID, notif)
+        // Android 14+ (targetSdk 34+): tur verilmeden baslatilan on plan servisi uygulamayi COKERTIR
+        // ("uygulama durduruldu"). Manifestteki SystemForegroundService turu dataSync.
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            ForegroundInfo(NOTIF_ID, notif)
+        }
     }
 
     private fun createNotifChannel() {

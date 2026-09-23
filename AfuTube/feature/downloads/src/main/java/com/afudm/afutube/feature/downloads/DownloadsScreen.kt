@@ -86,7 +86,10 @@ fun DownloadsScreen() {
                 items(workInfos, key = { it.id }) { workInfo ->
                     DownloadCard(
                         workInfo = workInfo,
-                        onCancel = { engine.cancel(workInfo.id) }
+                        onCancel = { engine.cancel(workInfo.id) },
+                        onRemove = { title ->
+                            engine.remove(workInfo.id, title, finished = workInfo.state == WorkInfo.State.SUCCEEDED)
+                        }
                     )
                 }
             }
@@ -97,7 +100,8 @@ fun DownloadsScreen() {
 @Composable
 private fun DownloadCard(
     workInfo : WorkInfo,
-    onCancel : () -> Unit
+    onCancel : () -> Unit,
+    onRemove : (title: String) -> Unit
 ) {
     val percent = workInfo.progress.getInt("progress_percent", 0)
     val speed   = workInfo.progress.getString("progress_speed") ?: ""
@@ -137,8 +141,12 @@ private fun DownloadCard(
                 )
                 if (workInfo.state == WorkInfo.State.RUNNING) {
                     IconButton(onClick = onCancel, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.Close, null, tint = AfuColors.textMuted, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Close, "Durdur", tint = AfuColors.textMuted, modifier = Modifier.size(18.dp))
                     }
+                }
+                // Her durumda (bekliyor / hata / takili / tamamlandi) kayit kaldirilabilir.
+                IconButton(onClick = { onRemove(title) }, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Delete, "Sil", tint = AfuColors.textMuted, modifier = Modifier.size(18.dp))
                 }
             }
 

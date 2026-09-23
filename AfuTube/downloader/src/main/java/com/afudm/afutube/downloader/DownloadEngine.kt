@@ -9,6 +9,8 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import java.io.File
 import java.util.UUID
@@ -20,6 +22,8 @@ import java.util.UUID
 class DownloadEngine(private val context: Context) {
 
     private val workManager = WorkManager.getInstance(context)
+    private val prefs = context.getSharedPreferences("afutube_downloads", Context.MODE_PRIVATE)
+    private val hidden = MutableStateFlow(prefs.getStringSet(HIDDEN_KEY, emptySet()).orEmpty().toSet())
 
     /** İndirme türü */
     enum class Kind { HTTP, TORRENT }
@@ -96,6 +100,30 @@ class DownloadEngine(private val context: Context) {
     /** Tüm aktif HTTP indirme akışı */
     fun allDownloads(): Flow<List<WorkInfo>> =
         workManager.getWorkInfosByTagFlow("afutube_download")
+            .combine(hidden) { infos, gizli -> infos.filterNot { it.id.toString() in gizli } }
+
+    /**
+     * Kaydi listeden kaldirir. Bitmemis / hatali indirmede isi iptal eder ve yarim kalan gecici
+     * dosyalari (.part/.ytdl/.aria2/.temp) siler. Tamamlanmis indirmenin videosu SILINMEZ.
+     */
+    fun remove(workId: UUID, title: String, finished: Boolean) {
+        if (!finished) {
+            cancel(workId)
+            deletePartialFiles(title)
+        }
+        val yeni = hidden.value + workId.toString()
+        hidden.value = yeni
+        prefs.edit().putStringSet(HIDDEN_KEY, yeni).apply()
+    }
+
+    private fun deletePartialFiles(title: String) {
+        val dir = context.getExternalFilesDir(null) ?: return
+        val prefix = title.take(20)
+        if (prefix.isBlank()) return
+        dir.listFiles()?.filter { f ->
+            f.name.startsWith(prefix) && PARTIAL_SUFFIXES.any { f.name.contains(it) }
+        }?.forEach { runCatching { it.delete() } }
+    }
 
     /** Tüm aktif torrent indirme akışı */
     fun allTorrents(): Flow<List<WorkInfo>> =
@@ -132,6 +160,9 @@ class DownloadEngine(private val context: Context) {
     }
 
     companion object {
+        private const val HIDDEN_KEY = "hidden_work_ids"
+        private val PARTIAL_SUFFIXES = listOf(".part", ".ytdl", ".aria2", ".temp")
+
         @Volatile private var INSTANCE: DownloadEngine? = null
         fun getInstance(context: Context): DownloadEngine =
             INSTANCE ?: synchronized(this) {

@@ -5,11 +5,13 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import androidx.work.CoroutineWorker
 import androidx.work.Data
+import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -136,7 +138,11 @@ object UpdateManager {
 }
 
 class ApkDownloadWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun getForegroundInfo(): ForegroundInfo = progressInfo(0)
+
     override suspend fun doWork(): Result = runCatching {
+        // On plan: 70-120 MB indirme uygulamadan cikilsa da surer; bildirimde yuzde gorunur.
+        runCatching { setForeground(progressInfo(0)) }
         val apk = File(applicationContext.cacheDir, "AfuTube-update.apk")
         download(inputData.getString("apkUrl")!!, apk)
         val checksum = URL(inputData.getString("checksumUrl")!!).openStream().bufferedReader().use { it.readText() }
@@ -149,7 +155,47 @@ class ApkDownloadWorker(context: Context, params: WorkerParameters) : CoroutineW
         val connection = URL(url).openConnection() as HttpURLConnection
         connection.connectTimeout = 15_000
         connection.readTimeout = 60_000
-        connection.inputStream.use { input -> target.outputStream().use { output -> input.copyTo(output) } }
+        val total = connection.contentLengthLong
+        var done = 0L
+        var lastPercent = -1
+        connection.inputStream.use { input ->
+            target.outputStream().use { output ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    output.write(buffer, 0, read)
+                    done += read
+                    val percent = if (total > 0) (done * 100 / total).toInt() else 0
+                    if (percent != lastPercent) {
+                        lastPercent = percent
+                        runCatching { setForegroundAsync(progressInfo(percent)) }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun progressInfo(percent: Int): ForegroundInfo {
+        val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            manager.createNotificationChannel(
+                NotificationChannel(PROGRESS_CHANNEL, "AfuTube güncelleme indirme", NotificationManager.IMPORTANCE_LOW)
+            )
+        }
+        val notification = NotificationCompat.Builder(applicationContext, PROGRESS_CHANNEL)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle("AfuTube güncellemesi indiriliyor")
+            .setContentText("%$percent")
+            .setProgress(100, percent, percent == 0)
+            .setOngoing(true)
+            .setSilent(true)
+            .build()
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(PROGRESS_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            ForegroundInfo(PROGRESS_NOTIFICATION_ID, notification)
+        }
     }
 
     /**
@@ -190,5 +236,7 @@ class ApkDownloadWorker(context: Context, params: WorkerParameters) : CoroutineW
     private companion object {
         const val INSTALL_CHANNEL = "afutube_update_install"
         const val INSTALL_NOTIFICATION_ID = 7201
+        const val PROGRESS_CHANNEL = "afutube_update_progress"
+        const val PROGRESS_NOTIFICATION_ID = 7202
     }
 }
