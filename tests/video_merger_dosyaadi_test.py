@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from video import ytdlp  # noqa: E402
 from video.ytdlp import VideoJob  # noqa: E402
+from core import manager as manager_module  # noqa: E402
 from core.manager import Manager  # noqa: E402
 
 
@@ -39,6 +40,17 @@ class _FakeStore:
         self.row.update(fields)
 
 
+class _FakeVideoStore:
+    def __init__(self, row: dict) -> None:
+        self.row = row
+
+    def update_by_gid(self, gid: str, **fields) -> None:
+        self.row.update(fields)
+
+    def by_gid(self, gid: str) -> dict:
+        return self.row
+
+
 def check(ad: str, kosul: bool, detay: str = "") -> None:
     if not kosul:
         raise AssertionError(ad + (f" <- {detay}" if detay else ""))
@@ -54,7 +66,7 @@ def test_ytdlp_merge_filename_and_parts() -> None:
                 '[Merger] Merging formats into "C:/downloads/Genel/X.mp4"',
             ]
         )
-    )
+        )
 
     job._akisi_oku(None)
 
@@ -67,6 +79,50 @@ def test_ytdlp_merge_filename_and_parts() -> None:
         ],
         repr(job.parca_dosyalari),
     )
+
+
+def test_complete_merge_reports_real_size_to_ui_and_db() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = Path(tmp)
+        merged = folder / "X.mp4"
+        merged.write_bytes(b"x" * 73728)
+        job = VideoJob("yt:test", "https://ornek.com/video", str(folder))
+        job.proc = _FakeProc("\n".join([
+            f"[download] Destination: {folder}/X.f5.mp4",
+            '[download] 100% of 903 MiB in 00:01',
+            f"[download] Destination: {folder}/X.f10.m4a",
+            '[download] 100% of 137 MiB in 00:01',
+            f'[Merger] Merging formats into "{merged}"',
+        ]))
+        job._parse_progress("PROGRESS|946864128|946864128|946864128|1|0")
+        job._parse_progress("PROGRESS|143654912|143654912|143654912|1|0")
+        job._pump(None)
+
+        check("birlesik ad korunur", job.filename == "X.mp4", job.filename)
+        check("tamamlanan total gercek dosya boyutu", job.total == 73728, str(job.total))
+        check("tamamlanan downloaded gercek dosya boyutu",
+              job.downloaded == 73728, str(job.downloaded))
+        check("API totalLength gercek dosya boyutu",
+              job.to_dict()["totalLength"] == 73728, repr(job.to_dict()))
+
+        row = {"id": 1, "gid": "yt:test", "kind": "video", "source": job.url,
+               "title": "X", "dest_dir": str(folder), "filename": "X.mp4",
+               "total_bytes": 0, "done_bytes": 0, "status": "active",
+               "error": None, "start_after": None}
+        store = _FakeVideoStore(row)
+        manager = Manager.__new__(Manager)
+        manager.store = store
+        manager._known_complete = {"yt:test"}
+        manager._cerez_birak = lambda row: None
+        manager._on_complete = lambda *args: None
+        original_delete = manager_module.cerez.sil
+        try:
+            manager_module.cerez.sil = lambda job_id: None
+            manager._on_video_update(job)
+        finally:
+            manager_module.cerez.sil = original_delete
+        check("DB total_bytes gercek dosya boyutu", row["total_bytes"] == 73728, repr(row))
+        check("DB done_bytes gercek dosya boyutu", row["done_bytes"] == 73728, repr(row))
 
 
 def test_old_split_filename_finds_merged_output() -> None:
@@ -239,6 +295,7 @@ def test_manager_resolves_old_record_and_repairs_db() -> None:
 
 if __name__ == "__main__":
     test_ytdlp_merge_filename_and_parts()
+    test_complete_merge_reports_real_size_to_ui_and_db()
     test_old_split_filename_finds_merged_output()
     test_postprocessor_targets_replace_filename_without_becoming_parts()
     test_download_already_exists_and_unicode_filename_are_parsed()
