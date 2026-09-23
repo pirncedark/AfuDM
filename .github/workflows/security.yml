@@ -3,6 +3,7 @@ name: Security
 on:
   push:
   pull_request:
+  workflow_call:
 
 jobs:
   scan:

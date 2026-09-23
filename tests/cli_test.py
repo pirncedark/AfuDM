@@ -200,11 +200,7 @@ for islem in (m.pause, m.resume):
         check("%s bilinmeyen gid RED" % islem.__name__, False)
     except KayitYok as e:
         check("%s bilinmeyen gid RED (KAYIT_YOK)" % islem.__name__, e.code == "KAYIT_YOK")
-try:
-    m.remove("bilinmeyen-gid")
-    check("remove bilinmeyen gid RED", False)
-except KayitYok:
-    check("remove bilinmeyen gid RED (KAYIT_YOK)", True)
+check("remove bilinmeyen gid orphan basarili", m.remove("bilinmeyen-gid") is True)
 
 print("3) Zamanlama cozumleme (_zamanla) — YEREL SAAT, gecmisse yarina")
 from api.server import _zamanla  # noqa: E402

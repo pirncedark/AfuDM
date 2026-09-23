@@ -1,7 +1,13 @@
 # -*- coding: utf-8 -*-
 """Orphan record deletion test for AfuDM."""
 import unittest
+import sys
+from pathlib import Path
 from unittest.mock import MagicMock
+
+KOK = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(KOK))
+
 from core.manager import Manager
 from core.servis import AfuDMServis
 
@@ -82,6 +88,52 @@ class TestOrphanRemove(unittest.TestCase):
         snap = mgr.snapshot()
         # The removed GID must NOT be present in snapshot items
         self.assertEqual(len(snap["items"]), 0)
+
+    def test_snapshot_reattaches_torrent_after_gid_change(self):
+        old_gid = "old_gid"
+        new_gid = "new_gid"
+        info_hash = "a" * 40
+        row = {
+            "id": 7,
+            "gid": old_gid,
+            "kind": "torrent",
+            "status": "active",
+            "source": f"magnet:?xt=urn:btih:{info_hash}",
+            "title": "Kurtarilacak torrent",
+        }
+
+        mock_store = MagicMock()
+        mock_store.by_gid.return_value = None
+        mock_store.list.return_value = [row]
+        mock_store.all_settings.return_value = {}
+        mock_store.update_by_id.side_effect = lambda _id, **fields: row.update(fields)
+        mock_store.by_id.side_effect = lambda _id: row
+
+        mock_rpc = MagicMock()
+        mock_rpc.tell_active.return_value = [{
+            "gid": new_gid,
+            "infoHash": info_hash,
+            "status": "active",
+            "totalLength": 100,
+            "completedLength": 40,
+        }]
+        mock_rpc.tell_waiting.return_value = []
+        mock_rpc.tell_stopped.return_value = []
+        mock_rpc.global_stat.return_value = {}
+
+        mgr = Manager.__new__(Manager)
+        mgr.store = mock_store
+        mgr.rpc = mock_rpc
+        mgr.video_jobs = {}
+        mgr._cerezler = {}
+        mgr._removed_gids = set()
+        mgr._removed_hashes = set()
+        mgr._known_complete = set()
+        mgr.last_error = ""
+
+        snap = mgr.snapshot()
+        self.assertEqual(row["gid"], new_gid)
+        self.assertEqual(snap["items"][0]["gid"], new_gid)
 
 
 if __name__ == "__main__":
