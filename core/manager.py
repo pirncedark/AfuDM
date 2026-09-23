@@ -858,6 +858,17 @@ class Manager:
                 matches = glob.glob(str(Path(dest_dir) / f"{escaped}*"))
                 for m in matches:
                     candidates.append(Path(m))
+                merged = ytdlp.birlesik_dosya_bul(dest_dir, filename)
+                if merged and merged.name != filename:
+                    try:
+                        self.store.update_by_id(
+                            row["id"],
+                            filename=merged.name,
+                            total_bytes=merged.stat().st_size,
+                        )
+                    except (OSError, KeyError):
+                        pass
+                    candidates.append(merged)
 
         # 3. Video jobs (yt-dlp)
         if gid in self.video_jobs:
@@ -884,6 +895,9 @@ class Manager:
                         matches = glob.glob(str(Path(dest_dir) / f"{escaped}*"))
                         for m in matches:
                             candidates.append(Path(m))
+                        merged = ytdlp.birlesik_dosya_bul(dest_dir, filename)
+                        if merged:
+                            candidates.append(merged)
         except Exception:
             pass
 

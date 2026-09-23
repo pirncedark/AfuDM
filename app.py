@@ -995,8 +995,8 @@ class Api:
         for item in self.manager.snapshot()["items"]:
             if item["gid"] == gid:
                 folder = item.get("dir") or self.manager.current_download_dir()
-                name = item.get("filename") or ""
-                open_in_explorer(str(Path(folder) / name) if name else folder)
+                hedef = self.manager.resolve_item_path(gid)
+                open_in_explorer(str(hedef) if hedef else folder)
                 return {"ok": True}
         return {"ok": False, "error": lang.t("err.notFound", str(self.manager.store.get("language", "auto")))}
 
@@ -1084,8 +1084,8 @@ class Api:
                 continue
             klasor = item.get("dir") or self.manager.current_download_dir()
             ad = item.get("filename") or ""
-            hedef = Path(klasor) / ad if ad else Path(klasor)
-            if hedef.is_file():
+            hedef = self.manager.resolve_item_path(gid)
+            if hedef and hedef.is_file():
                 os.startfile(str(hedef))  # noqa: S606 — Windows kabugu
             else:
                 open_in_explorer(str(klasor))
@@ -1099,6 +1099,10 @@ class Api:
                 continue
             klasor = item.get("dir") or self.manager.current_download_dir()
             ad = item.get("filename") or ""
+            hedef = self.manager.resolve_item_path(gid)
+            if hedef:
+                klasor = str(hedef.parent)
+                ad = hedef.name
             return {"ok": True, "url": item.get("source") or "", "klasor": str(klasor),
                     "ad": ad, "yol": str(Path(klasor) / ad) if ad else str(klasor)}
         return {"ok": False, "error": lang.t("err.notFound", str(self.manager.store.get("language", "auto")))}

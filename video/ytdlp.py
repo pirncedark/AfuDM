@@ -55,6 +55,27 @@ COMBINED_FORMATS = {
     "audio": "bestaudio[ext=m4a]/bestaudio/best",
 }
 
+_SPLIT_FILENAME_RE = re.compile(r"^(?P<stem>.+)\.f\d+(?P<ext>\.[^.]+)$", re.IGNORECASE)
+
+
+def birlesik_dosya_bul(dest_dir: str | Path, filename: str) -> Path | None:
+    """Eski yt-dlp parca adindan diskteki birlesik ciktiyi bulur."""
+    if not filename:
+        return None
+    klasor = Path(dest_dir)
+    mevcut = klasor / filename
+    if mevcut.is_file():
+        return mevcut
+    eslesme = _SPLIT_FILENAME_RE.match(filename)
+    if not eslesme:
+        return None
+    govde = eslesme.group("stem")
+    for uzanti in (".mp4", ".mkv", ".webm"):
+        aday = klasor / (govde + uzanti)
+        if aday.is_file():
+            return aday
+    return None
+
 
 def ffmpeg_hazir() -> bool:
     """engine/ffmpeg.exe (veya sistemdeki ffmpeg) var mi?"""
@@ -373,7 +394,10 @@ class VideoJob:
         )
         self._thread.start()
 
-    _DEST_RE = re.compile(r"\[(?:download|Merger|ExtractAudio)\].*?(?:Destination:|to:)\s*(.+)$")
+    _DEST_RE = re.compile(
+        r"\[(?P<tag>download|Merger|VideoRemuxer|VideoConvertor|ExtractAudio|Fixup[^\]]*)\]"
+        r".*?(?:(?:Destination:|to:?|into)\s*(?P<target>.+)|\bof\s+(?P<quoted>\"[^\"]+\"))$"
+    )
     # aria2c dis indirici olarak calisirken yt-dlp kendi ilerleme satirini
     # BASMAZ; aktaran aria2c oldugu icin ilerleme onun ozet satirindan gelir:
     #   [#da19cb 2.8MiB/9.7MiB(29%) CN:10 DL:3.3MiB ETA:2s]
@@ -432,6 +456,7 @@ class VideoJob:
             if code == 0:
                 if not self.ffmpeg_vardi:
                     self._kendi_birlestir(on_update)
+                self._birlesik_dosya_kontrol()
                 self.status = "complete"
                 if self.total:
                     self.downloaded = self.total
@@ -531,18 +556,37 @@ class VideoJob:
                     if on_update:
                         on_update(self)
                     continue
-                match = self._DEST_RE.search(line)
-                if match:
-                    hedef = match.group(1).strip()
-                    self.filename = Path(hedef).name
-                    if hedef not in self.parca_dosyalari:
-                        self.parca_dosyalari.append(hedef)
+                self._hedef_satirini_isle(line)
                 tail.append(line)
                 del tail[:-30]
         if buffer.strip():
-            if not self._parse_aria(buffer.strip()):
-                tail.append(buffer.strip())
+            kalan = buffer.strip()
+            if not self._parse_aria(kalan):
+                self._hedef_satirini_isle(kalan)
+                tail.append(kalan)
         return self.proc.wait(), tail
+
+    def _hedef_satirini_isle(self, line: str) -> None:
+        match = self._DEST_RE.search(line)
+        if not match:
+            return
+        hedef = (match.group("target") or match.group("quoted") or "").strip()
+        if len(hedef) >= 2 and hedef[0] == hedef[-1] == '"':
+            hedef = hedef[1:-1]
+        if not hedef:
+            return
+        self.filename = Path(hedef).name
+        if match.group("tag") == "download" and hedef not in self.parca_dosyalari:
+            self.parca_dosyalari.append(hedef)
+
+    def _birlesik_dosya_kontrol(self) -> None:
+        """Eksik parca adi kaldiysa son birlesik dosyaya don."""
+        bulunan = birlesik_dosya_bul(self.dest_dir, self.filename)
+        if not bulunan:
+            return
+        if bulunan.name != self.filename:
+            self.filename = bulunan.name
+            self.total = bulunan.stat().st_size
 
     @staticmethod
     def _num(value: str) -> int:
