@@ -155,8 +155,13 @@ class ErisimDeposu:
 
     def __init__(self, store) -> None:
         self.store = store
-        self._conn = store.conn
         self._lock = store._lock
+
+    @property
+    def _conn(self):
+        # Restore can replace the underlying connection while preserving the
+        # shared Store object. Resolve it at use time rather than caching it.
+        return self.store.conn
 
     # --- anahtarlar -------------------------------------------------------
     def anahtar_olustur(self, ad: str, rol: str, not_metni: str = "") -> dict:
