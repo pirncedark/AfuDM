@@ -5,7 +5,7 @@ import org.junit.Test
 
 class MediaFileTypeDetectorTest {
     @Test fun audioExtensionsOpenAsListen() {
-        listOf("mp3", "m4a", "opus", "webm", "aac", "flac", "wav", "ogg").forEach {
+        listOf("mp3", "m4a", "opus", "aac", "flac", "wav", "ogg").forEach {
             assertEquals(it, MediaFileType.AUDIO, MediaFileTypeDetector.fromPath("/tmp/file.$it"))
         }
     }
@@ -14,5 +14,9 @@ class MediaFileTypeDetectorTest {
         listOf("mp4", "mkv", "mov", "avi").forEach {
             assertEquals(it, MediaFileType.VIDEO, MediaFileTypeDetector.fromPath("/tmp/file.$it"))
         }
+    }
+
+    @Test fun webmWithoutContextDefaultsToVideo() {
+        assertEquals(MediaFileType.VIDEO, MediaFileTypeDetector.fromPath("/tmp/file.webm"))
     }
 }

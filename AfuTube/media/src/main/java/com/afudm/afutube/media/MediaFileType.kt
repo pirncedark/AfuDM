@@ -13,8 +13,8 @@ object MediaFileTypeDetector {
 
     fun fromPath(path: String, context: Context? = null): MediaFileType {
         val ext = File(path).extension.lowercase()
-        if (ext in audioExtensions || ext == "webm") return MediaFileType.AUDIO
-        if (ext in videoExtensions) return MediaFileType.VIDEO
+        if (ext in audioExtensions) return MediaFileType.AUDIO
+        if (ext in videoExtensions && ext != "webm") return MediaFileType.VIDEO
         if (context != null) {
             val retriever = MediaMetadataRetriever()
             try {

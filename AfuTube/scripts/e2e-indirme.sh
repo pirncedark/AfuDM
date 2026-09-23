@@ -39,11 +39,11 @@ if [ $r != 0 ]; then echo "HATA: indirme 180 sn icinde tamamlanmadi"; grep -oE '
 cokme_var && { echo "HATA: tamamlandi ama uygulama coktu"; bitir cokme2; exit 1; }
 echo "BASARILI: indirme tamamlandi, cokme yok"
 
-tap tap-desc "$OUT/bitti.xml" "İzle" || { echo "HATA: İzle dugmesi yok"; bitir izle-yok; exit 1; }
+tap tap-desc "$OUT/bitti.xml" "Ä°zle" || { echo "HATA: Ä°zle dugmesi yok"; bitir izle-yok; exit 1; }
 sleep 5; dump oynatici
 cokme_var && { echo "HATA: oynatici acilinca uygulama coktu"; bitir oynatici-cokme; exit 1; }
 grep -q "Dinle" "$OUT/oynatici.xml" || { echo "HATA: oynaticida Dinle modu gorunmuyor"; bitir dinle-yok; exit 1; }
-echo "BASARILI: İzle ile oynatici acildi, Dinle modu gorunuyor"
+echo "BASARILI: Ä°zle ile oynatici acildi, Dinle modu gorunuyor"
 tap tap-desc "$OUT/oynatici.xml" "Dinle" || { echo "HATA: Dinle modu dugmesi yok"; bitir dinle; exit 1; }
 sleep 1; cokme_var && { echo "HATA: Dinle moduna geciste uygulama coktu"; bitir dinle-cokme; exit 1; }
 adb shell input keyevent KEYCODE_HOME; sleep 3
@@ -51,11 +51,20 @@ cokme_var && { echo "HATA: HOME sonrasi uygulama coktu"; bitir home-cokme; exit 
 adb shell dumpsys media_session > "$OUT/media-session.txt"
 grep -A20 "com.afudm.afutube" "$OUT/media-session.txt" | grep -Eq 'state=3|state=PLAYING\(3\)' || { echo "HATA: HOME sonrasi media session PLAYING degil"; bitir arkaplan; exit 1; }
 echo "BASARILI: HOME sonrasi arka plan ses oturumu PLAYING (state=3)"
+adb shell monkey -p "$PKG" 1 >/dev/null 2>&1; sleep 2; dump dinleye-don
+cokme_var && { echo "HATA: uygulamaya donuste uygulama coktu"; bitir dinle-donus-cokme; exit 1; }
+tap tap-desc "$OUT/dinleye-don.xml" "Ä°zle" || { echo "HATA: Ä°zle modu dugmesi yok"; bitir izle-modu-yok; exit 1; }
+sleep 1; adb shell input keyevent KEYCODE_HOME; sleep 3
+cokme_var && { echo "HATA: Ä°zle HOME sonrasi uygulama coktu"; bitir izle-home-cokme; exit 1; }
+adb shell dumpsys media_session > "$OUT/media-session-izle.txt"
+grep -A20 "com.afudm.afutube" "$OUT/media-session-izle.txt" | grep -Eq 'state=2|state=PAUSED\(2\)' || { echo "HATA: Ä°zle modunda HOME sonrasi media session PAUSED degil"; bitir izle-arkaplan; exit 1; }
+echo "BASARILI: Ä°zle modunda HOME sonrasi media session PAUSED (state=2)"
 adb shell monkey -p "$PKG" 1 >/dev/null 2>&1; sleep 2; adb shell input keyevent KEYCODE_BACK; sleep 2; dump listeye-don
 cokme_var && { echo "HATA: listeye donuste uygulama coktu"; bitir liste-cokme; exit 1; }
 echo "BASARILI: oynaticidan indirme listesine donuldu"
 
-tap tap-desc "$OUT/bitti.xml" "Sil" || { echo "HATA: Sil dugmesi yok"; bitir sil; exit 1; }
+dump sil-oncesi
+tap tap-desc "$OUT/sil-oncesi.xml" "Sil" || { echo "HATA: Sil dugmesi yok"; bitir sil; exit 1; }
 sleep 3; dump silindi
 if grep -q "Tamamlandı" "$OUT/silindi.xml"; then echo "HATA: Sil sonrasi kayit hala listede"; bitir sil2; exit 1; fi
 echo "BASARILI: Sil kaydi kaldirdi"
