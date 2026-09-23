@@ -53,6 +53,8 @@ jobs:
           mkdir -p release-assets
           cp AfuTube/app/build/outputs/apk/release/*universal*.apk release-assets/AfuTube-universal.apk
           sha256sum release-assets/AfuTube-universal.apk > release-assets/AfuTube-universal.apk.sha256
+          cp AfuTube/app/build/outputs/apk/release/*arm64-v8a*.apk release-assets/AfuTube-arm64-v8a.apk
+          (cd release-assets && sha256sum AfuTube-arm64-v8a.apk > AfuTube-arm64-v8a.apk.sha256)
           VERSION_NAME="${GITHUB_REF_NAME#afutube-v}"
           BASE_VERSION="${VERSION_NAME%%-*}"
           VERSION_CODE=$(echo "$BASE_VERSION" | awk -F. '{print ($1*1000000)+($2*1000)+$3}')
@@ -88,7 +90,7 @@ jobs:
             - Turkish update errors and configurable daily startup checks.
 
             ## Install
-            Download `AfuTube-universal.apk`. Existing debug builds must be removed once before installing the signed release.
+            Most phones: download the smaller `AfuTube-arm64-v8a.apk`. Older 32-bit phones: `AfuTube-universal.apk`. Both install over the previous signed version without removing data. In-app updates pick the right file automatically.
 
             ---
 
@@ -101,8 +103,10 @@ jobs:
             - Türkçe hata mesajları ve ayarlanabilir günlük açılış denetimi.
 
             ## Kurulum
-            `AfuTube-universal.apk` dosyasını indirin. Mevcut debug sürümü imza farkı nedeniyle bir kez kaldırıp imzalı sürümü kurun.
+            Çoğu telefon: daha küçük `AfuTube-arm64-v8a.apk`. Eski 32-bit telefonlar: `AfuTube-universal.apk`. İkisi de önceki imzalı sürümün üstüne veriler silinmeden kurulur. Uygulama içi güncelleme doğru dosyayı kendisi seçer.
           files: |
             release-assets/AfuTube-universal.apk
             release-assets/AfuTube-universal.apk.sha256
+            release-assets/AfuTube-arm64-v8a.apk
+            release-assets/AfuTube-arm64-v8a.apk.sha256
             release-assets/AfuTube-update.json

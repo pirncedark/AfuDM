@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import atexit
+import json
+import re
 import secrets
 import subprocess
 import time
@@ -18,6 +20,52 @@ RPC_PORT = 6810
 # "aria2c RPC 20 saniyede yanit vermedi" (oysa aria2c ayakta).
 RPC_PORT_SON = RPC_PORT + 20
 CREATE_NO_WINDOW = 0x08000000  # konsol penceresi acilmasin
+
+
+def _auth_required_path():
+    return paths.SESSION_FILE.with_name("aria2.auth-required.json")
+
+
+def sanitize_session_file() -> set[str]:
+    """Remove credentials from saved tasks and keep those tasks paused for renewal."""
+    session = paths.SESSION_FILE
+    if not session.exists():
+        return set()
+    text = session.read_text(encoding="utf-8", errors="replace")
+    try:
+        previous = json.loads(_auth_required_path().read_text(encoding="utf-8"))
+        required = {str(gid) for gid in previous if gid}
+    except (OSError, ValueError, TypeError):
+        required = set()
+
+    records = []
+    for record in re.split(r"\r?\n\s*\r?\n", text.strip()):
+        if not record:
+            continue
+        lines = record.splitlines()
+        gid = next((line.split("=", 1)[1].strip() for line in lines
+                    if line.strip().lower().startswith("gid=")), "")
+        secret_header = re.compile(r"^\s*header\s*=\s*(?:cookie|authorization)\s*:", re.I)
+        if any(secret_header.match(line) for line in lines):
+            required.add(gid) if gid else None
+            lines = [line for line in lines if not secret_header.match(line)]
+            if not any(line.strip().lower() == "pause=true" for line in lines):
+                lines.append(" pause=true")
+        records.append("\n".join(lines))
+
+    safe = "\n\n".join(records)
+    session.write_text(safe + ("\n" if safe else ""), encoding="utf-8")
+    _auth_required_path().write_text(
+        json.dumps(sorted(required), ensure_ascii=False), encoding="utf-8")
+    return required
+
+
+def save_auth_required(gids: set[str]) -> None:
+    marker = _auth_required_path()
+    if gids:
+        marker.write_text(json.dumps(sorted(gids), ensure_ascii=False), encoding="utf-8")
+    else:
+        marker.unlink(missing_ok=True)
 
 
 def load_or_create_secret() -> str:
@@ -95,8 +143,10 @@ def _args(secret: str, download_dir: str, port: int = RPC_PORT) -> list[str]:
         # --- oturum: kapatip acinca kaldigi yerden ---
         "--save-session=%s" % paths.SESSION_FILE,
         "--input-file=%s" % paths.SESSION_FILE,
-        "--save-session-interval=15",
-        "--auto-save-interval=15",
+        "--save-session-interval=0",
+        # Runtime download options can contain session credentials. Only
+        # explicit saves are allowed; they are scrubbed immediately below.
+        "--auto-save-interval=0",
         "--force-save=true",
         "--log=%s" % paths.ARIA2_LOG,
         "--log-level=warn",
@@ -149,6 +199,7 @@ class Aria2Daemon:
                     pass
         if not paths.ARIA2C.exists():
             raise FileNotFoundError(f"aria2c.exe bulunamadi: {paths.ARIA2C}")
+        sanitize_session_file()
         # 2) Degilse GERCEKTEN BOS bir port sec. Dolu porta baglanmak Windows'ta
         #    hata VERMEZ; istekler iki surece dagilir ve kopya asla acilmaz.
         secilen = next(
@@ -179,12 +230,16 @@ class Aria2Daemon:
         raise TimeoutError(
             "aria2c RPC %.0f saniyede yanit vermedi (port %d)" % (timeout, self.port))
 
+    def save_session(self) -> None:
+        self.rpc.save_session()
+        sanitize_session_file()
+
     def stop(self) -> None:
         if self.proc is None:
             return  # motoru biz baslatmadik
         try:
             if self.rpc.alive():
-                self.rpc.save_session()
+                self.save_session()
                 self.rpc.shutdown()
         except Exception:
             pass
@@ -193,3 +248,5 @@ class Aria2Daemon:
                 self.proc.wait(timeout=8)
             except subprocess.TimeoutExpired:
                 self.proc.kill()
+        # aria2 may write its final session during shutdown.
+        sanitize_session_file()

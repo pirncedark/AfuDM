@@ -15,6 +15,18 @@ class UIUXGateTest(unittest.TestCase):
         cls.browser = cls.playwright.chromium.launch(
             channel=os.environ.get("AFUDM_TEST_BROWSER", "msedge"), headless=True
         )
+        viewport = os.environ.get("AFUDM_TEST_VIEWPORT", "1280x720")
+        try:
+            cls.test_width, cls.test_height = (int(value) for value in viewport.split("x", 1))
+        except ValueError as exc:
+            raise unittest.SkipTest(f"Geçersiz AFUDM_TEST_VIEWPORT: {viewport}") from exc
+        try:
+            cls.test_dpr = float(os.environ.get("AFUDM_TEST_DPR", "1"))
+        except ValueError as exc:
+            raise unittest.SkipTest("Geçersiz AFUDM_TEST_DPR") from exc
+        cls.test_lang = os.environ.get("AFUDM_TEST_LANG", "tr")
+        if cls.test_lang not in {"tr", "en"}:
+            raise unittest.SkipTest(f"Geçersiz AFUDM_TEST_LANG: {cls.test_lang}")
 
     @classmethod
     def tearDownClass(cls):
@@ -22,9 +34,19 @@ class UIUXGateTest(unittest.TestCase):
         cls.playwright.stop()
 
     def setUp(self):
-        self.page = self.browser.new_page()
+        self.context = self.browser.new_context(
+            viewport={"width": self.test_width, "height": self.test_height},
+            device_scale_factor=self.test_dpr,
+        )
+        self.page = self.context.new_page()
         self.errors = []
         self.page.on("pageerror", lambda error: self.errors.append(str(error)))
+        self.page.on(
+            "console",
+            lambda message: self.errors.append(f"console.error: {message.text}")
+            if message.type == "error"
+            else None,
+        )
         
         # We use a fake pywebview to simulate the backend.
         self.page.add_init_script("""
@@ -35,7 +57,7 @@ class UIUXGateTest(unittest.TestCase):
                 engine_ok: true,
                 port_status: { calisan: 6811, yeniden_baslatma_gerekli: false },
                 download_dir: "C:\\\\Downloads",
-                lang: "tr",
+                lang: "LANGUAGE",
                 last_error: ""
             };
             
@@ -59,11 +81,11 @@ class UIUXGateTest(unittest.TestCase):
                     pencere_kapat: async () => null,
                     pencere_kenar: async () => null,
                     share_create: async () => ({ token: "fakeToken", url: "http://127.0.0.1/s/fakeToken" }),
-                    share_list: async () => ({ shared: {} }),
-                    share_delete: async () => ({ success: true })
+                    share_list: async () => ({ ok: true, shares: [] }),
+                    share_delete: async () => ({ ok: true })
                 }
             };
-        """)
+        """.replace("LANGUAGE", self.test_lang))
         self.page.goto((Path(__file__).resolve().parents[1] / "ui/index.html").as_uri())
         
         # Now that app.js is loaded, dispatch the event
@@ -73,7 +95,7 @@ class UIUXGateTest(unittest.TestCase):
         self.page.wait_for_function("typeof state !== 'undefined' && state.ready === true", timeout=2000)
 
     def tearDown(self):
-        self.page.close()
+        self.context.close()
 
     def test_g001_to_g004_base_health(self):
         """G-001 to G-004: App opens, no blank screen, no JS errors, DOM valid."""
@@ -209,13 +231,25 @@ class UIUXGateTest(unittest.TestCase):
         set_veil.click(position={"x": 5, "y": 5})
         expect(set_veil).to_be_hidden()
 
+    def test_share_center_modal_lifecycle(self):
+        """Paylaşım Merkezi opens, renders the empty state, and closes with Escape."""
+        share_veil = self.page.locator("#shareCenterVeil").first
+        self.page.locator("#openShare").click()
+        expect(share_veil).to_be_visible()
+        empty_text = "Henüz paylaşılan bir dosya yok." if self.test_lang == "tr" else "No shared files yet."
+        expect(self.page.locator("#shareList")).to_contain_text(empty_text)
+        self.page.keyboard.press("Escape")
+        expect(share_veil).to_be_hidden()
+        self.assertEqual(self.errors, [])
+
     def test_g011_to_g013_engine_offline_recovery(self):
         """G-011 to G-013: UI handles engine death and recovery gracefully."""
         # Make engine offline
         self.page.evaluate("window.fakeBackendState.engine_ok = false")
         
         # Wait for polling to notice
-        expect(self.page.locator("#engineText")).to_contain_text("bağlantı yok", timeout=3000)
+        offline_text = "bağlantı yok" if self.test_lang == "tr" else "no connection"
+        expect(self.page.locator("#engineText")).to_contain_text(offline_text, timeout=3000)
         expect(self.page.locator("#engineRetry")).to_be_visible()
         
         # A controlled fake backend response keeps the bridge contract async without
@@ -244,17 +278,18 @@ class UIUXGateTest(unittest.TestCase):
 
     def test_g015_language_switch(self):
         """G-015: TR and EN interfaces both render correctly."""
-        # Default is TR
-        expect(self.page.locator("#addBtn")).to_contain_text("Link ekle")
-        
-        # Switch to EN via backend state
-        self.page.evaluate("window.fakeBackendState.lang = 'en'")
-        # Wait for next tick
-        expect(self.page.locator("#addBtn")).to_contain_text("Add link", timeout=2000)
-        
-        # Switch back to TR
-        self.page.evaluate("window.fakeBackendState.lang = 'tr'")
-        expect(self.page.locator("#addBtn")).to_contain_text("Link ekle", timeout=2000)
+        expected = {
+            "tr": {"button": "Link ekle", "other": "Add link"},
+            "en": {"button": "Add link", "other": "Link ekle"},
+        }[self.test_lang]
+        expect(self.page.locator("#addBtn")).to_contain_text(expected["button"])
+
+        other_lang = "en" if self.test_lang == "tr" else "tr"
+        self.page.evaluate(f"window.fakeBackendState.lang = '{other_lang}'")
+        expect(self.page.locator("#addBtn")).to_contain_text(expected["other"], timeout=2000)
+
+        self.page.evaluate(f"window.fakeBackendState.lang = '{self.test_lang}'")
+        expect(self.page.locator("#addBtn")).to_contain_text(expected["button"], timeout=2000)
 
     def test_g015_translation_keys_exist_in_tr_and_en(self):
         """Static UI translation references must resolve in both supported languages."""
@@ -291,7 +326,7 @@ class UIUXGateTest(unittest.TestCase):
 
     def test_responsive_dpi_scales(self):
         """Toolbar remains usable at the Windows DPI scales used by the release gate."""
-        for scale in (1.25, 1.5, 2):
+        for scale in (1, 1.5, 2):
             with self.subTest(scale=scale):
                 context = self.browser.new_context(
                     viewport={"width": 1280, "height": 720}, device_scale_factor=scale
@@ -299,6 +334,12 @@ class UIUXGateTest(unittest.TestCase):
                 page = context.new_page()
                 errors = []
                 page.on("pageerror", lambda error: errors.append(str(error)))
+                page.on(
+                    "console",
+                    lambda message: errors.append(f"console.error: {message.text}")
+                    if message.type == "error"
+                    else None,
+                )
                 page.add_init_script("""
                     window.pywebview = { api: {
                         snapshot: async () => ({ items: [], settings: {}, stat: {}, engine_ok: true, lang: "tr" }),

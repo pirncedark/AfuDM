@@ -598,9 +598,10 @@ class VideoJob:
         bulunan = birlesik_dosya_bul(self.dest_dir, self.filename)
         if not bulunan:
             return
-        if bulunan.name != self.filename:
-            self.filename = bulunan.name
-            self.total = bulunan.stat().st_size
+        size = bulunan.stat().st_size
+        self.filename = bulunan.name
+        self.total = size
+        self.downloaded = size
 
     @staticmethod
     def _num(value: str) -> int:

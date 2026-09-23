@@ -51,6 +51,44 @@ class AppUpdateTest {
         assertEquals(null, AppUpdateParser.latest(json, currentVersionCode = 1000000))
     }
 
+    private val bothApksJson = """
+        [{"tag_name":"afutube-v1.2.0","body":"","assets":[
+          {"name":"AfuTube-universal.apk","browser_download_url":"https://example/universal.apk"},
+          {"name":"AfuTube-universal.apk.sha256","browser_download_url":"https://example/universal.sha"},
+          {"name":"AfuTube-arm64-v8a.apk","browser_download_url":"https://example/arm64.apk"},
+          {"name":"AfuTube-arm64-v8a.apk.sha256","browser_download_url":"https://example/arm64.sha"}
+        ]}]
+    """.trimIndent()
+
+    @Test
+    fun `arm64 device gets the smaller arm64 apk`() {
+        val update = AppUpdateParser.latest(bothApksJson, 1000000, supportedAbis = listOf("arm64-v8a", "armeabi-v7a"))
+
+        assertEquals("https://example/arm64.apk", update?.apkUrl)
+        assertEquals("https://example/arm64.sha", update?.checksumUrl)
+    }
+
+    @Test
+    fun `non-arm64 device or unknown abi falls back to universal apk`() {
+        assertEquals("https://example/universal.apk",
+            AppUpdateParser.latest(bothApksJson, 1000000, supportedAbis = listOf("armeabi-v7a"))?.apkUrl)
+        assertEquals("https://example/universal.apk", AppUpdateParser.latest(bothApksJson, 1000000)?.apkUrl)
+    }
+
+    @Test
+    fun `arm64 device falls back to universal when release has no arm64 apk`() {
+        val json = """
+            [{"tag_name":"afutube-v1.2.0","body":"","assets":[
+              {"name":"AfuTube-universal.apk","browser_download_url":"https://example/universal.apk"},
+              {"name":"AfuTube-universal.apk.sha256","browser_download_url":"https://example/universal.sha"},
+              {"name":"AfuTube-arm64-v8a.apk","browser_download_url":"https://example/arm64.apk"}
+            ]}]
+        """.trimIndent()
+
+        assertEquals("https://example/universal.apk",
+            AppUpdateParser.latest(json, 1000000, supportedAbis = listOf("arm64-v8a"))?.apkUrl)
+    }
+
     @Test
     fun `sha256 verifier accepts expected digest and rejects a mismatch`() {
         val file = Files.createTempFile("afutube", ".apk")

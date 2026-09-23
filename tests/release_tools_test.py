@@ -58,6 +58,29 @@ class ReleaseToolsTest(unittest.TestCase):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
         self.assertIn("def surum_bilgi", source)
 
+    def test_quality_gate_workflow_covers_all_release_checks(self):
+        source = (ROOT / ".github" / "workflows" / "quality-gate.yml").read_text(encoding="utf-8")
+        android = (ROOT / ".github" / "workflows" / "android-debug.yml").read_text(encoding="utf-8")
+        security = (ROOT / ".github" / "workflows" / "security.yml").read_text(encoding="utf-8")
+        ui_test = (ROOT / "tests" / "ui_ux_gate_test.py").read_text(encoding="utf-8")
+        source += android + security + ui_test
+        for required in (
+            "pull_request:", "push:", "workflow_call:",
+            "desktop-tests:", "ui-gate:", "deletion-recovery:",
+            "android-build:", "security:", "package-verify:",
+            "quality-gate:", "scripts/test.ps1", "assembleDebug",
+            "gitleaks", "build_exe.ps1", "build_release.ps1",
+            "verify_release.ps1", "smoke_test.ps1", "AFUDM_TEST_VIEWPORT",
+            "AFUDM_TEST_DPR", "AFUDM_TEST_LANG", "console.error",
+        ):
+            self.assertIn(required, source)
+
+    def test_release_workflow_waits_for_quality_gate(self):
+        source = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        self.assertIn("quality-gate:", source)
+        self.assertIn("uses: ./.github/workflows/quality-gate.yml", source)
+        self.assertIn("needs: quality-gate", source)
+
 
 if __name__ == "__main__":
     unittest.main()

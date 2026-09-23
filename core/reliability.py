@@ -25,7 +25,8 @@ class Reliability:
         self.manager = manager
 
     def integrity(self) -> dict:
-        rows = self.manager.store.conn.execute("PRAGMA integrity_check").fetchall()
+        with self.manager.store._lock:
+            rows = self.manager.store.conn.execute("PRAGMA integrity_check").fetchall()
         messages = [str(r[0]) for r in rows]
         ok = messages == ["ok"]
         return {"ok": ok, "status": "ok" if ok else "corrupt", "details": messages,
@@ -36,8 +37,12 @@ class Reliability:
         target = folder / f"afudm-{time.strftime('%Y%m%d-%H%M%S')}-{reason}.zip"
         # SQLite's backup API takes a consistent snapshot even while UI writes.
         temp = folder / (target.stem + ".db")
-        with sqlite3.connect(temp) as dst:
-            self.manager.store.conn.backup(dst)
+        dst = sqlite3.connect(temp)
+        try:
+            with self.manager.store._lock:
+                self.manager.store.conn.backup(dst)
+        finally:
+            dst.close()
         with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as z:
             z.write(temp, "afudm.db")
             z.writestr("manifest.json", json.dumps({"created_at": time.time(), "reason": reason,
@@ -60,15 +65,23 @@ class Reliability:
         with zipfile.ZipFile(archive_path) as z:
             if "afudm.db" not in z.namelist(): raise ValueError("yedekte veritabani yok")
             temp = paths.DATA / "restore.tmp.db"; temp.write_bytes(z.read("afudm.db"))
-        with sqlite3.connect(temp) as db:
+        db = sqlite3.connect(temp)
+        try:
             if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                 temp.unlink(missing_ok=True); raise ValueError("yedek butun degil")
-        with self.manager.store._lock:
-            self.manager.store.conn.close()
+        finally:
+            db.close()
+        # Keep Store's identity stable: workers and service facades retain this
+        # object. Its lock serializes the swap against every Store operation.
+        store = self.manager.store
+        with store._lock:
+            store.conn.close()
             shutil.move(str(temp), str(paths.DB_PATH))
-            # Store uses the same migration-safe constructor rather than copying tables.
+            # Reuse the migration-safe constructor, then transplant its live
+            # connection into the shared Store while all readers are blocked.
             from .db import Store
-            self.manager.store = Store(str(paths.DB_PATH))
+            replacement = Store(str(paths.DB_PATH))
+            store.conn = replacement.conn
         return {"ok": True, "pre_restore_backup": before["path"], "restart_required": True}
 
     def diagnostics_preview(self) -> dict:

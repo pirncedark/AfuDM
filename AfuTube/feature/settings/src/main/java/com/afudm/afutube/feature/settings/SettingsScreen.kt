@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun SettingsScreen(
     currentVersionCode: Int = 1000000,
+    currentVersionName: String = "",
     onUpdateFound: (AppUpdate) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -71,6 +72,10 @@ fun SettingsScreen(
             }
             item {
                 SettingsCard(title = "Uygulama guncellemeleri") {
+                    if (currentVersionName.isNotBlank()) {
+                        Text("Yüklü sürüm: $currentVersionName", color = AfuColors.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(6.dp))
+                    }
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Guncellemeleri denetle", color = AfuColors.text, fontSize = 14.sp)
