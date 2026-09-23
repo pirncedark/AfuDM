@@ -54,8 +54,11 @@ def _indir_yolu(manager, gid):
     yol = manager.resolve_item_path(gid)
     if not yol:
         return None
-    yol = Path(yol).resolve()
-    kok = Path(manager.current_download_dir()).resolve()
+    try:
+        yol = Path(yol).resolve()
+        kok = Path(manager.current_download_dir()).resolve()
+    except (OSError, RuntimeError, ValueError, TypeError) as exc:
+        raise PermissionError("gecersiz dosya yolu") from exc
     if not yol.is_relative_to(kok):
         raise PermissionError("dosya indirme kokunun disinda")
     return yol
