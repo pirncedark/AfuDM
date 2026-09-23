@@ -47,6 +47,7 @@ from core.windows_integration import WindowsIntegration  # noqa: E402
 from core.reliability import Reliability  # noqa: E402
 from core.paylasim_sunucusu import PaylasimSunucusu  # noqa: E402
 from core.tunel import TunnelError, TunnelManager  # noqa: E402
+from core import smb_paylasim  # noqa: E402
 from core.manager import AyarGecersiz  # noqa: E402
 from core import settings_validation  # noqa: E402
 
@@ -1190,6 +1191,7 @@ class Api:
             share_result = subprocess.run(
                 ["net", "share", f"{share_name}={share_root}", "/GRANT:Everyone,READ"],
                 check=True, capture_output=True, text=True, timeout=15,
+                encoding="oem", errors="replace",
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             if share_result.returncode:
@@ -1220,6 +1222,8 @@ class Api:
                 sonuc = subprocess.run(
                     ["net", "share", share_name, "/delete", "/y"],
                     check=False, capture_output=True, text=True, timeout=15,
+                    # net.exe OEM (TR: cp857) yazar; cp1254 ile "bulunamadı" okunamaz.
+                    encoding="oem", errors="replace",
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
                 cikti = f"{sonuc.stderr} {sonuc.stdout}".lower()
@@ -1622,6 +1626,8 @@ def main() -> int:
 
     _kilit = ornek.OrnekKilidi(ornek.KIP_MASAUSTU)
     _kilit.al()
+    # Cokme/zorla kapatma sonrasi acik kalan SMB paylasimlarini kapat.
+    threading.Thread(target=smb_paylasim.artiklari_temizle, daemon=True).start()
     manager = Manager()
     tracker_saglik.klasoru_hazirla()   # kullanici .txt atabilsin diye hep dursun
     try:

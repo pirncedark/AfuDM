@@ -103,6 +103,7 @@ if (`$parseHatalari) {
         "tests/linkgrabber_test.py",
         "tests/engines_test.py",
         "tests/video_pro_test.py",
+        "tests/smb_paylasim_test.py",
         "tests/video_merger_dosyaadi_test.py",
         "tests/video_yetim_kayit_test.py",
         "tests/paketle_kilit_test.py",

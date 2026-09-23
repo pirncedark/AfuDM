@@ -467,7 +467,7 @@ select:focus-visible, button:focus-visible {
   color: var(--muted);
 }
 .num.big { color: var(--text); font-weight: 500; }
-.size-line { color: var(--dim); font-size: 11px; margin-top: 2px; }
+.size-line { color: var(--dim); font-size: 11px; margin-top: 2px; white-space: nowrap; }
 
 .state {
   display: flex;
