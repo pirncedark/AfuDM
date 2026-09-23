@@ -59,3 +59,35 @@ jobs:
             AfuTube/app/build/reports/
             AfuTube/build/reports/
           retention-days: 7
+
+  debug:
+    name: Build Debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install Gradle & Generate Wrapper
+        working-directory: ./AfuTube
+        run: |
+          GRADLE_VERSION="9.6.0"
+          wget -q "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -O /tmp/gradle-debug.zip
+          unzip -q /tmp/gradle-debug.zip -d /tmp/
+          export GRADLE_HOME="/tmp/gradle-${GRADLE_VERSION}"
+          export PATH="$GRADLE_HOME/bin:$PATH"
+          gradle wrapper --gradle-version ${GRADLE_VERSION} --distribution-type bin
+          chmod +x gradlew
+
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build Debug APK
+        working-directory: ./AfuTube
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
