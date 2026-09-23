@@ -181,6 +181,7 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             durum = self.manager.rpc.tell_status(gid) or {}
         except Exception:
+            _LOG.exception("/dosya icin indirme durumu alinamadi: %s", gid)
             durum = {}
         dosyalar = durum.get("files") or []
         ham = ""
@@ -678,7 +679,7 @@ class _Handler(BaseHTTPRequestHandler):
                         if dosyalar and dosyalar[0].get("path"):
                             yol_str = dosyalar[0].get("path")
                 except Exception:
-                    pass
+                    _LOG.exception("Paylasim icin indirme dosya yolu alinamadi: %s", gid)
                 if not yol_str:
                     row = self.manager.store.by_gid(gid)
                     if row and row.get("status") == "complete" and row.get("target_path"):
@@ -978,6 +979,7 @@ class LocalAPI:
             try:
                 self.start()
             except Exception:
+                _LOG.exception("LocalAPI yeniden baslatma rollback'i basarisiz")
                 self.stop()
             return {
                 "ok": False,
