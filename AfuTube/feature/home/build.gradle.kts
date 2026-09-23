@@ -24,4 +24,5 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.5.0")
     implementation(project(":core"))
     implementation(project(":extractor"))
+    implementation(project(":updater"))
 }

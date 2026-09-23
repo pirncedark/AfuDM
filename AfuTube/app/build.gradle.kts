@@ -10,6 +10,8 @@ android {
     compileSdk = 37
 
     defaultConfig {
+        // GitHub sideload is the only distribution today. Add a Play flavor before Play publication;
+        // Play must disable APK self-update and external executable-code downloads.
         applicationId = "com.afudm.afutube"
         minSdk = 24
         targetSdk = 37
@@ -108,9 +110,9 @@ dependencies {
 
     // ── youtubedl-android (yt-dlp + FFmpeg + aria2 wrapper) ─────────────────
     // Resmi repo: https://github.com/yausername/youtubedl-android
-    implementation("com.github.yausername.youtubedl-android:library:0.14.0")
-    implementation("com.github.yausername.youtubedl-android:ffmpeg:0.14.0")
-    implementation("com.github.yausername.youtubedl-android:aria2c:0.14.0")
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
+    implementation("io.github.junkfood02.youtubedl-android:aria2c:0.18.1")
 
 
     // ── Coil (thumbnail yükleme) ──────────────────────────────────────────
@@ -134,4 +136,6 @@ dependencies {
     implementation(project(":feature:history"))
     implementation(project(":feature:settings"))
     implementation(project(":feature:torrent"))
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlin:kotlin-test:2.2.20")
 }

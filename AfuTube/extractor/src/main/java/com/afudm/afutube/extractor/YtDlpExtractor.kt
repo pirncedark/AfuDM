@@ -1,6 +1,9 @@
 package com.afudm.afutube.extractor
 
 import android.content.Context
+import com.afudm.afutube.core.diagnostics.AnalysisFailure
+import com.afudm.afutube.core.diagnostics.AnalysisError
+import com.afudm.afutube.core.diagnostics.SensitiveDataRedactor
 import com.afudm.afutube.core.extractor.MediaExtractor
 import com.afudm.afutube.core.extractor.MediaFormat
 import com.afudm.afutube.core.extractor.MediaInfo
@@ -33,14 +36,48 @@ class YtDlpExtractor(private val context: Context) : MediaExtractor {
             addOption("--socket-timeout", "15")
         }
 
-        val response = YoutubeDL.getInstance().execute(request)
-
-        if (response.exitCode != 0) {
-            throw RuntimeException("yt-dlp hatası (${response.exitCode}): ${response.err}")
+        val response = try {
+            MediaRuntime.withEngine { YoutubeDL.getInstance().execute(request) }
+        } catch (error: Throwable) {
+            val version = runCatching { YoutubeDL.getInstance().version(context) ?: "bilinmiyor" }
+                .getOrDefault("bilinmiyor")
+            throw AnalysisException(
+                AnalysisFailure(
+                    message = error.message ?: "yt-dlp çalıştırılamadı",
+                    traceback = SensitiveDataRedactor.redact(error.stackTraceToString())
+                ).toAnalysisError(version),
+                error
+            )
         }
 
-        parseJson(JSONObject(response.out.trim()))
+        if (response.exitCode != 0) {
+            val version = runCatching { YoutubeDL.getInstance().version(context) ?: "bilinmiyor" }
+                .getOrDefault("bilinmiyor")
+            throw AnalysisException(
+                AnalysisFailure(
+                    message = "yt-dlp hatası (${response.exitCode})",
+                    exitCode = response.exitCode,
+                    traceback = listOf(response.err, response.out).filter { it.isNotBlank() }.joinToString("\n")
+                ).toAnalysisError(version)
+            )
+        }
+
+        try {
+            parseJson(JSONObject(response.out.trim()))
+        } catch (error: Throwable) {
+            val version = runCatching { YoutubeDL.getInstance().version(context) ?: "bilinmiyor" }
+                .getOrDefault("bilinmiyor")
+            throw AnalysisException(
+                AnalysisFailure(
+                    message = error.message ?: "yt-dlp yanıtı ayrıştırılamadı",
+                    traceback = error.stackTraceToString()
+                ).toAnalysisError(version),
+                error
+            )
+        }
     }
+
+    class AnalysisException(val analysisError: AnalysisError, cause: Throwable? = null) : RuntimeException(analysisError.message, cause)
 
     private fun parseJson(json: JSONObject): MediaInfo {
         val formats = parseFormats(json.optJSONArray("formats"))

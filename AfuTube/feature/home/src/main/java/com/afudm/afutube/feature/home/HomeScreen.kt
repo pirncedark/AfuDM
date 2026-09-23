@@ -22,14 +22,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.afudm.afutube.core.diagnostics.AnalysisError
 import com.afudm.afutube.core.extractor.MediaInfo
+import com.afudm.afutube.core.extractor.UrlNormalizer
 import com.afudm.afutube.core.theme.AfuColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     sharedUrl   : String?    = null,
-    onNavigateToFormats: (MediaInfo) -> Unit = {}
+    sharedEventId: Long?     = null,
+    onNavigateToFormats: (MediaInfo) -> Unit = {},
+    onUpdateExtractor: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val viewModel = remember(context) { HomeViewModel(context.applicationContext) }
@@ -37,8 +41,12 @@ fun HomeScreen(
     val clipboard = LocalClipboardManager.current
 
     // Share Intent'ten gelen URL'yi otomatik işle
-    LaunchedEffect(sharedUrl) {
-        if (!sharedUrl.isNullOrBlank()) viewModel.analyzeUrl(sharedUrl)
+    LaunchedEffect(sharedEventId) {
+        if (!sharedUrl.isNullOrBlank()) {
+            val normalizedUrl = UrlNormalizer.normalize(sharedUrl) ?: sharedUrl
+            viewModel.onUrlChange(normalizedUrl)
+            viewModel.analyzeUrl(normalizedUrl)
+        }
     }
 
     // Format sonucu gelince format ekranına geç
@@ -84,7 +92,11 @@ fun HomeScreen(
                 enter   = fadeIn() + expandVertically(),
                 exit    = fadeOut() + shrinkVertically()
             ) {
-                ErrorCard(message = state.error)
+                ErrorCard(
+                    error = state.analysisError,
+                    onRetry = { viewModel.analyzeUrl(state.url) },
+                    onUpdate = onUpdateExtractor
+                )
             }
 
             // ── Desteklenen siteler ───────────────────────────────────────
@@ -228,7 +240,14 @@ private fun UrlInputCard(
 }
 
 @Composable
-private fun ErrorCard(message: String) {
+private fun ErrorCard(
+    error: AnalysisError?,
+    onRetry: () -> Unit,
+    onUpdate: () -> Unit
+) {
+    if (error == null) return
+    val clipboard = LocalClipboardManager.current
+    var detailsVisible by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors   = CardDefaults.cardColors(
@@ -236,19 +255,30 @@ private fun ErrorCard(message: String) {
         ),
         shape    = RoundedCornerShape(12.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Default.Warning, null, tint = AfuColors.error, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text     = message,
-                color    = AfuColors.error,
-                fontSize = 13.sp,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
-            )
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Warning, null, tint = AfuColors.error, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("YouTube videosu analiz edilemedi.", color = AfuColors.error, fontSize = 13.sp)
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onUpdate, modifier = Modifier.weight(1f)) { Text("Motoru güncelle") }
+                OutlinedButton(onClick = onRetry, modifier = Modifier.weight(1f)) { Text("Tekrar dene") }
+            }
+            TextButton(onClick = { detailsVisible = !detailsVisible }) {
+                Text(if (detailsVisible) "Detayları gizle" else "Detaylar >")
+            }
+            if (detailsVisible) {
+                Text("${error.categoryLabel} · yt-dlp ${error.ytDlpVersion} · exit ${error.exitCode ?: "yok"}", color = AfuColors.textMuted, fontSize = 11.sp)
+                Spacer(Modifier.height(6.dp))
+                Text(error.traceback, color = AfuColors.textMuted, fontSize = 11.sp, maxLines = 12, overflow = TextOverflow.Ellipsis)
+                TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(error.copyText())) }) {
+                    Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Kopyala")
+                }
+            }
         }
     }
 }

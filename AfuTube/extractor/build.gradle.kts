@@ -18,5 +18,6 @@ dependencies {
     implementation("androidx.core:core-ktx:1.19.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation(project(":core"))
-    implementation("com.github.yausername.youtubedl-android:library:0.14.0")
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+    testImplementation("junit:junit:4.13.2")
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import com.afudm.afutube.core.extractor.MediaExtractor
 import com.afudm.afutube.core.extractor.MediaInfo
 import com.afudm.afutube.core.extractor.UrlClassifier
+import com.afudm.afutube.core.extractor.UrlNormalizer
 import com.afudm.afutube.core.extractor.UrlType
 
 /**
@@ -30,13 +31,14 @@ class ExtractorManager private constructor(context: Context) {
     }
 
     suspend fun extract(url: String): Result<MediaInfo> {
-        if (!UrlClassifier.isValid(url)) {
-            return Result.failure(IllegalArgumentException("Geçersiz URL: $url"))
+        val normalizedUrl = UrlNormalizer.normalize(url) ?: url.trim()
+        if (!UrlClassifier.isValid(normalizedUrl)) {
+            return Result.failure(IllegalArgumentException("Geçersiz URL: $normalizedUrl"))
         }
 
         for (extractor in extractors) {
-            if (extractor.supports(url)) {
-                return runCatching { extractor.extract(url) }
+            if (extractor.supports(normalizedUrl)) {
+                return runCatching { extractor.extract(normalizedUrl) }
             }
         }
         return Result.failure(UnsupportedOperationException("Bu URL için extractor bulunamadı"))

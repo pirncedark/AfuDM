@@ -10,6 +10,19 @@ import kotlin.test.assertTrue
 
 class AppUpdateTest {
     @Test
+    fun `pre-release is hidden by default and shown when explicitly requested`() {
+        val json = """
+            [{"tag_name":"afutube-v1.0.1-test","prerelease":true,"body":"test","assets":[
+              {"name":"AfuTube-universal.apk","browser_download_url":"https://example/test.apk"},
+              {"name":"AfuTube-universal.apk.sha256","browser_download_url":"https://example/test.sha"}
+            ]}]
+        """.trimIndent()
+
+        assertEquals(null, AppUpdateParser.latest(json, 1000000))
+        assertEquals("1.0.1-test", AppUpdateParser.latest(json, 1000000, includePrereleases = true)?.versionName)
+    }
+
+    @Test
     fun `release parser selects newest AfuTube release and ignores desktop tags`() {
         val json = """
             [
