@@ -14,7 +14,6 @@ klasorunun icinde olusur, sisteme hicbir sey yazilmaz.
 from __future__ import annotations
 
 import argparse
-import os
 import shutil
 import sys
 from pathlib import Path
@@ -47,23 +46,17 @@ def klasor_boyutu(yol: Path) -> int:
 
 
 def _exe_kilit_kontrolu(hedef: Path) -> None:
-    """Paket klasorunu silmeden once mevcut exe'nin yeniden adlandirilabildigini dene."""
-    exe = hedef / "AfuDM.exe"
-    if not exe.exists():
+    """Silmeden once paketteki her exe'nin yazmaya acilabildigini dogrula."""
+    if not hedef.exists():
         return
-    kontrol = hedef / f".AfuDM.exe.kilit-kontrol-{os.getpid()}"
-    try:
-        exe.rename(kontrol)
-        kontrol.rename(exe)
-    except OSError as exc:
-        # Ilk rename basarisizsa eski dosya yerinde kalir. Ikinci rename basarisiz
-        # olursa da dosyayi geri koymayi deneyip, yine de hicbir seyi silmeyiz.
-        if kontrol.exists() and not exe.exists():
-            try:
-                kontrol.rename(exe)
-            except OSError:
+    for exe in sorted(hedef.rglob("*.exe")):
+        try:
+            with exe.open("r+b"):
                 pass
-        raise SystemExit("HATA: AfuDM.exe calisiyor, kapatip tekrar deneyin.") from exc
+        except PermissionError as exc:
+            raise SystemExit(
+                f"HATA: {exe} calisiyor, kapatip tekrar deneyin: {exe.name}"
+            ) from exc
 
 
 def paketle(tam: bool) -> Path:
