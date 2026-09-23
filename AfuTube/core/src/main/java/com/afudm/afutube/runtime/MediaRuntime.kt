@@ -52,21 +52,17 @@ object MediaRuntime {
         }
     }
 
-    suspend fun prepare(
-        context: Context,
-        forceExtractorUpdate: suspend () -> Unit
-    ): RuntimeStatus = prepareMutex.withLock {
+    /**
+     * Yalnizca yerel motoru (Python / yt-dlp / FFmpeg / aria2) hazirlar.
+     * Ag / yt-dlp guncellemesi burada YOK: internet olmasa da uygulama acilir.
+     * Guncelleme READY olduktan sonra arka planda yapilir (AfuTubeApplication).
+     */
+    suspend fun prepare(context: Context): RuntimeStatus = prepareMutex.withLock {
         if (_status.value.state == RuntimeState.READY) return@withLock _status.value
         _status.value = RuntimeStatus(RuntimeState.INITIALIZING)
         try {
             ensureInitialized(context.applicationContext)
-            var health = MediaRuntimeHealthChecker.check(readVersion(context))
-            if (health.requiresExtractorUpdate) {
-                forceExtractorUpdate()
-                health = MediaRuntimeHealthChecker.check(readVersion(context))
-            }
-            check(health.healthy) { health.details }
-            _status.value = RuntimeStatus(RuntimeState.READY, details = health.details)
+            _status.value = RuntimeStatus(RuntimeState.READY, details = "Python / yt-dlp / FFmpeg / aria2 hazır.")
         } catch (error: Throwable) {
             initializationError = error
             _status.value = RuntimeStatus(
@@ -77,10 +73,6 @@ object MediaRuntime {
             Log.e(TAG, "Media runtime preparation failed", error)
         }
         _status.value
-    }
-
-    private suspend fun readVersion(context: Context): String = withEngine {
-        YoutubeDL.getInstance().version(context.applicationContext).orEmpty()
     }
 
     fun lastError(): Throwable? = initializationError

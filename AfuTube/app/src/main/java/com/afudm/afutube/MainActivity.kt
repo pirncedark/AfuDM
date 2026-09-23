@@ -66,8 +66,6 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
     val shareEvent by shareViewModel.events.collectAsState()
     val runtimeScope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) { RuntimeBootstrap.prepare(context) }
-
     if (runtimeStatus.state != MediaRuntime.RuntimeState.READY) {
         MotorReadinessScreen(
             status = runtimeStatus,
