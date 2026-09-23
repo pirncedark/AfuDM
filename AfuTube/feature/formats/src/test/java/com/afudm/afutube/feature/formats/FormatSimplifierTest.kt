@@ -50,11 +50,11 @@ class FormatSimplifierTest {
     }
 
     @Test
-    fun hidesSub360ResolutionsUnlessNoStandardStepExistsAndPicksNearestLowerDefault() {
+    fun showsHighestAvailableFallbackAndDefaultsTo720WhenThatStepExists() {
         val lowOnly = FormatSimplifier.simplify(listOf(format("low", 240)))
         assertEquals(listOf(240), lowOnly.videoOptions.map { it.height })
         val mixed = FormatSimplifier.simplify(listOf(format("1080", 1080), format("480", 480)))
-        assertEquals(480, mixed.defaultVideoOption?.height)
+        assertEquals(720, mixed.defaultVideoOption?.height)
     }
 
     @Test
