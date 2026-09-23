@@ -1,11 +1,10 @@
 """Internetten paylasim icin yalnizca token'li dosya akis sunucusu."""
 from __future__ import annotations
 
-import mimetypes
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 
 class _PaylasimHandler(BaseHTTPRequestHandler):
@@ -62,7 +61,13 @@ class _PaylasimHandler(BaseHTTPRequestHandler):
 
             length = max(0, end - start + 1)
             self.send_response(206 if partial else 200)
-            self.send_header("Content-Type", mimetypes.guess_type(path.name)[0] or "application/octet-stream")
+            # Telefon tarayicisi video/mp4'u oynatir/yansitir; paylasilan dosya
+            # DOGRUDAN inmeli -> octet-stream + attachment (LAN linkiyle ayni).
+            self.send_header("Content-Type", "application/octet-stream")
+            ascii_ad = path.name.encode("ascii", "ignore").decode("ascii").replace('"', "") or "dosya"
+            self.send_header("Content-Disposition",
+                             f'attachment; filename="{ascii_ad}"; '
+                             "filename*=UTF-8''" + quote(path.name))
             self.send_header("Content-Length", str(length))
             self.send_header("Accept-Ranges", "bytes")
             if partial:

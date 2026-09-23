@@ -87,6 +87,24 @@ class TunnelTest(unittest.TestCase):
             finally:
                 server.stop()
 
+    def test_internet_linki_telefonda_oynatmaz_dogrudan_indirir(self):
+        # video/mp4 + inline gonderilince telefon tarayicisi videoyu oynatir
+        # (yansitir); kullanici dosyanin telefona inmesini istiyor.
+        with tempfile.TemporaryDirectory() as temp:
+            file = Path(temp) / "Orman Çocuğu 2.mp4"
+            file.write_bytes(b"video")
+            server = PaylasimSunucusu({"tok": {"path": file, "created": time.time()}})
+            port = server.start()
+            try:
+                for method in ("GET", "HEAD"):
+                    with urlopen(Request(f"http://127.0.0.1:{port}/s/tok", method=method)) as response:
+                        self.assertEqual(response.headers["Content-Type"], "application/octet-stream")
+                        cd = response.headers["Content-Disposition"]
+                        self.assertTrue(cd.startswith("attachment;"), cd)
+                        self.assertIn("filename*=UTF-8''Orman%20%C3%87ocu%C4%9Fu%202.mp4", cd)
+            finally:
+                server.stop()
+
 
 if __name__ == "__main__":
     unittest.main()
