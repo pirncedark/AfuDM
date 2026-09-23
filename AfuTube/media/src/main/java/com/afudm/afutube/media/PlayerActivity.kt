@@ -189,7 +189,7 @@ class PlayerActivity : ComponentActivity() {
                 } else {
                     Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = if (fullscreen) 0.dp else 16.dp, vertical = if (fullscreen) 0.dp else 12.dp), contentAlignment = Alignment.Center) {
                         AndroidView(
-                            factory = { ctx -> PlayerView(ctx).apply { useController = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT; player = this@PlayerActivity.controller; this@PlayerActivity.playerView = this } },
+                            factory = { ctx -> PlayerView(ctx).apply { useController = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT; this.player = this@PlayerActivity.controller; this@PlayerActivity.playerView = this } },
                             update = { it.player = player },
                             modifier = Modifier.fillMaxWidth().then(if (fullscreen) Modifier.fillMaxHeight() else Modifier.aspectRatio(16f / 9f).clip(RoundedCornerShape(16.dp))).background(Color.Black)
                         )
