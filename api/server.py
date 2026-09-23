@@ -36,6 +36,18 @@ def _yol_kok_icinde(yol, kok) -> bool:
         return False
 
 
+def _origin_izinli(origin: str) -> bool:
+    """Allow CORS only for browser extensions and loopback web clients."""
+    from urllib.parse import urlparse
+    if origin.startswith("chrome-extension://"):
+        return bool(origin.removeprefix("chrome-extension://"))
+    try:
+        parsed = urlparse(origin)
+        return parsed.scheme in ("http", "https") and parsed.hostname in ("127.0.0.1", "localhost", "::1")
+    except ValueError:
+        return False
+
+
 def _indir_yolu(manager, gid):
     """Return a resolved download only when it remains under the active root."""
     yol = manager.resolve_item_path(gid)
@@ -136,7 +148,10 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
     def _cors(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self.headers.get("Origin", "")
+        if origin and _origin_izinli(origin):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, X-AfuDM-Token")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 
@@ -209,10 +224,10 @@ class _Handler(BaseHTTPRequestHandler):
                 except (BrokenPipeError, ConnectionResetError):
                     return  # telefon indirmeyi iptal etti
 
-    def _authorized(self, query: dict) -> bool:
+    def _authorized(self, query: dict, allow_query: bool = False) -> bool:
         header = self.headers.get("X-AfuDM-Token", "")
         supplied = header
-        if not supplied and query:
+        if allow_query and not supplied and query:
             supplied = query.get("token", [""])[0] or query.get("k", [""])[0]
         return bool(self.token) and secrets.compare_digest(supplied, self.token)
 
@@ -272,7 +287,7 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(chunk_size))
             if range_header:
                 self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._cors()
             self.end_headers()
             with open(yol, "rb") as f:
                 f.seek(start)
@@ -345,7 +360,7 @@ class _Handler(BaseHTTPRequestHandler):
             # sunucu kendisi bulur. Bulunan yol indirme kokunun ICINDE olmak
             # zorundadir; disari cikan istek reddedilir (v2.1'de eklenen
             # kisitlamayi delmemek icin ayni kural burada da uygulanir).
-            if not self._authorized(query):
+            if not self._authorized(query, allow_query=True):
                 self._hata(401, "ANAHTAR_GEREKLI", "anahtar gerekli")
                 return
             gid = query.get("gid", [""])[0]
@@ -434,7 +449,7 @@ class _Handler(BaseHTTPRequestHandler):
                 ascii_name = yol.name.encode("ascii", "ignore").decode("ascii").replace('"', '') or "indirilen_dosya"
                 self.send_header("Content-Disposition", f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{gvn_ad}')
                 self.send_header("Content-Length", str(yol.stat().st_size))
-                self.send_header("Access-Control-Allow-Origin", "*")
+                self._cors()
                 self.end_headers()
                 shutil.copyfileobj(dosya, self.wfile)
             except (BrokenPipeError, ConnectionResetError):

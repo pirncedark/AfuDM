@@ -27,6 +27,11 @@ class APIGuvenlikTest(unittest.TestCase):
         self.assertTrue(server._origin_izinli("http://localhost:6811"))
         self.assertFalse(server._origin_izinli("https://attacker.example"))
 
+    def test_query_token_kabul_edilmez(self):
+        from types import SimpleNamespace
+        handler = SimpleNamespace(headers={}, token="secret")
+        self.assertFalse(server._Handler._authorized(handler, {"token": ["secret"]}))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
