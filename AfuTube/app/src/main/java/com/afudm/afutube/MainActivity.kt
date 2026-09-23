@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.ViewModelProvider
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,27 +33,20 @@ import com.afudm.afutube.runtime.MediaRuntime
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
-
-    private var sharedUrl: String? = null
+    private val shareViewModel by lazy { ViewModelProvider(this)[ShareIntentViewModel::class.java] }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        sharedUrl = extractUrlFromIntent(intent)
+        shareViewModel.publish(intent)
 
-        setContent { AfuTubeApp(sharedUrl) }
+        setContent { AfuTubeApp(shareViewModel) }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        sharedUrl = extractUrlFromIntent(intent)
-    }
-
-    private fun extractUrlFromIntent(intent: Intent?): String? {
-        if (intent?.action != Intent.ACTION_SEND) return null
-        if (intent.type != "text/plain") return null
-        return intent.getStringExtra(Intent.EXTRA_TEXT)
-            ?.trim()?.takeIf { it.startsWith("http") }
+        setIntent(intent)
+        shareViewModel.publish(intent)
     }
 }
 
@@ -66,9 +60,10 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
 }
 
 @Composable
-fun AfuTubeApp(sharedUrl: String? = null) {
+fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val runtimeStatus by MediaRuntime.status.collectAsState()
+    val shareEvent by shareViewModel.events.collectAsState()
     val runtimeScope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) { RuntimeBootstrap.prepare(context) }
@@ -126,7 +121,8 @@ fun AfuTubeApp(sharedUrl: String? = null) {
         ) {
             composable(Screen.Home.route) {
                 HomeScreen(
-                    sharedUrl = sharedUrl,
+                    sharedUrl = shareEvent?.url,
+                    sharedEventId = shareEvent?.sequence,
                     onNavigateToFormats = { info ->
                         pendingMediaInfo = info
                         navController.navigate("formats")

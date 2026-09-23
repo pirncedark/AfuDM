@@ -24,12 +24,14 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.afudm.afutube.core.diagnostics.AnalysisError
 import com.afudm.afutube.core.extractor.MediaInfo
+import com.afudm.afutube.core.extractor.UrlNormalizer
 import com.afudm.afutube.core.theme.AfuColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     sharedUrl   : String?    = null,
+    sharedEventId: Long?     = null,
     onNavigateToFormats: (MediaInfo) -> Unit = {},
     onUpdateExtractor: () -> Unit = {}
 ) {
@@ -39,8 +41,12 @@ fun HomeScreen(
     val clipboard = LocalClipboardManager.current
 
     // Share Intent'ten gelen URL'yi otomatik işle
-    LaunchedEffect(sharedUrl) {
-        if (!sharedUrl.isNullOrBlank()) viewModel.analyzeUrl(sharedUrl)
+    LaunchedEffect(sharedEventId) {
+        if (!sharedUrl.isNullOrBlank()) {
+            val normalizedUrl = UrlNormalizer.normalize(sharedUrl) ?: sharedUrl
+            viewModel.onUrlChange(normalizedUrl)
+            viewModel.analyzeUrl(normalizedUrl)
+        }
     }
 
     // Format sonucu gelince format ekranına geç
