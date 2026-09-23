@@ -33,6 +33,18 @@ def _yol_kok_icinde(yol, kok) -> bool:
         return False
 
 
+def _indir_yolu(manager, gid):
+    """Return a resolved download only when it remains under the active root."""
+    yol = manager.resolve_item_path(gid)
+    if not yol:
+        return None
+    yol = Path(yol).resolve()
+    kok = Path(manager.current_download_dir()).resolve()
+    if not yol.is_relative_to(kok):
+        raise PermissionError("dosya indirme kokunun disinda")
+    return yol
+
+
 def _dosya_iznini_kisitla(yol) -> None:
     """Windows'ta dosyayi yalniz gecerli kullaniciya acan (icacls).
 
@@ -392,7 +404,11 @@ class _Handler(BaseHTTPRequestHandler):
             if not gid:
                 self._hata(400, "GID_GEREKLI", "gid gerekli")
                 return
-            yol = self.manager.resolve_item_path(gid)
+            try:
+                yol = _indir_yolu(self.manager, gid)
+            except PermissionError:
+                self._hata(403, "HEDEF_DISARIDA", "dosya indirme kokunun disinda")
+                return
             if not yol or not yol.exists() or not yol.is_file():
                 self._hata(404, "BULUNAMADI", "Dosya diskte yok veya hazir degil")
                 return
