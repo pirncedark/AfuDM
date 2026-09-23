@@ -98,6 +98,7 @@ if (`$parseHatalari) {
         "tests/linkgrabber_test.py",
         "tests/engines_test.py",
         "tests/video_pro_test.py",
+        "tests/video_merger_dosyaadi_test.py",
         "tests/cli_yardim_test.py",
         "tests/video_cerez_test.py",
         "tests/torrent_ui_test.py",

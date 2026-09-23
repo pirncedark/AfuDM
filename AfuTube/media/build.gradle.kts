@@ -4,7 +4,7 @@ plugins {
 }
 android {
     namespace = "com.afudm.afutube.media"
-    compileSdk = 34
+    compileSdk = 37
     defaultConfig { minSdk = 24 }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -15,5 +15,5 @@ android {
     }
 }
 dependencies {
-    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.core:core-ktx:1.19.0")
 }

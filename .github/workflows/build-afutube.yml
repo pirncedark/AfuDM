@@ -25,7 +25,7 @@ jobs:
         working-directory: ./AfuTube
         run: |
           # Gradle'i SDK Manager olmadan doğrudan kur
-          GRADLE_VERSION="8.9"
+          GRADLE_VERSION="9.6.0"
           wget -q "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -O /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /tmp/
           export GRADLE_HOME="/tmp/gradle-${GRADLE_VERSION}"
@@ -36,16 +36,31 @@ jobs:
       - name: Setup Gradle cache
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Build Debug APK
+      - name: Run AfuTube unit tests
         working-directory: ./AfuTube
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: ./gradlew test --no-daemon --stacktrace
+
+      - name: Prepare release keystore
+        shell: bash
+        env:
+          AFUTUBE_KEYSTORE_B64: ${{ secrets.AFUTUBE_KEYSTORE_B64 }}
+        run: echo "$AFUTUBE_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/afutube-release.jks"
+
+      - name: Build signed universal release APK
+        working-directory: ./AfuTube
+        env:
+          AFUTUBE_KEYSTORE_PATH: ${{ runner.temp }}/afutube-release.jks
+          AFUTUBE_KEYSTORE_PASS: ${{ secrets.AFUTUBE_KEYSTORE_PASS }}
+          AFUTUBE_KEY_ALIAS: ${{ secrets.AFUTUBE_KEY_ALIAS }}
+          AFUTUBE_KEY_PASS: ${{ secrets.AFUTUBE_KEY_PASS }}
+        run: ./gradlew assembleRelease --no-daemon --stacktrace -PversionCode=${{ github.run_number }} -PversionName=0.0.${{ github.run_number }}
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v7
         if: success()
         with:
-          name: AfuTube-Debug-APK
-          path: AfuTube/app/build/outputs/apk/debug/*.apk
+          name: AfuTube-Release-APK
+          path: AfuTube/app/build/outputs/apk/release/*universal*.apk
           if-no-files-found: error
           retention-days: 14
 

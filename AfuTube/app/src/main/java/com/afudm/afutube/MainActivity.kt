@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.ViewModelProvider
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,7 +19,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.*
 import com.afudm.afutube.core.extractor.MediaInfo
 import com.afudm.afutube.feature.downloads.DownloadsScreen
@@ -27,41 +27,26 @@ import com.afudm.afutube.core.theme.AfuColors
 import com.afudm.afutube.feature.home.HomeScreen
 import com.afudm.afutube.feature.settings.SettingsScreen
 import com.afudm.afutube.feature.torrent.TorrentPickerScreen
-import com.yausername.aria2c.Aria2c
-import com.yausername.ffmpeg.FFmpeg
-import com.yausername.youtubedl_android.YoutubeDL
-import kotlinx.coroutines.Dispatchers
+import com.afudm.afutube.updater.AppUpdate
+import com.afudm.afutube.updater.UpdateManager
+import com.afudm.afutube.runtime.MediaRuntime
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
-
-    private var sharedUrl: String? = null
+    private val shareViewModel by lazy { ViewModelProvider(this)[ShareIntentViewModel::class.java] }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        sharedUrl = extractUrlFromIntent(intent)
+        shareViewModel.publish(intent)
 
-        // yt-dlp + FFmpeg + aria2 başlat (IO thread)
-        lifecycleScope.launch(Dispatchers.IO) {
-            runCatching { YoutubeDL.getInstance().init(application) }
-            runCatching { FFmpeg.getInstance().init(application) }
-            runCatching { Aria2c.getInstance().init(application) }
-        }
-
-        setContent { AfuTubeApp(sharedUrl) }
+        setContent { AfuTubeApp(shareViewModel) }
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        sharedUrl = intent?.let { extractUrlFromIntent(it) }
-    }
-
-    private fun extractUrlFromIntent(intent: Intent?): String? {
-        if (intent?.action != Intent.ACTION_SEND) return null
-        if (intent.type != "text/plain") return null
-        return intent.getStringExtra(Intent.EXTRA_TEXT)
-            ?.trim()?.takeIf { it.startsWith("http") }
+        setIntent(intent)
+        shareViewModel.publish(intent)
     }
 }
 
@@ -75,12 +60,44 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
 }
 
 @Composable
-fun AfuTubeApp(sharedUrl: String? = null) {
+fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val runtimeStatus by MediaRuntime.status.collectAsState()
+    val shareEvent by shareViewModel.events.collectAsState()
+    val runtimeScope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) { RuntimeBootstrap.prepare(context) }
+
+    if (runtimeStatus.state != MediaRuntime.RuntimeState.READY) {
+        MotorReadinessScreen(
+            status = runtimeStatus,
+            onRetry = { runtimeScope.launch { RuntimeBootstrap.prepare(context) } }
+        )
+        return
+    }
+
     val navController     = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute      = navBackStackEntry?.destination?.route
 
     var pendingMediaInfo by remember { mutableStateOf<MediaInfo?>(null) }
+    var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
+    LaunchedEffect(Unit) {
+        if (UpdateManager.shouldCheckAutomatically(context)) {
+            UpdateManager.markChecked(context)
+            runCatching { UpdateManager.check(BuildConfig.VERSION_CODE, UpdateManager.includePrereleases(context)) }.getOrNull()?.let { availableUpdate = it }
+        }
+    }
+
+    availableUpdate?.let { update ->
+        AlertDialog(
+            onDismissRequest = { availableUpdate = null },
+            title = { Text("Yeni AfuTube surumu bulundu") },
+            text = { Text("Surum: ${update.versionName}\n\n${update.releaseNotes.ifBlank { "Yeni hata duzeltmeleri ve gelistirmeler." }}") },
+            confirmButton = { TextButton(onClick = { availableUpdate = null; UpdateManager.enqueueDownload(context, update) }) { Text("Indir ve kur") } },
+            dismissButton = { TextButton(onClick = { availableUpdate = null }) { Text("Daha sonra") } }
+        )
+    }
 
     val bottomScreens = listOf(Screen.Home, Screen.Torrent, Screen.Downloads, Screen.Settings)
     val showBottomBar = currentRoute in bottomScreens.map { it.route }
@@ -104,7 +121,8 @@ fun AfuTubeApp(sharedUrl: String? = null) {
         ) {
             composable(Screen.Home.route) {
                 HomeScreen(
-                    sharedUrl = sharedUrl,
+                    sharedUrl = shareEvent?.url,
+                    sharedEventId = shareEvent?.sequence,
                     onNavigateToFormats = { info ->
                         pendingMediaInfo = info
                         navController.navigate("formats")
@@ -121,9 +139,65 @@ fun AfuTubeApp(sharedUrl: String? = null) {
                 }
             }
             composable(Screen.Downloads.route) { DownloadsScreen() }
-            composable(Screen.Settings.route)  { SettingsScreen() }
+            composable(Screen.Settings.route)  {
+                SettingsScreen(currentVersionCode = BuildConfig.VERSION_CODE, onUpdateFound = { availableUpdate = it })
+            }
             composable(Screen.Torrent.route)   {
                 TorrentPickerScreen(onBack = { navController.popBackStack() })
+            }
+        }
+    }
+}
+
+@Composable
+private fun MotorReadinessScreen(
+    status: MediaRuntime.RuntimeStatus,
+    onRetry: () -> Unit
+) {
+    var detailsVisible by remember { mutableStateOf(false) }
+    Box(
+        modifier = Modifier.fillMaxSize().background(AfuColors.bg),
+        contentAlignment = androidx.compose.ui.Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier.padding(28.dp),
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+        ) {
+            Icon(
+                imageVector = if (status.state == MediaRuntime.RuntimeState.FAILED) Icons.Default.Warning else Icons.Default.Download,
+                contentDescription = null,
+                tint = if (status.state == MediaRuntime.RuntimeState.FAILED) AfuColors.error else AfuColors.accent,
+                modifier = Modifier.size(52.dp)
+            )
+            Spacer(Modifier.height(18.dp))
+            Text(
+                text = if (status.state == MediaRuntime.RuntimeState.FAILED) "Medya motoru hazırlanamadı" else "Motor hazırlanıyor",
+                color = AfuColors.text,
+                style = MaterialTheme.typography.titleLarge
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = if (status.state == MediaRuntime.RuntimeState.FAILED) {
+                    "yt-dlp, FFmpeg ve aria2 başlatılamadı."
+                } else {
+                    "Python, yt-dlp, FFmpeg ve aria2 kontrol ediliyor."
+                },
+                color = AfuColors.textMuted
+            )
+            if (status.state != MediaRuntime.RuntimeState.FAILED) {
+                Spacer(Modifier.height(20.dp))
+                CircularProgressIndicator(color = AfuColors.accent)
+            } else {
+                Spacer(Modifier.height(20.dp))
+                Button(onClick = onRetry) { Text("Tekrar dene") }
+            }
+            if (status.details.isNotBlank()) {
+                TextButton(onClick = { detailsVisible = !detailsVisible }) {
+                    Text(if (detailsVisible) "Detayları gizle" else "Detaylar >")
+                }
+                if (detailsVisible) {
+                    Text(status.details, color = AfuColors.textMuted, fontSize = 11.sp)
+                }
             }
         }
     }
