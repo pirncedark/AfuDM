@@ -25,16 +25,15 @@ class DownloadEngine(private val context: Context) {
     private val prefs = context.getSharedPreferences("afutube_downloads", Context.MODE_PRIVATE)
     private val hidden = MutableStateFlow(prefs.getStringSet(HIDDEN_KEY, emptySet()).orEmpty().toSet())
 
-    /** İndirme türü */
-    enum class Kind { HTTP, TORRENT }
-
     data class DownloadRequest(
         val url       : String,
         val formatId  : String  = "",
         val title     : String,
         val outputDir : String? = null,
         val mergeAV   : Boolean = true,
-        val kind      : Kind    = Kind.HTTP
+        val audioFormat: String  = "",
+        val embedThumbnail: Boolean = false,
+        val embedChapters: Boolean = false
     )
 
     /** İndirmeyi kuyruğa ekler, WorkRequest ID'sini döndürür */
@@ -43,37 +42,21 @@ class DownloadEngine(private val context: Context) {
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        val workRequest = when (request.kind) {
-            Kind.HTTP -> {
-                val inputData = Data.Builder()
-                    .putString(DownloadWorker.KEY_URL,       request.url)
-                    .putString(DownloadWorker.KEY_FORMAT_ID, request.formatId.ifBlank { "bestvideo+bestaudio/best" })
-                    .putBoolean(DownloadWorker.KEY_MERGE,    request.mergeAV)
-                    .apply { request.outputDir?.let { putString(DownloadWorker.KEY_OUTPUT_DIR, it) } }
-                    .build()
-
-                OneTimeWorkRequestBuilder<DownloadWorker>()
-                    .setInputData(inputData)
-                    .setConstraints(constraints)
-                    .addTag("afutube_download")
-                    .addTag("title:${request.title.take(50)}")
-                    .build()
-            }
-            Kind.TORRENT -> {
-                val inputData = Data.Builder()
-                    .putString(TorrentWorker.KEY_TORRENT_URI, request.url)
-                    .putString(TorrentWorker.KEY_TITLE,       request.title)
-                    .apply { request.outputDir?.let { putString(TorrentWorker.KEY_OUTPUT_DIR, it) } }
-                    .build()
-
-                OneTimeWorkRequestBuilder<TorrentWorker>()
-                    .setInputData(inputData)
-                    .setConstraints(constraints)
-                    .addTag("afutube_torrent")
-                    .addTag("title:${request.title.take(50)}")
-                    .build()
-            }
-        }
+        val inputData = Data.Builder()
+            .putString(DownloadWorker.KEY_URL, request.url)
+            .putString(DownloadWorker.KEY_FORMAT_ID, request.formatId.ifBlank { "bestvideo+bestaudio/best" })
+            .putBoolean(DownloadWorker.KEY_MERGE, request.mergeAV)
+            .putString(DownloadWorker.KEY_AUDIO_FORMAT, request.audioFormat)
+            .putBoolean(DownloadWorker.KEY_EMBED_THUMBNAIL, request.embedThumbnail)
+            .putBoolean(DownloadWorker.KEY_EMBED_CHAPTERS, request.embedChapters)
+            .apply { request.outputDir?.let { putString(DownloadWorker.KEY_OUTPUT_DIR, it) } }
+            .build()
+        val workRequest = OneTimeWorkRequestBuilder<DownloadWorker>()
+            .setInputData(inputData)
+            .setConstraints(constraints)
+            .addTag("afutube_download")
+            .addTag("title:${request.title.take(50)}")
+            .build()
 
         workManager.enqueueUniqueWork(
             "download:${request.url.hashCode()}",
@@ -125,18 +108,31 @@ class DownloadEngine(private val context: Context) {
         }?.forEach { runCatching { it.delete() } }
     }
 
-    /** Tüm aktif torrent indirme akışı */
-    fun allTorrents(): Flow<List<WorkInfo>> =
-        workManager.getWorkInfosByTagFlow("afutube_torrent")
-
-    /** İndirmeyi durdur */
     fun cancel(workId: UUID) = workManager.cancelWorkById(workId)
+
+    /** Cancel without deleting yt-dlp's partial files. */
+    fun pause(workId: UUID) = workManager.cancelWorkById(workId)
+
+    /** Recreate a stopped request with the same input so yt-dlp can continue its .part file. */
+    fun resume(info: WorkInfo): UUID = requeue(info)
+
+    /** Retry a failed request with its original options. */
+    fun retry(info: WorkInfo): UUID = requeue(info)
+
+    private fun requeue(info: WorkInfo): UUID {
+        val request = OneTimeWorkRequestBuilder<DownloadWorker>()
+            .setInputData(Data.Builder().putAll(info.inputData).build())
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .addTag("afutube_download")
+            .addTag("title:${info.tags.firstOrNull { it.startsWith("title:") }?.removePrefix("title:") ?: "Download"}")
+            .build()
+        val url = info.inputData.getString(DownloadWorker.KEY_URL).orEmpty()
+        workManager.enqueueUniqueWork("download:${url.hashCode()}", ExistingWorkPolicy.REPLACE, request)
+        return request.id
+    }
 
     /** Tüm HTTP indirmeleri durdur */
     fun cancelAll() = workManager.cancelAllWorkByTag("afutube_download")
-
-    /** Tüm torrent indirmelerini durdur */
-    fun cancelAllTorrents() = workManager.cancelAllWorkByTag("afutube_torrent")
 
     /**
      * Başarısız / iptal edilmiş bir indirmenin geçici dosyasını sil.

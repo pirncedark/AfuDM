@@ -18,4 +18,5 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation(project(":core"))
     implementation(project(":updater"))
+    implementation(project(":downloader"))
 }

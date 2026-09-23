@@ -13,7 +13,9 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
+import com.afudm.afutube.updater.ExtractorUpdater
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
@@ -29,6 +31,9 @@ class DownloadWorker(
         const val KEY_URL        = "url"
         const val KEY_FORMAT_ID  = "format_id"
         const val KEY_OUTPUT_DIR = "output_dir"
+        const val KEY_AUDIO_FORMAT = "audio_format"
+        const val KEY_EMBED_THUMBNAIL = "embed_thumbnail"
+        const val KEY_EMBED_CHAPTERS = "embed_chapters"
         const val KEY_MERGE      = "merge_av"   // video+audio ayrı stream → FFmpeg merge
 
         const val PROGRESS_PERCENT = "progress_percent"
@@ -57,6 +62,9 @@ class DownloadWorker(
             ?: applicationContext.getExternalFilesDir(null)?.absolutePath
             ?: return@withContext Result.failure()
         val mergeAV   = params.inputData.getBoolean(KEY_MERGE, true)
+        val audioFormat = params.inputData.getString(KEY_AUDIO_FORMAT).orEmpty()
+        val rateLimit = applicationContext.getSharedPreferences("afutube_downloads", Context.MODE_PRIVATE)
+            .getInt("rate_limit_kbps", 0)
 
         setForeground(createForegroundInfo("Hazırlanıyor…", 0))
 
@@ -64,6 +72,12 @@ class DownloadWorker(
             addOption("-f", formatId)
             addOption("-o", "$outputDir/%(title)s.%(ext)s")
             addOption("--no-playlist")
+            DownloadPolicies.ytDlpOptions(
+                audioFormat,
+                params.inputData.getBoolean(KEY_EMBED_THUMBNAIL, false),
+                params.inputData.getBoolean(KEY_EMBED_CHAPTERS, false),
+                rateLimit
+            ).forEach { (option, value) -> if (value == null) addOption(option) else addOption(option, value) }
             if (mergeAV) {
                 addOption("--merge-output-format", "mp4")
             }
@@ -73,25 +87,39 @@ class DownloadWorker(
 
         var lastPercent = 0
 
-        val response = YoutubeDL.getInstance().execute(request) { progress, etaInSeconds, line ->
-            val percent = progress.toInt().coerceIn(0, 100)
-            if (percent != lastPercent) {
-                lastPercent = percent
-                setProgressAsync(
-                    workDataOf(
+        var lastError = ""
+        for (attempt in 0 until DownloadPolicies.MAX_HTTP_ATTEMPTS) {
+            val response = YoutubeDL.getInstance().execute(request) { progress, etaInSeconds, line ->
+                val percent = progress.toInt().coerceIn(0, 100)
+                if (percent != lastPercent) {
+                    lastPercent = percent
+                    setProgressAsync(workDataOf(
                         PROGRESS_PERCENT to percent,
-                        PROGRESS_ETA     to etaInSeconds,
-                        PROGRESS_SPEED   to extractSpeed(line),
-                        PROGRESS_SIZE    to extractSize(line)
-                    )
-                )
-                val fi = createForegroundInfo("$percent%  •  ${extractSpeed(line)}", percent)
-                setForegroundAsync(fi)
+                        PROGRESS_ETA to etaInSeconds,
+                        PROGRESS_SPEED to extractSpeed(line),
+                        PROGRESS_SIZE to extractSize(line)
+                    ))
+                    setForegroundAsync(createForegroundInfo("$percent%  ?  ${extractSpeed(line)}", percent))
+                }
             }
+            if (response.exitCode == 0) return@withContext Result.success()
+            lastError = response.err
+            if (!DownloadPolicies.shouldRetry(lastError, attempt)) break
+            if (attempt == 0) runCatching {
+                ExtractorUpdater.checkAndUpdate(
+                    applicationContext,
+                    ExtractorUpdater.selectedChannel(applicationContext),
+                    force = true
+                )
+            }
+            delay(DownloadPolicies.retryDelayMillis(attempt))
         }
-
-        if (response.exitCode == 0) Result.success()
-        else Result.failure(workDataOf("error" to response.err))
+        val userMessage = when {
+            Regex("(^|\\D)403(\\D|$)").containsMatchIn(lastError) -> applicationContext.getString(R.string.youtube_403_download_error)
+            Regex("(^|\\D)429(\\D|$)").containsMatchIn(lastError) -> applicationContext.getString(R.string.youtube_429_download_error)
+            else -> lastError
+        }
+        Result.failure(workDataOf("error" to userMessage))
     }
 
     private fun createForegroundInfo(text: String, progress: Int): ForegroundInfo {

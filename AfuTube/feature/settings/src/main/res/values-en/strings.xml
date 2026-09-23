@@ -1,0 +1,6 @@
+<resources>
+    <string name="download_speed_limit">Download speed limit</string>
+    <string name="download_speed_limit_help">0 means unlimited. Changes apply to new downloads.</string>
+    <string name="kilobytes_per_second">KB/s (0 = unlimited)</string>
+    <string name="save">Save</string>
+</resources>

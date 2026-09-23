@@ -22,6 +22,7 @@ import com.afudm.afutube.updater.ExtractorUpdater
 import com.afudm.afutube.updater.AppUpdate
 import com.afudm.afutube.updater.UpdateManager
 import kotlinx.coroutines.launch
+import com.afudm.afutube.downloader.DownloadPolicies
 
 @Composable
 fun SettingsScreen(
@@ -39,6 +40,8 @@ fun SettingsScreen(
     var autoUpdate   by remember { mutableStateOf(UpdateManager.autoCheckEnabled(context)) }
     var appUpdateStatus by remember { mutableStateOf("") }
     var includePrereleases by remember { mutableStateOf(UpdateManager.includePrereleases(context)) }
+    val downloadPrefs = remember { context.getSharedPreferences("afutube_downloads", Context.MODE_PRIVATE) }
+    var rateLimit by remember { mutableStateOf(downloadPrefs.getInt("rate_limit_kbps", 0).toString()) }
 
     LaunchedEffect(Unit) {
         ytdlpVersion = ExtractorUpdater.currentVersion(context)
@@ -61,6 +64,23 @@ fun SettingsScreen(
             contentPadding      = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            item {
+                SettingsCard(title = context.getString(R.string.download_speed_limit)) {
+                    Text(context.getString(R.string.download_speed_limit_help), color = AfuColors.textMuted, fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = rateLimit,
+                        onValueChange = { rateLimit = it.filter(Char::isDigit).take(7) },
+                        label = { Text(context.getString(R.string.kilobytes_per_second)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(onClick = {
+                        val kbps = DownloadPolicies.parseRateLimitKbps(rateLimit)
+                        rateLimit = kbps.toString()
+                        downloadPrefs.edit().putInt("rate_limit_kbps", kbps).apply()
+                    }) { Text(context.getString(R.string.save)) }
+                }
+            }
             item {
                 LastAnalysisErrorStore.get()?.let { error ->
                     SettingsCard(title = "Tanı / Son hata") {

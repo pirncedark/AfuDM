@@ -1,0 +1,6 @@
+<resources>
+    <string name="collect_links">Panodaki bağlantıları topla</string>
+    <string name="collected_links_title">Bağlantıları seç</string>
+    <string name="queue_selected_links">Seçilenleri sıraya ekle</string>
+    <string name="cancel">İptal</string>
+</resources>

@@ -33,6 +33,15 @@ class ShareIntentViewModelTest {
     }
 
     @Test
+    fun `collects every distinct URL from shared text`() {
+        val payload = ShareIntentPayload(
+            action = "android.intent.action.SEND",
+            text = "https://example.com/one, https://example.com/two https://example.com/one"
+        )
+        assertEquals(listOf("https://example.com/one", "https://example.com/two"), ShareUrlExtractor.allHttpUrls(payload))
+    }
+
+    @Test
     fun `url-less text produces no event`() {
         val viewModel = ShareIntentViewModel()
 

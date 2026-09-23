@@ -1,0 +1,5 @@
+<resources>
+    <string name="resume_download">Devam et</string>
+    <string name="retry_download">Yeniden dene</string>
+    <string name="pause_download">Duraklat</string>
+</resources>

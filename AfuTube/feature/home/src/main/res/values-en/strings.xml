@@ -1,0 +1,6 @@
+<resources>
+    <string name="collect_links">Collect links from clipboard</string>
+    <string name="collected_links_title">Select links</string>
+    <string name="queue_selected_links">Add selected to queue</string>
+    <string name="cancel">Cancel</string>
+</resources>

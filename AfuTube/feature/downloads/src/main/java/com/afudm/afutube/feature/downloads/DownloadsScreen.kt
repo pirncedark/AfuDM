@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import androidx.work.WorkInfo
 import com.afudm.afutube.downloader.DownloadEngine
 import com.afudm.afutube.downloader.DownloadProgress
+import com.afudm.afutube.downloader.DownloadPolicies
 import com.afudm.afutube.core.theme.AfuColors
 import java.util.UUID
 
@@ -86,7 +87,9 @@ fun DownloadsScreen() {
                 items(workInfos, key = { it.id }) { workInfo ->
                     DownloadCard(
                         workInfo = workInfo,
-                        onCancel = { engine.cancel(workInfo.id) },
+                        onCancel = { engine.pause(workInfo.id) },
+                        onResume = { engine.resume(workInfo) },
+                        onRetry = { engine.retry(workInfo) },
                         onRemove = { title ->
                             engine.remove(workInfo.id, title, finished = workInfo.state == WorkInfo.State.SUCCEEDED)
                         }
@@ -101,8 +104,12 @@ fun DownloadsScreen() {
 private fun DownloadCard(
     workInfo : WorkInfo,
     onCancel : () -> Unit,
+    onResume : () -> Unit,
+    onRetry : () -> Unit,
     onRemove : (title: String) -> Unit
 ) {
+    val context = LocalContext.current
+    val action = DownloadPolicies.actionForState(workInfo.state.name)
     val percent = workInfo.progress.getInt("progress_percent", 0)
     val speed   = workInfo.progress.getString("progress_speed") ?: ""
     val size    = workInfo.progress.getString("progress_size") ?: ""
@@ -141,7 +148,7 @@ private fun DownloadCard(
                 )
                 if (workInfo.state == WorkInfo.State.RUNNING) {
                     IconButton(onClick = onCancel, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.Close, "Durdur", tint = AfuColors.textMuted, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Pause, context.getString(R.string.pause_download), tint = AfuColors.textMuted, modifier = Modifier.size(18.dp))
                     }
                 }
                 // Her durumda (bekliyor / hata / takili / tamamlandi) kayit kaldirilabilir.
@@ -179,6 +186,12 @@ private fun DownloadCard(
                 Text(stateLabel, color = stateColor, fontSize = 12.sp)
                 workInfo.outputData.getString("error")?.let { err ->
                     if (err.isNotBlank()) Text(err, color = AfuColors.error, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                if (action == DownloadPolicies.Action.RESUME) {
+                    TextButton(onClick = onResume) { Text(context.getString(R.string.resume_download)) }
+                }
+                if (action == DownloadPolicies.Action.RETRY) {
+                    TextButton(onClick = onRetry) { Text(context.getString(R.string.retry_download)) }
                 }
             }
         }

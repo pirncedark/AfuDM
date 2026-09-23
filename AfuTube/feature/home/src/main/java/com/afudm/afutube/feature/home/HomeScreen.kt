@@ -26,12 +26,15 @@ import com.afudm.afutube.core.diagnostics.AnalysisError
 import com.afudm.afutube.core.extractor.MediaInfo
 import com.afudm.afutube.core.extractor.UrlNormalizer
 import com.afudm.afutube.core.theme.AfuColors
+import com.afudm.afutube.downloader.DownloadEngine
+import com.afudm.afutube.downloader.DownloadPolicies
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     sharedUrl   : String?    = null,
     sharedEventId: Long?     = null,
+    sharedUrls: List<String>? = null,
     onNavigateToFormats: (MediaInfo) -> Unit = {},
     onUpdateExtractor: () -> Unit = {}
 ) {
@@ -39,11 +42,17 @@ fun HomeScreen(
     val viewModel = remember(context) { HomeViewModel(context.applicationContext) }
     val state     by viewModel.state.collectAsState()
     val clipboard = LocalClipboardManager.current
+    var collectedLinks by remember { mutableStateOf(emptyList<String>()) }
+    var selectedLinks by remember { mutableStateOf(emptySet<String>()) }
 
     // Share Intent'ten gelen URL'yi otomatik işle
     LaunchedEffect(sharedEventId) {
-        if (!sharedUrl.isNullOrBlank()) {
-            val normalizedUrl = UrlNormalizer.normalize(sharedUrl) ?: sharedUrl
+        val urls = sharedUrls.orEmpty().ifEmpty { listOfNotNull(sharedUrl) }
+        if (urls.size > 1) {
+            collectedLinks = urls
+            selectedLinks = urls.toSet()
+        } else if (urls.isNotEmpty()) {
+            val normalizedUrl = UrlNormalizer.normalize(urls.first()) ?: urls.first()
             viewModel.onUrlChange(normalizedUrl)
             viewModel.analyzeUrl(normalizedUrl)
         }
@@ -84,6 +93,16 @@ fun HomeScreen(
                 isLoading   = state.isLoading
             )
 
+            OutlinedButton(onClick = {
+                val text = clipboard.getText()?.text.orEmpty()
+                collectedLinks = DownloadPolicies.extractHttpLinks(text)
+                selectedLinks = collectedLinks.toSet()
+            }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Link, null)
+                Spacer(Modifier.width(8.dp))
+                Text(context.getString(R.string.collect_links))
+            }
+
             Spacer(Modifier.height(20.dp))
 
             // ── Hata mesajı ───────────────────────────────────────────────
@@ -105,6 +124,36 @@ fun HomeScreen(
                 SupportedSitesBadges()
             }
         }
+    }
+
+    if (collectedLinks.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { collectedLinks = emptyList() },
+            title = { Text(context.getString(R.string.collected_links_title)) },
+            text = {
+                Column {
+                    collectedLinks.forEach { link ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = link in selectedLinks, onCheckedChange = { checked ->
+                                selectedLinks = if (checked) selectedLinks + link else selectedLinks - link
+                            })
+                            Text(link, maxLines = 2, overflow = TextOverflow.Ellipsis, color = AfuColors.text)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    selectedLinks.forEach { link ->
+                        DownloadEngine.getInstance(context).enqueue(
+                            DownloadEngine.DownloadRequest(url = link, title = link.substringAfter("//").take(48))
+                        )
+                    }
+                    collectedLinks = emptyList()
+                }, enabled = selectedLinks.isNotEmpty()) { Text(context.getString(R.string.queue_selected_links)) }
+            },
+            dismissButton = { TextButton(onClick = { collectedLinks = emptyList() }) { Text(context.getString(R.string.cancel)) } }
+        )
     }
 }
 
