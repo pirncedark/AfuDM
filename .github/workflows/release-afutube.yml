@@ -58,7 +58,7 @@ jobs:
           VERSION_CODE=$(echo "$BASE_VERSION" | awk -F. '{print ($1*1000000)+($2*1000)+$3}')
           SHA256=$(cut -d' ' -f1 release-assets/AfuTube-universal.apk.sha256)
           PRERELEASE=false
-          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then PRERELEASE=true; fi
+          if [[ "${GITHUB_REF_NAME#afutube-v}" == *-* ]]; then PRERELEASE=true; fi
           cat > release-assets/AfuTube-update.json <<EOF
           {
             "versionName": "${VERSION_NAME}",
@@ -75,7 +75,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           make_latest: false  # AfuDM masaustu surumu Latest kalsin
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(github.ref_name, '-test') || contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
           name: AfuTube ${{ github.ref_name }}
           body: |
             # AfuTube ${{ github.ref_name }}
