@@ -1162,7 +1162,8 @@ class Api:
         import time
 
         token = secrets.token_urlsafe(12)
-        _Handler.shared_files[token] = {"path": yol, "created": time.time()}
+        _Handler.shared_files[token] = {"path": yol, "created": time.time(),
+                                        "share_name": "", "staging_path": ""}
         url = self._paylasim_url(token)
         result = self._paylasim_sonucu(token, yol,
             "SMB paylasimi icin yonetici izni bulunamadi; HTTP LAN baglantisi hazirlandi.")
@@ -1189,7 +1190,11 @@ class Api:
             subprocess.run(
                 ["net", "share", f"{share_name}={share_root}", "/GRANT:Everyone,READ"],
                 check=True, capture_output=True, text=True, timeout=15,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
+            _Handler.shared_files[token].update({
+                "share_name": share_name, "staging_path": str(share_root),
+            })
             host = socket.gethostname() or "127.0.0.1"
             result.update({
                 "transport": "smb",
@@ -1197,8 +1202,43 @@ class Api:
                 "warning": "",
             })
         except (OSError, subprocess.SubprocessError) as exc:
+            shutil.rmtree(share_root, ignore_errors=True)
             result["warning"] = "SMB paylaşımı açılamadı (%s); HTTP LAN bağlantısı ve QR hazırlandı." % str(exc)[:120]
         return result
+
+    def _paylasim_kaynaklarini_temizle(self, bilgi: dict) -> list[str]:
+        """Revoke a Windows share and remove its staging folder; safe to repeat."""
+        sorunlar = []
+        share_name = bilgi.get("share_name")
+        if share_name:
+            try:
+                sonuc = subprocess.run(
+                    ["net", "share", share_name, "/delete", "/y"],
+                    check=False, capture_output=True, text=True, timeout=15,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+                cikti = f"{sonuc.stderr} {sonuc.stdout}".lower()
+                share_yok = any(ifad in cikti for ifad in
+                                ("does not exist", "not found", "no such", "bulunamad"))
+                if sonuc.returncode and not share_yok:
+                    sorunlar.append(f"{share_name}: {sonuc.stderr or sonuc.stdout or sonuc.returncode}")
+            except (OSError, subprocess.SubprocessError) as exc:
+                sorunlar.append(f"{share_name}: {exc}")
+        staging_path = bilgi.get("staging_path")
+        if staging_path:
+            try:
+                shutil.rmtree(staging_path)
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                sorunlar.append(f"{staging_path}: {exc}")
+        for sorun in sorunlar:
+            print(f"Share cleanup failed: {sorun}")
+            try:
+                self.manager.store.log("error", f"Share cleanup failed: {sorun}")
+            except Exception:
+                pass
+        return sorunlar
 
     def share_list(self) -> dict:
         from api.server import _Handler
@@ -1224,6 +1264,10 @@ class Api:
     def share_delete(self, token: str) -> dict:
         from api.server import _Handler
         if token in _Handler.shared_files:
+            bilgi = _Handler.shared_files[token]
+            sorunlar = self._paylasim_kaynaklarini_temizle(bilgi)
+            if sorunlar:
+                return {"ok": False, "error": "Payla\u015f\u0131m kaynaklar\u0131 temizlenemedi: " + "; ".join(sorunlar)}
             del _Handler.shared_files[token]
             if not _Handler.shared_files:
                 if hasattr(self, "_tunel"):
@@ -1260,6 +1304,23 @@ class Api:
         return {"ok": True, "files": sonuclar}
 
     def paylasim_stop(self) -> None:
+        from api.server import _Handler
+        for token, bilgi in list(_Handler.shared_files.items()):
+            sorunlar = self._paylasim_kaynaklarini_temizle(bilgi)
+            if sorunlar:
+                mesaj = "Payla\u015f\u0131m temizli\u011fi tamamlanamad\u0131: " + "; ".join(sorunlar)
+                try:
+                    self.manager.store.log("error", mesaj)
+                except Exception:
+                    pass
+                try:
+                    if self._window:
+                        self._window.evaluate_js("toast(" + json.dumps(mesaj) + ", true)")
+                    self._tepsi_bildirimi()
+                except Exception:
+                    print(mesaj)
+            else:
+                _Handler.shared_files.pop(token, None)
         if hasattr(self, "_tunel"):
             self._tunel.stop()
         if hasattr(self, "_paylasim_sunucusu"):

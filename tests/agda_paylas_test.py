@@ -18,6 +18,9 @@ class _Store:
     def get(self, key, default=None):
         return default
 
+    def log(self, level, message):
+        return None
+
 
 class _Manager:
     def __init__(self, path):
@@ -29,6 +32,47 @@ class _Manager:
 
 
 class AgdaPaylasTest(unittest.TestCase):
+    def test_share_delete_revoke_mocked_share_and_remove_staging(self):
+        from api.server import _Handler
+        with tempfile.TemporaryDirectory() as temp:
+            staging = Path(temp) / "stage"
+            staging.mkdir()
+            api = Api.__new__(Api)
+            api.manager = _Manager(Path(temp) / "file.txt")
+            api._tunel = type("Tunnel", (), {"stop": lambda self: None})()
+            api._paylasim_sunucusu = type("Server", (), {"stop": lambda self: None})()
+            _Handler.shared_files.clear()
+            _Handler.shared_files["cleanup-token"] = {
+                "path": Path(temp) / "file.txt", "created": 1,
+                "share_name": "AfuDM_test", "staging_path": str(staging),
+            }
+            with patch("subprocess.run", return_value=__import__("subprocess").CompletedProcess([], 0)) as run:
+                result = api.share_delete("cleanup-token")
+            self.assertTrue(result["ok"])
+            self.assertEqual(run.call_args.args[0], ["net", "share", "AfuDM_test", "/delete", "/y"])
+            self.assertFalse(staging.exists())
+            self.assertNotIn("cleanup-token", _Handler.shared_files)
+
+    def test_app_close_cleans_share_with_mocked_subprocess(self):
+        from api.server import _Handler
+        with tempfile.TemporaryDirectory() as temp:
+            staging = Path(temp) / "stage"
+            staging.mkdir()
+            api = Api.__new__(Api)
+            api.manager = _Manager(Path(temp) / "file.txt")
+            api._tepsi_bildirimi = lambda: None
+            api._Handler = _Handler
+            _Handler.shared_files.clear()
+            _Handler.shared_files["shutdown-token"] = {
+                "path": Path(temp) / "file.txt", "created": 1,
+                "share_name": "AfuDM_shutdown", "staging_path": str(staging),
+            }
+            with patch("subprocess.run", return_value=__import__("subprocess").CompletedProcess([], 0)) as run:
+                api.paylasim_stop()
+            self.assertEqual(run.call_args.args[0], ["net", "share", "AfuDM_shutdown", "/delete", "/y"])
+            self.assertFalse(staging.exists())
+            self.assertNotIn("shutdown-token", _Handler.shared_files)
+
     def test_backend_smb_yetkisi_yoksa_http_qr_fallback(self):
         with tempfile.TemporaryDirectory() as temp:
             dosya = Path(temp) / "telefon.pdf"
