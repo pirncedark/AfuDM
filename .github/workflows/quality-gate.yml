@@ -82,7 +82,7 @@ jobs:
 
   android-build:
     name: android-build
-    uses: ./.github/workflows/build-afutube.yml
+    uses: ./.github/workflows/android-debug.yml
 
   security:
     name: security

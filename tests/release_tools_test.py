@@ -35,7 +35,7 @@ class ReleaseToolsTest(unittest.TestCase):
 
     def test_quality_gate_workflow_covers_all_release_checks(self):
         source = (ROOT / ".github" / "workflows" / "quality-gate.yml").read_text(encoding="utf-8")
-        android = (ROOT / ".github" / "workflows" / "build-afutube.yml").read_text(encoding="utf-8")
+        android = (ROOT / ".github" / "workflows" / "android-debug.yml").read_text(encoding="utf-8")
         security = (ROOT / ".github" / "workflows" / "security.yml").read_text(encoding="utf-8")
         ui_test = (ROOT / "tests" / "ui_ux_gate_test.py").read_text(encoding="utf-8")
         source += android + security + ui_test
