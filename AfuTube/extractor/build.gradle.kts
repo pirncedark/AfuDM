@@ -19,4 +19,5 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation(project(":core"))
     implementation("com.github.yausername.youtubedl-android:library:0.14.0")
+    testImplementation("junit:junit:4.13.2")
 }

@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.afudm.afutube.core.theme.AfuColors
+import com.afudm.afutube.core.diagnostics.LastAnalysisErrorStore
 import com.afudm.afutube.updater.ExtractorUpdater
 import com.afudm.afutube.updater.AppUpdate
 import com.afudm.afutube.updater.UpdateManager
@@ -57,6 +58,15 @@ fun SettingsScreen(
             contentPadding      = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            item {
+                LastAnalysisErrorStore.get()?.let { error ->
+                    SettingsCard(title = "Tanı / Son hata") {
+                        Text(error.categoryLabel, color = AfuColors.warning, fontSize = 13.sp)
+                        Text("yt-dlp ${error.ytDlpVersion} · exit ${error.exitCode ?: "yok"}", color = AfuColors.textMuted, fontSize = 12.sp)
+                        Text(error.traceback, color = AfuColors.textMuted, fontSize = 11.sp, maxLines = 8, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
+                }
+            }
             item {
                 SettingsCard(title = "Uygulama guncellemeleri") {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
