@@ -110,6 +110,7 @@ if (`$parseHatalari) {
         "tests/torrent_yaris_test.mjs",
         "tests/eklenti_test.py",
         "tests/headless_test.py",
+        "tests/paket_import_test.py",
         "tests/v21_guvenlik_test.py",
         "tests/telefona_indir_test.py",
         "tests/ui_startup_test.py",
