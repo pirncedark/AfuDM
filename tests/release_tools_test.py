@@ -7,6 +7,31 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReleaseToolsTest(unittest.TestCase):
+    def test_ci_workflows_build_pyinstaller_before_packaging(self):
+        for workflow in ("release.yml", "ci.yml"):
+            source = (ROOT / ".github" / "workflows" / workflow).read_text(
+                encoding="utf-8"
+            )
+            build_at = source.index("python -m PyInstaller --noconfirm --clean AfuDM.spec")
+            package_at = source.index("build_release.ps1")
+            self.assertLess(build_at, package_at, workflow)
+
+    def test_build_release_rejects_missing_or_stale_executable(self):
+        source = (ROOT / "scripts" / "build_release.ps1").read_text(encoding="utf-8")
+        self.assertIn("dist\\AfuDM.exe", source)
+        self.assertIn("LastWriteTimeUtc", source)
+        self.assertIn("core\\surum.py", source)
+        self.assertIn("app.py", source)
+        self.assertIn("GATE HATA", source)
+
+    def test_verify_release_checks_embedded_executable_module(self):
+        source = (ROOT / "scripts" / "verify_release.ps1").read_text(encoding="utf-8")
+        self.assertIn("verify_exe.py", source)
+        verifier = (ROOT / "scripts" / "verify_exe.py").read_text(encoding="utf-8")
+        self.assertIn("CArchiveReader", verifier)
+        self.assertIn("core.surum", verifier)
+        self.assertIn("app", verifier)
+
     def test_release_package_includes_support_launchers(self):
         source = (ROOT / "paketle.py").read_text(encoding="utf-8")
         for name in ("tani.bat", "web_panel_baslat.bat", "debug_modu.bat"):

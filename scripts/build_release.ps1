@@ -27,11 +27,31 @@ try {
     }
 
     $argTum = if ($Full) { "--tam" } else { "" }
-    if (-not (Test-Path (Join-Path $kok "AfuDM.exe"))) {
-        Write-Host "AfuDM.exe yok - build_exe.ps1 ile uretiliyor..."
-        & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "build_exe.ps1")
-        if ($LASTEXITCODE -ne 0) { Write-Host "exe uretilemedi"; exit 1 }
+    $distExe = Join-Path $kok "dist\AfuDM.exe"
+    $rootExe = Join-Path $kok "AfuDM.exe"
+    $surumPy = Join-Path $kok "core\surum.py"
+    $appPy = Join-Path $kok "app.py"
+    if (-not (Test-Path $distExe -PathType Leaf)) {
+        Write-Output "GATE HATA: dist\AfuDM.exe yok; once PyInstaller derlemesi yapilmali"
+        exit 1
     }
+    $distZaman = (Get-Item $distExe).LastWriteTimeUtc
+    foreach ($kaynak in @($surumPy, $appPy)) {
+        if ($distZaman -lt (Get-Item $kaynak).LastWriteTimeUtc) {
+            Write-Output "GATE HATA: dist\AfuDM.exe eski: $kaynak"
+            exit 1
+        }
+    }
+    if (Test-Path $rootExe -PathType Leaf) {
+        $rootZaman = (Get-Item $rootExe).LastWriteTimeUtc
+        foreach ($kaynak in @($surumPy, $appPy)) {
+            if ($rootZaman -lt (Get-Item $kaynak).LastWriteTimeUtc) {
+                Write-Output "GATE HATA: AfuDM.exe eski: $kaynak"
+                exit 1
+            }
+        }
+    }
+    Copy-Item -LiteralPath $distExe -Destination $rootExe -Force
     & python paketle.py $argTum
     if ($LASTEXITCODE -ne 0) { Write-Output "paketle.py basarisiz"; exit 1 }
 
