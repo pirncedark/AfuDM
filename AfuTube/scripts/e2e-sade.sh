@@ -12,6 +12,8 @@ wait_chooser() {
   while [ "$t" -lt "$seconds" ]; do chooser_front && return 0; sleep 1; t=$((t+1)); done
   return 1
 }
+adb shell input keyevent KEYCODE_BACK
+sleep 2
 dump ayarlar
 tap tap-text "$OUT/ayarlar.xml" "Ayarlar" || { echo "HATA: Ayarlar sekmesi yok"; exit 1; }
 sleep 2; dump ayarlar
