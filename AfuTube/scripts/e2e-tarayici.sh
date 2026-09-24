@@ -25,11 +25,10 @@ run_case() {
   tap tap-text "$OUT/page.xml" Oynat || { echo "HATA: Oynat dugmesi tiklanamadi ($page)"; return 1; }
   local seen=0
   for ((s=0;s<20;s+=2)); do sleep 2; dump found; if grep -q 'Yakalanan videolar' "$OUT/found.xml"; then seen=1; break; fi
-    # Compose exposes the floating action by content description.
-    tap tap-desc "$OUT/found.xml" "Yakalanan videolar" >/dev/null 2>&1 && { seen=1; break; }
     crash_check && { echo "HATA: tarayici yakalama sirasinda coktu"; return 1; }
   done
-  if [[ $seen != 1 ]]; then tap tap-desc "$OUT/found.xml" "Yakalanan videolar" || { echo "HATA: yakalanan videolar gorunmedi ($page)"; return 1; }; fi
+  [[ $seen == 1 ]] || { echo "HATA: yakalanan videolar gorunmedi ($page)"; return 1; }
+  tap tap-desc "$OUT/found.xml" "Yakalanan videolar" || { echo "HATA: yakalama listesi acilmadi ($page)"; return 1; }
   dump sheet; adb exec-out screencap -p > "$OUT/tarayici-$expected.png"
   tap tap-text "$OUT/sheet.xml" "İndir" || tap tap-text "$OUT/sheet.xml" "Indir" || { echo "HATA: Indir dugmesi yok ($page)"; return 1; }
   crash_check && { echo "HATA: indirme baslayinca uygulama coktu"; return 1; }
