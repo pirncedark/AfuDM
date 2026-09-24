@@ -1,6 +1,7 @@
 package com.afudm.afutube.feature.home
 
 import android.content.Intent
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -46,8 +47,10 @@ fun HomeScreen(
 
     // Share Intent'ten gelen URL'yi otomatik işle
     LaunchedEffect(sharedEventId, sharedLinkReady) {
+        Log.i("AfuTubeShareFlow", "Home share effect sequence=$sharedEventId ready=$sharedLinkReady")
         if (!sharedLinkReady) return@LaunchedEffect
         val event = sharedEventId?.let(onConsumeShareEvent)
+        Log.i("AfuTubeShareFlow", "Home share consumed=${event != null} hasUrl=${event?.url != null}")
         if (event?.url != null) {
             val normalizedUrl = UrlNormalizer.normalize(event.url) ?: event.url
             viewModel.onUrlChange(normalizedUrl)

@@ -1,6 +1,7 @@
 package com.afudm.afutube
 
 import android.content.Intent
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -62,5 +63,6 @@ class ShareIntentViewModel : ViewModel() {
     private fun publishUrl(url: String?) {
         sequence += 1
         _events.value = ShareIntentEvent(sequence, url)
+        Log.i("AfuTubeShareFlow", "share event published sequence=$sequence hasUrl=${url != null}")
     }
 }
