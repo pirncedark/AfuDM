@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.ViewModelProvider
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -249,7 +250,7 @@ private fun AfuBottomBar(
                 icon     = {
                     Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
                         Icon(screen.icon, contentDescription = screen.label, modifier = Modifier.size(22.dp))
-                        if (selected) Spacer(Modifier.width(18.dp).height(2.dp).background(AfuColors.accent))
+                        if (selected) Spacer(Modifier.width(18.dp).height(1.dp).border(1.dp, AfuColors.accent))
                     }
                 },
                 label    = { Text(screen.label, fontSize = 10.sp) },

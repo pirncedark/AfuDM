@@ -132,7 +132,7 @@ private fun AfuTubeLogo() {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text("AfuTube", fontSize = 27.sp, fontWeight = FontWeight.SemiBold, color = AfuColors.text)
         Spacer(Modifier.height(6.dp))
-        Text("Link yap??t?r, gerisini AfuTube halleder.", fontSize = 13.sp, color = AfuColors.textMuted)
+        Text("Linki yapıştır, gerisini AfuTube halleder.", fontSize = 13.sp, color = AfuColors.textMuted)
     }
 }
 
@@ -192,6 +192,7 @@ private fun UrlInputCard(
                 OutlinedButton(
                     onClick = onPaste,
                     modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 8.dp),
                     colors  = ButtonDefaults.outlinedButtonColors(contentColor = AfuColors.textMuted),
                     border  = androidx.compose.foundation.BorderStroke(1.dp, AfuColors.textMuted.copy(alpha = 0.3f))
                 ) {

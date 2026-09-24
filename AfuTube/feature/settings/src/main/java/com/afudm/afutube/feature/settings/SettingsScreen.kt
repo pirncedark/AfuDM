@@ -199,7 +199,18 @@ private fun prepareApk(context: Context, versionName: String): android.net.Uri {
 private fun SettingSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, color = AfuColors.text, fontSize = 14.sp)
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = AfuColors.text,
+                checkedTrackColor = AfuColors.surface,
+                checkedBorderColor = AfuColors.accent,
+                uncheckedThumbColor = AfuColors.textMuted,
+                uncheckedTrackColor = AfuColors.surface,
+                uncheckedBorderColor = AfuColors.textMuted.copy(alpha = 0.3f)
+            )
+        )
     }
 }
 
