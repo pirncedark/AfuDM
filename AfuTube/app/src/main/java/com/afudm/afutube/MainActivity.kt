@@ -67,7 +67,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
     val shareEvent by shareViewModel.events.collectAsState()
     val runtimeScope = rememberCoroutineScope()
 
-    if (runtimeStatus.state != MediaRuntime.RuntimeState.READY) {
+    if (runtimeStatus.state != MediaRuntime.RuntimeState.READY && shareEvent == null) {
         MotorReadinessScreen(
             status = runtimeStatus,
             onRetry = { runtimeScope.launch { RuntimeBootstrap.prepare(context) } }
@@ -145,6 +145,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
                 HomeScreen(
                     sharedUrl = shareEvent?.url,
                     sharedEventId = shareEvent?.sequence,
+                    sharedLinkReady = runtimeStatus.state == MediaRuntime.RuntimeState.READY,
                     onConsumeShareEvent = { sequence -> shareViewModel.consume(sequence)?.let { SharedLinkEvent(it.url) } },
                     onNavigateToFormats = { info ->
                         pendingMediaInfo = info

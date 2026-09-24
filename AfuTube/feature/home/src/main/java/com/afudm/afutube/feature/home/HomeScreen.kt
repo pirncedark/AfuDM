@@ -35,6 +35,7 @@ data class SharedLinkEvent(val url: String?)
 fun HomeScreen(
     sharedUrl   : String?    = null,
     sharedEventId: Long?     = null,
+    sharedLinkReady: Boolean = true,
     onConsumeShareEvent: (Long) -> SharedLinkEvent? = { null },
     onNavigateToFormats: (MediaInfo) -> Unit = {},
     onUpdateExtractor: () -> Unit = {}
@@ -45,7 +46,8 @@ fun HomeScreen(
     val clipboard = LocalClipboardManager.current
 
     // Share Intent'ten gelen URL'yi otomatik işle
-    LaunchedEffect(sharedEventId) {
+    LaunchedEffect(sharedEventId, sharedLinkReady) {
+        if (!sharedLinkReady) return@LaunchedEffect
         val event = sharedEventId?.let(onConsumeShareEvent)
         if (event?.url != null) {
             val normalizedUrl = UrlNormalizer.normalize(event.url) ?: event.url
