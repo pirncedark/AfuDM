@@ -13,6 +13,7 @@ android {
 }
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
+    implementation("androidx.core:core-ktx:1.19.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
