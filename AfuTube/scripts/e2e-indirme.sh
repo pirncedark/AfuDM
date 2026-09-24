@@ -32,6 +32,8 @@ bekle 120 format tap-text "Format Seç"; r=$?
 if grep -Eqi 'vp9|avc1|av01' "$OUT/format.xml"; then
   echo "HATA: ham codec etiketi kapali Tüm formatlar bolumunde gorunuyor"; bitir format-codec; exit 1
 fi
+grep -q 'text="MP3"' "$OUT/format.xml" || { echo "HATA: format ekraninda MP3 secenegi yok"; bitir format-mp3; exit 1; }
+echo "BASARILI: format ekrani sade (MP4 + MP3)"
 tap tap-after "$OUT/format.xml" "Video" "Ses" || { echo "HATA: secilecek format yok"; bitir format; exit 1; }
 sleep 1; dump secili
 tap tap-text "$OUT/secili.xml" "İndir —" || { echo "HATA: Indir dugmesi yok"; bitir indir; exit 1; }
