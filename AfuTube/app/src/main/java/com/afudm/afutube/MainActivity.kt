@@ -2,7 +2,6 @@ package com.afudm.afutube
 
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -41,7 +40,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        Log.i("AfuTubeShareFlow", "MainActivity onCreate action=${intent?.action} hasUrl=${ShareUrlExtractor.firstHttpUrl(intent) != null}")
         shareViewModel.publish(intent)
 
         setContent { AfuTubeApp(shareViewModel) }
@@ -50,7 +48,6 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        Log.i("AfuTubeShareFlow", "MainActivity onNewIntent action=${intent.action} hasUrl=${ShareUrlExtractor.firstHttpUrl(intent) != null}")
         shareViewModel.publish(intent)
     }
 }
@@ -87,14 +84,15 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
     var routedShareSequence by remember { mutableLongStateOf(0L) }
     var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
     LaunchedEffect(shareEvent?.sequence) {
-        Log.i("AfuTubeShareFlow", "app observed share sequence=${shareEvent?.sequence}")
         val event = shareEvent ?: return@LaunchedEffect
         if (event.sequence <= routedShareSequence) return@LaunchedEffect
         routedShareSequence = event.sequence
         pendingMediaInfo = null
-        navController.navigate(Screen.Home.route) {
-            popUpTo(Screen.Home.route) { inclusive = false }
-            launchSingleTop = true
+        if (currentRoute != null && currentRoute != Screen.Home.route) {
+            navController.navigate(Screen.Home.route) {
+                popUpTo(Screen.Home.route) { inclusive = false }
+                launchSingleTop = true
+            }
         }
     }
     LaunchedEffect(Unit) {
