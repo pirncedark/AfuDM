@@ -214,12 +214,12 @@ private fun PlayPill(label: String, listen: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = shape,
-        color = if (listen) AfuColors.surface else AfuColors.accent,
-        border = if (listen) androidx.compose.foundation.BorderStroke(1.dp, AfuColors.accent) else null,
+        color = AfuColors.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (listen) AfuColors.textMuted.copy(alpha = 0.35f) else AfuColors.accent),
         modifier = Modifier.height(34.dp).semantics { contentDescription = label }
     ) {
         Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            Icon(if (listen) Icons.Default.Headphones else Icons.Default.PlayArrow, null, tint = if (listen) AfuColors.accent else AfuColors.text, modifier = Modifier.size(16.dp))
+            Icon(if (listen) Icons.Default.Headphones else Icons.Default.PlayArrow, null, tint = if (listen) AfuColors.textMuted else AfuColors.accent, modifier = Modifier.size(16.dp))
             Text(label, color = AfuColors.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         }
     }

@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.ViewModelProvider
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -87,9 +88,11 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
         if (event.sequence <= routedShareSequence) return@LaunchedEffect
         routedShareSequence = event.sequence
         pendingMediaInfo = null
-        navController.navigate(Screen.Home.route) {
-            popUpTo(Screen.Home.route) { inclusive = false }
-            launchSingleTop = true
+        if (currentRoute != null && currentRoute != Screen.Home.route) {
+            navController.navigate(Screen.Home.route) {
+                popUpTo(Screen.Home.route) { inclusive = false }
+                launchSingleTop = true
+            }
         }
     }
     LaunchedEffect(Unit) {
@@ -164,7 +167,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
             }
             composable(Screen.Downloads.route) { DownloadsScreen() }
             composable(Screen.Settings.route)  {
-                SettingsScreen(currentVersionCode = BuildConfig.VERSION_CODE, currentVersionName = BuildConfig.VERSION_NAME, onUpdateFound = { availableUpdate = it })
+                SettingsScreen(currentVersionCode = BuildConfig.VERSION_CODE, currentVersionName = BuildConfig.VERSION_NAME, shareLink = ShareLinkBuilder.url(BuildConfig.VERSION_NAME), onUpdateFound = { availableUpdate = it })
             }
             composable(Screen.Torrent.route)   {
                 TorrentPickerScreen(onBack = { navController.popBackStack() })
@@ -243,17 +246,16 @@ private fun AfuBottomBar(
                 selected = selected,
                 onClick  = { onNavigate(screen.route) },
                 icon     = {
-                    Icon(
-                        screen.icon,
-                        contentDescription = screen.label,
-                        modifier = Modifier.size(22.dp)
-                    )
+                    Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                        Icon(screen.icon, contentDescription = screen.label, modifier = Modifier.size(22.dp))
+                        if (selected) Spacer(Modifier.width(18.dp).height(1.dp).border(1.dp, AfuColors.accent))
+                    }
                 },
                 label    = { Text(screen.label, fontSize = 10.sp) },
                 colors   = NavigationBarItemDefaults.colors(
                     selectedIconColor   = AfuColors.accent,
-                    selectedTextColor   = AfuColors.accent,
-                    indicatorColor      = AfuColors.accent.copy(alpha = 0.12f),
+                    selectedTextColor   = AfuColors.textMuted,
+                    indicatorColor      = AfuColors.card,
                     unselectedIconColor = AfuColors.textMuted,
                     unselectedTextColor = AfuColors.textMuted
                 )

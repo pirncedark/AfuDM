@@ -53,6 +53,7 @@ if guncelleme_kapat "$OUT/ui-20sn-sonra.xml"; then
   adb shell cat /sdcard/ui.xml > "$OUT/ui-20sn-sonra.xml" 2>/dev/null
 fi
 adb exec-out screencap -p > "$OUT/ekran-20sn-sonra.png"
+adb exec-out screencap -p > "$OUT/sade-ana.png"
 grep -q 'Ana Ekran' "$OUT/ui-20sn-sonra.xml" || { echo "HATA: ana ekran geldi ama 20 sn sonra kayboldu"; exit 1; }
 adb shell pidof "$PKG" >/dev/null || { echo "HATA: ana ekrandan sonra uygulama kapandi"; exit 1; }
 echo "BASARILI: ag kapaliyken ana ekran ${sure} sn icinde acildi"

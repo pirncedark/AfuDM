@@ -33,6 +33,7 @@ if grep -Eqi 'vp9|avc1|av01' "$OUT/format.xml"; then
   echo "HATA: ham codec etiketi kapali Tüm formatlar bolumunde gorunuyor"; bitir format-codec; exit 1
 fi
 grep -q 'text="MP3"' "$OUT/format.xml" || { echo "HATA: format ekraninda MP3 secenegi yok"; bitir format-mp3; exit 1; }
+adb exec-out screencap -p > "$OUT/sade-format.png"
 echo "BASARILI: format ekrani sade (MP4 + MP3)"
 tap tap-after "$OUT/format.xml" "Video" "Ses" || { echo "HATA: secilecek format yok"; bitir format; exit 1; }
 sleep 1; dump secili
@@ -50,9 +51,11 @@ cokme_var && { echo "HATA: oynatici acilinca uygulama coktu"; bitir oynatici-cok
 grep -q "Dinle" "$OUT/oynatici.xml" || { echo "HATA: oynaticida Dinle modu gorunmuyor"; bitir dinle-yok; exit 1; }
 grep -Eq 'content-desc="(Oynat|Duraklat)"' "$OUT/oynatici.xml" || { echo "HATA: oynaticida oynat/duraklat dugmesi yok"; bitir kontrol-yok; exit 1; }
 adb exec-out screencap -p > "$OUT/oynatici-izle.png"
+adb exec-out screencap -p > "$OUT/sade-oynatici-izle.png"
 echo "BASARILI: İzle ile oynatici acildi, Dinle modu gorunuyor"
 tap tap-desc "$OUT/oynatici.xml" "Dinle" || { echo "HATA: Dinle modu dugmesi yok"; bitir dinle; exit 1; }
 sleep 1; dump oynatici-dinle; adb exec-out screencap -p > "$OUT/oynatici-dinle.png"
+adb exec-out screencap -p > "$OUT/sade-oynatici-dinle.png"
 cokme_var && { echo "HATA: Dinle moduna geciste uygulama coktu"; bitir dinle-cokme; exit 1; }
 # Kisa test klibi HOME kontrolu gelmeden bitmesin; arka plan calmasini bastan test et.
 adb shell input keyevent KEYCODE_MEDIA_PREVIOUS; sleep 1; adb shell input keyevent KEYCODE_MEDIA_PLAY; sleep 1
@@ -106,6 +109,7 @@ grep -q "Tamamland" "$OUT/listeye-don.xml" || { echo "HATA: indirme listesine do
 echo "BASARILI: oynaticidan indirme listesine donuldu"
 
 dump sil-oncesi
+adb exec-out screencap -p > "$OUT/sade-indirmeler.png"
 grep -q "Tamamlandı" "$OUT/sil-oncesi.xml" || { echo "HATA: Sil oncesi indirme listesi degisti"; bitir sil-liste-yok; exit 1; }
 tap tap-desc "$OUT/sil-oncesi.xml" "Sil" || { echo "HATA: Sil dugmesi yok"; bitir sil; exit 1; }
 sleep 3; dump silindi
