@@ -28,13 +28,16 @@ data class SimplifiedFormats(
 }
 
 object FormatSimplifier {
-    private val standardHeights = listOf(2160, 1440, 1080, 720, 480, 360)
+    private val standardHeights = listOf(1080, 720, 480)
     private val heightInResolution = Regex("(?:x|×)(\\d{3,4})(?:\\D|$)", RegexOption.IGNORE_CASE)
     private val heightInQuality = Regex("(?:^|\\D)(\\d{3,4})p(?:\\D|$)", RegexOption.IGNORE_CASE)
 
     fun simplify(formats: List<MediaFormat>): SimplifiedFormats {
         val videos = formats.filterNot { it.isAudioOnly }
         val audios = formats.filter { it.isAudioOnly || (it.acodec.isNotBlank() && it.acodec != "none") }
+            // Dogrudan .mp4 gibi kaynaklarda yt-dlp codec bilgisini bos/"none" birakir; kullanici her zaman
+            // MP4 + MP3 istiyor. Dosyada ses yoksa indirme karti yt-dlp hatasini gosterir.
+            .ifEmpty { formats }
         val heights = videos.mapNotNull(::heightOf)
         val bestAudioSize = (formats.filter { it.isAudioOnly }.ifEmpty { audios })
             .maxOfOrNull { it.fileSizeB.coerceAtLeast(0L) } ?: 0L
@@ -51,10 +54,7 @@ object FormatSimplifier {
                     ?: matching.maxOfOrNull { it.fileSizeB.coerceAtLeast(0L) } ?: 0L
                 val includedAudio = separateVideo.isEmpty() && matching.any { it.acodec.isNotBlank() && it.acodec != "none" }
                 val fps = videos.filter { heightOf(it) == target }.maxOfOrNull { it.fps } ?: 0
-                val label = when {
-                    target == 2160 -> "2160p (4K)" + if (fps >= 60) " 60" else ""
-                    else -> "${target}p" + if (fps >= 60) " 60" else ""
-                }
+                val label = "${target}p" + if (fps >= 60) " 60" else ""
                 FormatOption(
                     label = label,
                     formatId = "bestvideo[height<=$target][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=$target]+bestaudio/best[height<=$target]/best",
@@ -66,9 +66,9 @@ object FormatSimplifier {
         }
 
         val audioSize = bestAudioSize
+        // Kullanici karari: yalniz MP4 (video) + MP3 (ses).
         val audioOptions = if (audios.isEmpty()) emptyList() else listOf(
-            FormatOption("MP3", "bestaudio/best", estimateSize(audioSize), mergeAV = false, audioFormat = FormatOption.MP3),
-            FormatOption("M4A", "bestaudio[ext=m4a]/bestaudio/best", estimateSize(audioSize), mergeAV = false, audioFormat = FormatOption.M4A)
+            FormatOption("MP3", "bestaudio/best", estimateSize(audioSize), mergeAV = false, audioFormat = FormatOption.MP3)
         )
         val defaultVideo = videoOptions.firstOrNull { it.height == 720 }
             ?: videoOptions.filter { (it.height ?: Int.MAX_VALUE) < 720 }.maxByOrNull { it.height ?: Int.MIN_VALUE }

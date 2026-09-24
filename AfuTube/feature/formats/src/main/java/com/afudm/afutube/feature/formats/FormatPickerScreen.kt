@@ -35,7 +35,6 @@ fun FormatPickerScreen(
     val context = LocalContext.current
     val simplified = remember(mediaInfo.formats) { FormatSimplifier.simplify(mediaInfo.formats) }
     var selectedOption by remember(mediaInfo) { mutableStateOf(simplified.defaultVideoOption) }
-    var allFormatsExpanded by remember(mediaInfo) { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize().background(AfuColors.bg)) {
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -49,33 +48,15 @@ fun FormatPickerScreen(
         ) {
             item { MediaInfoCard(mediaInfo) }
             if (simplified.videoOptions.isNotEmpty()) {
-                item { SectionHeader("Video") }
+                item { SectionHeader("Video (MP4)") }
                 items(simplified.videoOptions) { option ->
                     SimpleFormatRow(option, selectedOption == option) { selectedOption = option }
                 }
             }
             if (simplified.hasAudio) {
-                item { SectionHeader("Ses") }
+                item { SectionHeader("Ses (MP3)") }
                 items(simplified.audioOptions) { option ->
                     SimpleFormatRow(option, selectedOption == option) { selectedOption = option }
-                }
-            }
-            item {
-                TextButton(onClick = { allFormatsExpanded = !allFormatsExpanded }) {
-                    Text("${if (allFormatsExpanded) "⌄" else "›"} Tüm formatlar (${mediaInfo.formats.size})", color = AfuColors.textMuted)
-                }
-            }
-            if (allFormatsExpanded) {
-                items(mediaInfo.formats) { format ->
-                    FormatRow(format, selectedOption?.sourceFormat == format) {
-                        selectedOption = FormatOption(
-                            label = format.label,
-                            formatId = format.formatId,
-                            estimatedSize = format.fileSizeMB,
-                            mergeAV = !format.isAudioOnly,
-                            sourceFormat = format
-                        )
-                    }
                 }
             }
             item {
@@ -161,35 +142,6 @@ private fun SimpleFormatRow(option: FormatOption, isSelected: Boolean, onClick: 
                 tint = if (isSelected) AfuColors.accent else AfuColors.textMuted, modifier = Modifier.size(20.dp))
         }
     }
-}
-
-/** Original extractor row, retained inside the collapsed all-formats section. */
-@Composable
-private fun FormatRow(format: MediaFormat, isSelected: Boolean, onClick: () -> Unit) {
-    val borderColor = if (isSelected) AfuColors.accent else Color.Transparent
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth().border(1.dp, borderColor, RoundedCornerShape(12.dp)),
-        colors = CardDefaults.cardColors(containerColor = if (isSelected) AfuColors.accent.copy(alpha = 0.08f) else AfuColors.card),
-        shape = RoundedCornerShape(12.dp)) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(format.label, color = if (isSelected) AfuColors.accent else AfuColors.text, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal, fontSize = 14.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FormatChip(format.ext.uppercase())
-                    if (!format.isAudioOnly && format.vcodec.isNotBlank() && format.vcodec != "unknown") FormatChip(format.vcodec.substringBefore('.'))
-                    if (format.acodec.isNotBlank() && format.acodec != "none" && format.acodec != "unknown") FormatChip(format.acodec.substringBefore('.'))
-                }
-            }
-            Spacer(Modifier.width(8.dp))
-            Icon(if (isSelected) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, null,
-                tint = if (isSelected) AfuColors.accent else AfuColors.textMuted, modifier = Modifier.size(22.dp))
-        }
-    }
-}
-
-@Composable
-private fun FormatChip(label: String) {
-    Text(label, color = AfuColors.textMuted, fontSize = 10.sp,
-        modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(AfuColors.surface).padding(horizontal = 5.dp, vertical = 2.dp))
 }
 
 private fun formatDuration(seconds: Int): String {
