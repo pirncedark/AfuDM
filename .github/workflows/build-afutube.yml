@@ -126,6 +126,7 @@ jobs:
           script: |
             bash AfuTube/scripts/e2e-acilis.sh apks/secilen.apk
             bash AfuTube/scripts/e2e-indirme.sh
+            bash AfuTube/scripts/e2e-paylas.sh
 
       - name: Upload e2e evidence
         if: always()

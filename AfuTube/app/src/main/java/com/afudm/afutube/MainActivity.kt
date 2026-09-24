@@ -25,6 +25,7 @@ import com.afudm.afutube.feature.downloads.DownloadsScreen
 import com.afudm.afutube.feature.formats.FormatPickerScreen
 import com.afudm.afutube.core.theme.AfuColors
 import com.afudm.afutube.feature.home.HomeScreen
+import com.afudm.afutube.feature.home.SharedLinkEvent
 import com.afudm.afutube.feature.settings.SettingsScreen
 import com.afudm.afutube.feature.torrent.TorrentPickerScreen
 import com.afudm.afutube.updater.AppUpdate
@@ -66,7 +67,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
     val shareEvent by shareViewModel.events.collectAsState()
     val runtimeScope = rememberCoroutineScope()
 
-    if (runtimeStatus.state != MediaRuntime.RuntimeState.READY) {
+    if (runtimeStatus.state != MediaRuntime.RuntimeState.READY && shareEvent == null) {
         MotorReadinessScreen(
             status = runtimeStatus,
             onRetry = { runtimeScope.launch { RuntimeBootstrap.prepare(context) } }
@@ -79,7 +80,18 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
     val currentRoute      = navBackStackEntry?.destination?.route
 
     var pendingMediaInfo by remember { mutableStateOf<MediaInfo?>(null) }
+    var routedShareSequence by remember { mutableLongStateOf(0L) }
     var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
+    LaunchedEffect(shareEvent?.sequence) {
+        val event = shareEvent ?: return@LaunchedEffect
+        if (event.sequence <= routedShareSequence) return@LaunchedEffect
+        routedShareSequence = event.sequence
+        pendingMediaInfo = null
+        navController.navigate(Screen.Home.route) {
+            popUpTo(Screen.Home.route) { inclusive = false }
+            launchSingleTop = true
+        }
+    }
     LaunchedEffect(Unit) {
         if (UpdateManager.shouldCheckAutomatically(context)) {
             UpdateManager.markChecked(context)
@@ -133,6 +145,8 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
                 HomeScreen(
                     sharedUrl = shareEvent?.url,
                     sharedEventId = shareEvent?.sequence,
+                    sharedLinkReady = runtimeStatus.state == MediaRuntime.RuntimeState.READY,
+                    onConsumeShareEvent = { sequence -> shareViewModel.consume(sequence)?.let { SharedLinkEvent(it.url) } },
                     onNavigateToFormats = { info ->
                         pendingMediaInfo = info
                         navController.navigate("formats")

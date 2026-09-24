@@ -12,6 +12,7 @@ import com.afudm.afutube.extractor.YtDlpExtractor
 import com.afudm.afutube.updater.ExtractorUpdater
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 data class HomeState(
@@ -27,18 +28,25 @@ class HomeViewModel(context: Context) : ViewModel() {
     private val _state = MutableStateFlow(HomeState())
     val state: StateFlow<HomeState> = _state
     private val extractor = ExtractorManager.getInstance(appContext)
+    private var analysisJob: Job? = null
+    private var analysisSequence = 0L
 
     fun onUrlChange(url: String) {
-        _state.value = _state.value.copy(url = url, error = "", analysisError = null, mediaInfo = null)
+        analysisJob?.cancel()
+        analysisSequence++
+        _state.value = _state.value.copy(url = url, isLoading = false, error = "", analysisError = null, mediaInfo = null)
     }
 
     fun analyzeUrl(url: String) {
         if (url.isBlank()) return
-        viewModelScope.launch {
+        analysisJob?.cancel()
+        val sequence = ++analysisSequence
+        analysisJob = viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = "", analysisError = null, mediaInfo = null)
             val normalizedUrl = url.trim()
             val firstResult = extractor.extract(normalizedUrl)
             val result = retryAfterExtractorUpdateIfEligible(normalizedUrl, firstResult)
+            if (sequence != analysisSequence) return@launch
             _state.value = if (result.isSuccess) {
                 _state.value.copy(isLoading = false, mediaInfo = result.getOrNull())
             } else {
@@ -58,6 +66,12 @@ class HomeViewModel(context: Context) : ViewModel() {
                     analysisError = analysisError
                 )
             }
+        }
+    }
+
+    fun consumeMediaInfo(mediaInfo: MediaInfo) {
+        if (_state.value.mediaInfo == mediaInfo) {
+            _state.value = _state.value.copy(mediaInfo = null)
         }
     }
 
