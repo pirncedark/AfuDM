@@ -6,14 +6,16 @@ UI="python3 AfuTube/scripts/ui.py"
 mkdir -p "$OUT"
 adb reverse tcp:8765 tcp:8765
 adb shell svc wifi enable; adb shell svc data enable
+adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
+sleep 3
 
 dump() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb shell cat /sdcard/ui.xml > "$OUT/$1.xml" 2>/dev/null; }
 tap() { local xy; xy=$($UI "$@") || return 1; adb shell input tap $xy; }
 crash_check() { adb logcat -d | grep -q 'FATAL EXCEPTION' && return 0; ! adb shell pidof "$PKG" >/dev/null; }
 run_case() {
   local page="$1" expected="$2" success="$3"
-  adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
-  sleep 2; dump home
+  if [[ "$page" != "index.html" ]]; then adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true; sleep 2; fi
+  dump home
   tap tap-class "$OUT/home.xml" EditText || { echo "HATA: URL alani yok ($page)"; return 1; }
   adb shell input text "http://127.0.0.1:8765/$page"; sleep 1; dump url
   tap tap-text "$OUT/url.xml" "Tarayıcıda aç" || { echo "HATA: tarayici dugmesi yok ($page)"; return 1; }
