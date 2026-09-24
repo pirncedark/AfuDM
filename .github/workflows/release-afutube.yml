@@ -75,7 +75,7 @@ jobs:
           EOF
 
       - name: Prepare latest manifest release
-        if: ${{ !contains(github.ref_name, '-') }}
+        if: ${{ !contains(github.ref_name, '-test') && !contains(github.ref_name, '-rc') && !contains(github.ref_name, '-beta') && !contains(github.ref_name, '-alpha') }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -84,7 +84,7 @@ jobs:
           gh release delete-asset afutube-latest AfuTube-update.json --repo "$GITHUB_REPOSITORY" -y || true
 
       - name: Publish latest update manifest
-        if: ${{ !contains(github.ref_name, '-') }}
+        if: ${{ !contains(github.ref_name, '-test') && !contains(github.ref_name, '-rc') && !contains(github.ref_name, '-beta') && !contains(github.ref_name, '-alpha') }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: afutube-latest
