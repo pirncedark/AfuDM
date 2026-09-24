@@ -63,6 +63,11 @@ grep -A20 "com.afudm.afutube" "$OUT/media-session.txt" | grep -Eq 'state=3|state
 echo "BASARILI: HOME sonrasi arka plan ses oturumu PLAYING (state=3)"
 adb shell monkey -p "$PKG" 1 >/dev/null 2>&1; sleep 2; dump dinleye-don
 cokme_var && { echo "HATA: uygulamaya donuste uygulama coktu"; bitir dinle-donus-cokme; exit 1; }
+if grep -q 'Ana Ekran' "$OUT/dinleye-don.xml"; then
+  tap tap-text "$OUT/dinleye-don.xml" "İndirmeler" || { echo "HATA: HOME sonrasi indirme listesi acilamadi"; bitir dinle-indirmeler; exit 1; }
+  sleep 2; dump dinleye-don
+  cokme_var && { echo "HATA: indirme listesine donuste uygulama coktu"; bitir dinle-liste-cokme; exit 1; }
+fi
 tap tap-desc "$OUT/dinleye-don.xml" "İzle" || { echo "HATA: İzle modu dugmesi yok"; bitir izle-modu-yok; exit 1; }
 # Test videosu ~10 sn: Dinle'den kalan calma bitmek uzere olabilir. Oynatici baglansin, sonra medya tuslariyla
 # bastan calmaya al (PREVIOUS -> basa sar, PLAY) ve konum < 6 sn iken HOME bas.
