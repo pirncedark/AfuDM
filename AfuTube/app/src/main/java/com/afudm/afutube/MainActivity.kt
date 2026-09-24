@@ -25,6 +25,7 @@ import com.afudm.afutube.feature.downloads.DownloadsScreen
 import com.afudm.afutube.feature.formats.FormatPickerScreen
 import com.afudm.afutube.core.theme.AfuColors
 import com.afudm.afutube.feature.home.HomeScreen
+import com.afudm.afutube.feature.home.SharedLinkEvent
 import com.afudm.afutube.feature.settings.SettingsScreen
 import com.afudm.afutube.feature.torrent.TorrentPickerScreen
 import com.afudm.afutube.updater.AppUpdate
@@ -144,7 +145,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
                 HomeScreen(
                     sharedUrl = shareEvent?.url,
                     sharedEventId = shareEvent?.sequence,
-                    onConsumeShareEvent = shareViewModel::consume,
+                    onConsumeShareEvent = { sequence -> shareViewModel.consume(sequence)?.let { SharedLinkEvent(it.url) } },
                     onNavigateToFormats = { info ->
                         pendingMediaInfo = info
                         navController.navigate("formats")

@@ -28,12 +28,14 @@ import com.afudm.afutube.core.extractor.MediaInfo
 import com.afudm.afutube.core.extractor.UrlNormalizer
 import com.afudm.afutube.core.theme.AfuColors
 
+data class SharedLinkEvent(val url: String?)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     sharedUrl   : String?    = null,
     sharedEventId: Long?     = null,
-    onConsumeShareEvent: (Long) -> com.afudm.afutube.ShareIntentEvent? = { null },
+    onConsumeShareEvent: (Long) -> SharedLinkEvent? = { null },
     onNavigateToFormats: (MediaInfo) -> Unit = {},
     onUpdateExtractor: () -> Unit = {}
 ) {
