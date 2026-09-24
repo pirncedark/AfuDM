@@ -115,7 +115,7 @@ class DownloadWorker(
             return@withContext Result.failure(workDataOf("error" to "İndirme iptal edildi"))
         } catch (e: Exception) {
             // yt-dlp sifirdan farkli kodla cikinca kutuphane istisna atar; nedeni kullaniciya goster.
-            return@withContext Result.failure(workDataOf("error" to okunurHata(e.message, headerPairs.map { it.second })))
+            return@withContext Result.failure(workDataOf("error" to okunurHata(e.message, headerPairs.map { it[1] })))
         }
 
         if (response.exitCode == 0) {
@@ -132,7 +132,7 @@ class DownloadWorker(
                     ?.maxByOrNull { it.lastModified() }
             if (outputFile != null) Result.success(workDataOf("output_path" to outputFile.absolutePath))
             else Result.failure(workDataOf("error" to "İndirme tamamlandı ancak dosya yolu bulunamadı"))
-        } else Result.failure(workDataOf("error" to okunurHata(response.err, headerPairs.map { it.second })))
+        } else Result.failure(workDataOf("error" to okunurHata(response.err, headerPairs.map { it[1] })))
     }
 
     /** yt-dlp stderr'inden kartta gosterilecek kisa neden (son ERROR satiri). */
