@@ -8,10 +8,29 @@ adb reverse tcp:8765 tcp:8765
 adb shell svc wifi enable; adb shell svc data enable
 adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
 sleep 3
+adb logcat -c
 
 dump() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb shell cat /sdcard/ui.xml > "$OUT/$1.xml" 2>/dev/null; }
 tap() { local xy; xy=$($UI "$@") || return 1; adb shell input tap $xy; }
-crash_check() { adb logcat -d | grep -q 'FATAL EXCEPTION' && return 0; ! adb shell pidof "$PKG" >/dev/null; }
+crash_check() {
+  local label="${1:-unknown}"
+  if adb logcat -d | grep -q 'FATAL EXCEPTION'; then
+    adb logcat -d > "$OUT/tarayici-$label-logcat.txt"
+    adb shell dumpsys activity activities > "$OUT/tarayici-$label-activities.txt"
+    adb exec-out screencap -p > "$OUT/tarayici-$label-crash.png"
+    return 0
+  fi
+  if ! adb shell pidof "$PKG" >/dev/null; then
+    sleep 2
+    if ! adb shell pidof "$PKG" >/dev/null; then
+      adb logcat -d > "$OUT/tarayici-$label-logcat.txt"
+      adb shell dumpsys activity activities > "$OUT/tarayici-$label-activities.txt"
+      adb exec-out screencap -p > "$OUT/tarayici-$label-crash.png"
+      return 0
+    fi
+  fi
+  return 1
+}
 run_case() {
   local page="$1" expected="$2" success="$3"
   # Closing the browser can leave the launcher in front of the app. Reopen it
@@ -23,12 +42,12 @@ run_case() {
   adb shell input text "http://127.0.0.1:8765/$page"; sleep 1; dump url
   tap tap-text "$OUT/url.xml" "Tarayıcıda aç" || { echo "HATA: tarayici dugmesi yok ($page)"; return 1; }
   local play=0
-  for ((s=0;s<30;s+=2)); do dump page; if grep -q 'text="Oynat"' "$OUT/page.xml"; then play=1; break; fi; sleep 2; crash_check && { echo "HATA: sayfa acilirken uygulama coktu"; return 1; }; done
+  for ((s=0;s<30;s+=2)); do dump page; if grep -q 'text="Oynat"' "$OUT/page.xml"; then play=1; break; fi; sleep 2; crash_check "$expected-page" && { echo "HATA: sayfa acilirken uygulama coktu"; return 1; }; done
   [[ $play == 1 ]] || { echo "HATA: sayfa/Oynat dugmesi acilmadi ($page)"; return 1; }
   tap tap-text "$OUT/page.xml" Oynat || { echo "HATA: Oynat dugmesi tiklanamadi ($page)"; return 1; }
   local seen=0
   for ((s=0;s<20;s+=2)); do sleep 2; dump found; if grep -q 'Yakalanan videolar' "$OUT/found.xml"; then seen=1; break; fi
-    crash_check && { echo "HATA: tarayici yakalama sirasinda coktu"; return 1; }
+    crash_check "$expected-capture" && { echo "HATA: tarayici yakalama sirasinda coktu"; return 1; }
   done
   [[ $seen == 1 ]] || { echo "HATA: yakalanan videolar gorunmedi ($page)"; return 1; }
   tap tap-desc "$OUT/found.xml" "Yakalanan videolar" || { echo "HATA: yakalama listesi acilmadi ($page)"; return 1; }
