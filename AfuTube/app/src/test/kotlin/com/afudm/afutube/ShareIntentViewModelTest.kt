@@ -56,4 +56,28 @@ class ShareIntentViewModelTest {
         assertEquals(first!!.url, second!!.url)
         assertEquals(first.sequence + 1, second.sequence)
     }
+
+    @Test
+    fun `same sequence is consumed only once`() {
+        val viewModel = ShareIntentViewModel()
+        viewModel.publish(ShareIntentPayload(text = "https://example.com/video"))
+        val event = viewModel.events.value!!
+
+        assertEquals(event, viewModel.consume(event.sequence))
+        assertNull(viewModel.consume(event.sequence))
+    }
+
+    @Test
+    fun `new share gets a new sequence and can be consumed`() {
+        val viewModel = ShareIntentViewModel()
+        viewModel.publish(ShareIntentPayload(text = "https://example.com/one"))
+        val first = viewModel.events.value!!
+        viewModel.consume(first.sequence)
+
+        viewModel.publish(ShareIntentPayload(text = "https://example.com/two"))
+        val second = viewModel.events.value!!
+
+        assertEquals(first.sequence + 1, second.sequence)
+        assertEquals("https://example.com/two", viewModel.consume(second.sequence)?.url)
+    }
 }

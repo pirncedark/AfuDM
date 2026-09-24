@@ -79,7 +79,18 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
     val currentRoute      = navBackStackEntry?.destination?.route
 
     var pendingMediaInfo by remember { mutableStateOf<MediaInfo?>(null) }
+    var routedShareSequence by remember { mutableLongStateOf(0L) }
     var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
+    LaunchedEffect(shareEvent?.sequence) {
+        val event = shareEvent ?: return@LaunchedEffect
+        if (event.sequence <= routedShareSequence) return@LaunchedEffect
+        routedShareSequence = event.sequence
+        pendingMediaInfo = null
+        navController.navigate(Screen.Home.route) {
+            popUpTo(Screen.Home.route) { inclusive = false }
+            launchSingleTop = true
+        }
+    }
     LaunchedEffect(Unit) {
         if (UpdateManager.shouldCheckAutomatically(context)) {
             UpdateManager.markChecked(context)
@@ -133,6 +144,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
                 HomeScreen(
                     sharedUrl = shareEvent?.url,
                     sharedEventId = shareEvent?.sequence,
+                    onConsumeShareEvent = shareViewModel::consume,
                     onNavigateToFormats = { info ->
                         pendingMediaInfo = info
                         navController.navigate("formats")

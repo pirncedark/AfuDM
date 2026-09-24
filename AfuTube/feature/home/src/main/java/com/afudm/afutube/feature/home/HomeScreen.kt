@@ -1,6 +1,7 @@
 package com.afudm.afutube.feature.home
 
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -32,6 +33,7 @@ import com.afudm.afutube.core.theme.AfuColors
 fun HomeScreen(
     sharedUrl   : String?    = null,
     sharedEventId: Long?     = null,
+    onConsumeShareEvent: (Long) -> com.afudm.afutube.ShareIntentEvent? = { null },
     onNavigateToFormats: (MediaInfo) -> Unit = {},
     onUpdateExtractor: () -> Unit = {}
 ) {
@@ -42,7 +44,14 @@ fun HomeScreen(
 
     // Share Intent'ten gelen URL'yi otomatik işle
     LaunchedEffect(sharedEventId) {
-        if (!sharedUrl.isNullOrBlank()) {
+        val event = sharedEventId?.let(onConsumeShareEvent)
+        if (event?.url != null) {
+            val normalizedUrl = UrlNormalizer.normalize(event.url) ?: event.url
+            viewModel.onUrlChange(normalizedUrl)
+            viewModel.analyzeUrl(normalizedUrl)
+        } else if (event != null) {
+            Toast.makeText(context, "Paylaşılan metinde bağlantı bulunamadı", Toast.LENGTH_SHORT).show()
+        } else if (sharedEventId == null && !sharedUrl.isNullOrBlank()) {
             val normalizedUrl = UrlNormalizer.normalize(sharedUrl) ?: sharedUrl
             viewModel.onUrlChange(normalizedUrl)
             viewModel.analyzeUrl(normalizedUrl)
@@ -51,7 +60,10 @@ fun HomeScreen(
 
     // Format sonucu gelince format ekranına geç
     LaunchedEffect(state.mediaInfo) {
-        state.mediaInfo?.let { onNavigateToFormats(it) }
+        state.mediaInfo?.let {
+            onNavigateToFormats(it)
+            viewModel.consumeMediaInfo(it)
+        }
     }
 
     Box(

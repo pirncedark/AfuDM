@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-data class ShareIntentEvent(val sequence: Long, val url: String)
+data class ShareIntentEvent(val sequence: Long, val url: String?)
 data class ShareIntentPayload(
     val action: String? = null,
     val text: String? = null,
@@ -42,18 +42,24 @@ class ShareIntentViewModel : ViewModel() {
     private val _events = MutableStateFlow<ShareIntentEvent?>(null)
     val events: StateFlow<ShareIntentEvent?> = _events.asStateFlow()
     private var sequence = 0L
+    private var consumedSequence = 0L
 
     fun publish(intent: Intent?) {
-        val url = ShareUrlExtractor.firstHttpUrl(intent) ?: return
-        publishUrl(url)
+        publishUrl(ShareUrlExtractor.firstHttpUrl(intent))
     }
 
     fun publish(payload: ShareIntentPayload) {
-        val url = ShareUrlExtractor.firstHttpUrl(payload) ?: return
-        publishUrl(url)
+        publishUrl(ShareUrlExtractor.firstHttpUrl(payload))
     }
 
-    private fun publishUrl(url: String) {
+    fun consume(sequence: Long): ShareIntentEvent? {
+        val event = _events.value ?: return null
+        if (event.sequence != sequence || consumedSequence >= sequence) return null
+        consumedSequence = sequence
+        return event
+    }
+
+    private fun publishUrl(url: String?) {
         sequence += 1
         _events.value = ShareIntentEvent(sequence, url)
     }
