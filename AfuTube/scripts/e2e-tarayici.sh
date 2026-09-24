@@ -14,7 +14,10 @@ tap() { local xy; xy=$($UI "$@") || return 1; adb shell input tap $xy; }
 crash_check() { adb logcat -d | grep -q 'FATAL EXCEPTION' && return 0; ! adb shell pidof "$PKG" >/dev/null; }
 run_case() {
   local page="$1" expected="$2" success="$3"
-  if [[ "$page" != "index.html" ]]; then adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true; sleep 2; fi
+  # Closing the browser can leave the launcher in front of the app. Reopen it
+  # for each fixture so the HLS case starts from a known, foreground state.
+  adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
+  sleep 2
   dump home
   tap tap-class "$OUT/home.xml" EditText || { echo "HATA: URL alani yok ($page)"; return 1; }
   adb shell input text "http://127.0.0.1:8765/$page"; sleep 1; dump url
