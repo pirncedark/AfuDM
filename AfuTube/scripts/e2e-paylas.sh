@@ -37,7 +37,7 @@ cokme_var && { echo "HATA: paylasim testi basinda uygulama kapali/coktu"; bitir 
 tap tap-text "$OUT/baslangic.xml" "İndirmeler" || { echo "HATA: İndirmeler sekmesi yok"; bitir indirmeler-yok; exit 1; }
 sleep 2; dump indirmeler
 cokme_var && { echo "HATA: İndirmeler sekmesine geciste uygulama coktu"; bitir indirmeler-cokme; exit 1; }
-adb shell am start -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "Bak bu videoya $URL" -n "$PKG/.MainActivity" >/dev/null
+adb shell am start -n "$PKG/.MainActivity" -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "Bak bu videoya $URL" >/dev/null
 bekle_format 120 format; r=$?
 [ "$r" = 0 ] || { echo "HATA: paylasim Indirmeler sekmesinden 120 sn icinde format ekranina goturmedi (kod $r)"; bitir format; exit 1; }
 echo "BASARILI: paylasim Indirmeler sekmesinden format ekranina goturdu"
@@ -58,7 +58,7 @@ done
 echo "BASARILI: geri donunce tekrar analiz yok"
 
 adb shell am force-stop "$PKG"; sleep 2
-adb shell am start -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "Bak bu videoya $URL" -n "$PKG/.MainActivity" >/dev/null
+adb shell am start -n "$PKG/.MainActivity" -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "Bak bu videoya $URL" >/dev/null
 bekle_format 120 soguk-format; r=$?
 [ "$r" = 0 ] || { echo "HATA: soguk acilista 120 sn icinde format ekrani gelmedi (kod $r)"; bitir soguk-format; exit 1; }
 cokme_var && { echo "HATA: soguk acilis analizinden sonra uygulama coktu"; bitir soguk-cokme; exit 1; }
