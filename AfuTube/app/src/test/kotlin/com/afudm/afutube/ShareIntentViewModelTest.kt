@@ -33,12 +33,14 @@ class ShareIntentViewModelTest {
     }
 
     @Test
-    fun `url-less text produces no event`() {
+    fun `url-less text creates event for missing-link feedback`() {
         val viewModel = ShareIntentViewModel()
 
         viewModel.publish(ShareIntentPayload(action = "android.intent.action.SEND", text = "Sadece başlık"))
 
-        assertNull(viewModel.events.value)
+        val event = viewModel.events.value
+        assertNotNull(event)
+        assertNull(event.url)
     }
 
     @Test
