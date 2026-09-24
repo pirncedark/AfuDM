@@ -32,6 +32,7 @@ import com.afudm.afutube.feature.torrent.TorrentPickerScreen
 import com.afudm.afutube.updater.AppUpdate
 import com.afudm.afutube.updater.UpdateManager
 import com.afudm.afutube.runtime.MediaRuntime
+import com.afudm.afutube.downloader.DownloadEngine
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -81,6 +82,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
     val currentRoute      = navBackStackEntry?.destination?.route
 
     var pendingMediaInfo by remember { mutableStateOf<MediaInfo?>(null) }
+    var browserUrl by remember { mutableStateOf("") }
     var routedShareSequence by remember { mutableLongStateOf(0L) }
     var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
     LaunchedEffect(shareEvent?.sequence) {
@@ -153,7 +155,18 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
                     onNavigateToFormats = { info ->
                         pendingMediaInfo = info
                         navController.navigate("formats")
+                    },
+                    onOpenBrowser = { url ->
+                        browserUrl = url.trim()
+                        if (browserUrl.isNotBlank()) navController.navigate("browser")
                     }
+                )
+            }
+            composable("browser") {
+                BrowserScreen(
+                    startUrl = browserUrl,
+                    onClose = { navController.popBackStack() },
+                    onDownload = { DownloadEngine.getInstance(context).enqueue(it) }
                 )
             }
             composable("formats") {

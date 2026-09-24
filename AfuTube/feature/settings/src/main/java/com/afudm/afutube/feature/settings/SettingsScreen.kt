@@ -179,7 +179,10 @@ private fun startShare(context: Context, intent: Intent) {
     }
     if (whatsapp != null) intent.setPackage(whatsapp)
     try {
-        context.startActivity(if (whatsapp == null) Intent.createChooser(intent, "AfuTube'u paylaş") else intent)
+        // Let Android resolve the implicit share intent directly. Wrapping it
+        // in another chooser leaves the resolver underneath on some API 34
+        // builds after Back, so returning to the settings screen takes two presses.
+        context.startActivity(intent)
     } catch (_: Exception) {
         intent.setPackage(null)
         context.startActivity(Intent.createChooser(intent, "AfuTube'u paylaş"))

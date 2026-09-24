@@ -115,6 +115,16 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: Prepare browser capture fixtures
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          curl --fail --location --retry 3 --user-agent 'Mozilla/5.0' https://www.w3schools.com/html/mov_bbb.mp4 -o AfuTube/scripts/e2e-site/clip.mp4 || curl --fail --location --retry 3 https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4 -o AfuTube/scripts/e2e-site/clip.mp4
+          test -s AfuTube/scripts/e2e-site/clip.mp4
+          mkdir -p AfuTube/scripts/e2e-site/hls/720p
+          ffmpeg -hide_banner -loglevel error -y -i AfuTube/scripts/e2e-site/clip.mp4 -an -c:v libx264 -preset ultrafast -vf scale=-2:360 -hls_time 4 -hls_playlist_type vod -hls_segment_filename AfuTube/scripts/e2e-site/hls/720p/segment%03d.ts AfuTube/scripts/e2e-site/hls/720p/index.m3u8
+          printf '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360\n720p/index.m3u8\n' > AfuTube/scripts/e2e-site/hls/master.m3u8
+
       - name: Offline startup + download smoke test
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -124,10 +134,13 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
+            python3 AfuTube/scripts/e2e-site/server.py > /tmp/afutube-e2e-server.log 2>&1 &
+            sleep 2
             bash AfuTube/scripts/e2e-acilis.sh apks/secilen.apk
             bash AfuTube/scripts/e2e-indirme.sh
             bash AfuTube/scripts/e2e-paylas.sh
             bash AfuTube/scripts/e2e-sade.sh
+            bash AfuTube/scripts/e2e-tarayici.sh
 
       - name: Upload e2e evidence
         if: always()

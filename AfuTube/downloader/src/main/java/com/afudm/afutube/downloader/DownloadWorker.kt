@@ -32,6 +32,8 @@ class DownloadWorker(
         const val KEY_MERGE      = "merge_av"   // video+audio ayrı stream → FFmpeg merge
 
         const val KEY_AUDIO_FORMAT = "audio_format"
+        const val KEY_HEADERS = "headers"
+        const val KEY_TITLE = "title"
         const val PROGRESS_PERCENT = "progress_percent"
         const val PROGRESS_SPEED   = "progress_speed"
         const val PROGRESS_ETA     = "progress_eta"
@@ -59,7 +61,10 @@ class DownloadWorker(
             ?: return@withContext Result.failure()
         val mergeAV   = params.inputData.getBoolean(KEY_MERGE, true)
         val audioFormat = params.inputData.getString(KEY_AUDIO_FORMAT)?.lowercase()
+        val headerPairs = params.inputData.getStringArray(KEY_HEADERS).orEmpty().toList().chunked(2)
+            .filter { it.size == 2 && it[0].matches(Regex("[A-Za-z0-9-]{1,64}")) && it[1].length <= 8192 }
         val outputRoot = java.io.File(outputDir)
+        val requestedTitle = params.inputData.getString(KEY_TITLE).orEmpty()
         val before = outputRoot.listFiles()?.associate { it.absolutePath to (it.lastModified() to it.length()) }.orEmpty()
 
         val pathFile = java.io.File(applicationContext.cacheDir, "afutube-path-$id.txt").apply { delete() }
@@ -68,7 +73,9 @@ class DownloadWorker(
 
         val request = YoutubeDLRequest(url).apply {
             addOption("-f", formatId)
-            addOption("-o", "$outputDir/%(title)s.%(ext)s")
+            val safeTitle = requestedTitle.replace(Regex("[\\\\/:*?\"<>|\\r\\n]"), "_").trim().take(100)
+            addOption("-o", if (headerPairs.isNotEmpty() && safeTitle.isNotBlank()) "$outputDir/$safeTitle.%(ext)s" else "$outputDir/%(title)s.%(ext)s")
+            headerPairs.forEach { (name, value) -> addOption("--add-header", "$name:$value") }
             // --print yt-dlp'yi sessiz moda sokar (ilerleme kaybolur); dosya yolu ayri dosyaya yazilir.
             addCommands(listOf("--print-to-file", "after_move:filepath", pathFile.absolutePath))
             addOption("--no-playlist")
@@ -108,7 +115,7 @@ class DownloadWorker(
             return@withContext Result.failure(workDataOf("error" to "İndirme iptal edildi"))
         } catch (e: Exception) {
             // yt-dlp sifirdan farkli kodla cikinca kutuphane istisna atar; nedeni kullaniciya goster.
-            return@withContext Result.failure(workDataOf("error" to okunurHata(e.message)))
+            return@withContext Result.failure(workDataOf("error" to okunurHata(e.message, headerPairs.map { it[1] })))
         }
 
         if (response.exitCode == 0) {
@@ -125,12 +132,14 @@ class DownloadWorker(
                     ?.maxByOrNull { it.lastModified() }
             if (outputFile != null) Result.success(workDataOf("output_path" to outputFile.absolutePath))
             else Result.failure(workDataOf("error" to "İndirme tamamlandı ancak dosya yolu bulunamadı"))
-        } else Result.failure(workDataOf("error" to okunurHata(response.err)))
+        } else Result.failure(workDataOf("error" to okunurHata(response.err, headerPairs.map { it[1] })))
     }
 
     /** yt-dlp stderr'inden kartta gosterilecek kisa neden (son ERROR satiri). */
-    private fun okunurHata(err: String?): String {
-        val satirlar = err.orEmpty().lines().map { it.trim() }.filter { it.isNotBlank() }
+    private fun okunurHata(err: String?, sensitiveValues: List<String> = emptyList()): String {
+        var safeErr = err.orEmpty()
+        sensitiveValues.filter(String::isNotEmpty).forEach { safeErr = safeErr.replace(it, "[gizli]") }
+        val satirlar = safeErr.lines().map { it.trim() }.filter { it.isNotBlank() }
         val neden = satirlar.lastOrNull { it.startsWith("ERROR:") }?.removePrefix("ERROR:")?.trim()
             ?: satirlar.lastOrNull()
         return neden?.take(300)?.ifBlank { null } ?: "İndirme başarısız (yt-dlp ayrıntı vermedi)"

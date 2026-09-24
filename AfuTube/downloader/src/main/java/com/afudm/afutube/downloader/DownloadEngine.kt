@@ -35,7 +35,8 @@ class DownloadEngine(private val context: Context) {
         val outputDir : String? = null,
         val mergeAV   : Boolean = true,
         val kind      : Kind    = Kind.HTTP,
-        val audioFormat: String? = null
+        val audioFormat: String? = null,
+        val headers: Map<String, String> = emptyMap()
     )
 
     /** İndirmeyi kuyruğa ekler, WorkRequest ID'sini döndürür */
@@ -48,9 +49,11 @@ class DownloadEngine(private val context: Context) {
             Kind.HTTP -> {
                 val inputData = Data.Builder()
                     .putString(DownloadWorker.KEY_URL,       request.url)
+                    .putString(DownloadWorker.KEY_TITLE,    request.title.take(200))
                     .putString(DownloadWorker.KEY_FORMAT_ID, request.formatId.ifBlank { "bestvideo+bestaudio/best" })
                     .putBoolean(DownloadWorker.KEY_MERGE,    request.mergeAV)
                     .putString(DownloadWorker.KEY_AUDIO_FORMAT, request.audioFormat)
+                    .putStringArray(DownloadWorker.KEY_HEADERS, request.headers.flatMap { listOf(it.key, it.value) }.toTypedArray())
                     .apply { request.outputDir?.let { putString(DownloadWorker.KEY_OUTPUT_DIR, it) } }
                     .build()
 
