@@ -86,6 +86,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
     var routedShareSequence by remember { mutableLongStateOf(0L) }
     var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
     LaunchedEffect(shareEvent?.sequence) {
+        Log.i("AfuTubeShareFlow", "app observed share sequence=${shareEvent?.sequence}")
         val event = shareEvent ?: return@LaunchedEffect
         if (event.sequence <= routedShareSequence) return@LaunchedEffect
         routedShareSequence = event.sequence
