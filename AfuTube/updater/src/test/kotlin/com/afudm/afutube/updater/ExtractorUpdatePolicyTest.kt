@@ -15,6 +15,17 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class ExtractorUpdatePolicyTest {
     @Test
+    fun `failed automatic update can retry after one hour but is throttled before then`() {
+        assertFalse(ExtractorUpdatePolicy.canAutoRetry(10_000L, 10_000L + ExtractorUpdatePolicy.RETRY_MS - 1))
+        assertTrue(ExtractorUpdatePolicy.canAutoRetry(10_000L, 10_000L + ExtractorUpdatePolicy.RETRY_MS))
+    }
+
+    @Test
+    fun `extractor rate limit error is a calm Turkish message`() {
+        assertEquals("Motor güncellemesi şu an yapılamadı, sonra tekrar denenecek.",
+            ExtractorUpdatePolicy.displayError(IllegalStateException("GitHub API HTTP 403 rate limit")))
+    }
+    @Test
     fun `only extractor family is eligible for stale one retry`() {
         val old = 10L
         val now = old + ExtractorUpdatePolicy.DAY_MS

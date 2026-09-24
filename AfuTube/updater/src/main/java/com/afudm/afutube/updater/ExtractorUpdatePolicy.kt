@@ -15,6 +15,7 @@ data class ExtractorUpdateResult(
 
 object ExtractorUpdatePolicy {
     const val DAY_MS = 24L * 60 * 60 * 1000
+    const val RETRY_MS = 60L * 60 * 1000
 
     fun isStale(lastUpdateAt: Long, now: Long): Boolean =
         lastUpdateAt <= 0L || now - lastUpdateAt >= DAY_MS
@@ -25,6 +26,15 @@ object ExtractorUpdatePolicy {
             AnalysisErrorCategory.UNSUPPORTED,
             AnalysisErrorCategory.PARSE
         ) && isStale(lastUpdateAt, now)
+
+    fun canAutoRetry(lastAttemptAt: Long, now: Long): Boolean = lastAttemptAt <= 0L || now - lastAttemptAt >= RETRY_MS
+
+    fun displayError(error: Throwable): String {
+        val message = generateSequence(error) { it.cause }.joinToString(" ") { it.message.orEmpty() }
+        return if (Regex("403|429|rate.?limit", RegexOption.IGNORE_CASE).containsMatchIn(message))
+            "Motor güncellemesi şu an yapılamadı, sonra tekrar denenecek."
+        else error.localizedMessage ?: "Güncelleme başarısız."
+    }
 }
 
 class ExtractorUpdateCoordinator<C>(
@@ -65,7 +75,7 @@ class ExtractorUpdateCoordinator<C>(
                         updated = false,
                         oldVersion = oldVersion,
                         newVersion = oldVersion,
-                        error = error.localizedMessage ?: "Güncelleme başarısız"
+                        error = ExtractorUpdatePolicy.displayError(error)
                     )
                 }
             )

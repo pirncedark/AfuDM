@@ -14,6 +14,7 @@ object ExtractorUpdater {
     private const val AUTO_UPDATE = "auto_update"
     private const val CHANNEL = "channel"
     private const val LAST_UPDATE = "last_update"
+    private const val LAST_ATTEMPT = "last_attempt"
 
     private val coordinator = ExtractorUpdateCoordinator<Context>(
         version = { context ->
@@ -62,6 +63,7 @@ object ExtractorUpdater {
         }
 
         val result = coordinator.update(context.applicationContext, channel, force = force, now = now)
+        if (result.attempted) prefs.edit().putLong(LAST_ATTEMPT, now).apply()
         if (result.attempted && result.error.isBlank()) {
             prefs.edit()
                 .putLong(LAST_UPDATE, now)
@@ -73,6 +75,8 @@ object ExtractorUpdater {
 
     suspend fun maybeAutoUpdate(context: Context, now: Long = System.currentTimeMillis()): ExtractorUpdateResult? {
         if (!autoUpdateEnabled(context)) return null
+        val lastAttempt = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(LAST_ATTEMPT, 0L)
+        if (!ExtractorUpdatePolicy.canAutoRetry(lastAttempt, now)) return null
         return checkAndUpdate(context, selectedChannel(context), force = false, now = now)
     }
 

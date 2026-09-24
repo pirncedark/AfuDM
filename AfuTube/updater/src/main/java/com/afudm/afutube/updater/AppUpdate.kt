@@ -19,6 +19,7 @@ import org.json.JSONArray
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.io.IOException
 import java.security.MessageDigest
 
 data class AppUpdate(
@@ -46,6 +47,31 @@ object AppUpdateParser {
     const val ARM64_ABI = "arm64-v8a"
     const val ARM64_APK = "AfuTube-arm64-v8a.apk"
     const val UNIVERSAL_APK = "AfuTube-universal.apk"
+
+    fun fromManifest(json: String, currentVersionCode: Int, supportedAbis: List<String>): AppUpdate? {
+        val manifest = org.json.JSONObject(json)
+        val version = manifest.getString("versionName")
+        val code = manifest.getInt("versionCode")
+        val tag = manifest.getString("tag")
+        require(Regex("^afutube-v(\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?)$").matches(tag))
+        if (code <= currentVersionCode) return null
+        val apk = if (ARM64_ABI in supportedAbis) ARM64_APK else UNIVERSAL_APK
+        val base = "https://github.com/pirncedark/AfuDM/releases/download/$tag/$apk"
+        return AppUpdate(version, code, manifest.optString("changelog"), base, "$base.sha256",
+            minSdk = manifest.optInt("minSdk", 24), sha256 = manifest.optString("sha256"), prerelease = manifest.optBoolean("prerelease"))
+    }
+
+    fun shouldFallbackToApi(includePrereleases: Boolean, manifestReadSucceeded: Boolean): Boolean =
+        includePrereleases || !manifestReadSucceeded
+
+    fun checkErrorMessage(error: Throwable): String {
+        val message = generateSequence(error) { it.cause }.joinToString(" ") { it.message.orEmpty() }
+        return when {
+            Regex("403|429|rate.?limit", RegexOption.IGNORE_CASE).containsMatchIn(message) -> "GitHub şu an yoğun, birkaç dakika sonra tekrar dene."
+            error is java.net.UnknownHostException || error is java.net.ConnectException || error is java.net.SocketTimeoutException -> "İnternet bağlantısı yok."
+            else -> "Güncelleme denetlenemedi."
+        }
+    }
 
     /**
      * [supportedAbis] Build.SUPPORTED_ABIS: cihaz arm64 destekliyorsa ve release'de arm64 APK varsa o secilir
@@ -94,6 +120,7 @@ object Sha256 {
 
 object UpdateManager {
     private const val API = "https://api.github.com/repos/pirncedark/AfuDM/releases"
+    private const val MANIFEST = "https://github.com/pirncedark/AfuDM/releases/download/afutube-latest/AfuTube-update.json"
     private const val PREFS = "afutube_updates"
     private const val AUTO = "auto_check"
     private const val LAST_CHECK = "last_check"
@@ -101,13 +128,35 @@ object UpdateManager {
     private const val INCLUDE_PRERELEASES = "include_prereleases"
 
     suspend fun check(currentVersionCode: Int, includePrereleases: Boolean = false): AppUpdate? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        val connection = URL(API).openConnection() as HttpURLConnection
-        connection.setRequestProperty("Accept", "application/vnd.github+json")
-        connection.connectTimeout = 10_000
-        connection.readTimeout = 15_000
-        connection.inputStream.bufferedReader().use {
-            AppUpdateParser.latest(it.readText(), currentVersionCode, includePrereleases, Build.SUPPORTED_ABIS.toList())
+        var manifestRead = false
+        if (!includePrereleases) {
+            try {
+                val manifest = fetchText(MANIFEST)
+                manifestRead = true
+                AppUpdateParser.fromManifest(manifest, currentVersionCode, Build.SUPPORTED_ABIS.toList())?.let { return@withContext it }
+                return@withContext null
+            } catch (_: Exception) { /* API fallback below */ }
         }
+        check(AppUpdateParser.shouldFallbackToApi(includePrereleases, manifestRead))
+        try {
+            val releases = open("$API?per_page=100")
+            releases.setRequestProperty("Accept", "application/vnd.github+json")
+            AppUpdateParser.latest(read(releases), currentVersionCode, includePrereleases, Build.SUPPORTED_ABIS.toList())
+        } catch (error: Exception) { throw IOException(AppUpdateParser.checkErrorMessage(error)) }
+    }
+
+    private fun open(url: String): HttpURLConnection = (URL(url).openConnection() as HttpURLConnection).apply {
+        instanceFollowRedirects = true
+        connectTimeout = 10_000
+        readTimeout = 15_000
+    }
+
+    private fun fetchText(url: String): String = read(open(url))
+
+    private fun read(connection: HttpURLConnection): String {
+        val code = connection.responseCode
+        if (code !in 200..299) throw IOException("HTTP $code")
+        return connection.inputStream.bufferedReader().use { it.readText() }
     }
 
     fun autoCheckEnabled(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
