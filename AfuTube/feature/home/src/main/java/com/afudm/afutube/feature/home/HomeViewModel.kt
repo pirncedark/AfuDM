@@ -34,7 +34,7 @@ class HomeViewModel(context: Context) : ViewModel() {
     fun onUrlChange(url: String) {
         analysisJob?.cancel()
         analysisSequence++
-        _state.value = _state.value.copy(url = url, error = "", analysisError = null, mediaInfo = null)
+        _state.value = _state.value.copy(url = url, isLoading = false, error = "", analysisError = null, mediaInfo = null)
     }
 
     fun analyzeUrl(url: String) {

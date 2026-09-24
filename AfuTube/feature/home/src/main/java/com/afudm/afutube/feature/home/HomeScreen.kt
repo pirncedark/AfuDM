@@ -52,6 +52,7 @@ fun HomeScreen(
             viewModel.onUrlChange(normalizedUrl)
             viewModel.analyzeUrl(normalizedUrl)
         } else if (event != null) {
+            viewModel.onUrlChange("")
             Toast.makeText(context, "Paylaşılan metinde bağlantı bulunamadı", Toast.LENGTH_SHORT).show()
         } else if (sharedEventId == null && !sharedUrl.isNullOrBlank()) {
             val normalizedUrl = UrlNormalizer.normalize(sharedUrl) ?: sharedUrl
