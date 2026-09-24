@@ -83,8 +83,11 @@ fun BrowserScreen(startUrl: String, onClose: () -> Unit, onDownload: (DownloadEn
             while (captured.size > 40) captured.removeAt(captured.lastIndex)
         }
         if (kind == MediaSniffer.Kind.HLS && captured.none { it.url == url && it.quality.isNotEmpty() }) {
+            val masterReferer = pageUrl
+            val masterUserAgent = webView?.settings?.userAgentString.orEmpty()
+            val masterCookie = CookieManager.getInstance().getCookie(url).orEmpty()
             scope.launch(Dispatchers.IO) {
-                val master = readMaster(url, pageUrl, webView?.settings?.userAgentString.orEmpty(), CookieManager.getInstance().getCookie(url).orEmpty())
+                val master = readMaster(url, masterReferer, masterUserAgent, masterCookie)
                 if (master != null) withContext(Dispatchers.Main) {
                     variantUrls.addAll(MediaSniffer.masterVariants(master, url).take(100))
                     captured.removeAll { it.url in variantUrls }
