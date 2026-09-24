@@ -18,12 +18,22 @@ dump ayarlar
 tap tap-text "$OUT/ayarlar.xml" "Ayarlar" || { echo "HATA: Ayarlar sekmesi yok"; exit 1; }
 sleep 2; dump ayarlar
 adb exec-out screencap -p > "$OUT/sade-ayarlar.png"
-for text in "Güncellemeleri denetle" "Link gönder" "APK gönder" "Yalnızca indirme hakkın olan içerikleri indir."; do
+for text in "Güncellemeleri denetle" "Link gönder" "APK gönder"; do
   grep -q "text=\"$text\"" "$OUT/ayarlar.xml" || { echo "HATA: Ayarlar metni yok: $text"; exit 1; }
 done
 for forbidden in DRM Gavel aria2c; do
   grep -qi "$forbidden" "$OUT/ayarlar.xml" && { echo "HATA: Ayarlarda istenmeyen içerik: $forbidden"; exit 1; }
 done
+adb shell input swipe 160 510 160 180 400
+sleep 1; dump ayarlar-alt
+grep -q 'text="Yalnızca indirme hakkın olan içerikleri indir."' "$OUT/ayarlar-alt.xml" || { echo "HATA: Yumuşak alt uyarı yok"; exit 1; }
+forbidden_found=0
+for forbidden in DRM Gavel aria2c; do
+  if grep -qi "$forbidden" "$OUT/ayarlar-alt.xml"; then echo "HATA: Ayarlarda istenmeyen içerik: $forbidden"; forbidden_found=1; fi
+done
+[ "$forbidden_found" = 0 ] || exit 1
+adb shell input swipe 160 180 160 510 400
+sleep 1; dump ayarlar
 echo "BASARILI: ayarlar sade"
 
 tap tap-text "$OUT/ayarlar.xml" "Link gönder" || { echo "HATA: Link gönder yok"; exit 1; }
