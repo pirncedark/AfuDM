@@ -118,7 +118,9 @@ async function call(method, ...args) {
       () => reddet(new Error(t("err.timeout"))), sure)),
   ]);
   
-  if (out && out.ok === false) throw new Error(out.error || t("err.failed"));
+  if (out && out.ok === false && method !== "ayarlari_dogrula_kaydet") {
+    throw new Error(out.error || t("err.failed"));
+  }
   return out;
 }
 
@@ -2037,11 +2039,11 @@ $("sVarsayilan").onclick = async () => {
   } catch (err) { toast(err.message, true); }
 };
 
-/* ---------- v1.7.5 ayar yardimcilari (docs/v175_SOZLESME.md) ----------
-   Port araligi tek yerde: hem kaydetmede hem alan degisince ayni kural. */
+/* Port yalnizca gecerliyse normalize edilir; hatali girdi backend'e ulassin. */
 function portSayisi(deger) {
-  const n = Number(deger);
-  return Number.isInteger(n) && n >= 1024 && n <= 65535 ? n : 6811;
+  const ham = String(deger ?? "").trim();
+  const n = Number(ham);
+  return Number.isInteger(n) && n >= 1024 && n <= 65535 ? String(n) : ham;
 }
 
 /* sApiPort yalnizca LAN acikken duzenlenebilir; kapaliyken adres bos kalir. */
@@ -2228,7 +2230,8 @@ $("setGo").onclick = async () => {
     // v1.7.5: uzaktan erisim + ag. api_port araligi disindaysa varsayilana duser.
     lan_erisimi: $("sLanAccess").checked,
     internet_paylasim: $("sInternetShare").checked,
-    api_listen_port: portSayisi($("sApiPort").value),
+    // Ham degeri gonder ki gecersiz port backend dogrulamasina ulassin.
+    api_listen_port: $("sApiPort").value,
     system_proxy: $("sSystemProxy").checked,
     proxy: $("sProxy").value.trim(),
     ag_konumlari: $("sNetLocations").value.trim(),
@@ -2270,13 +2273,34 @@ $("setGo").onclick = async () => {
   };
   try {
     $("setGo").disabled = true;
+    document.querySelectorAll("#settingsBody [aria-invalid='true']").forEach((el) => el.removeAttribute("aria-invalid"));
     const sonuc = await call("ayarlari_dogrula_kaydet", payload);
     if (!sonuc.ok) {
       const ilk = (sonuc.hatalar || [])[0];
       const alan = ilk && ilk.alan;
-      const map = {api_port:"sApiPort", api_listen_port:"sApiPort", snail_speed_kb:"sSnailSpeed", proxy:"sProxy", clipboard_exts:"sClipExts", ag_konumlari:"sNetLocations"};
-      const hedef = $(map[alan]);
-      if (hedef) { hedef.focus(); toast(t(ilk.mesaj_anahtari), true); }
+      const map = {
+        api_port: { id: "sApiPort", pane: "ag" },
+        api_listen_port: { id: "sApiPort", pane: "ag" },
+        snail_speed_kb: { id: "sSnailSpeed", pane: "indirme" },
+        proxy: { id: "sProxy", pane: "ag" },
+        clipboard_exts: { id: "sClipExts", pane: "genel" },
+        ag_konumlari: { id: "sNetLocations", pane: "ag" },
+      };
+      const eslesme = map[alan];
+      const mesajAnahtari = ilk && ilk.mesaj_anahtari;
+      const hedef = eslesme && $(eslesme.id);
+      if (eslesme) {
+        const sekme = document.querySelector(`.set-tab-btn[data-stab="${eslesme.pane}"]`);
+        if (sekme) sekme.click();
+      }
+      if (hedef) {
+        hedef.closest("details")?.setAttribute("open", "");
+        hedef.setAttribute("aria-invalid", "true");
+        hedef.scrollIntoView({ block: "center", behavior: "smooth" });
+        if (!hedef.disabled) hedef.focus();
+      }
+      const mesaj = mesajAnahtari ? t(mesajAnahtari) : t("err.invalidValue");
+      toast(mesaj && mesaj !== mesajAnahtari ? mesaj : t("err.invalidValue"), true);
       return;
     }
     state.settings = sonuc.ayarlar || state.settings;

@@ -1463,6 +1463,12 @@ input:disabled, textarea:disabled, select:disabled { opacity:.52; background:var
 
 .set-pane { display: none; margin-top: 12px; }
 .set-pane.active { display: block; }
+#settingsBody input[aria-invalid="true"],
+#settingsBody textarea[aria-invalid="true"],
+#settingsBody select[aria-invalid="true"] {
+  border-color: var(--err) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--err) 24%, transparent);
+}
 
 
 /* ---------- DUYARLI TASARIM (RESPONSIVE) ---------- */
