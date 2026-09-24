@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import androidx.webkit.WebSettingsCompat
 import com.afudm.afutube.core.theme.AfuColors
 import com.afudm.afutube.downloader.DownloadEngine
 import kotlinx.coroutines.Dispatchers
@@ -117,7 +118,7 @@ fun BrowserScreen(startUrl: String, onClose: () -> Unit, onDownload: (DownloadEn
                     settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                     CookieManager.getInstance().setAcceptCookie(true)
-                    if (WebViewFeature.isFeatureSupported(WebViewFeature.SAFE_BROWSING_ENABLE)) WebViewCompat.setSafeBrowsingEnabled(this, true)
+                    if (WebViewFeature.isFeatureSupported(WebViewFeature.SAFE_BROWSING_ENABLE)) WebSettingsCompat.setSafeBrowsingEnabled(settings, true)
                     if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
                         WebViewCompat.addWebMessageListener(this, "AfuCapture", setOf("*")) { _, message: WebMessageCompat, _, _, _ ->
                             val raw = message.data?.take(8192) ?: return@addWebMessageListener
