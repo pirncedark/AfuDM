@@ -164,7 +164,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
             }
             composable(Screen.Downloads.route) { DownloadsScreen() }
             composable(Screen.Settings.route)  {
-                SettingsScreen(currentVersionCode = BuildConfig.VERSION_CODE, currentVersionName = BuildConfig.VERSION_NAME, onUpdateFound = { availableUpdate = it })
+                SettingsScreen(currentVersionCode = BuildConfig.VERSION_CODE, currentVersionName = BuildConfig.VERSION_NAME, shareLink = ShareLinkBuilder.url(BuildConfig.VERSION_NAME), onUpdateFound = { availableUpdate = it })
             }
             composable(Screen.Torrent.route)   {
                 TorrentPickerScreen(onBack = { navController.popBackStack() })
@@ -243,17 +243,16 @@ private fun AfuBottomBar(
                 selected = selected,
                 onClick  = { onNavigate(screen.route) },
                 icon     = {
-                    Icon(
-                        screen.icon,
-                        contentDescription = screen.label,
-                        modifier = Modifier.size(22.dp)
-                    )
+                    Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                        Icon(screen.icon, contentDescription = screen.label, modifier = Modifier.size(22.dp))
+                        if (selected) Spacer(Modifier.width(18.dp).height(2.dp).background(AfuColors.accent))
+                    }
                 },
                 label    = { Text(screen.label, fontSize = 10.sp) },
                 colors   = NavigationBarItemDefaults.colors(
                     selectedIconColor   = AfuColors.accent,
-                    selectedTextColor   = AfuColors.accent,
-                    indicatorColor      = AfuColors.accent.copy(alpha = 0.12f),
+                    selectedTextColor   = AfuColors.textMuted,
+                    indicatorColor      = AfuColors.card,
                     unselectedIconColor = AfuColors.textMuted,
                     unselectedTextColor = AfuColors.textMuted
                 )

@@ -239,9 +239,11 @@ fun TorrentPickerScreen(onBack: () -> Unit = {}) {
                     .fillMaxWidth()
                     .height(52.dp),
                 colors   = ButtonDefaults.buttonColors(
-                    containerColor         = AfuColors.accent,
+                    containerColor         = AfuColors.surface,
+                    contentColor            = AfuColors.text,
                     disabledContainerColor = AfuColors.surface
                 ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, AfuColors.accent),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Icon(Icons.Default.Download, null, modifier = Modifier.size(20.dp))

@@ -14,7 +14,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -119,7 +118,7 @@ fun HomeScreen(
             // ── Desteklenen siteler ───────────────────────────────────────
             if (state.url.isBlank() && !state.isLoading) {
                 Spacer(Modifier.height(32.dp))
-                SupportedSitesBadges()
+                Text("YouTube, Instagram, TikTok ve 1800+ site", color = AfuColors.textMuted, fontSize = 12.sp)
             }
         }
     }
@@ -128,37 +127,9 @@ fun HomeScreen(
 @Composable
 private fun AfuTubeLogo() {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        // Gradient ikon çemberi
-        Box(
-            modifier = Modifier
-                .size(72.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(
-                    Brush.linearGradient(
-                        listOf(AfuColors.accent, AfuColors.accentAlt)
-                    )
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.Download,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(36.dp)
-            )
-        }
-        Spacer(Modifier.height(12.dp))
-        Text(
-            text = "AfuTube",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            color = AfuColors.text
-        )
-        Text(
-            text = "Medya İndirme Motoru",
-            fontSize = 13.sp,
-            color = AfuColors.textMuted
-        )
+        Text("AfuTube", fontSize = 27.sp, fontWeight = FontWeight.SemiBold, color = AfuColors.text)
+        Spacer(Modifier.height(6.dp))
+        Text("Link yap??t?r, gerisini AfuTube halleder.", fontSize = 13.sp, color = AfuColors.textMuted)
     }
 }
 
@@ -193,7 +164,7 @@ private fun UrlInputCard(
                 singleLine      = true,
                 colors          = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor   = AfuColors.accent,
-                    unfocusedBorderColor = AfuColors.surface,
+                    unfocusedBorderColor = AfuColors.textMuted.copy(alpha = 0.3f),
                     focusedTextColor     = AfuColors.text,
                     unfocusedTextColor   = AfuColors.text,
                     cursorColor          = AfuColors.accent
@@ -218,8 +189,8 @@ private fun UrlInputCard(
                 OutlinedButton(
                     onClick = onPaste,
                     modifier = Modifier.weight(1f),
-                    colors  = ButtonDefaults.outlinedButtonColors(contentColor = AfuColors.accent),
-                    border  = androidx.compose.foundation.BorderStroke(1.dp, AfuColors.accent.copy(alpha = 0.4f))
+                    colors  = ButtonDefaults.outlinedButtonColors(contentColor = AfuColors.textMuted),
+                    border  = androidx.compose.foundation.BorderStroke(1.dp, AfuColors.textMuted.copy(alpha = 0.3f))
                 ) {
                     Icon(Icons.Default.ContentPaste, null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
@@ -232,9 +203,12 @@ private fun UrlInputCard(
                     enabled  = url.isNotBlank() && !isLoading,
                     modifier = Modifier.weight(1.5f),
                     colors   = ButtonDefaults.buttonColors(
-                        containerColor = AfuColors.accent,
-                        contentColor   = Color.White
+                        containerColor = AfuColors.surface,
+                        contentColor   = AfuColors.text,
+                        disabledContainerColor = AfuColors.surface,
+                        disabledContentColor = AfuColors.textMuted
                     ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AfuColors.accent),
                     shape    = RoundedCornerShape(10.dp)
                 ) {
                     if (isLoading) {
@@ -268,9 +242,10 @@ private fun ErrorCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors   = CardDefaults.cardColors(
-            containerColor = AfuColors.error.copy(alpha = 0.12f)
+            containerColor = AfuColors.bg
         ),
-        shape    = RoundedCornerShape(12.dp)
+        shape    = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, AfuColors.error.copy(alpha = 0.7f))
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -297,50 +272,5 @@ private fun ErrorCard(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun SupportedSitesBadges() {
-    val sites = listOf(
-        "YouTube" to Icons.Default.PlayCircle,
-        "Instagram" to Icons.Default.CameraAlt,
-        "TikTok" to Icons.Default.MusicNote,
-        "Twitter/X" to Icons.Default.Tag,
-        "Facebook" to Icons.Default.Public,
-        "+1800 site" to Icons.Default.Language
-    )
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("Desteklenen Platformlar", color = AfuColors.textMuted, fontSize = 12.sp)
-        Spacer(Modifier.height(12.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            sites.chunked(3).forEach { row ->
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    row.forEach { (name, icon) ->
-                        SiteBadge(name = name, icon = icon)
-                    }
-                }
-                Spacer(Modifier.width(16.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun SiteBadge(name: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(AfuColors.card)
-            .padding(horizontal = 10.dp, vertical = 6.dp)
-    ) {
-        Icon(icon, null, tint = AfuColors.accent, modifier = Modifier.size(14.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(name, color = AfuColors.text, fontSize = 12.sp)
     }
 }

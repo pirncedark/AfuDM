@@ -82,9 +82,11 @@ fun FormatPickerScreen(
                     enabled = selectedOption != null,
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = AfuColors.accent,
+                        containerColor = AfuColors.surface,
+                        contentColor = AfuColors.text,
                         disabledContainerColor = AfuColors.surface
                     ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AfuColors.accent),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(Icons.Default.Download, null, modifier = Modifier.size(20.dp))
@@ -131,7 +133,7 @@ private fun SimpleFormatRow(option: FormatOption, isSelected: Boolean, onClick: 
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().border(1.dp, borderColor, RoundedCornerShape(12.dp)),
-        colors = CardDefaults.cardColors(containerColor = if (isSelected) AfuColors.accent.copy(alpha = 0.08f) else AfuColors.card),
+        colors = CardDefaults.cardColors(containerColor = AfuColors.card),
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {

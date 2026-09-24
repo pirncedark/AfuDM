@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,7 +28,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -178,8 +178,8 @@ class PlayerActivity : ComponentActivity() {
                 }
                 if (audioOnly) {
                     Column(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                        Box(Modifier.widthIn(max = 260.dp).fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(24.dp)).background(Brush.linearGradient(listOf(AfuColors.accent, AfuColors.accentAlt))), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.Headphones, null, tint = Color.White, modifier = Modifier.size(104.dp))
+                        Box(Modifier.widthIn(max = 260.dp).fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(24.dp)).background(AfuColors.surface).border(1.dp, AfuColors.accent, RoundedCornerShape(24.dp)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Headphones, null, tint = AfuColors.accent, modifier = Modifier.size(104.dp))
                         }
                         Spacer(Modifier.height(24.dp))
                         Text(title, color = AfuColors.text, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
@@ -209,7 +209,7 @@ class PlayerActivity : ComponentActivity() {
                             Icon(Icons.Default.Replay10, contentDescription = "10 saniye geri", tint = AfuColors.text, modifier = Modifier.size(30.dp))
                         }
                         Spacer(Modifier.width(24.dp))
-                        FilledIconButton(onClick = { if (player?.isPlaying == true) player.pause() else player?.play() }, modifier = Modifier.size(64.dp), shape = RoundedCornerShape(50), colors = IconButtonDefaults.filledIconButtonColors(containerColor = AfuColors.accent, contentColor = Color.White)) {
+                        IconButton(onClick = { if (player?.isPlaying == true) player.pause() else player?.play() }, modifier = Modifier.size(64.dp).border(1.dp, AfuColors.accent, RoundedCornerShape(50)), colors = IconButtonDefaults.iconButtonColors(containerColor = AfuColors.surface, contentColor = Color.White)) {
                             Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = if (playing) "Duraklat" else "Oynat", modifier = Modifier.size(38.dp))
                         }
                         Spacer(Modifier.width(24.dp))
@@ -225,7 +225,7 @@ class PlayerActivity : ComponentActivity() {
     @Composable
     private fun ModeButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
         val shape = RoundedCornerShape(12.dp)
-        Surface(onClick = onClick, enabled = enabled, shape = shape, color = if (selected) AfuColors.accent else AfuColors.surface, modifier = Modifier.height(44.dp).semantics { contentDescription = label }) {
+        Surface(onClick = onClick, enabled = enabled, shape = shape, color = AfuColors.surface, border = if (selected) androidx.compose.foundation.BorderStroke(1.dp, AfuColors.accent) else null, modifier = Modifier.height(44.dp).semantics { contentDescription = label }) {
             Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 Icon(icon, null, tint = if (enabled) AfuColors.text else AfuColors.textMuted.copy(alpha = 0.45f), modifier = Modifier.size(18.dp))
                 Text(label, color = if (enabled) AfuColors.text else AfuColors.textMuted.copy(alpha = 0.45f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
