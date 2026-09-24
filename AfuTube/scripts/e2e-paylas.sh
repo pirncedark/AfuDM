@@ -58,7 +58,9 @@ done
 echo "BASARILI: geri donunce tekrar analiz yok"
 
 adb shell am force-stop "$PKG"; sleep 2
-adb shell "am start -n $PKG/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'Bak bu videoya $URL'" >/dev/null
+# force-stop leaves the prior task record behind; clear that task as the new
+# share is launched so the cold-start intent is delivered to the visible task.
+adb shell "am start -f 0x10008000 -n $PKG/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'Bak bu videoya $URL'" >/dev/null
 bekle_format 120 soguk-format; r=$?
 [ "$r" = 0 ] || { echo "HATA: soguk acilista 120 sn icinde format ekrani gelmedi (kod $r)"; bitir soguk-format; exit 1; }
 cokme_var && { echo "HATA: soguk acilis analizinden sonra uygulama coktu"; bitir soguk-cokme; exit 1; }
