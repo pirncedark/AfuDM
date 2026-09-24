@@ -7,8 +7,39 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import java.io.IOException
 
 class AppUpdateTest {
+    private val manifest = """{"versionName":"1.2.0","versionCode":1002000,"tag":"afutube-v1.2.0","sha256":"abc","minSdk":24}"""
+
+    @Test
+    fun `manifest builds arm64 and universal asset addresses`() {
+        val arm = AppUpdateParser.fromManifest(manifest, 1000000, listOf("arm64-v8a"))
+        val universal = AppUpdateParser.fromManifest(manifest, 1000000, listOf("armeabi-v7a"))
+        assertEquals("https://github.com/pirncedark/AfuDM/releases/download/afutube-v1.2.0/AfuTube-arm64-v8a.apk", arm?.apkUrl)
+        assertEquals("${arm?.apkUrl}.sha256", arm?.checksumUrl)
+        assertEquals("https://github.com/pirncedark/AfuDM/releases/download/afutube-v1.2.0/AfuTube-universal.apk", universal?.apkUrl)
+        assertEquals("${universal?.apkUrl}.sha256", universal?.checksumUrl)
+    }
+
+    @Test
+    fun `invalid manifest falls back to API unless manifest is usable and prereleases are off`() {
+        assertTrue(AppUpdateParser.shouldFallbackToApi(false, false))
+        assertTrue(AppUpdateParser.shouldFallbackToApi(true, true))
+        assertFalse(AppUpdateParser.shouldFallbackToApi(false, true))
+        assertTrue(runCatching { AppUpdateParser.fromManifest("{}", 1, emptyList()) }.isFailure)
+    }
+
+    @Test
+    fun `rate limit errors are localized without exposing the URL`() {
+        assertEquals("GitHub şu an yoğun, birkaç dakika sonra tekrar dene.", AppUpdateParser.checkErrorMessage(IOException("HTTP 403")))
+    }
+
+    @Test
+    fun `manifest at current or older version has no update`() {
+        assertEquals(null, AppUpdateParser.fromManifest(manifest, 1002000, emptyList()))
+        assertEquals(null, AppUpdateParser.fromManifest(manifest, 1003000, emptyList()))
+    }
     @Test
     fun `pre-release is hidden by default and shown when explicitly requested`() {
         val json = """
