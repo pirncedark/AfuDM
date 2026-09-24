@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -37,6 +38,7 @@ fun HomeScreen(
     sharedLinkReady: Boolean = true,
     onConsumeShareEvent: (Long) -> SharedLinkEvent? = { null },
     onNavigateToFormats: (MediaInfo) -> Unit = {},
+    onOpenBrowser: (String) -> Unit = {},
     onUpdateExtractor: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -97,6 +99,7 @@ fun HomeScreen(
                     viewModel.onUrlChange(clip)
                 },
                 onAnalyze   = { viewModel.analyzeUrl(state.url) },
+                onOpenBrowser = { onOpenBrowser(state.url) },
                 isLoading   = state.isLoading
             )
 
@@ -111,7 +114,8 @@ fun HomeScreen(
                 ErrorCard(
                     error = state.analysisError,
                     onRetry = { viewModel.analyzeUrl(state.url) },
-                    onUpdate = onUpdateExtractor
+                    onUpdate = onUpdateExtractor,
+                    onOpenBrowser = { onOpenBrowser(state.url) }
                 )
             }
 
@@ -140,6 +144,7 @@ private fun UrlInputCard(
     onUrlChange : (String) -> Unit,
     onPaste     : () -> Unit,
     onAnalyze   : () -> Unit,
+    onOpenBrowser: () -> Unit,
     isLoading   : Boolean
 ) {
     Card(
@@ -227,6 +232,14 @@ private fun UrlInputCard(
                     }
                 }
             }
+            OutlinedButton(
+                onClick = onOpenBrowser,
+                enabled = url.isNotBlank(),
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = AfuColors.textMuted),
+                border = BorderStroke(1.dp, AfuColors.textMuted.copy(alpha = 0.3f)),
+                shape = RoundedCornerShape(10.dp)
+            ) { Text("Tarayıcıda aç") }
         }
     }
 }
@@ -235,7 +248,8 @@ private fun UrlInputCard(
 private fun ErrorCard(
     error: AnalysisError?,
     onRetry: () -> Unit,
-    onUpdate: () -> Unit
+    onUpdate: () -> Unit,
+    onOpenBrowser: () -> Unit
 ) {
     if (error == null) return
     val clipboard = LocalClipboardManager.current
@@ -259,6 +273,12 @@ private fun ErrorCard(
                 Button(onClick = onUpdate, modifier = Modifier.weight(1f)) { Text("Motoru güncelle") }
                 OutlinedButton(onClick = onRetry, modifier = Modifier.weight(1f)) { Text("Tekrar dene") }
             }
+            OutlinedButton(
+                onClick = onOpenBrowser,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = AfuColors.textMuted),
+                border = BorderStroke(1.dp, AfuColors.textMuted.copy(alpha = 0.3f))
+            ) { Text("Tarayıcıda aç ve videoyu yakala") }
             TextButton(onClick = { detailsVisible = !detailsVisible }) {
                 Text(if (detailsVisible) "Detayları gizle" else "Detaylar >")
             }
