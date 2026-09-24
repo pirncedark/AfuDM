@@ -35,6 +35,9 @@ object FormatSimplifier {
     fun simplify(formats: List<MediaFormat>): SimplifiedFormats {
         val videos = formats.filterNot { it.isAudioOnly }
         val audios = formats.filter { it.isAudioOnly || (it.acodec.isNotBlank() && it.acodec != "none") }
+            // Dogrudan .mp4 gibi kaynaklarda yt-dlp codec bilgisini bos/"none" birakir; kullanici her zaman
+            // MP4 + MP3 istiyor. Dosyada ses yoksa indirme karti yt-dlp hatasini gosterir.
+            .ifEmpty { formats }
         val heights = videos.mapNotNull(::heightOf)
         val bestAudioSize = (formats.filter { it.isAudioOnly }.ifEmpty { audios })
             .maxOfOrNull { it.fileSizeB.coerceAtLeast(0L) } ?: 0L

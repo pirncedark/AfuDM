@@ -57,10 +57,17 @@ class FormatSimplifierTest {
     }
 
     @Test
-    fun keepsAudioSectionEmptyWhenNoAudioIsAvailable() {
-        val result = FormatSimplifier.simplify(listOf(format("video", 720, audioCodec = "none")))
+    fun keepsAudioSectionEmptyWhenThereAreNoFormats() {
+        val result = FormatSimplifier.simplify(emptyList())
         assertTrue(result.audioOptions.isEmpty())
         assertFalse(result.hasAudio)
+    }
+
+    @Test
+    fun directLinkWithUnknownCodecsStillOffersMp3() {
+        val direct = format("direct", null, codec = "avc1", audioCodec = "none")
+        val result = FormatSimplifier.simplify(listOf(direct))
+        assertEquals(listOf("MP3"), result.audioOptions.map { it.label })
     }
 
     private fun format(id: String, height: Int?, fps: Int = 30, codec: String = "avc1", audioCodec: String = "none", size: Long = 0) =
