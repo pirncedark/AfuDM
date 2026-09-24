@@ -65,6 +65,7 @@ jobs:
           {
             "versionName": "${VERSION_NAME}",
             "versionCode": ${VERSION_CODE},
+            "tag": "${GITHUB_REF_NAME}",
             "apk": "AfuTube-universal.apk",
             "sha256": "${SHA256}",
             "minSdk": 24,
@@ -72,6 +73,25 @@ jobs:
             "prerelease": ${PRERELEASE}
           }
           EOF
+
+      - name: Prepare latest manifest release
+        if: ${{ !contains(github.ref_name, '-') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view afutube-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create afutube-latest --repo "$GITHUB_REPOSITORY" --prerelease --title "AfuTube latest (update manifest)" --notes "Stable AfuTube update manifest."
+          gh release delete-asset afutube-latest AfuTube-update.json --repo "$GITHUB_REPOSITORY" -y || true
+
+      - name: Publish latest update manifest
+        if: ${{ !contains(github.ref_name, '-') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: afutube-latest
+          name: AfuTube latest (update manifest)
+          make_latest: false
+          prerelease: true
+          files: release-assets/AfuTube-update.json
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
