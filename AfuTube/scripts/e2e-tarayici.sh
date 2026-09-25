@@ -87,7 +87,7 @@ run_ads_case() {
   sleep 2; dump home
   tap tap-class "$OUT/home.xml" EditText || { echo 'HATA: URL alani yok (ads.html)'; return 1; }
   adb shell input text 'http://127.0.0.1:8765/ads.html'; sleep 1; dump url
-  tap tap-text "$OUT/url.xml" 'TarayÄ±cÄ±da aÃ§' || { echo 'HATA: tarayici dugmesi yok (ads.html)'; return 1; }
+  tap tap-text "$OUT/url.xml" 'Tarayıcıda aç' || { echo 'HATA: tarayici dugmesi yok (ads.html)'; return 1; }
   local play=0
   for ((s=0;s<30;s+=2)); do dump page; if grep -q 'text="Oynat"' "$OUT/page.xml"; then play=1; break; fi; sleep 2; done
   [[ $play == 1 ]] || { echo 'HATA: ads.html acilmadi'; return 1; }
