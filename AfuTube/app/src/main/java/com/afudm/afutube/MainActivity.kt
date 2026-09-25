@@ -166,7 +166,11 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
                 BrowserScreen(
                     startUrl = browserUrl,
                     onClose = { navController.popBackStack() },
-                    onDownload = { DownloadEngine.getInstance(context).enqueue(it) }
+                    onDownload = { DownloadEngine.getInstance(context).enqueue(it) },
+                    onAnalyzePage = { url ->
+                        shareViewModel.publish(ShareIntentPayload(text = url))
+                        navController.popBackStack()
+                    }
                 )
             }
             composable("formats") {

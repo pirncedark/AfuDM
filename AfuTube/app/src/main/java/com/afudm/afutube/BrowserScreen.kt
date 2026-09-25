@@ -40,8 +40,6 @@ import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
 
-private data class CapturedMedia(val url: String, val kind: MediaSniffer.Kind, val contentType: String = "", val size: Long = 0, val quality: String = "")
-
 private const val CAPTURE_SCRIPT = """
 (() => {
  const send=(url,type='',size=0)=>{try{if(typeof url==='string'&&url.length<=4096&&/^https?:\/\//i.test(url)) window.AfuCapture?.postMessage(JSON.stringify({url,type:String(type||'').slice(0,160),size:Number(size)||0}));}catch(_){}};
@@ -56,20 +54,21 @@ private const val CAPTURE_SCRIPT = """
 @SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BrowserScreen(startUrl: String, onClose: () -> Unit, onDownload: (DownloadEngine.DownloadRequest) -> Unit) {
+fun BrowserScreen(startUrl: String, onClose: () -> Unit, onDownload: (DownloadEngine.DownloadRequest) -> Unit, onAnalyzePage: (String) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val captured = remember { mutableStateListOf<CapturedMedia>() }
+    val captured = remember { mutableStateListOf<MediaSniffer.Candidate>() }
     val variantUrls = remember { mutableStateListOf<String>() }
     var webView by remember { mutableStateOf<WebView?>(null) }
     var title by remember { mutableStateOf("Tarayıcı") }
     var pageUrl by remember { mutableStateOf(startUrl) }
     var showSheet by remember { mutableStateOf(false) }
     var protectedContent by remember { mutableStateOf(false) }
+    val supportedPageUrl = remember(pageUrl) { pageUrl.takeIf(SupportedPageDetector::supports) }
     val safeStart = remember(startUrl) { startUrl.takeIf(MediaSniffer::isHttpUrl) ?: "about:blank" }
 
     fun report(url: String, contentType: String = "", size: Long = 0, rangeRequest: Boolean = false) {
-        if (protectedContent || url in variantUrls) return
+        if (protectedContent || url in variantUrls || MediaSniffer.shouldIgnoreRequest(url, pageUrl)) return
         val kind = MediaSniffer.classify(url, contentType) ?: return
         val existing = captured.indexOfFirst { it.url == url }
         if (MediaSniffer.isSegment(url, rangeRequest)) return
@@ -79,9 +78,11 @@ fun BrowserScreen(startUrl: String, onClose: () -> Unit, onDownload: (DownloadEn
         }
         if (existing >= 0) captured[existing] = captured[existing].copy(contentType = contentType.ifBlank { captured[existing].contentType }, size = size.coerceAtLeast(captured[existing].size))
         else {
-            captured.add(0, CapturedMedia(url, kind, contentType, size))
+            captured.add(MediaSniffer.Candidate(url, kind, contentType, size))
             while (captured.size > 40) captured.removeAt(captured.lastIndex)
         }
+        val ranked = MediaSniffer.rankCandidates(captured.toList(), pageUrl)
+        captured.clear(); captured.addAll(ranked)
         if (kind == MediaSniffer.Kind.HLS && captured.none { it.url == url && it.quality.isNotEmpty() }) {
             val masterReferer = pageUrl
             val masterUserAgent = webView?.settings?.userAgentString.orEmpty()
@@ -162,12 +163,22 @@ fun BrowserScreen(startUrl: String, onClose: () -> Unit, onDownload: (DownloadEn
                 }
             }, modifier = Modifier.fillMaxSize())
         }
-        if (captured.isNotEmpty()) {
-            Surface(onClick = { showSheet = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).semantics { contentDescription = "Yakalanan videolar" }, shape = RoundedCornerShape(24.dp), color = AfuColors.card, border = BorderStroke(1.dp, AfuColors.accent), shadowElevation = 4.dp) {
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Download, null, tint = AfuColors.accent, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("${captured.size} video", color = AfuColors.text)
+        if (captured.isNotEmpty() || supportedPageUrl != null) {
+            Row(Modifier.align(Alignment.BottomEnd).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (supportedPageUrl != null) Surface(onClick = { onAnalyzePage(supportedPageUrl) }, shape = RoundedCornerShape(24.dp), color = AfuColors.card, border = BorderStroke(1.dp, AfuColors.accent), shadowElevation = 4.dp) {
+                    Row(Modifier.padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Download, null, tint = AfuColors.accent, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp)); Text("Video", color = AfuColors.text)
+                    }
+                }
+                if (captured.isNotEmpty()) {
+                    Surface(onClick = { showSheet = true }, modifier = Modifier.semantics { contentDescription = "Yakalanan videolar" }, shape = RoundedCornerShape(24.dp), color = AfuColors.card, border = BorderStroke(1.dp, AfuColors.accent), shadowElevation = 4.dp) {
+                        Row(Modifier.padding(horizontal = 16.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Download, null, tint = AfuColors.accent, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("${captured.size} video", color = AfuColors.text)
+                        }
+                    }
                 }
             }
         }
@@ -178,10 +189,20 @@ fun BrowserScreen(startUrl: String, onClose: () -> Unit, onDownload: (DownloadEn
 
     if (showSheet) ModalBottomSheet(onDismissRequest = { showSheet = false }, containerColor = AfuColors.card) {
         Text("Yakalanan videolar", modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = AfuColors.text, style = MaterialTheme.typography.titleMedium)
+        supportedPageUrl?.let { url ->
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Bu sayfadaki video (önerilen)", color = AfuColors.text)
+                    Text(url, color = AfuColors.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
+                }
+                TextButton(onClick = { onAnalyzePage(url) }) { Text("⬇ Video", color = AfuColors.text) }
+            }
+        }
         LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
             items(captured, key = { it.url }) { media ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
+                        if (captured.firstOrNull()?.url == media.url) Text("Önerilen", color = AfuColors.textMuted, style = MaterialTheme.typography.labelSmall)
                         Text(media.kind.label + media.quality.takeIf(String::isNotBlank)?.let { " · $it" }.orEmpty(), color = AfuColors.text)
                         Text(media.url.substringAfterLast('/').take(52), color = AfuColors.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
                         if (media.size > 0) Text("${media.size / 1024} KB", color = AfuColors.textMuted, style = MaterialTheme.typography.labelSmall)
