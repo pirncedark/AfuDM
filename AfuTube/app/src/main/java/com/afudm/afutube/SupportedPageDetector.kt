@@ -8,7 +8,7 @@ object SupportedPageDetector {
         val uri = runCatching { URI(rawUrl) }.getOrNull() ?: return false
         if (!uri.scheme.equals("http", true) && !uri.scheme.equals("https", true)) return false
         val host = uri.host?.lowercase()?.removePrefix("www.") ?: return false
-        val path = uri.path.orEmpty()
+        val path = uri.path.orEmpty().trimEnd('/').ifBlank { "/" }
         return when {
             host == "youtube.com" || host == "m.youtube.com" || host == "music.youtube.com" ->
                 path == "/watch" || path.startsWith("/shorts/")
