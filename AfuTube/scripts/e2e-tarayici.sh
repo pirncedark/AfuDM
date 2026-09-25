@@ -5,6 +5,20 @@ PKG=com.afudm.afutube
 UI="python3 AfuTube/scripts/ui.py"
 mkdir -p "$OUT"
 adb reverse tcp:8765 tcp:8765
+PREROLL=AfuTube/scripts/e2e-site/ads/vast/preroll.mp4
+GENERATED_PREROLL=0
+if [[ ! -e "$PREROLL" ]]; then
+  mkdir -p "$(dirname "$PREROLL")"
+  cp AfuTube/scripts/e2e-site/clip.mp4 "$PREROLL"
+  GENERATED_PREROLL=1
+fi
+cleanup_preroll() {
+  if [[ $GENERATED_PREROLL == 1 ]]; then
+    rm -f -- "$PREROLL"
+    rmdir --ignore-fail-on-non-empty "$(dirname "$PREROLL")" AfuTube/scripts/e2e-site/ads 2>/dev/null || true
+  fi
+}
+trap cleanup_preroll EXIT
 adb shell svc wifi enable; adb shell svc data enable
 adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
 sleep 3
@@ -68,4 +82,24 @@ run_case index.html mp4 'BASARILI: tarayicida yakalanan MP4 indirildi'
 referer_hits=$(grep -c '/clip.mp4.*Referer: http://127.0.0.1:8765/index.html' /tmp/afutube-referer.log || true)
 if [[ ${referer_hits:-0} -ge 3 ]]; then echo 'BASARILI: indirme Referer ile yapildi'; else echo "HATA: indirme Referer ile yapilmadi (Referer kayitli istek: ${referer_hits:-0})"; exit 1; fi
 run_case hls.html hls 'BASARILI: HLS yakalandi ve indirildi'
+run_ads_case() {
+  adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
+  sleep 2; dump home
+  tap tap-class "$OUT/home.xml" EditText || { echo 'HATA: URL alani yok (ads.html)'; return 1; }
+  adb shell input text 'http://127.0.0.1:8765/ads.html'; sleep 1; dump url
+  tap tap-text "$OUT/url.xml" 'Tarayıcıda aç' || { echo 'HATA: tarayici dugmesi yok (ads.html)'; return 1; }
+  local play=0
+  for ((s=0;s<30;s+=2)); do dump page; if grep -q 'text="Oynat"' "$OUT/page.xml"; then play=1; break; fi; sleep 2; done
+  [[ $play == 1 ]] || { echo 'HATA: ads.html acilmadi'; return 1; }
+  tap tap-text "$OUT/page.xml" Oynat || { echo 'HATA: reklamli Oynat tiklanamadi'; return 1; }
+  local seen=0
+  for ((s=0;s<20;s+=2)); do sleep 2; dump found; if grep -q 'Yakalanan videolar' "$OUT/found.xml"; then seen=1; break; fi; done
+  [[ $seen == 1 ]] || { echo 'HATA: reklamli sayfada yakalama listesi acilmadi'; return 1; }
+  tap tap-desc "$OUT/found.xml" 'Yakalanan videolar' || { echo 'HATA: reklamli yakalama listesi acilmadi'; return 1; }
+  dump sheet
+  grep -q 'clip.mp4' "$OUT/sheet.xml" || { echo 'HATA: reklam senaryosunda clip.mp4 listede yok'; return 1; }
+  if grep -q 'preroll.mp4' "$OUT/sheet.xml"; then echo 'HATA: reklam senaryosunda preroll yakalandi'; return 1; fi
+  echo 'BASARILI: reklam akisi filtrelendi'
+}
+run_ads_case
 echo 'BASARILI: tarayici e2e adimlarinda cokme yok'
