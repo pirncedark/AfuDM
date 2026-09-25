@@ -11,6 +11,8 @@ import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.afudm.afutube.updater.DownloadRecoveryPolicy
+import com.afudm.afutube.updater.ExtractorUpdater
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.Dispatchers
@@ -71,7 +73,7 @@ class DownloadWorker(
 
         setForeground(createForegroundInfo("Hazırlanıyor…", 0))
 
-        val request = YoutubeDLRequest(url).apply {
+        fun request(useAria2c: Boolean) = YoutubeDLRequest(url).apply {
             addOption("-f", formatId)
             val safeTitle = requestedTitle.replace(Regex("[\\\\/:*?\"<>|\\r\\n]"), "_").trim().take(100)
             addOption("-o", if (headerPairs.isNotEmpty() && safeTitle.isNotBlank()) "$outputDir/$safeTitle.%(ext)s" else "$outputDir/%(title)s.%(ext)s")
@@ -88,37 +90,66 @@ class DownloadWorker(
                 // Tek dosyali kaynak webm/mkv gelirse de sonuc MP4 olsun.
                 addOption("--remux-video", "mp4")
             }
-            addOption("--external-downloader", "aria2c")
-            addOption("--external-downloader-args", "aria2c:-x 8 -s 8 -k 5M")
+            if (useAria2c) {
+                addOption("--external-downloader", "aria2c")
+                addOption("--external-downloader-args", "aria2c:-x 8 -s 8 -k 5M")
+            }
         }
 
         var lastPercent = 0
 
-        val response = try { YoutubeDL.getInstance().execute(request) { progress, etaInSeconds, line ->
+        fun onProgress(progress: Float, etaInSeconds: Long, line: String) {
             val percent = progress.toInt().coerceIn(0, 100)
             if (percent != lastPercent) {
                 lastPercent = percent
-                setProgressAsync(
-                    workDataOf(
-                        PROGRESS_PERCENT to percent,
-                        PROGRESS_ETA     to etaInSeconds,
-                        PROGRESS_SPEED   to extractSpeed(line),
-                        PROGRESS_SIZE    to extractSize(line)
-                    )
-                )
-                val fi = createForegroundInfo("$percent%  •  ${extractSpeed(line)}", percent)
-                setForegroundAsync(fi)
+                setProgressAsync(workDataOf(
+                    PROGRESS_PERCENT to percent,
+                    PROGRESS_ETA to etaInSeconds,
+                    PROGRESS_SPEED to extractSpeed(line),
+                    PROGRESS_SIZE to extractSize(line)
+                ))
+                setForegroundAsync(createForegroundInfo("$percent%  \u2022  ${extractSpeed(line)}", percent))
             }
-        } } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: YoutubeDL.CanceledException) {
-            return@withContext Result.failure(workDataOf("error" to "İndirme iptal edildi"))
-        } catch (e: Exception) {
-            // yt-dlp sifirdan farkli kodla cikinca kutuphane istisna atar; nedeni kullaniciya goster.
-            return@withContext Result.failure(workDataOf("error" to okunurHata(e.message, headerPairs.map { it[1] })))
         }
 
-        if (response.exitCode == 0) {
+        val youtube = DownloadRecoveryPolicy.isYoutubeUrl(url)
+        val firstStep = if (youtube) DownloadRecoveryPolicy.Step.LOCAL else DownloadRecoveryPolicy.Step.ARIA2C
+        var finalError = ""
+        var success = false
+        var steps = listOf(firstStep)
+        var index = 0
+        while (index < steps.size) {
+            if (isStopped) return@withContext Result.failure(workDataOf("error" to "\u0130ndirme iptal edildi"))
+            val step = steps[index]
+            if (step == DownloadRecoveryPolicy.Step.UPDATE_ENGINE) {
+                setProgressAsync(workDataOf(PROGRESS_PERCENT to lastPercent, PROGRESS_SPEED to "Yeniden deneniyor\u2026"))
+                setForeground(createForegroundInfo("Yeniden deneniyor\u2026", lastPercent))
+                ExtractorUpdater.checkAndUpdate(applicationContext, force = true)
+                index++
+                continue
+            }
+            if (index > 0) {
+                pathFile.delete()
+                setProgressAsync(workDataOf(PROGRESS_PERCENT to lastPercent, PROGRESS_SPEED to "Yeniden deneniyor\u2026"))
+                setForeground(createForegroundInfo("Yeniden deneniyor\u2026", lastPercent))
+            }
+            try {
+                val response = YoutubeDL.getInstance().execute(request(step == DownloadRecoveryPolicy.Step.ARIA2C), callback = ::onProgress)
+                finalError = response.err.orEmpty()
+                if (response.exitCode == 0) { success = true; break }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: YoutubeDL.CanceledException) {
+                return@withContext Result.failure(workDataOf("error" to "\u0130ndirme iptal edildi"))
+            } catch (e: Exception) {
+                finalError = e.message.orEmpty()
+            }
+            if (!DownloadRecoveryPolicy.isHttp403(finalError)) break
+            if (index == 0) steps = DownloadRecoveryPolicy.steps(youtube, initialHttp403 = true)
+            index++
+        }
+
+        if (success) {
             val printedPath = runCatching { pathFile.readLines() }.getOrNull()
                 ?.map { it.trim() }?.lastOrNull { it.isNotBlank() }
             pathFile.delete()
@@ -132,7 +163,12 @@ class DownloadWorker(
                     ?.maxByOrNull { it.lastModified() }
             if (outputFile != null) Result.success(workDataOf("output_path" to outputFile.absolutePath))
             else Result.failure(workDataOf("error" to "İndirme tamamlandı ancak dosya yolu bulunamadı"))
-        } else Result.failure(workDataOf("error" to okunurHata(response.err, headerPairs.map { it[1] })))
+        } else {
+            val error = if (youtube && DownloadRecoveryPolicy.isHttp403(finalError))
+                "YouTube bu videoyu \u015fu an vermiyor (403). Biraz sonra tekrar dene.\n${okunurHata(finalError, headerPairs.map { it[1] })}"
+            else okunurHata(finalError, headerPairs.map { it[1] })
+            Result.failure(workDataOf("error" to error))
+        }
     }
 
     /** yt-dlp stderr'inden kartta gosterilecek kisa neden (son ERROR satiri). */

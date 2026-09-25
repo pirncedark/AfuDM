@@ -15,6 +15,33 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class ExtractorUpdatePolicyTest {
     @Test
+    fun `release redirect location yields tag`() {
+        assertEquals("2026.09.24", ExtractorUpdatePolicy.releaseTagFromLocation("https://github.com/yt-dlp/yt-dlp/releases/tag/2026.09.24"))
+        assertEquals(null, ExtractorUpdatePolicy.releaseTagFromLocation("https://github.com/yt-dlp/yt-dlp/releases/latest"))
+    }
+
+    @Test
+    fun `403 errors trigger bounded downloader recovery plan`() {
+        assertTrue(DownloadRecoveryPolicy.isHttp403("ERROR: unable to download video data: HTTP Error 403: Forbidden"))
+        assertEquals(
+            listOf(DownloadRecoveryPolicy.Step.ARIA2C, DownloadRecoveryPolicy.Step.LOCAL,
+                DownloadRecoveryPolicy.Step.UPDATE_ENGINE, DownloadRecoveryPolicy.Step.LOCAL),
+            DownloadRecoveryPolicy.steps(isYoutube = false, initialHttp403 = true)
+        )
+        assertEquals(
+            listOf(DownloadRecoveryPolicy.Step.LOCAL, DownloadRecoveryPolicy.Step.UPDATE_ENGINE, DownloadRecoveryPolicy.Step.LOCAL),
+            DownloadRecoveryPolicy.steps(isYoutube = true, initialHttp403 = true)
+        )
+    }
+
+    @Test
+    fun `youtube hosts are recognized including subdomains but not lookalikes`() {
+        assertTrue(DownloadRecoveryPolicy.isYoutubeUrl("https://music.youtube.com/watch?v=x"))
+        assertTrue(DownloadRecoveryPolicy.isYoutubeUrl("https://youtu.be/x"))
+        assertFalse(DownloadRecoveryPolicy.isYoutubeUrl("https://youtube.com.evil.test/watch?v=x"))
+    }
+
+    @Test
     fun `failed automatic update can retry after one hour but is throttled before then`() {
         assertFalse(ExtractorUpdatePolicy.canAutoRetry(10_000L, 10_000L + ExtractorUpdatePolicy.RETRY_MS - 1))
         assertTrue(ExtractorUpdatePolicy.canAutoRetry(10_000L, 10_000L + ExtractorUpdatePolicy.RETRY_MS))
