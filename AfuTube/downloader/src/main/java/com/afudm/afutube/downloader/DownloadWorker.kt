@@ -73,8 +73,9 @@ class DownloadWorker(
 
         setForeground(createForegroundInfo("Hazırlanıyor…", 0))
 
-        fun request(useAria2c: Boolean) = YoutubeDLRequest(url).apply {
+        fun request(useAria2c: Boolean, extractorArgs: String? = null) = YoutubeDLRequest(url).apply {
             addOption("-f", formatId)
+            extractorArgs?.let { addOption("--extractor-args", it) }
             val safeTitle = requestedTitle.replace(Regex("[\\\\/:*?\"<>|\\r\\n]"), "_").trim().take(100)
             addOption("-o", if (headerPairs.isNotEmpty() && safeTitle.isNotBlank()) "$outputDir/$safeTitle.%(ext)s" else "$outputDir/%(title)s.%(ext)s")
             headerPairs.forEach { (name, value) -> addOption("--add-header", "$name:$value") }
@@ -115,6 +116,7 @@ class DownloadWorker(
         val youtube = DownloadRecoveryPolicy.isYoutubeUrl(url)
         val firstStep = if (youtube) DownloadRecoveryPolicy.Step.LOCAL else DownloadRecoveryPolicy.Step.ARIA2C
         var finalError = ""
+        var saw403 = false
         var success = false
         var steps = listOf(firstStep)
         var index = 0
@@ -134,7 +136,10 @@ class DownloadWorker(
                 setForeground(createForegroundInfo("Yeniden deneniyor\u2026", lastPercent))
             }
             try {
-                val response = YoutubeDL.getInstance().execute(request(step == DownloadRecoveryPolicy.Step.ARIA2C), callback = ::onProgress)
+                val response = YoutubeDL.getInstance().execute(
+                    request(step == DownloadRecoveryPolicy.Step.ARIA2C, DownloadRecoveryPolicy.youtubeExtractorArgs(step)),
+                    callback = ::onProgress
+                )
                 finalError = response.err.orEmpty()
                 if (response.exitCode == 0) { success = true; break }
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -144,7 +149,9 @@ class DownloadWorker(
             } catch (e: Exception) {
                 finalError = e.message.orEmpty()
             }
-            if (!DownloadRecoveryPolicy.isHttp403(finalError)) break
+            if (DownloadRecoveryPolicy.isHttp403(finalError)) saw403 = true
+            // Kurtarma basladiktan sonra baska hata da gelse (or. gomulemeyen video) kalan adimlar denenir.
+            if (!saw403) break
             if (index == 0) steps = DownloadRecoveryPolicy.steps(youtube, initialHttp403 = true)
             index++
         }
@@ -164,7 +171,7 @@ class DownloadWorker(
             if (outputFile != null) Result.success(workDataOf("output_path" to outputFile.absolutePath))
             else Result.failure(workDataOf("error" to "İndirme tamamlandı ancak dosya yolu bulunamadı"))
         } else {
-            val error = if (youtube && DownloadRecoveryPolicy.isHttp403(finalError))
+            val error = if (youtube && saw403)
                 "YouTube bu videoyu \u015fu an vermiyor (403). Biraz sonra tekrar dene.\n${okunurHata(finalError, headerPairs.map { it[1] })}"
             else okunurHata(finalError, headerPairs.map { it[1] })
             Result.failure(workDataOf("error" to error))

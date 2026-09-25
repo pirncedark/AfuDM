@@ -29,9 +29,18 @@ class ExtractorUpdatePolicyTest {
             DownloadRecoveryPolicy.steps(isYoutube = false, initialHttp403 = true)
         )
         assertEquals(
-            listOf(DownloadRecoveryPolicy.Step.LOCAL, DownloadRecoveryPolicy.Step.UPDATE_ENGINE, DownloadRecoveryPolicy.Step.LOCAL),
+            listOf(DownloadRecoveryPolicy.Step.LOCAL, DownloadRecoveryPolicy.Step.YOUTUBE_EMBEDDED, DownloadRecoveryPolicy.Step.UPDATE_ENGINE,
+                DownloadRecoveryPolicy.Step.LOCAL, DownloadRecoveryPolicy.Step.YOUTUBE_FALLBACK),
             DownloadRecoveryPolicy.steps(isYoutube = true, initialHttp403 = true)
         )
+    }
+
+    @Test
+    fun `youtube recovery switches player client instead of repeating the same request`() {
+        assertEquals("youtube:player_client=web_embedded", DownloadRecoveryPolicy.youtubeExtractorArgs(DownloadRecoveryPolicy.Step.YOUTUBE_EMBEDDED))
+        assertEquals("youtube:player_client=android,mweb", DownloadRecoveryPolicy.youtubeExtractorArgs(DownloadRecoveryPolicy.Step.YOUTUBE_FALLBACK))
+        assertEquals(null, DownloadRecoveryPolicy.youtubeExtractorArgs(DownloadRecoveryPolicy.Step.LOCAL))
+        assertEquals(null, DownloadRecoveryPolicy.youtubeExtractorArgs(DownloadRecoveryPolicy.Step.ARIA2C))
     }
 
     @Test
