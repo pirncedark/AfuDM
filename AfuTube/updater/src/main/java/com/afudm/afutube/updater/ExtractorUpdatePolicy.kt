@@ -44,7 +44,14 @@ object ExtractorUpdatePolicy {
 }
 
 object DownloadRecoveryPolicy {
-    enum class Step { ARIA2C, LOCAL, UPDATE_ENGINE }
+    enum class Step { ARIA2C, LOCAL, UPDATE_ENGINE, YOUTUBE_EMBEDDED, YOUTUBE_FALLBACK }
+
+    /** YouTube 403 = istemciye ozel engel (PO token); ayni istegi tekrarlamak ise yaramaz, baska istemci dene. */
+    fun youtubeExtractorArgs(step: Step): String? = when (step) {
+        Step.YOUTUBE_EMBEDDED -> "youtube:player_client=web_embedded"
+        Step.YOUTUBE_FALLBACK -> "youtube:player_client=android,mweb"
+        else -> null
+    }
 
     fun isHttp403(message: String?): Boolean = message?.contains("HTTP Error 403", ignoreCase = true) == true
 
@@ -55,7 +62,7 @@ object DownloadRecoveryPolicy {
 
     fun steps(isYoutube: Boolean, initialHttp403: Boolean): List<Step> = when {
         !initialHttp403 -> if (isYoutube) listOf(Step.LOCAL) else listOf(Step.ARIA2C)
-        isYoutube -> listOf(Step.LOCAL, Step.UPDATE_ENGINE, Step.LOCAL)
+        isYoutube -> listOf(Step.LOCAL, Step.YOUTUBE_EMBEDDED, Step.UPDATE_ENGINE, Step.LOCAL, Step.YOUTUBE_FALLBACK)
         else -> listOf(Step.ARIA2C, Step.LOCAL, Step.UPDATE_ENGINE, Step.LOCAL)
     }
 }
