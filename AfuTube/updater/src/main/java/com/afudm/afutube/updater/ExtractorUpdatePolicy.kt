@@ -4,6 +4,7 @@ import com.afudm.afutube.core.diagnostics.AnalysisErrorCategory
 import com.yausername.youtubedl_android.YoutubeDL
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.net.URI
 
 data class ExtractorUpdateResult(
     val updated: Boolean,
@@ -16,6 +17,11 @@ data class ExtractorUpdateResult(
 object ExtractorUpdatePolicy {
     const val DAY_MS = 24L * 60 * 60 * 1000
     const val RETRY_MS = 60L * 60 * 1000
+
+    fun releaseTagFromLocation(location: String?): String? = location
+        ?.let { runCatching { URI(it).path }.getOrNull() }
+        ?.substringAfterLast("/tag/", "")
+        ?.takeIf { it.isNotBlank() && '/' !in it }
 
     fun isStale(lastUpdateAt: Long, now: Long): Boolean =
         lastUpdateAt <= 0L || now - lastUpdateAt >= DAY_MS
@@ -34,6 +40,23 @@ object ExtractorUpdatePolicy {
         return if (Regex("403|429|rate.?limit", RegexOption.IGNORE_CASE).containsMatchIn(message))
             "Motor güncellemesi şu an yapılamadı, sonra tekrar denenecek."
         else error.localizedMessage ?: "Güncelleme başarısız."
+    }
+}
+
+object DownloadRecoveryPolicy {
+    enum class Step { ARIA2C, LOCAL, UPDATE_ENGINE }
+
+    fun isHttp403(message: String?): Boolean = message?.contains("HTTP Error 403", ignoreCase = true) == true
+
+    fun isYoutubeUrl(url: String): Boolean = runCatching {
+        val host = URI(url).host?.lowercase()?.removePrefix("www.") ?: return@runCatching false
+        host == "youtube.com" || host.endsWith(".youtube.com") || host == "youtu.be"
+    }.getOrDefault(false)
+
+    fun steps(isYoutube: Boolean, initialHttp403: Boolean): List<Step> = when {
+        !initialHttp403 -> if (isYoutube) listOf(Step.LOCAL) else listOf(Step.ARIA2C)
+        isYoutube -> listOf(Step.LOCAL, Step.UPDATE_ENGINE, Step.LOCAL)
+        else -> listOf(Step.ARIA2C, Step.LOCAL, Step.UPDATE_ENGINE, Step.LOCAL)
     }
 }
 
