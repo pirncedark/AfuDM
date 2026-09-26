@@ -1,3 +1,10 @@
+# AfuDM v2.7.4 - Durum & Devam Notu
+Son guncelleme: 2026-09-27
+
+## YENI: AfuDM v2.7.4 - hazirlanan yama surumu
+- PR #68: Duraklatma/surdurme arayuzde aninda uygulanir; islem hata verirse durum geri alinir ve tek cumlelik hata gosterilir. Tamamlanmis torrentlerde `forcePause` kullanilir.
+- PR #67: UI gate testindeki yaris durumu duzeltildi (yalniz test).
+
 # AfuDM — Durum & Devam Notu
 Son guncelleme: 2026-09-19 (AfuDM v1.6.0 — Video Pro + tamamen yeşil CI/Release Train)
 ## Ne yapiyoruz
