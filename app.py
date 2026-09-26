@@ -574,6 +574,10 @@ class Api:
                 "ses_formati": secim.get("ses_formati") or "",
                 "dosya_sablonu": secim.get("dosya_sablonu") or "",
                 "tarayici_cerezi": secim.get("tarayici_cerezi") or "",
+                **({
+                    "adopt_gid": secim.get("adopt_gid"),
+                    "selected_files": secim.get("selected_files"),
+                } if kind == "torrent" else {}),
             })
             sonuc = self.manager.add(istek_req)
         except Exception as exc:

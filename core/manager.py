@@ -9,6 +9,7 @@ Sorumluluklari:
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import subprocess
@@ -355,6 +356,43 @@ class Manager:
             return raw.lower()
         return ""
 
+    @staticmethod
+    def _torrent_dosya_infohash(source: str) -> str:
+        """.torrent dosyasindaki info sozlugunun ham bencode SHA-1 degerini bul."""
+        try:
+            data = Path(source).read_bytes()
+        except OSError:
+            return ""
+
+        def parse(pos: int) -> tuple[int, bytes | None]:
+            token = data[pos:pos + 1]
+            if token == b"i":
+                return data.index(b"e", pos + 1) + 1, None
+            if token in (b"l", b"d"):
+                cursor = pos + 1
+                while data[cursor:cursor + 1] != b"e":
+                    cursor, _ = parse(cursor)
+                    cursor, _ = parse(cursor)
+                return cursor + 1, None
+            colon = data.index(b":", pos)
+            size = int(data[pos:colon])
+            end = colon + 1 + size
+            return end, data[colon + 1:end]
+
+        try:
+            if not data.startswith(b"d"):
+                return ""
+            cursor = 1
+            while data[cursor:cursor + 1] != b"e":
+                cursor, key = parse(cursor)
+                value_start = cursor
+                cursor, _ = parse(cursor)
+                if key == b"info":
+                    return hashlib.sha1(data[value_start:cursor]).hexdigest()
+        except (ValueError, IndexError):
+            return ""
+        return ""
+
     ACTIVE_STATES = ("queued", "active", "waiting", "paused", "scheduled")
 
     def gecmis_sources(self, limit: int = 3000) -> list[str]:
@@ -448,7 +486,15 @@ class Manager:
             )
         kind = req.kind or self.detect_kind(req.source)
         duplicate = self.find_duplicate(req.source)
-        if duplicate:
+        paused_preview = (
+            kind == "torrent"
+            and duplicate
+            and duplicate.get("status") == "paused"
+            and duplicate.get("gid")
+            and self.store.by_gid(duplicate["gid"]) is None
+        )
+        if duplicate and not paused_preview and not (
+                req.adopt_gid and duplicate.get("gid") == req.adopt_gid):
             label = "bu torrent" if kind == "torrent" else "bu baglanti"
             raise ValueError(f"{label} zaten kuyrukta: {duplicate.get('title') or req.source[:60]}")
         category = "video" if kind == "video" else ("torrent" if kind == "torrent" else "")
@@ -585,6 +631,25 @@ class Manager:
     def _launch_torrent(self, row: dict, dest_dir: str) -> str:
         options = json.loads(row["options"] or "{}")
         adopt_gid = options.get("adopt_gid")
+
+        if not adopt_gid:
+            source = row["source"]
+            infohash = self.magnet_infohash(source)
+            local = Path(source)
+            if not infohash and local.exists() and local.suffix.lower() == ".torrent":
+                infohash = self._torrent_dosya_infohash(source)
+            if infohash:
+                try:
+                    paused = self.rpc.tell_waiting(0, 200)
+                except Aria2Error:
+                    paused = []
+                for status in paused:
+                    gid = status.get("gid", "")
+                    if ((status.get("status") or "") == "paused"
+                            and (status.get("infoHash") or "").lower() == infohash.lower()
+                            and not self.store.by_gid(gid)):
+                        adopt_gid = gid
+                        break
         
         if adopt_gid:
             gid = adopt_gid

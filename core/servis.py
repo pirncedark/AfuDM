@@ -197,6 +197,10 @@ class AfuDMServis:
                     ses_formati=payload.get("ses_formati") or "",
                     dosya_sablonu=payload.get("dosya_sablonu") or "",
                     tarayici_cerezi=payload.get("tarayici_cerezi") or "",
+                    **({
+                        "adopt_gid": payload.get("adopt_gid"),
+                        "selected_files": payload.get("selected_files"),
+                    } if kind == "torrent" and len(urls) == 1 else {}),
                 )
                 if start_after:
                     scheduled += 1
