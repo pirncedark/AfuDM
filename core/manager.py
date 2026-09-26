@@ -9,6 +9,7 @@ Sorumluluklari:
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import subprocess
@@ -355,6 +356,75 @@ class Manager:
             return raw.lower()
         return ""
 
+    @staticmethod
+    def _torrent_dosya_infohash(source: str) -> str:
+        """.torrent dosyasindaki info sozlugunun ham bencode SHA-1 degerini bul."""
+        try:
+            data = Path(source).read_bytes()
+        except OSError:
+            return ""
+
+        def string_end(pos: int) -> tuple[int, bytes]:
+            colon = data.index(b":", pos)
+            raw_length = data[pos:colon]
+            if not raw_length or not raw_length.isdigit():
+                raise ValueError("invalid byte string length")
+            end = colon + 1 + int(raw_length)
+            if end > len(data):
+                raise ValueError("truncated byte string")
+            return end, data[colon + 1:end]
+
+        def skip_value(pos: int) -> int:
+            """Consume one bencode value without using Python recursion."""
+            stack: list[tuple[bytes, bool]] = []
+            while True:
+                token = data[pos:pos + 1]
+                if token == b"i":
+                    end = data.index(b"e", pos + 1)
+                    number = data[pos + 1:end]
+                    if not number or number in (b"-0",) or not (
+                        number.isdigit() or (number.startswith(b"-") and number[1:].isdigit())
+                    ):
+                        raise ValueError("invalid integer")
+                    pos = end + 1
+                elif token == b"l" or token == b"d":
+                    stack.append((token, token == b"d"))
+                    pos += 1
+                elif token and token[0:1].isdigit():
+                    pos, _ = string_end(pos)
+                else:
+                    raise ValueError("invalid bencode token")
+
+                while stack:
+                    kind, key_expected = stack[-1]
+                    if data[pos:pos + 1] == b"e":
+                        stack.pop()
+                        pos += 1
+                        continue
+                    if kind == b"d" and key_expected:
+                        pos, _ = string_end(pos)
+                        stack[-1] = (kind, False)
+                        continue
+                    if kind == b"d":
+                        stack[-1] = (kind, True)
+                    break
+                else:
+                    return pos
+
+        try:
+            if not data.startswith(b"d"):
+                return ""
+            cursor = 1
+            while data[cursor:cursor + 1] != b"e":
+                cursor, key = string_end(cursor)
+                value_start = cursor
+                cursor = skip_value(cursor)
+                if key == b"info":
+                    return hashlib.sha1(data[value_start:cursor]).hexdigest()
+        except (ValueError, IndexError):
+            return ""
+        return ""
+
     ACTIVE_STATES = ("queued", "active", "waiting", "paused", "scheduled")
 
     def gecmis_sources(self, limit: int = 3000) -> list[str]:
@@ -448,7 +518,15 @@ class Manager:
             )
         kind = req.kind or self.detect_kind(req.source)
         duplicate = self.find_duplicate(req.source)
-        if duplicate:
+        paused_preview = (
+            kind == "torrent"
+            and duplicate
+            and duplicate.get("status") == "paused"
+            and duplicate.get("gid")
+            and self.store.by_gid(duplicate["gid"]) is None
+        )
+        if duplicate and not paused_preview and not (
+                req.adopt_gid and duplicate.get("gid") == req.adopt_gid):
             label = "bu torrent" if kind == "torrent" else "bu baglanti"
             raise ValueError(f"{label} zaten kuyrukta: {duplicate.get('title') or req.source[:60]}")
         category = "video" if kind == "video" else ("torrent" if kind == "torrent" else "")
@@ -585,6 +663,25 @@ class Manager:
     def _launch_torrent(self, row: dict, dest_dir: str) -> str:
         options = json.loads(row["options"] or "{}")
         adopt_gid = options.get("adopt_gid")
+
+        if not adopt_gid:
+            source = row["source"]
+            infohash = self.magnet_infohash(source)
+            local = Path(source)
+            if not infohash and local.exists() and local.suffix.lower() == ".torrent":
+                infohash = self._torrent_dosya_infohash(source)
+            if infohash:
+                try:
+                    paused = self.rpc.tell_waiting(0, 200)
+                except Aria2Error:
+                    paused = []
+                for status in paused:
+                    gid = status.get("gid", "")
+                    if ((status.get("status") or "") == "paused"
+                            and (status.get("infoHash") or "").lower() == infohash.lower()
+                            and not self.store.by_gid(gid)):
+                        adopt_gid = gid
+                        break
         
         if adopt_gid:
             gid = adopt_gid
