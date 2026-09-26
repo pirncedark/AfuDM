@@ -119,6 +119,40 @@ class UIUXGateTest(unittest.TestCase):
         self.assertEqual(self.page.evaluate("window.__xss"), None)
         self.assertEqual(self.page.locator("#shareList img").count(), 0)
 
+    def test_pause_button_updates_immediately_and_reverts_on_failure(self):
+        """Duraklatma UI'si gecikmeli backend'i beklemeden değişir ve hata halinde geri döner."""
+        self.page.evaluate("""() => {
+            window.fakeBackendState.items = [{gid: "slow-gid", id: 1, title: "Paylasiliyor",
+              kind: "torrent", status: "active", seeder: true, progress: 100,
+              completedLength: 100, totalLength: 100, downloadSpeed: 0,
+              connections: 0, numSeeders: 1, eta: 0}];
+            state.items = window.fakeBackendState.items;
+            renderList();
+            window.pauseBackend = () => new Promise(resolve => setTimeout(() => {
+              window.fakeBackendState.items[0].status = "paused";
+              resolve({ok: true});
+            }, 450));
+            window.pywebview.api.control = (...args) => window.pauseBackend(...args);
+        }""")
+
+        elapsed = self.page.evaluate("""() => {
+            const button = document.querySelector('[data-act="pause"][data-gid="slow-gid"]');
+            const started = performance.now();
+            button.click();
+            return performance.now() - started;
+        }""")
+        expect(self.page.locator('[data-act="resume"][data-gid="slow-gid"]')).to_be_visible(timeout=150)
+        expect(self.page.locator('[data-act="resume"][data-gid="slow-gid"]')).to_be_disabled()
+        self.assertLess(elapsed, 150, f"UI degisimi {elapsed:.1f} ms surdu")
+
+        expect(self.page.locator('[data-act="resume"][data-gid="slow-gid"]')).to_be_visible(timeout=2000)
+        self.page.evaluate("""() => { window.pywebview.api.control = () => new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Motor yanit vermedi')), 450)); }""")
+        self.page.locator('[data-act="resume"][data-gid="slow-gid"]').click()
+        expect(self.page.locator('[data-act="pause"][data-gid="slow-gid"]')).to_be_visible(timeout=150)
+        expect(self.page.locator('[data-act="resume"][data-gid="slow-gid"]')).to_be_visible(timeout=2000)
+        expect(self.page.locator("#toast")).to_contain_text("Başlatılamadı. Yeniden deneyin.")
+
     def test_mobile_page_script_parses_clean(self):
         """Mobil arayuz (mobil.html) scripti hatasiz yuklenmeli.
 
