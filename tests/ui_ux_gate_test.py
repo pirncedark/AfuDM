@@ -274,12 +274,14 @@ class UIUXGateTest(unittest.TestCase):
         expect(self.page.locator("#setVeil")).to_be_visible()
         self.page.keyboard.press("Escape")
         
-        # Recover engine
-        self.page.evaluate("window.fakeBackendState.engine_ok = true")
+        # Click while the retry control is still visible; the next UI tick hides it
+        # as soon as the fake backend reports a recovered engine.
+        expect(self.page.locator("#engineRetry")).to_be_visible()
         self.page.locator("#engineRetry").click()
+        self.page.evaluate("window.fakeBackendState.engine_ok = true")
         
         # Wait for recovery
-        expect(self.page.locator("#engineText")).not_to_contain_text("bağlantı yok", timeout=3000)
+        expect(self.page.locator("#engineText")).not_to_contain_text(offline_text, timeout=3000)
 
     def test_g014_reload_reinitializes_without_errors(self):
         """Reloading the UI restores the ready state without leaving a broken screen."""
