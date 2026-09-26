@@ -13,6 +13,8 @@ const state = {
   search: "",
   selected: null,
   selectedGids: new Set(),
+  controlPending: new Set(),
+  controlOverrides: new Map(),
   activeDTab: "overview",
   items: [],
   settings: {},
@@ -219,9 +221,13 @@ function renderList() {
         String(when.getMinutes()).padStart(2, "0");
     }
     // Satir dugmesi: ikon + etiket; dar alanda etiket gizlenir, title ipucu kalir.
-    const btn = (act, attr, val, icon, label) =>
-      '<button data-act="' + act + '" data-' + attr + '="' + val + '" title="' + escapeHtml(label) + '">' +
-      '<span class="ic">' + icon + '</span><span class="lbl">' + escapeHtml(label) + "</span></button>";
+    const btn = (act, attr, val, icon, label) => {
+      const pending = state.controlPending.has(item.gid) && (act === "pause" || act === "resume");
+      return '<button data-act="' + act + '" data-' + attr + '="' + val + '" title="' + escapeHtml(label) + '"' +
+        (pending ? ' disabled aria-busy="true"' : '') + '>' +
+        '<span class="ic">' + (pending ? '<span class="control-spinner" aria-hidden="true"></span>' : icon) +
+        '</span><span class="lbl">' + escapeHtml(label) + "</span></button>";
+    };
     const kill = btn("remove", "gid", item.gid, "🗑", t("row.remove"));
     let right;
     if (item.status === "complete") {
@@ -535,6 +541,12 @@ async function tick() {
     const snap = await call("snapshot");
     offlineArdisik = 0;
     state.items = snap.items || [];
+    state.items.forEach((item) => {
+      const override = state.controlOverrides.get(item.gid);
+      if (!override) return;
+      if (item.status === override) state.controlOverrides.delete(item.gid);
+      else item.status = override;
+    });
     state.settings = snap.settings || {};
     const stat = snap.stat || {};
 
@@ -662,6 +674,29 @@ $("list").addEventListener("click", async (event) => {
         const rowId = Number(button.dataset.id);
         if (!rowId) throw new Error(t("err.noRetry"));
         await call("retry", rowId);
+      } else if (act === "pause" || act === "resume") {
+        const item = state.items.find((entry) => entry.gid === gid);
+        if (!item || state.controlPending.has(gid)) return;
+        const previous = item.status;
+        const target = act === "pause" ? "paused" : "active";
+        state.controlPending.add(gid);
+        state.controlOverrides.set(gid, target);
+        item.status = target;
+        renderCounts();
+        renderList();
+        try {
+          await call("control", act, gid, false);
+          state.controlPending.delete(gid);
+          renderList();
+          tick();
+        } catch (err) {
+          state.controlPending.delete(gid);
+          state.controlOverrides.delete(gid);
+          item.status = previous;
+          renderCounts();
+          renderList();
+          toast(act === "pause" ? "Duraklatılamadı. Yeniden deneyin." : "Başlatılamadı. Yeniden deneyin.", true);
+        }
       } else if (act !== "remove") await call("control", act, gid, false);
       else if (act === "remove") {
         $("remFiles").checked = false;

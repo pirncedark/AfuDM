@@ -810,7 +810,7 @@ class Manager:
                 self.store.update_by_gid(gid, status="paused")
                 return True
             return False
-        self.rpc.pause(gid)
+        self.rpc.pause(gid, force=True)
         self.store.update_by_gid(gid, status="paused")
         return True
 

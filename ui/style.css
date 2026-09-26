@@ -978,6 +978,7 @@ input, textarea, code, .kv, .row-title, .kay-url, .hint, .err-note { user-select
 .chr-adimlar li.hata i { border-color: var(--err); color: var(--err); }
 .chr-adimlar li.hata i::after { content: "!"; font-weight: 700; }
 @keyframes chr-don { to { transform: rotate(360deg); } }
+.control-spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: chr-don .7s linear infinite; vertical-align: middle; }
 .chr-sonuc { font-size: 12.5px; min-height: 18px; }
 .chr-sonuc.iyi { color: var(--done); }
 .chr-sonuc.kotu { color: var(--err); }
