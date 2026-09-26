@@ -660,12 +660,38 @@ select:focus-visible, button:focus-visible {
 
 /* ---------- detay cekmecesi ---------- */
 .drawer {
+  position: relative;
   border-top: 1px solid var(--line);
   background: var(--bg-deep);
   height: 216px;
+  flex: 0 0 auto;
   display: none;
   flex-direction: column;
 }
+.drawer-resize {
+  position: absolute;
+  z-index: 2;
+  top: -5px;
+  left: 0;
+  right: 0;
+  height: 10px;
+  cursor: ns-resize;
+  touch-action: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  outline: none;
+}
+.drawer-resize::after {
+  content: "";
+  width: 36px;
+  height: 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background-color .12s ease, width .12s ease;
+}
+.drawer-resize:hover::after, .drawer-resize:focus-visible::after,
+.drawer-resize.dragging::after { width: 44px; background: var(--dim); }
 .drawer.open { display: flex; }
 .drawer-head {
   display: flex;

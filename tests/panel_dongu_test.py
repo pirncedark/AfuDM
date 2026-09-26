@@ -510,6 +510,53 @@ class PanelDonguTest(unittest.TestCase):
         self.page.close()
         _LOG("TEARDOWN: kapandi")
 
+    def test_files_tab_keeps_nodes_between_identical_ticks(self):
+        self.page.locator('.row[data-gid="t1"]').click()
+        self.page.locator('#detailTabs .dtab[data-dtab="files"]').click()
+        self.page.wait_for_function("document.querySelector('#dFilesContent #dFilesSummary .kv') !== null")
+        self.page.evaluate("window.__filesChildren = document.getElementById('dFilesContent').firstElementChild")
+        for _ in range(4):
+            self.page.evaluate("tick()")
+            self.page.wait_for_timeout(100)
+            result = self.page.evaluate("""() => {
+              const el = document.getElementById('dFilesContent');
+              return { same: window.__filesChildren === el.firstElementChild,
+                empty: !el.innerHTML.trim() };
+            }""")
+            self.assertFalse(result["empty"], "files tab became empty during refresh")
+            self.assertTrue(result["same"], "files tab nodes were replaced during refresh")
+            self.page.evaluate("window.__filesChildren = document.getElementById('dFilesContent').firstElementChild")
+
+    def test_drawer_resize_clamps_and_restores(self):
+        self.page.locator('.row[data-gid="t1"]').click()
+        handle = self.page.locator("#drawerResize")
+        box = handle.bounding_box()
+        self.assertIsNotNone(box)
+        x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+        self.page.mouse.move(x, y)
+        self.page.mouse.down()
+        self.page.mouse.move(x, y - 2000)
+        self.page.mouse.up()
+        height = self.page.locator("#drawer").evaluate("el => el.getBoundingClientRect().height")
+        self.assertLessEqual(height, self.page.evaluate("window.innerHeight * 0.75"))
+        box = handle.bounding_box()
+        x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+        self.page.mouse.move(x, y)
+        self.page.mouse.down()
+        self.page.mouse.move(x, y + 3000)
+        self.page.mouse.up()
+        height = self.page.locator("#drawer").evaluate("el => el.getBoundingClientRect().height")
+        self.assertEqual(height, 140)
+        self.page.locator("#drawerResize").press("ArrowUp")
+        self.assertEqual(self.page.locator("#drawer").evaluate("el => el.getBoundingClientRect().height"), 160)
+        stored = self.page.evaluate("localStorage.getItem('afudm.drawerHeight')")
+        self.page.reload()
+        self.page.evaluate('window.dispatchEvent(new Event("pywebviewready"));')
+        self.page.wait_for_function("typeof state !== 'undefined' && state.ready === true")
+        self.page.locator('.row[data-gid="t1"]').click()
+        self.assertEqual(self.page.locator("#drawer").evaluate("el => el.getBoundingClientRect().height"), 160)
+        self.assertEqual(self.page.evaluate("localStorage.getItem('afudm.drawerHeight')"), stored)
+
     # ---- yardımcılar -----------------------------------------------------
     def _panel_acik(self, pid):
         return self.page.evaluate(

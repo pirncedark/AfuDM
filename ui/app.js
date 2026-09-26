@@ -318,6 +318,57 @@ function renderCounts() {
 }
 
 /* ---------- detay cekmecesi ---------- */
+const DRAWER_DEFAULT_HEIGHT = 216;
+const DRAWER_HEIGHT_KEY = "afudm.drawerHeight";
+function clampDrawerHeight(value) {
+  return Math.round(Math.max(140, Math.min(Math.max(140, window.innerHeight * 0.75), value)));
+}
+function setDrawerHeight(value, persist = true) {
+  const drawer = $("drawer");
+  if (!drawer) return;
+  const height = clampDrawerHeight(value);
+  drawer.style.height = height + "px";
+  if (persist) {
+    try { localStorage.setItem(DRAWER_HEIGHT_KEY, String(height)); } catch (_) {}
+  }
+}
+function initDrawerResize() {
+  const drawer = $("drawer"), handle = $("drawerResize");
+  if (!drawer || !handle) return;
+  let saved = DRAWER_DEFAULT_HEIGHT;
+  try {
+    const value = Number(localStorage.getItem(DRAWER_HEIGHT_KEY));
+    if (Number.isFinite(value) && value >= 140) saved = value;
+  } catch (_) {}
+  setDrawerHeight(saved, false);
+  let startY = 0, startHeight = 0;
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    startY = event.clientY;
+    startHeight = drawer.getBoundingClientRect().height;
+    handle.classList.add("dragging");
+    handle.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  handle.addEventListener("pointermove", (event) => {
+    if (!handle.hasPointerCapture(event.pointerId)) return;
+    setDrawerHeight(startHeight + startY - event.clientY);
+  });
+  const endDrag = (event) => {
+    handle.classList.remove("dragging");
+    if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+  };
+  handle.addEventListener("pointerup", endDrag);
+  handle.addEventListener("pointercancel", endDrag);
+  handle.addEventListener("dblclick", () => setDrawerHeight(DRAWER_DEFAULT_HEIGHT));
+  handle.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    event.preventDefault();
+    setDrawerHeight(drawer.getBoundingClientRect().height + (event.key === "ArrowUp" ? 20 : -20));
+  });
+  window.addEventListener("resize", () => setDrawerHeight(drawer.getBoundingClientRect().height));
+}
+
 async function switchDetailTab(tabName) {
   state.activeDTab = tabName;
   document.querySelectorAll("#detailTabs .dtab").forEach((btn) => {
@@ -339,143 +390,73 @@ async function switchDetailTab(tabName) {
   }
 }
 
+const detailTabErrorsShown = new Set();
+function writeDetailHtml(el, html) {
+  if (!el || el.dataset.sig === html) return;
+  el.dataset.sig = html;
+  el.innerHTML = html;
+}
+
 async function renderDetailTabContent(gid, tabName) {
   const item = state.items.find((i) => i.gid === gid);
   if (!item) return;
-
+  const current = () => state.selected === gid && (state.activeDTab || "overview") === tabName;
   if (tabName === "files") {
-    const fContent = $("dFilesContent");
-    if (!fContent) return;
-    if (item.kind === "torrent") {
-      fContent.innerHTML = '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">' +
-        '<span class="hint">' + escapeHtml(item.title || item.gid) + '</span>' +
-        '<button class="btn primary" id="dOpenTorVeil" style="margin-left:auto;">' + t("tor.btnFiles") + '</button>' +
-        '</div><div id="dFilesSummary"></div>';
-      const btn = $("dOpenTorVeil");
-      if (btn) btn.onclick = () => torrentVeilAc(gid);
-      try {
-        const res = await call("torrent_dosyalari", gid);
-        const sum = $("dFilesSummary");
-        if (sum) {
-          if (res.hazir_degil) {
-            sum.innerHTML = '<div class="hint">' + escapeHtml(res.neden || t("tor.notReady")) + '</div>';
-          } else {
-            const dList = res.dosyalar || [];
-            const seciliSayisi = dList.filter((d) => d.secili).length;
-            sum.innerHTML = '<div class="kv">' +
-              '<div>' + t("tor.count", {
-                secili: seciliSayisi,
-                toplam: dList.length,
-                seciliBoyut: size(dList.reduce((acc, d) => acc + (d.secili ? d.boyut : 0), 0)),
-                toplamBoyut: size(dList.reduce((acc, d) => acc + d.boyut, 0))
-              }) + '</div></div>' +
-              '<div style="max-height:140px;overflow:auto;font-size:11.5px;font-family:var(--mono);color:var(--muted);">' +
-              dList.slice(0, 30).map((d) => '<div style="padding:2px 0;display:flex;justify-content:space-between;"><span>' +
-                (d.secili ? '✓ ' : '✗ ') + escapeHtml(d.ad) + '</span><span>' + size(d.boyut) + '</span></div>').join('') +
-              (dList.length > 30 ? '<div class="hint">+' + (dList.length - 30) + '...</div>' : '') +
-              '</div>';
-          }
-        }
-      } catch (err) {
-        toast(err && err.message ? err.message : t("tor.filesError"), true);
-      }
-    } else {
-      fContent.innerHTML = '<div class="kv"><div>' + t("kv.file") + '<b>' + escapeHtml(item.filename || "—") + '</b></div>' +
-        '<div>' + t("kv.folder") + '<b>' + escapeHtml(item.dir || "—") + '</b></div></div>';
-    }
-  } else if (tabName === "trackers") {
-    const tContent = $("dTrackersContent");
-    const wrap = $("dPeersWrap");
+    const el = $("dFilesContent");
+    if (!el) return;
     if (item.kind !== "torrent") {
-      if (tContent) tContent.innerHTML = '<div class="hint">' + t("tor.empty") + '</div>';
-      if (wrap) wrap.innerHTML = "";
+      if (current()) writeDetailHtml(el, '<div class="kv"><div>' + t("kv.file") + '<b>' + escapeHtml(item.filename || "—") + '</b></div><div>' + t("kv.folder") + '<b>' + escapeHtml(item.dir || "—") + '</b></div></div>');
       return;
     }
-    if (tContent) {
-      try {
-        const met = await call("torrent_metrikleri", gid);
-        if (met.ok && !met.hazir_degil) {
-          const m = met.metrikler || {};
-          tContent.innerHTML = '<div class="tor-metrik-bar" style="margin-bottom:10px;">' +
-            '<div class="tor-metrik-kutu"><span class="tor-metrik-lbl">' + t("tor.seed") + '</span><b>' + (m.num_seeders || 0) + '</b></div>' +
-            '<div class="tor-metrik-kutu"><span class="tor-metrik-lbl">' + t("tor.peers") + '</span><b>' + (m.connections || 0) + '</b></div>' +
-            '<div class="tor-metrik-kutu"><span class="tor-metrik-lbl">' + t("tor.ratio") + '</span><b>' + (m.ratio || 0) + '</b></div>' +
-            '<div class="tor-metrik-kutu"><span class="tor-metrik-lbl">' + t("tor.trackers") + '</span><b>' + (m.tracker_sayisi || 0) + ' (' + (m.canli_tracker || 0) + ' ' + t("eng.installed") + ')</b></div>' +
-            '</div>';
-        } else {
-          tContent.innerHTML = '<div class="hint">' + escapeHtml(met.neden || t("tor.metaNotReady")) + '</div>';
-        }
-      } catch (_) {
-        tContent.innerHTML = "";
+    let res;
+    try { res = await call("torrent_dosyalari", gid); }
+    catch (err) {
+      if (current() && !detailTabErrorsShown.has(gid)) {
+        detailTabErrorsShown.add(gid);
+        toast(err && err.message ? err.message : t("tor.filesError"), true);
       }
+      return;
     }
-    if (wrap) {
-      let peers = [];
-      try { peers = (await call("peers", item.gid)).peers || []; } catch (_) { peers = []; }
-      if (!peers.length) {
-        wrap.innerHTML = '<div class="hint">' + t("tor.noPeers") + '</div>';
-      } else {
-        peers.sort((a, b) => b.downloadSpeed - a.downloadSpeed);
-        wrap.innerHTML =
-          '<table class="peers"><thead><tr><th>' + t("peers.addr") + "</th><th>" + t("peers.type") +
-          "</th><th>" + t("peers.down") + "</th><th>" + t("peers.up") + "</th><th>" +
-          t("peers.client") + "</th></tr></thead><tbody>" +
-          peers.slice(0, 40).map((p) =>
-            "<tr><td>" + escapeHtml(p.ip) + ":" + p.port + "</td>" +
-            '<td class="' + (p.seeder ? "s" : "") + '">' + (p.seeder ? "seed" : "peer") + "</td>" +
-            "<td>" + speed(p.downloadSpeed) + "</td><td>" + speed(p.uploadSpeed) + "</td>" +
-            "<td>" + escapeHtml(p.client || "") + "</td></tr>"
-          ).join("") + "</tbody></table>";
-      }
+    if (!current()) return;
+    let summary;
+    if (res.hazir_degil) summary = '<div class="hint">' + escapeHtml(res.neden || t("tor.notReady")) + '</div>';
+    else {
+      const list = res.dosyalar || [], selected = list.filter((d) => d.secili).length;
+      summary = '<div class="kv"><div>' + t("tor.count", {secili:selected, toplam:list.length, seciliBoyut:size(list.reduce((a,d)=>a+(d.secili?d.boyut:0),0)), toplamBoyut:size(list.reduce((a,d)=>a+d.boyut,0))}) + '</div></div>' +
+        '<div style="max-height:140px;overflow:auto;font-size:11.5px;font-family:var(--mono);color:var(--muted);">' +
+        list.slice(0,30).map((d)=>'<div style="padding:2px 0;display:flex;justify-content:space-between;"><span>'+(d.secili?'✓ ':'✗ ')+escapeHtml(d.ad)+'</span><span>'+size(d.boyut)+'</span></div>').join("") +
+        (list.length>30?'<div class="hint">+'+(list.length-30)+'...</div>':"")+'</div>';
     }
+    writeDetailHtml(el, '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;"><span class="hint">'+escapeHtml(item.title||item.gid)+'</span><button class="btn primary" id="dOpenTorVeil" style="margin-left:auto;">'+t("tor.btnFiles")+'</button></div><div id="dFilesSummary">'+summary+'</div>');
+    const btn = $("dOpenTorVeil"); if (btn) btn.onclick = () => torrentVeilAc(gid);
+  } else if (tabName === "trackers") {
+    const tc = $("dTrackersContent"), pw = $("dPeersWrap");
+    if (item.kind !== "torrent") { if(current()){writeDetailHtml(tc,'<div class="hint">'+t("tor.empty")+'</div>');writeDetailHtml(pw,"");} return; }
+    const [met, peerRes] = await Promise.all([call("torrent_metrikleri",gid).catch(()=>null),call("peers",gid).catch(()=>({peers:[]}))]);
+    if (!current()) return;
+    let mh = "";
+    if(met&&met.ok&&!met.hazir_degil){const m=met.metrikler||{};mh='<div class="tor-metrik-bar" style="margin-bottom:10px;"><div class="tor-metrik-kutu"><span class="tor-metrik-lbl">'+t("tor.seed")+'</span><b>'+(m.num_seeders||0)+'</b></div><div class="tor-metrik-kutu"><span class="tor-metrik-lbl">'+t("tor.peers")+'</span><b>'+(m.connections||0)+'</b></div><div class="tor-metrik-kutu"><span class="tor-metrik-lbl">'+t("tor.ratio")+'</span><b>'+(m.ratio||0)+'</b></div><div class="tor-metrik-kutu"><span class="tor-metrik-lbl">'+t("tor.trackers")+'</span><b>'+(m.tracker_sayisi||0)+' ('+(m.canli_tracker||0)+' '+t("eng.installed")+')</b></div></div>';}
+    else if(met) mh='<div class="hint">'+escapeHtml(met.neden||t("tor.metaNotReady"))+'</div>';
+    const peers=peerRes.peers||[]; peers.sort((a,b)=>b.downloadSpeed-a.downloadSpeed);
+    const ph=!peers.length?'<div class="hint">'+t("tor.noPeers")+'</div>':'<table class="peers"><thead><tr><th>'+t("peers.addr")+'</th><th>'+t("peers.type")+'</th><th>'+t("peers.down")+'</th><th>'+t("peers.up")+'</th><th>'+t("peers.client")+'</th></tr></thead><tbody>'+peers.slice(0,40).map(p=>'<tr><td>'+escapeHtml(p.ip)+':'+p.port+'</td><td class="'+(p.seeder?'s':'')+'">'+(p.seeder?'seed':'peer')+'</td><td>'+speed(p.downloadSpeed)+'</td><td>'+speed(p.uploadSpeed)+'</td><td>'+escapeHtml(p.client||"")+'</td></tr>').join("")+'</tbody></table>';
+    writeDetailHtml(tc,mh); writeDetailHtml(pw,ph);
   } else if (tabName === "rules") {
-    const rContent = $("dRulesContent");
-    if (rContent) {
-      try {
-        const out = await call("download_rules", gid), trace = out.trace || {};
-        const rows = Object.entries(trace).map(([key, info]) => '<div class="kv"><div>' + escapeHtml(key) + '<b>' + escapeHtml(t("rules.source", {name: info.source_name || "?"})) + '</b></div></div>');
-        rContent.innerHTML = rows.length ? rows.join("") : '<div class="hint">' + escapeHtml(t("dtab.rulesEmpty")) + '</div>';
-      } catch (_) { rContent.textContent = t("dtab.rulesEmpty"); }
-    }
+    const el=$("dRulesContent"); if(!el)return; let html;
+    try {const out=await call("download_rules",gid), rows=Object.entries(out.trace||{}).map(([k,v])=>'<div class="kv"><div>'+escapeHtml(k)+'<b>'+escapeHtml(t("rules.source",{name:v.source_name||"?"}))+'</b></div></div>'); html=rows.length?rows.join(""):'<div class="hint">'+escapeHtml(t("dtab.rulesEmpty"))+'</div>';}
+    catch(_){html='<div class="hint">'+escapeHtml(t("dtab.rulesEmpty"))+'</div>';}
+    if(current())writeDetailHtml(el,html);
   } else if (tabName === "automation") {
-    const aContent = $("dAutomationContent");
-    if (aContent) {
-      try {
-        const jobs = (await call("automation_jobs", gid)).jobs || [];
-        if (!jobs.length) aContent.innerHTML = '<div class="hint">' + t("auto.empty") + '</div>';
-        else aContent.innerHTML = jobs.map((job) => {
-          const err = job.error ? '<div class="err-note">' + escapeHtml(job.error) + '</div>' : '';
-          const actions = (job.status === "error" ? '<button class="btn" data-auto-retry="' + job.id + '">' + t("auto.retry") + '</button>' : '') + ((job.status === "queued" || job.status === "running") ? '<button class="btn ghost" data-auto-cancel="' + job.id + '">' + t("auto.cancel") + '</button>' : '');
-          return '<div class="automation-job"><b>' + escapeHtml(t("auto.step." + job.action)) + '</b><span class="rozet">' + escapeHtml(t("auto.status." + job.status)) + ' · ' + (job.progress || 0) + '%</span>' + (job.action === "power" && job.status === "running" ? '<div class="hint">' + t("auto.countdown") + '</div>' : '') + err + '<div>' + actions + '</div></div>';
-        }).join("");
-        aContent.querySelectorAll("[data-auto-retry]").forEach((b) => b.onclick = async () => { await call("automation_retry", Number(b.dataset.autoRetry)); renderDetailTabContent(gid, "automation"); });
-        aContent.querySelectorAll("[data-auto-cancel]").forEach((b) => b.onclick = async () => { await call("automation_cancel", Number(b.dataset.autoCancel)); renderDetailTabContent(gid, "automation"); });
-      } catch (err) { aContent.innerHTML = '<div class="err-note">' + escapeHtml(err.message) + '</div>'; }
-    }
+    const el=$("dAutomationContent"); if(!el)return; let html,jobs=[];
+    try {jobs=(await call("automation_jobs",gid)).jobs||[]; html=!jobs.length?'<div class="hint">'+t("auto.empty")+'</div>':jobs.map(job=>{const err=job.error?'<div class="err-note">'+escapeHtml(job.error)+'</div>':"";const actions=(job.status==="error"?'<button class="btn" data-auto-retry="'+job.id+'">'+t("auto.retry")+'</button>':"")+((job.status==="queued"||job.status==="running")?'<button class="btn ghost" data-auto-cancel="'+job.id+'">'+t("auto.cancel")+'</button>':"");return '<div class="automation-job"><b>'+escapeHtml(t("auto.step."+job.action))+'</b><span class="rozet">'+escapeHtml(t("auto.status."+job.status))+' · '+(job.progress||0)+'%</span>'+(job.action==="power"&&job.status==="running"?'<div class="hint">'+t("auto.countdown")+'</div>':"")+err+'<div>'+actions+'</div></div>';}).join("");}
+    catch(err){html='<div class="err-note">'+escapeHtml(err.message)+'</div>';}
+    if(!current())return; writeDetailHtml(el,html);
+    el.querySelectorAll("[data-auto-retry]").forEach(b=>b.onclick=async()=>{await call("automation_retry",Number(b.dataset.autoRetry));renderDetailTabContent(gid,"automation");});
+    el.querySelectorAll("[data-auto-cancel]").forEach(b=>b.onclick=async()=>{await call("automation_cancel",Number(b.dataset.autoCancel));renderDetailTabContent(gid,"automation");});
   } else if (tabName === "logs") {
-    const lContent = $("dLogsContent");
-    if (lContent) {
-      try {
-        const res = await call("loglar", gid);
-        const evts = (res && res.events) || [];
-        if (!evts.length && !item.errorMessage) {
-          lContent.innerHTML = '<div class="hint">' + t("dtab.noLogs") + '</div>';
-        } else {
-          let lines = [];
-          if (item.errorMessage) {
-            lines.push('<div class="log-row"><span class="log-level err">[ERROR]</span>' + escapeHtml(item.errorMessage) + '</div>');
-          }
-          evts.slice(0, 25).forEach((ev) => {
-            const d = ev.at ? new Date(ev.at * 1000).toLocaleTimeString() : "";
-            const lvl = (ev.level || "info").toLowerCase();
-            lines.push('<div class="log-row"><span class="log-time">' + d + '</span><span class="log-level ' + lvl + '">[' + lvl.toUpperCase() + ']</span>' + escapeHtml(ev.message || "") + '</div>');
-          });
-          lContent.innerHTML = lines.join("");
-        }
-      } catch (_) {
-        lContent.innerHTML = '<div class="hint">' + t("dtab.noLogs") + '</div>';
-      }
-    }
+    const el=$("dLogsContent"); if(!el)return; let html;
+    try {const res=await call("loglar",gid),evts=res&&res.events||[]; if(!evts.length&&!item.errorMessage)html='<div class="hint">'+t("dtab.noLogs")+'</div>';else{const lines=[];if(item.errorMessage)lines.push('<div class="log-row"><span class="log-level err">[ERROR]</span>'+escapeHtml(item.errorMessage)+'</div>');evts.slice(0,25).forEach(ev=>{const d=ev.at?new Date(ev.at*1000).toLocaleTimeString():"",lvl=(ev.level||"info").toLowerCase();lines.push('<div class="log-row"><span class="log-time">'+d+'</span><span class="log-level '+lvl+'">['+lvl.toUpperCase()+']</span>'+escapeHtml(ev.message||"")+'</div>');});html=lines.join("");}}
+    catch(_){html='<div class="hint">'+t("dtab.noLogs")+'</div>';}
+    if(current())writeDetailHtml(el,html);
   }
 }
 
@@ -2750,6 +2731,7 @@ window.addEventListener("pywebviewready", () => {
   window.afudmPencere();
   surumuYukle();
 });
+initDrawerResize();
 tick();
 drawTrace();
 
