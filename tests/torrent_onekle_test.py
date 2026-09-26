@@ -283,6 +283,57 @@ def test_torrent_dosyasi_infohashi_bulunup_paused_gid_benimsenir():
     assert result["gid"] == preview_gid
     assert preview_gid in mgr.rpc.devam_edenler
 
+
+def test_cok_dosyali_bencode_infohashi_tekli_yol_ve_tekli_tracker_listelerinde_bulunur():
+    import hashlib
+
+    def bstr(value):
+        return str(len(value)).encode() + b":" + value
+
+    def bdict(items):
+        return b"d" + b"".join(bstr(key) + value for key, value in sorted(items)) + b"e"
+
+    def blist(values):
+        return b"l" + b"".join(values) + b"e"
+
+    first_file = bdict([
+        (b"length", b"i3e"), (b"path", blist([bstr(b"file.rar")]))
+    ])
+    second_file = bdict([
+        (b"length", b"i-3e"), (b"path", blist([bstr(b"odd")]))
+    ])
+    info = bdict([
+        (b"files", blist([first_file, second_file])),
+        (b"name", bstr(b"DarkSoul")),
+        (b"piece length", b"i16384e"),
+        (b"pieces", bstr(b"01234567890123456789")),
+    ])
+    torrent = (
+        bdict([
+            (b"announce", bstr(b"http://tracker")),
+            (b"announce-list", blist([
+                blist([bstr(b"http://tracker")]),
+                blist([bstr(b"http://tracker2")]),
+            ])),
+            (b"info", info),
+        ])
+    )
+    path = Path("multi-file-odd-lists.torrent")
+    path.write_bytes(torrent)
+    try:
+        assert Manager._torrent_dosya_infohash(str(path)) == hashlib.sha1(info).hexdigest()
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_bozuk_torrent_bencode_infohashi_bos_doner():
+    path = Path("malformed-infohash.torrent")
+    path.write_bytes(b"d4:infod4:pathl5:abc")
+    try:
+        assert Manager._torrent_dosya_infohash(str(path)) == ""
+    finally:
+        path.unlink(missing_ok=True)
+
 if __name__ == "__main__":
     test_duraklatilmis_ekleme_gid_dondurur()
     test_metadata_gelmeden_dosya_listesi_bos_doner()
@@ -293,3 +344,5 @@ if __name__ == "__main__":
     test_servis_ekle_on_eklenen_torrent_gidini_kullanir()
     test_adopt_gid_olmadan_db_satiri_olmayan_paused_torrent_benimsenir()
     test_torrent_dosyasi_infohashi_bulunup_paused_gid_benimsenir()
+    test_cok_dosyali_bencode_infohashi_tekli_yol_ve_tekli_tracker_listelerinde_bulunur()
+    test_bozuk_torrent_bencode_infohashi_bos_doner()

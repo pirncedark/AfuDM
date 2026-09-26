@@ -364,29 +364,61 @@ class Manager:
         except OSError:
             return ""
 
-        def parse(pos: int) -> tuple[int, bytes | None]:
-            token = data[pos:pos + 1]
-            if token == b"i":
-                return data.index(b"e", pos + 1) + 1, None
-            if token in (b"l", b"d"):
-                cursor = pos + 1
-                while data[cursor:cursor + 1] != b"e":
-                    cursor, _ = parse(cursor)
-                    cursor, _ = parse(cursor)
-                return cursor + 1, None
+        def string_end(pos: int) -> tuple[int, bytes]:
             colon = data.index(b":", pos)
-            size = int(data[pos:colon])
-            end = colon + 1 + size
+            raw_length = data[pos:colon]
+            if not raw_length or not raw_length.isdigit():
+                raise ValueError("invalid byte string length")
+            end = colon + 1 + int(raw_length)
+            if end > len(data):
+                raise ValueError("truncated byte string")
             return end, data[colon + 1:end]
+
+        def skip_value(pos: int) -> int:
+            """Consume one bencode value without using Python recursion."""
+            stack: list[tuple[bytes, bool]] = []
+            while True:
+                token = data[pos:pos + 1]
+                if token == b"i":
+                    end = data.index(b"e", pos + 1)
+                    number = data[pos + 1:end]
+                    if not number or number in (b"-0",) or not (
+                        number.isdigit() or (number.startswith(b"-") and number[1:].isdigit())
+                    ):
+                        raise ValueError("invalid integer")
+                    pos = end + 1
+                elif token == b"l" or token == b"d":
+                    stack.append((token, token == b"d"))
+                    pos += 1
+                elif token and token[0:1].isdigit():
+                    pos, _ = string_end(pos)
+                else:
+                    raise ValueError("invalid bencode token")
+
+                while stack:
+                    kind, key_expected = stack[-1]
+                    if data[pos:pos + 1] == b"e":
+                        stack.pop()
+                        pos += 1
+                        continue
+                    if kind == b"d" and key_expected:
+                        pos, _ = string_end(pos)
+                        stack[-1] = (kind, False)
+                        continue
+                    if kind == b"d":
+                        stack[-1] = (kind, True)
+                    break
+                else:
+                    return pos
 
         try:
             if not data.startswith(b"d"):
                 return ""
             cursor = 1
             while data[cursor:cursor + 1] != b"e":
-                cursor, key = parse(cursor)
+                cursor, key = string_end(cursor)
                 value_start = cursor
-                cursor, _ = parse(cursor)
+                cursor = skip_value(cursor)
                 if key == b"info":
                     return hashlib.sha1(data[value_start:cursor]).hexdigest()
         except (ValueError, IndexError):
