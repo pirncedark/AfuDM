@@ -30,11 +30,13 @@ object ShareHelper {
 
     fun shareFile(context: Context, uri: Uri, title: String, text: String? = null) {
         val mimeType = shareMimeType(context, uri)
-        val intent = Intent(Intent.ACTION_SEND)
-            .setType(mimeType)
-            .putExtra(Intent.EXTRA_STREAM, uri)
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            .setClipData(android.content.ClipData.newUri(context.contentResolver, title, uri))
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            // setClipData Unit dondurur; zincirin sonunda kalirsa intent Unit olur.
+            clipData = android.content.ClipData.newUri(context.contentResolver, title, uri)
+        }
         if (!text.isNullOrBlank()) intent.putExtra(Intent.EXTRA_TEXT, text)
         launchShare(context, intent, title)
     }
