@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -46,6 +47,7 @@ import androidx.media3.common.Player
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.afudm.afutube.core.theme.AfuColors
+import com.afudm.afutube.core.share.ShareHelper
 import androidx.compose.ui.graphics.toArgb
 import com.google.common.util.concurrent.ListenableFuture
 import java.io.File
@@ -165,6 +167,9 @@ class PlayerActivity : ComponentActivity() {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Geri", tint = AfuColors.text)
                     }
                     Text(title, color = AfuColors.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 12.dp))
+                    IconButton(onClick = { ShareHelper.shareFile(this@PlayerActivity, File(path), title) }, modifier = Modifier.semantics { contentDescription = "Paylaş" }) {
+                        Icon(Icons.Default.Share, contentDescription = "Paylaş", tint = AfuColors.text)
+                    }
                 }
                 playbackError?.let { error ->
                     Text(error, color = AfuColors.error, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,

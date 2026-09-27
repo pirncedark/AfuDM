@@ -26,6 +26,7 @@ import androidx.work.WorkInfo
 import com.afudm.afutube.downloader.DownloadEngine
 import com.afudm.afutube.downloader.DownloadProgress
 import com.afudm.afutube.core.theme.AfuColors
+import com.afudm.afutube.core.share.ShareHelper
 import com.afudm.afutube.media.MediaFileType
 import com.afudm.afutube.media.MediaFileTypeDetector
 import com.afudm.afutube.media.PlayerActivity
@@ -101,6 +102,7 @@ fun DownloadsScreen() {
                             context.startActivity(playIntent)
                         },
                         onCancel = { engine.cancel(workInfo.id) },
+                        onShare = { path, title -> ShareHelper.shareFile(context, java.io.File(path), title) },
                         onRemove = { title ->
                             engine.remove(workInfo.id, title, finished = workInfo.state == WorkInfo.State.SUCCEEDED)
                         }
@@ -116,6 +118,7 @@ private fun DownloadCard(
     workInfo : WorkInfo,
     outputPath: String?,
     onPlay: (String, Boolean) -> Unit,
+    onShare: (String, String) -> Unit,
     onCancel : () -> Unit,
     onRemove : (title: String) -> Unit
 ) {
@@ -200,6 +203,12 @@ private fun DownloadCard(
             if (outputPath != null) {
                 val audioOnly = MediaFileTypeDetector.fromPath(outputPath) == MediaFileType.AUDIO
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = { onShare(outputPath, title) },
+                        modifier = Modifier.size(36.dp).semantics { contentDescription = "Paylaş" }
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = "Paylaş", tint = AfuColors.text)
+                    }
                     if (!audioOnly) PlayPill(label = "İzle", listen = false, onClick = { onPlay(outputPath, false) })
                     PlayPill(label = "Dinle", listen = true, onClick = { onPlay(outputPath, true) })
                 }
