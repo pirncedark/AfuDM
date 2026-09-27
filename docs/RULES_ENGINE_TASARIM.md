@@ -160,13 +160,13 @@ def rules_save(rules: list[dict]) -> dict:
 
 def rules_simulate(url: str, filename: str = "", size_bytes: int = 0, protocol: str = "http") -> dict:
     """
-    Verilen parametrelere gore hangi kurallarin tetiklendigini ve 
+    Verilen parametrelere gore hangi kurallarin tetiklendigini ve
     ortaya cikan nihai actions/trace tablosunu doner.
     """
     # Donus: {
-    #   "ok": True, 
-    #   "matched_rules": ["id1", "id2"], 
-    #   "effective_options": {...}, 
+    #   "ok": True,
+    #   "matched_rules": ["id1", "id2"],
+    #   "effective_options": {...},
     #   "trace": {...}
     # }
 ```

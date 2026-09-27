@@ -13,31 +13,31 @@ class DummyRPC:
         self.devam_edenler = []
         self.durumlar = {}
         self.paused = set()
-        
+
     def add_torrent(self, payload, options):
         gid = f"tor_{len(self.eklenenler)}"
         self.eklenenler.append({"type": "torrent", "gid": gid, "options": options})
         self.durumlar[gid] = {"gid": gid, "infoHash": "abc", "status": "paused", "bittorrent": {"info": {"name": "test_torrent"}}}
         self.paused.add(gid)
         return gid
-        
+
     def add_uri(self, uris, options):
         gid = f"mag_{len(self.eklenenler)}"
         self.eklenenler.append({"type": "magnet", "gid": gid, "uris": uris, "options": options})
         self.durumlar[gid] = {"gid": gid, "infoHash": "abc", "status": "paused"}
         self.paused.add(gid)
         return gid
-        
+
     def tell_status(self, gid, keys=None):
         if gid not in self.durumlar:
             raise Aria2Error(1, "Not found")
         return self.durumlar[gid]
-        
+
     def change_option(self, gid, options):
         if gid not in self.secimler:
             self.secimler[gid] = {}
         self.secimler[gid].update(options)
-        
+
     def get_files(self, gid):
         if gid.startswith("mag_") and "bittorrent" not in self.durumlar[gid]:
             return []
@@ -49,21 +49,21 @@ class DummyRPC:
             {"index": "1", "path": "dosya1.txt", "length": "100", "completedLength": "0", "selected": "true"},
             {"index": "2", "path": "dosya2.txt", "length": "200", "completedLength": "0", "selected": "true"}
         ]
-        
+
     def tell_active(self, keys=None):
         return []
     def tell_waiting(self, offset, num, keys=None):
         return [d for gid, d in self.durumlar.items() if gid in self.paused][offset:offset + num]
     def tell_stopped(self, offset, num, keys=None):
         return []
-        
+
     def unpause(self, gid):
         self.devam_edenler.append(gid)
         self.paused.discard(gid)
-        
+
     def remove(self, gid, force=False):
         self.kaldirmalar.append(gid)
-        
+
     def remove_result(self, gid):
         pass
 
@@ -77,18 +77,18 @@ class DummyStore:
 
     def get(self, key, default=None):
         return default
-        
+
     def by_gid(self, gid):
         for k in self.kayitlar.values():
             if k.get("gid") == gid:
                 return k
         return None
-        
+
     def by_id(self, row_id):
         return self.kayitlar.get(row_id)
     def list(self, limit=100):
         return []
-        
+
     def add(self, **kwargs):
         row_id = self._id
         self._id += 1
@@ -97,22 +97,22 @@ class DummyStore:
             kwargs["options"] = json.dumps(kwargs["options"])
         self.kayitlar[row_id] = {"id": row_id, "gid": None, **kwargs}
         return row_id
-        
+
     def attach_gid(self, row_id, gid):
         self.kayitlar[row_id]["gid"] = gid
-        
+
     def torrent_dosya_secimlerini_kaydet(self, gid, indeksler):
         self.secimler[gid] = indeksler
-        
+
     def torrent_dosya_secimi_var(self, gid):
         return gid in self.secimler
-        
+
     def torrent_dosya_secimleri(self, gid):
         return self.secimler.get(gid, [])
-        
+
     def log(self, level, msg, gid=""):
         pass
-        
+
 class DummyManager(Manager):
     def __init__(self):
         self.rpc = DummyRPC()
@@ -129,7 +129,7 @@ def test_duraklatilmis_ekleme_gid_dondurur():
     assert gid.startswith("mag_")
     eklenen = mgr.rpc.eklenenler[0]
     assert eklenen["options"].get("pause") == "true"
-    
+
 def test_metadata_gelmeden_dosya_listesi_bos_doner():
     mgr = DummyManager()
     gid = mgr.torrent_on_ekle("magnet:?xt=urn:btih:1234")

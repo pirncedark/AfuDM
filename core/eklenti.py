@@ -905,13 +905,13 @@ class EklentiServisi:
             return {"ok": False, "code": "KURULU_DEGIL", "error": "eklenti kurulu degil"}
         if not kayit.get("onceki_surum"):
             return {"ok": False, "code": "YEDEK_YOK", "error": "onceki surum kaydi yok"}
-            
+
         yedek = paths.PLUGIN_YEDEK / ad
         if not yedek.exists():
             return {"ok": False, "code": "YEDEK_SILINMIS", "error": "yedek dosyalari bulunamadi"}
-            
+
         islem = self._islem_basla("geri_al", ad)
-        
+
         def kosucu(i: Islem):
             try:
                 i.adim = "geri_aliniyor"
@@ -920,21 +920,21 @@ class EklentiServisi:
                 calisiyordu = bool(host and host.calisiyor()) or kayit.get("etkin")
                 if host:
                     host.durdur()
-                
+
                 _sil(hedef)
                 import shutil
                 shutil.copytree(yedek, hedef)
-                
+
                 eski = dict(kayit)
                 eski["surum"] = kayit["onceki_surum"]
                 eski["onceki_surum"] = kayit["surum"]
                 eski["son_hata"] = ""
                 self.store.eklenti_yaz(eski)
-                
+
                 if calisiyordu:
                     yeni_host = self._host(self.store.eklenti(ad) or eski)
                     yeni_host.baslat()
-                    
+
                 i.mesaj = f"{kayit['surum']} -> {eski['surum']} geri alindi"
                 i.adim = "bitti"
             except Exception as exc:
@@ -942,7 +942,7 @@ class EklentiServisi:
                 i.mesaj = str(exc)[:400]
             finally:
                 i.bitis = time.time()
-                
+
         import threading
         threading.Thread(target=kosucu, daemon=True).start()
         return {"ok": True, "islem": islem.ozet()}
