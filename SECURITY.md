@@ -22,3 +22,7 @@ Bildiriminize şunları eklediğinizden emin olun:
 - Açığın nasıl tetikleneceğine dair adım adım yeniden oluşturma (Proof of Concept) senaryosu.
 
 Bildirimlerinize en geç **48 saat** içinde yanıt vermeye ve açığı doğrular doğrulamaz kapalı bir dal (private branch) üzerinde çözmeye gayret edeceğiz. Teşekkür ederiz!
+
+## English reporting summary
+
+Please report vulnerabilities privately through GitHub Security Advisories, not public issues. Include the affected version, platform, vulnerability type, and clear reproduction steps. Reports are acknowledged within 48 hours where possible.

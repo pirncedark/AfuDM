@@ -3,7 +3,12 @@
 *.ps1 text eol=crlf
 *.cmd text eol=crlf
 *.bat text eol=crlf
+*.sh text eol=lf
+*.jpg binary
+*.jpeg binary
 *.png binary
 *.ico binary
 *.exe binary
 *.zip binary
+*.mp3 binary
+*.mp4 binary

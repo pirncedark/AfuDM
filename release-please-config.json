@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "AfuDM",
+      "changelog-path": "docs/RELEASE_NOTES/CHANGELOG.md",
+      "include-v-in-tag": true,
+      "skip-github-release": true,
+      "extra-files": [
+        "core/surum.py",
+        "extension/manifest.json"
+      ]
+    }
+  }
+}
