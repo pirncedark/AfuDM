@@ -10,7 +10,8 @@
       "extra-files": [
         "core/surum.py",
         "extension/manifest.json"
-      ]
+      ],
+      "include-component-in-tag": false
     }
   }
 }
