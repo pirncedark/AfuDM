@@ -58,8 +58,8 @@ jobs:
           AFUTUBE_KEYSTORE_PASS: ${{ secrets.AFUTUBE_KEYSTORE_PASS }}
           AFUTUBE_KEY_ALIAS: ${{ secrets.AFUTUBE_KEY_ALIAS }}
           AFUTUBE_KEY_PASS: ${{ secrets.AFUTUBE_KEY_PASS }}
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
-        run: ./gradlew assembleRelease --no-daemon --stacktrace -PversionCode="$GITHUB_RUN_NUMBER" -PversionName=0.0."$GITHUB_RUN_NUMBER"
+          RUN_NUMBER: ${{ github.run_number }}
+        run: ./gradlew assembleRelease --no-daemon --stacktrace -PversionCode="$RUN_NUMBER" -PversionName=0.0."$RUN_NUMBER"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
