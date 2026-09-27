@@ -1852,6 +1852,7 @@ document.querySelectorAll("[data-kopya]").forEach((dugme) => {
 $("openSettings").onclick = async () => {
   const s = state.settings;
   $("sLang").value = s.language || "auto";
+  $("sGuncellemeOto").checked = s.guncelleme_otomatik !== false;
   $("sDir").value = s.download_dir || "";
   $("sSplit").value = s.split ?? 64;
   $("sConn").value = s.max_conn_per_server ?? 16;
@@ -1918,6 +1919,7 @@ $("openSettings").onclick = async () => {
   $("sAutoSeconds").value = s.automation_power_seconds || 60;
   $("sSeedEkOzet").textContent = "";
   surumuCiz();
+  $("guncellemeAyarDurum").textContent = "";
   ayarRozetleriCiz();
   openVeil("setVeil");
   try {
@@ -2765,6 +2767,7 @@ window.addEventListener("pywebviewready", () => {
   state.ready = true;
   window.afudmPencere();
   surumuYukle();
+  setTimeout(() => guncellemeOtomatikKontrol(), 1200);
 });
 initDrawerResize();
 tick();
@@ -2918,6 +2921,81 @@ document.addEventListener("keydown", (event) => {
    Ayarlar'da uzanti surumuyle birlikte. Kopru hazir olmadan cagrilirsa
    sessizce bos kalir — surum gostergesi yuzunden arayuz patlamasin. */
 let surumBilgisi = null;
+let guncellemeBilgisi = null;
+let guncellemeIsliyor = false;
+
+async function guncellemeKontrol(sessiz = false) {
+  try {
+    const bilgi = await call("guncelleme_kontrol");
+    if (!bilgi.ok) {
+      if (!sessiz) $("guncellemeAyarDurum").textContent = bilgi.hata || t("upd.error");
+      return bilgi;
+    }
+    if (bilgi.var) {
+      guncellemeBilgisi = bilgi;
+      $("guncellemeMesaj").textContent = t("upd.ready", { version: bilgi.yeni });
+      $("guncellemeSerit").hidden = false;
+    } else if (!sessiz) {
+      $("guncellemeAyarDurum").textContent = t("upd.current");
+    }
+    return bilgi;
+  } catch (_) {
+    if (!sessiz) $("guncellemeAyarDurum").textContent = t("upd.error");
+    return { ok: false };
+  }
+}
+
+async function guncellemeOtomatikKontrol() {
+  try {
+    const once = await call("guncelleme_son_kontrol");
+    if (once.aktif === false) return;
+    if (Date.now() / 1000 - (once.zaman || 0) < 86400) return;
+    await guncellemeKontrol(true);
+  } catch (_) { /* Sessiz acilis kontrolu. */ }
+}
+
+async function guncellemeBaslat() {
+  if (guncellemeIsliyor || !guncellemeBilgisi) return;
+  guncellemeIsliyor = true;
+  const dugme = $("guncellemeBtn");
+  dugme.disabled = true;
+  $("guncellemeMesaj").textContent = t("upd.downloading");
+  try {
+    await call("guncelleme_indir", guncellemeBilgisi);
+    while (true) {
+      const durum = await call("guncelleme_durum");
+      if (durum.durum === "hata") throw new Error(durum.hata || t("upd.error"));
+      if (durum.durum === "bitti") break;
+      if (durum.toplam > 0) {
+        $("guncellemeMesaj").textContent = t("upd.progress", {
+          percent: Math.min(99, Math.floor(durum.inen * 100 / durum.toplam))
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    $("guncellemeMesaj").textContent = t("upd.restarting");
+    const out = await call("guncelleme_uygula");
+    if (!out.ok) throw new Error(out.hata || t("upd.error"));
+  } catch (err) {
+    $("guncellemeMesaj").textContent = err.message || t("upd.error");
+    dugme.disabled = false;
+    guncellemeIsliyor = false;
+  }
+}
+
+$("guncellemeBtn").onclick = guncellemeBaslat;
+$("guncellemeKontrolBtn").onclick = async () => {
+  $("guncellemeAyarDurum").textContent = "";
+  await guncellemeKontrol(false);
+};
+$("sGuncellemeOto").onchange = async () => {
+  try {
+    await call("guncelleme_otomatik_ayarla", $("sGuncellemeOto").checked);
+    state.settings.guncelleme_otomatik = $("sGuncellemeOto").checked;
+  } catch (_) {
+    $("sGuncellemeOto").checked = state.settings.guncelleme_otomatik !== false;
+  }
+};
 
 async function surumuYukle() {
   if (surumBilgisi) return surumBilgisi;

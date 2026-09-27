@@ -37,7 +37,7 @@ from api.server import LocalAPI  # noqa: E402
 
 VARSAYILAN_API_PORT = 6811   # uzantinin da ilk denedigi port
 from core import (baslangic, chrome_kurulum, clipboard, dosya_adi, engines, guc, iliskilendir,  # noqa: E402
-                  ornek, tracker_saglik,
+                  ornek, tracker_saglik, guncelleme,
                   kaydet, lang, linkgrabber, models, paths, pencere, surum)
 from core.manager import Manager  # noqa: E402
 from core.manager import AyarGecersiz  # noqa: E402
@@ -206,6 +206,9 @@ class Api:
         from api.server import _Handler
         self._paylasim_sunucusu = PaylasimSunucusu(_Handler.shared_files)
         self._tunel = TunnelManager(str(paths.ENGINE / "cloudflared.exe"))
+        self._guncelleme_kilidi = threading.Lock()
+        self._guncelleme_isliyor = False
+        self._guncelleme_durum = {"durum": "hazir", "inen": 0, "toplam": 0}
 
         def _otomatik_motorlar():
             for m in engines.eksikler(sadece_istege_bagli=True):
@@ -300,6 +303,58 @@ class Api:
         Kopru metodu app.js'in surumuYukle cagrisina karsilik gelir; eski
         derlemelerde yoktu ve rozet sessizce bos kaliyordu."""
         return {"surum": surum.SURUM, "uzanti": surum.uzanti_surumu()}
+
+    def guncelleme_kontrol(self) -> dict:
+        sonuc = guncelleme.kontrol()
+        try:
+            kayit = paths.DATA / "guncelleme" / "kontrol.json"
+            kayit.parent.mkdir(parents=True, exist_ok=True)
+            kayit.write_text(json.dumps({"zaman": time.time()}), encoding="utf-8")
+        except OSError:
+            pass
+        return sonuc
+
+    def guncelleme_otomatik_ayarla(self, aktif: bool) -> dict:
+        self.manager.store.set("guncelleme_otomatik", bool(aktif))
+        return {"ok": True}
+
+    def guncelleme_son_kontrol(self) -> dict:
+        aktif = self.manager.store.get("guncelleme_otomatik", True) is not False
+        try:
+            kayit = paths.DATA / "guncelleme" / "kontrol.json"
+            return {**json.loads(kayit.read_text(encoding="utf-8")), "aktif": aktif}
+        except (OSError, ValueError):
+            return {"zaman": 0, "aktif": aktif}
+
+    def guncelleme_indir(self, bilgi: dict) -> dict:
+        with self._guncelleme_kilidi:
+            if self._guncelleme_isliyor:
+                return {"ok": True, "zaten": True}
+            self._guncelleme_isliyor = True
+            self._guncelleme_durum = {"durum": "iniyor", "inen": 0, "toplam": 0}
+
+        def is_parcasi() -> None:
+            def ilerleme(inen: int, toplam: int) -> None:
+                self._guncelleme_durum = {"durum": "iniyor", "inen": inen, "toplam": toplam}
+            sonuc = guncelleme.indir_ve_dogrula(bilgi, ilerleme=ilerleme)
+            self._guncelleme_durum = ({"durum": "bitti"} if sonuc.get("ok") else
+                                      {"durum": "hata", "hata": sonuc.get("hata", "Güncelleme indirilemedi.")})
+            with self._guncelleme_kilidi:
+                self._guncelleme_isliyor = False
+
+        threading.Thread(target=is_parcasi, daemon=True).start()
+        return {"ok": True}
+
+    def guncelleme_durum(self) -> dict:
+        return dict(self._guncelleme_durum)
+
+    def guncelleme_uygula(self) -> dict:
+        sonuc = guncelleme.uygula()
+        if sonuc.get("ok"):
+            self._cikiliyor = True
+            if self._window:
+                self._window.destroy()
+        return sonuc
 
     def peers(self, gid: str) -> dict:
         return {"ok": True, "peers": self.manager.peers(gid)}
