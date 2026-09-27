@@ -13,6 +13,7 @@ repos:
         args: [--maxkb=1024]
       - id: check-merge-conflict
       - id: mixed-line-ending
+        args: [--fix=no]
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
