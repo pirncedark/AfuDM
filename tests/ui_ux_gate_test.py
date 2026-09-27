@@ -47,7 +47,7 @@ class UIUXGateTest(unittest.TestCase):
             if message.type == "error"
             else None,
         )
-        
+
         # We use a fake pywebview to simulate the backend.
         self.page.add_init_script("""
             window.fakeBackendState = {
@@ -60,7 +60,7 @@ class UIUXGateTest(unittest.TestCase):
                 lang: "LANGUAGE",
                 last_error: ""
             };
-            
+
             window.pywebview = {
                 api: {
                     snapshot: async () => {
@@ -87,10 +87,10 @@ class UIUXGateTest(unittest.TestCase):
             };
         """.replace("LANGUAGE", self.test_lang))
         self.page.goto((Path(__file__).resolve().parents[1] / "ui/index.html").as_uri())
-        
+
         # Now that app.js is loaded, dispatch the event
         self.page.evaluate('window.dispatchEvent(new Event("pywebviewready"));')
-        
+
         # Wait for the app to initialize (tick is called, UI is drawn)
         self.page.wait_for_function("typeof state !== 'undefined' && state.ready === true", timeout=2000)
 
@@ -101,7 +101,7 @@ class UIUXGateTest(unittest.TestCase):
         """G-001 to G-004: App opens, no blank screen, no JS errors, DOM valid."""
         expect(self.page.locator("body")).to_be_visible()
         self.assertEqual(len(self.errors), 0, f"Uncaught JS errors found: {self.errors}")
-        
+
         # Check for unclosed tags by seeing if fundamental elements exist
         expect(self.page.locator("#list")).to_be_visible()
         expect(self.page.locator(".rail")).to_be_visible()
@@ -193,16 +193,16 @@ class UIUXGateTest(unittest.TestCase):
             "#addBtn", "#lgBtn", "#pauseAll", "#resumeAll", "#clearDone",
             "#openSettings", "#rulesOpen", "[data-f='video']"
         ]
-        
+
         for btn in buttons_to_test:
             el = self.page.locator(btn)
             if el.is_visible():
                 el.click(force=True)
-                
+
         # Close any modals that opened
         self.page.keyboard.press("Escape")
         self.page.keyboard.press("Escape")
-        
+
         self.assertEqual(len(self.errors), 0, f"Errors after clicking buttons: {self.errors}")
 
     def test_g005_g006_all_visible_controls(self):
@@ -240,11 +240,11 @@ class UIUXGateTest(unittest.TestCase):
         self.page.locator("#addBtn").click()
         veil = self.page.locator("#addVeil")
         expect(veil).to_be_visible()
-        
+
         # 2. Check Esc closes it
         self.page.keyboard.press("Escape")
         expect(veil).to_be_hidden()
-        
+
         # 3. Open Settings Modal and verify the opening control is restored after closing.
         opener = self.page.locator("#openSettings")
         opener.focus()
@@ -293,27 +293,27 @@ class UIUXGateTest(unittest.TestCase):
         """G-011 to G-013: UI handles engine death and recovery gracefully."""
         # Make engine offline
         self.page.evaluate("window.fakeBackendState.engine_ok = false")
-        
+
         # Wait for polling to notice
         offline_text = "bağlantı yok" if self.test_lang == "tr" else "no connection"
         expect(self.page.locator("#engineText")).to_contain_text(offline_text, timeout=3000)
         expect(self.page.locator("#engineRetry")).to_be_visible()
-        
+
         # A controlled fake backend response keeps the bridge contract async without
         # throwing inside Playwright's evaluation context.
         self.page.evaluate("window.fakeBackendState.port_status = { calisan: null, yeniden_baslatma_gerekli: false }")
         self.page.locator("#openSettings").click()
-        
+
         # Veil should still open even if port check fails
         expect(self.page.locator("#setVeil")).to_be_visible()
         self.page.keyboard.press("Escape")
-        
+
         # Click while the retry control is still visible; the next UI tick hides it
         # as soon as the fake backend reports a recovered engine.
         expect(self.page.locator("#engineRetry")).to_be_visible()
         self.page.locator("#engineRetry").click()
         self.page.evaluate("window.fakeBackendState.engine_ok = true")
-        
+
         # Wait for recovery
         expect(self.page.locator("#engineText")).not_to_contain_text(offline_text, timeout=3000)
 
@@ -363,12 +363,12 @@ class UIUXGateTest(unittest.TestCase):
             {"width": 1280, "height": 720},
             {"width": 1366, "height": 768}
         ]
-        
+
         for vp in viewports:
             self.page.set_viewport_size(vp)
             expect(self.page.locator(".rail")).to_be_visible()
             expect(self.page.locator(".main")).to_be_visible()
-            
+
             # Toolbar buttons should remain inside viewport (no horizontal scroll)
             bb = self.page.locator("#addBtn").bounding_box()
             self.assertLess(bb["x"] + bb["width"], vp["width"])

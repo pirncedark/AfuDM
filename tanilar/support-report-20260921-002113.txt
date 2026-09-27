@@ -13,7 +13,7 @@ OS Manufacturer:               Microsoft Corporation
 OS Configuration:              Standalone Workstation
 OS Build Type:                 Multiprocessor Free
 Registered Owner:              afuuu
-Registered Organization:       
+Registered Organization:
 Product ID:                    00331-10000-00001-AA131
 Original Install Date:         1.07.2025, 14:26:51
 System Boot Time:              20.09.2026, 21:53:04
@@ -221,4 +221,3 @@ http://tracker.renfei.net:8080/announce
 udp://t.overflow.biz:6969/announce
 --- C:\Users\REDACTED\AfuDM\data\api_token.txt ---
 REDACTED
-

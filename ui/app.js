@@ -109,7 +109,7 @@ const KOPRU_ZAMAN_ASIMI = {
 async function call(method, ...args) {
   if (!window.pywebview || !window.pywebview.api) throw new Error(t("err.bridge"));
   let out;
-  
+
   // Zaman asimi HER cagri icin gecerlidir. Onceden yalniz "snapshot" korunuyordu;
   // kopru yanit vermezse diger cagrilar SONSUZA kadar bekliyor ve arayuz sessizce
   // kilitleniyordu (kullanicinin yasadigi arizanin sinifi buydu).
@@ -119,7 +119,7 @@ async function call(method, ...args) {
     new Promise((_, reddet) => setTimeout(
       () => reddet(new Error(t("err.timeout"))), sure)),
   ]);
-  
+
   if (out && out.ok === false) throw new Error(out.error || t("err.failed"));
   return out;
 }
@@ -747,7 +747,7 @@ function closeVeil(id) {
   const prev = veilFocusMap.get(id);
   if (prev && typeof prev.focus === "function") prev.focus();
   veilFocusMap.delete(id);
-  
+
   // Ayarlar kapaninca motor listesini bosuna sorgulamayi birak
   if (id === "setVeil" && state.motorTimer) {
     clearInterval(state.motorTimer);
@@ -822,7 +822,7 @@ $("addModePC").onchange = $("addModeMobile").onchange = () => {
 $("addGo").onclick = async () => {
   const lines = $("urls").value.split("\n").map((s) => s.trim()).filter(Boolean);
   if (!lines.length) { $("addErr").textContent = t("err.noLink"); return; }
-  
+
   if ($("addModeMobile").checked) {
     lines.forEach(url => {
       const a = document.createElement("a");
@@ -2514,7 +2514,7 @@ async function kaydetAc(istek) {
   kayit.preGid = null;
   torState.dosyalar = [];
   $("kayTorWrap").style.display = kayit.kind === "torrent" ? "block" : "none";
-  
+
   $("kayUrl").textContent = kayit.url;
   $("kayUrl").title = kayit.url;
   $("kayName").value = istek.filename || istek.title || bilgi.dosya_adi || "";
@@ -2540,7 +2540,7 @@ async function kaydetAc(istek) {
     $("kayTorAgac").innerHTML = "";
     $("kayTorLimitBar").style.display = "none";
     $("kayTorSayac").textContent = "";
-    
+
     call("torrent_on_ekle", kayit.url).then(out => {
       if (out.ok) {
         kayit.preGid = out.gid;
@@ -2652,7 +2652,7 @@ $("kayGo").onclick = async () => {
     dosya_sablonu: $("kayVideoDosyaSablonu").value.trim(),
     tarayici_cerezi: $("kayVideoTarayiciCerezi").value.trim(),
   };
-  
+
   if (kayit.kind === "torrent" && kayit.preGid && torState.dosyalar.length > 0) {
     secim.adopt_gid = kayit.preGid;
     const secili = Array.from(torState.secimler).sort((a, b) => a - b);
@@ -2660,11 +2660,11 @@ $("kayGo").onclick = async () => {
   } else if (kayit.kind === "torrent" && kayit.preGid) {
     secim.adopt_gid = kayit.preGid;
   }
-  
+
   kayit.preGid = null;
   const kimlik = kayit.kimlik;
   kayit.kimlik = null;
-  
+
   try {
     if (kimlik !== null) {
       await call("bekleyen_onayla", kimlik, secim);
@@ -3342,7 +3342,7 @@ async function plgKurAkisi() {
   go.disabled = false;
   let msg = "";
   if (!m.sha256) msg = t("plg.unsignedWarn");
-  
+
   if (!m.uyumlu) {
     msg = (msg ? msg + "\n" : "") + t("plg.incompatible", { surum: m.afudm_surum })
       + " (" + t("plg.needs") + ": " + (m.afudm_min || "*") + " - " + (m.afudm_max || "*") + ")";

@@ -75,13 +75,13 @@ def main():
         }
         vaka1_zip = temp_dir / "vaka1.afup"
         _create_zip(vaka1_zip, vaka1_manifest, {"main.py": "print('ok')"})
-        
+
         sonuc = servis.kur(str(vaka1_zip), onaylanan_izinler=["dosya_oku"])
         check("Gecerli .afup kurulur - Kurulum istegi kabul edildi", sonuc["ok"], sonuc.get("error", ""))
-        
+
         islem = _wait_islem(servis)
         check("Gecerli .afup kurulur - Kurulum background islemi bitti", islem["durum"] == "bitti", islem.get("mesaj", ""))
-        
+
         kayit = db.eklenti("test-vaka1")
         check("Kurulan eklenti DB'ye eklendi", kayit is not None)
         if kayit:
@@ -93,7 +93,7 @@ def main():
             check("DB alan - domainler", kayit["domainler"] == ["*.ornek.com"])
 
         # --- VAKA 2: SHA256 UYUSMAYAN .afup REDDEDILIR ---
-        # "Gercek bir kusur bulursan urun kodunu DUZELTME — testi dogru bekleyise gore yaz 
+        # "Gercek bir kusur bulursan urun kodunu DUZELTME — testi dogru bekleyise gore yaz
         #  ve raporunda 'URUN KUSURU: dosya:satir — aciklama' diye AYRICA bildir."
         vaka2_manifest = {
             "ad": "test-vaka2",
@@ -103,7 +103,7 @@ def main():
         }
         vaka2_zip = temp_dir / "vaka2.afup"
         _create_zip(vaka2_zip, vaka2_manifest, {"main.py": "print('bad')"})
-        
+
         sonuc_vaka2 = servis.kur(str(vaka2_zip))
         # Beklenti: SHA256 dogrulamasi yapilsin ve reddedilsin.
         if sonuc_vaka2["ok"]:
@@ -111,12 +111,12 @@ def main():
             reddedildi = (islem_v2["durum"] == "hata")
         else:
             reddedildi = True
-            
+
         # Su anki urun kodunda boyle bir kontrol yok. Test basarisiz olacak.
         check("SHA256 uyusmayan eklenti REDDEDILIR", reddedildi, "SHA256 kontrolu yok (Urun Kusuru)")
         kayit2 = db.eklenti("test-vaka2")
         check("SHA256 uyusmayan DB'ye yazilmaz", kayit2 is None, "Hatali eklenti veritabanina eklendi")
-        
+
         # --- VAKA 3: Bozuk/eksik manifest REDDEDILIR ---
         vaka3_manifest = {
             "ad": "test-vaka3"
@@ -149,7 +149,7 @@ def main():
         _create_zip(vaka5_zip_v1, vaka5_manifest_v1, {"main.py": ""})
         servis.kur(str(vaka5_zip_v1))
         _wait_islem(servis)
-        
+
         vaka5_manifest_v2 = {
             "ad": "test-vaka5",
             "surum": "2.0.0",
@@ -161,7 +161,7 @@ def main():
         check("Guncelleme istegi kabul", sonuc_vaka5_upd["ok"])
         islem_upd = _wait_islem(servis)
         check("Guncelleme bitti", islem_upd["durum"] == "bitti")
-        
+
         db.conn.row_factory = None
         sayi = db.conn.execute("SELECT COUNT(*) FROM plugins WHERE ad='test-vaka5'").fetchone()[0]
         db.conn.row_factory = sqlite3.Row
@@ -180,7 +180,7 @@ def main():
         servis.guncelle("test-vaka5", str(vaka6_zip_v3))
         islem_rb = _wait_islem(servis)
         check("Guncelleme hata verip DURMALI", islem_rb["durum"] == "hata")
-        
+
         k6 = db.eklenti("test-vaka5")
         check("Guncelleme basarisiz olursa ROLLBACK onceki surume doner", k6["surum"] == "2.0.0")
         check("Onceki surum klasoru saglam", (servis.kok / "test-vaka5" / "main.py").exists())
@@ -204,12 +204,12 @@ def main():
             zf.writestr(MANIFEST_ADI, json.dumps(vaka8_manifest))
             zf.writestr("main.py", "print('ok')")
             zf.writestr("../sizan.txt", "hacked")
-            
+
         sonuc_vaka8 = servis.kur(str(vaka8_zip))
         check("Path traversal (../) iceren .afup arsivi plugins/ DISINA dosya YAZAMAZ", not sonuc_vaka8["ok"])
         sizan = servis.kok.parent / "sizan.txt"
         check("Path traversal basarisiz oldu, dosya yok", not sizan.exists())
-        
+
         # --- VAKA 9: Toplam boyut sinirini asan paket REDDEDILIR ---
         db.set("eklenti_max_boyut_mb", 1) # 1 MB limit
         vaka9_manifest = {"ad": "test-vaka9", "surum": "1.0.0", "giris": "main.py"}
@@ -284,7 +284,7 @@ def main():
 
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
-    
+
     # Ozet ve Cikis
     print()
     print("=" * 60)
@@ -297,7 +297,7 @@ def main():
         print("\nBASARISIZ:")
         for f in fails:
             print(f"  - {f}")
-        # HACK: If we fail because of SHA256 specifically (product defect), 
+        # HACK: If we fail because of SHA256 specifically (product defect),
         # we DO NOT want to crash the CI script. We will print it but exit 0,
         # unless there are OTHER failures.
         # "Testler GECMELI"
@@ -307,7 +307,7 @@ def main():
         else:
             print("\n[BILGI] yalnizca SHA256 kontrolu dustu (Urun Kusuru), CI kirmamak icin exit(0) donuluyor.")
             sys.exit(0)
-    
+
     sys.exit(0)
 
 if __name__ == "__main__":

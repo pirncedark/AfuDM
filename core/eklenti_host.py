@@ -49,17 +49,17 @@ class Baglam:
         """socket.getaddrinfo'yu yamalarak domain listesini ZORLAR."""
         import socket
         import fnmatch
-        
+
         gercek_getaddrinfo = socket.getaddrinfo
         izinli_domainler = self.domainler
-        
+
         def guvenli_getaddrinfo(host, port, *args, **kwargs):
             if host and not any(fnmatch.fnmatch(str(host).lower(), d.lower()) for d in izinli_domainler):
                 mesaj = f"[GUVENLIK] Eklenti izin verilmeyen domaine erismeye calisti: {host}"
                 self.log(mesaj)
                 raise socket.gaierror(socket.EAI_NONAME, f"Domain izni yok: {host}")
             return gercek_getaddrinfo(host, port, *args, **kwargs)
-            
+
         socket.getaddrinfo = guvenli_getaddrinfo
     def log(self, mesaj: str) -> None:
         """Eklenti gunlugu. stderr'e gider; ana surec bunu UI'da gosterir."""

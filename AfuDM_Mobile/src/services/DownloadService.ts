@@ -29,11 +29,11 @@ class DownloadManager {
   async startDownload(url: string, filename: string) {
     const id = Date.now().toString();
     const fileUri = FileSystem.documentDirectory + filename;
-    
+
     const newDownload: DownloadItem = {
       id, url, title: filename, progress: 0, status: 'Downloading', fileUri
     };
-    
+
     this.downloads = [newDownload, ...this.downloads];
     this.notify();
 
