@@ -32,11 +32,14 @@ repos:
     rev: v1.30.1
     hooks:
       - id: zizmor
+        args: [--min-severity=medium]
 
   - repo: https://github.com/rhysd/actionlint
     rev: v1.7.12
     hooks:
       - id: actionlint
+        # shellcheck yalniz Linux'ta var; bilgi duzeyi notlar CI'i kirmasin
+        args: [-ignore, 'SC[0-9]+:info:']
 
   - repo: local
     hooks:

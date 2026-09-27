@@ -36,7 +36,6 @@ jobs:
       - name: Run pre-commit hooks on changed files
         shell: bash
         env:
-          SKIP: zizmor
           FROM_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: pre-commit run --from-ref "$FROM_REF" --to-ref HEAD --show-diff-on-failure
       # AfuDM yalniz Windows uygulamasi (core/windows_integration.py winreg ister).

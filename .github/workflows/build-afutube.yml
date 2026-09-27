@@ -7,16 +7,21 @@ on:
       - '.github/workflows/build-afutube.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Setup Java 17
-        uses: actions/setup-java@v6
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
         with:
           distribution: 'zulu'
           java-version: '17'
@@ -34,7 +39,7 @@ jobs:
           chmod +x gradlew
 
       - name: Setup Gradle cache
-        uses: gradle/actions/setup-gradle@v6
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
 
       - name: Run AfuTube unit tests
         working-directory: ./AfuTube
@@ -53,10 +58,11 @@ jobs:
           AFUTUBE_KEYSTORE_PASS: ${{ secrets.AFUTUBE_KEYSTORE_PASS }}
           AFUTUBE_KEY_ALIAS: ${{ secrets.AFUTUBE_KEY_ALIAS }}
           AFUTUBE_KEY_PASS: ${{ secrets.AFUTUBE_KEY_PASS }}
-        run: ./gradlew assembleRelease --no-daemon --stacktrace -PversionCode=${{ github.run_number }} -PversionName=0.0.${{ github.run_number }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: ./gradlew assembleRelease --no-daemon --stacktrace -PversionCode="$RUN_NUMBER" -PversionName=0.0."$RUN_NUMBER"
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: success()
         with:
           name: AfuTube-Release-APK
@@ -65,7 +71,7 @@ jobs:
           retention-days: 14
 
       - name: Upload all ABI APKs for emulator test
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: AfuTube-All-APKs
           path: AfuTube/app/build/outputs/apk/release/*.apk
@@ -73,7 +79,7 @@ jobs:
           retention-days: 3
 
       - name: Upload build logs on failure
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: failure()
         with:
           name: build-logs
@@ -89,10 +95,12 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Download APKs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: AfuTube-All-APKs
           path: apks
@@ -126,7 +134,7 @@ jobs:
           printf '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360\n720p/index.m3u8\n' > AfuTube/scripts/e2e-site/hls/master.m3u8
 
       - name: Offline startup + download smoke test
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
           arch: x86_64
@@ -144,7 +152,7 @@ jobs:
 
       - name: Upload e2e evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: AfuTube-e2e-acilis
           path: e2e-out/
