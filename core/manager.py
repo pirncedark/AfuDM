@@ -682,7 +682,7 @@ class Manager:
                             and not self.store.by_gid(gid)):
                         adopt_gid = gid
                         break
-        
+
         if adopt_gid:
             gid = adopt_gid
             try:
@@ -691,12 +691,12 @@ class Manager:
                     gid = durum["followedBy"][0]
             except Aria2Error:
                 pass
-            
+
             try:
                 self.rpc.change_option(gid, {"dir": dest_dir})
             except Aria2Error as exc:
                 self.store.log("error", f"kayit dizini degistirilemedi: {exc}", gid=gid)
-                
+
             selected = options.get("selected_files")
             if selected:
                 try:
@@ -705,7 +705,7 @@ class Manager:
                     self.store.torrent_dosya_secimlerini_kaydet(gid, selected)
                 except Aria2Error as exc:
                     self.store.log("error", f"dosya secimi uygulanamadi: {exc}", gid=gid)
-            
+
             try:
                 self.rpc.unpause(gid)
             except Aria2Error:
@@ -1712,7 +1712,7 @@ class Manager:
         proksi = self._proksi({})
         if proksi:
             aria_options.update(P.aria2_secenekleri(proksi))
-        
+
         local = Path(source)
         try:
             if local.exists() and local.suffix.lower() == ".torrent":

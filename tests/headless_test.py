@@ -68,36 +68,36 @@ def test_headless():
     manager = Manager()
     servis = AfuDMServis(manager, kip="test")
 
-    check("Sunucu varsayilan olarak kapali (sunucu_acik=False)", 
+    check("Sunucu varsayilan olarak kapali (sunucu_acik=False)",
           not servis.store.get("sunucu_acik"))
 
     port = find_free_port()
     servis.store.set("sunucu_port", port)
     servis.store.set("sunucu_izinli_originler", "http://test-origin.local")
-    
-    # Kilit saniyesi max(5, ...) kurali oldugu icin 5 yapiyoruz. 
+
+    # Kilit saniyesi max(5, ...) kurali oldugu icin 5 yapiyoruz.
     # Fakat testte 5 sn beklememek icin limitciyi manuel modifiye edebiliriz
     # ya da sadece 5.1 sn bekleriz.
     servis.limitci.ayarla(limit=50, hatali_limit=3, kilit_saniye=5)
-    
+
     res = servis.sunucu_baslat()
     check("Sunucu acilabilir", res.get("ok", False) and res.get("calisiyor", False))
-    
+
     url = f"http://127.0.0.1:{port}"
     api_endpoint = f"{url}/api/yetenekler"
 
     st, bd, hd = request(api_endpoint)
     check("Anahtarsiz istek REDDEDILIR (401)", st == 401 and bd.get("code") == "ANAHTAR_GEREKLI", str(bd))
-    
+
     res = servis.anahtar_olustur("Test Yonetici", ROL_YONETICI)
     anahtar = res["gizli"]
-    
+
     st, bd, hd = request(api_endpoint, headers={ANAHTAR_BASLIK: anahtar})
     check("Gecerli anahtarla GECER", st == 200 and bd.get("ok", False), str(bd))
 
     st, bd, hd = request(api_endpoint, headers={ANAHTAR_BASLIK: anahtar, "Origin": "http://kotu-origin.com"})
     check("Izinli olmayan Origin REDDEDILIR (403)", st == 403 and bd.get("code") == "ORIGIN_REDDEDILDI", str(bd))
-    
+
     st, bd, hd = request(api_endpoint, headers={ANAHTAR_BASLIK: anahtar, "Origin": "http://test-origin.local"})
     check("Izinli Origin GECER", st == 200, str(bd))
 
@@ -105,16 +105,16 @@ def test_headless():
     for i in range(3):
         st, bd, hd = request(api_endpoint, headers={ANAHTAR_BASLIK: "yanlis_123"})
         check(f"Yanlis anahtar deneme {i+1} -> 401", st == 401)
-    
+
     st, bd, hd = request(api_endpoint, headers={ANAHTAR_BASLIK: anahtar})
     check("Hatali limit asildiktan sonra dogru anahtar bile 429 REDDEDILIR", st == 429 and bd.get("code") == "COK_FAZLA_ISTEK", str(bd))
-    
+
     time.sleep(5.1) # 5 saniye kilit bekle
     st, bd, hd = request(api_endpoint, headers={ANAHTAR_BASLIK: anahtar})
     check("Kilit suresi gecince IP tekrar kabul edilir", st == 200)
-    
+
     servis.limitci.ayarla(limit=5)
-    
+
     gecti = 0
     for i in range(10):
         st, bd, hd = request(api_endpoint, headers={ANAHTAR_BASLIK: anahtar})
@@ -135,7 +135,7 @@ def test_headless():
 
     st, bd, hd = request(f"{url}/api/ayarlar", method="POST", headers={ANAHTAR_BASLIK: anahtar_okur, CSRF_BASLIK: "1"}, data={"settings": {}})
     check("Salt okur ayar YAZAMAZ (403)", st == 403 and bd.get("code") == "YETKI_YOK", str(bd))
-    
+
     st, bd, hd = request(f"{url}/api/ayarlar", method="POST", headers={ANAHTAR_BASLIK: anahtar}, data={"settings": {}})
     check("POST istegi CSRF basligi olmadan REDDEDILIR", st == 403 and bd.get("code") == "CSRF_BASLIGI_YOK", str(bd))
 
@@ -146,26 +146,26 @@ def test_headless():
     check("Anahtar iptal edildi", res_revoke.get("ok", False))
     st, bd, hd = request(f"{url}/api/ayarlar", headers={ANAHTAR_BASLIK: anahtar_okur})
     check("Iptal edilen anahtar 401 doner", st == 401 and bd.get("code") == "GECERSIZ_ANAHTAR", str(bd))
-    
+
     servis.sunucu_durdur()
     time.sleep(0.5)
-    
+
     port_yerel = find_free_port()
     servis.store.set("sunucu_port", port_yerel)
     servis.store.set("sunucu_adres", "yerel")
     res = servis.sunucu_baslat()
-    
+
     sunucu_url = res.get("url", "")
     check("yerel mod url 127.0.0.1 icerir", "127.0.0.1" in sunucu_url)
     check("yerel mod lan_url bostur", not res.get("lan_url"))
     servis.sunucu_durdur()
-    
+
     port_lan = find_free_port()
     servis.store.set("sunucu_port", port_lan)
     servis.store.set("sunucu_adres", "lan")
     res = servis.sunucu_baslat()
     check("lan mod lan_url doludur", bool(res.get("lan_url")))
-    
+
     servis.sunucu_durdur()
 
 def main():

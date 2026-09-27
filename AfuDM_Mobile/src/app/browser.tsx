@@ -63,7 +63,7 @@ export default function BrowserScreen() {
         })
       });
       const data = await response.json();
-      
+
       if (data.status === 'error') {
         alert('Hata: ' + data.text);
       } else if (data.url) {
@@ -81,9 +81,9 @@ export default function BrowserScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.addressBar}>
-        <TextInput 
-          style={styles.input} 
-          value={inputUrl} 
+        <TextInput
+          style={styles.input}
+          value={inputUrl}
           onChangeText={setInputUrl}
           onSubmitEditing={() => setUrl(inputUrl.startsWith('http') ? inputUrl : 'https://' + inputUrl)}
           autoCapitalize="none"
@@ -93,9 +93,9 @@ export default function BrowserScreen() {
           <Text style={{color: '#fff'}}>Git</Text>
         </TouchableOpacity>
       </View>
-      <WebView 
+      <WebView
         ref={webviewRef}
-        source={{ uri: url }} 
+        source={{ uri: url }}
         style={styles.webview}
         injectedJavaScript={injectedJavaScript}
         onMessage={onMessage}
@@ -106,7 +106,7 @@ export default function BrowserScreen() {
           setInputUrl(navState.url);
         }}
       />
-      
+
       {isSocialMedia && (
         <TouchableOpacity style={styles.cobaltBtn} onPress={handleCobaltDownload}>
           {isCobaltLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>⚡ Cobalt İle İndir</Text>}

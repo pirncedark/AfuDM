@@ -146,4 +146,3 @@ exe = EXE(
     icon=['ui/afudm.ico'],
     version=_VERSION_RESOURCE,
 )
-

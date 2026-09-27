@@ -8,7 +8,7 @@ export default function DownloadsScreen() {
   useEffect(() => {
     // Initial load
     setDownloads([...downloadManager.downloads]);
-    
+
     // Subscribe to changes
     const unsubscribe = downloadManager.subscribe(() => {
       setDownloads([...downloadManager.downloads]);
@@ -28,7 +28,7 @@ export default function DownloadsScreen() {
         renderItem={({ item }) => (
           <View style={styles.row}>
             <Text style={styles.title}>{item.title}</Text>
-            
+
             {item.status === 'Downloading' ? (
               <View style={styles.progressContainer}>
                 <View style={[styles.progressBar, { width: `${item.progress}%` }]} />

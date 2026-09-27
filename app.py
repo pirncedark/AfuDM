@@ -636,10 +636,10 @@ class Api:
             out["integrations"]["torrent"] = {"registered": iliskilendir.acik_mi(), "scope": "current_user"}
             out["integrations"]["startup"] = {"registered": baslangic.acik_mi(), "scope": "current_user"}
             out["integrations"]["notify"] = {"registered": bool(self.manager.store.get("windows_notifications")), "scope": "current_user"}
-            
+
             program = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Windows Defender" / "MpCmdRun.exe"
             out["integrations"]["defender"] = {"registered": bool(self.manager.store.get("defender_auto_scan")), "scope": "current_user", "available": program.exists()}
-            
+
             return out
         except OSError as exc:
             return {"ok": False, "error": str(exc)[:300]}
@@ -1297,11 +1297,11 @@ class Api:
         secim = self._window.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=True)
         if not secim:
             return {"ok": False, "error": "Dosya seçimi iptal edildi."}
-        
+
         from api.server import _Handler
         import secrets
         import time
-        
+
         sonuclar = []
         for dosya in secim:
             yol = Path(dosya)
@@ -1310,10 +1310,10 @@ class Api:
             token = secrets.token_urlsafe(12)
             _Handler.shared_files[token] = {"path": yol, "created": time.time()}
             sonuclar.append(self._paylasim_sonucu(token, yol))
-            
+
         if not sonuclar:
             return {"ok": False, "error": "Geçerli dosya seçilmedi."}
-            
+
         return {"ok": True, "files": sonuclar}
 
     def paylasim_stop(self) -> None:

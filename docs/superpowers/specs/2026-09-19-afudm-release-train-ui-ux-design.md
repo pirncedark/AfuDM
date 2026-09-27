@@ -100,4 +100,3 @@ Each release feature must have:
 ## Delivery order
 
 Implement the shared shell and selected-download details contract first, then deliver release slices in roadmap order. v1.7 Torrent Pro is the first consumer of the details tabs; later releases add tabs or System/Automation/Rules/Plugins surfaces without changing the navigation contract.
-
