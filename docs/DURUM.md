@@ -1160,3 +1160,7 @@ tests/seed_dosya_test.py (YENI, 27 kontrol, ag gerektirmez).
   diskten okundugu icin arayuz degisikligi paketleme gerektirmez.
 - pywebview'de `webview.__version__` YOK.
 - aria2 rpc-secret + API token `data/` icinde uretilir.
+
+## Push zinciri (2026-09-27): Pre-commit ve iki platformlu kalite denetimi eklendi.
+Release Please sürüm PR'ı/CHANGELOG'u üretir; `vX.Y.Z` tag'i mevcut `release.yml` exe derlemesini ve yayını başlatır.
+Gönderim sırası ve yerel kanca kurulumu: `docs/PUSH_SIRASI.md`.

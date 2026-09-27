@@ -1,0 +1,11 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Exact dummy credentials used by isolated tests"
+regexes = [
+  '''TEST_AUTH_SECRET''',
+  '''TEST-TOKEN-GIZLI''',
+  '''otest-secret-(123|456)''',
+  '''otest-token''',
+]
