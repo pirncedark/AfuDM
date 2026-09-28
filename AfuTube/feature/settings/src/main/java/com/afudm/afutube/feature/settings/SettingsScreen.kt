@@ -1,7 +1,6 @@
 package com.afudm.afutube.feature.settings
 
 import android.content.Context
-import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
@@ -19,7 +18,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.FileProvider
+import com.afudm.afutube.core.share.ShareHelper
 import com.afudm.afutube.core.diagnostics.LastAnalysisErrorStore
 import com.afudm.afutube.core.theme.AfuColors
 import com.afudm.afutube.updater.AppUpdate
@@ -90,7 +89,7 @@ fun SettingsScreen(
                     Spacer(Modifier.height(10.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedButton(
-                            onClick = { shareText(context, "AfuTube ile video ve müzik indir: $shareLink") },
+                            onClick = { ShareHelper.shareText(context, "AfuTube ile video ve müzik indir: $shareLink") },
                             modifier = Modifier.weight(1f), border = BorderStroke(1.dp, AfuColors.accent),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = AfuColors.text)
                         ) { Text("Link gönder", maxLines = 1) }
@@ -98,12 +97,12 @@ fun SettingsScreen(
                             onClick = {
                                 val appInfo = context.applicationInfo
                                 if (!appInfo.splitSourceDirs.isNullOrEmpty()) {
-                                    shareText(context, "AfuTube ile video ve müzik indir: $shareLink")
+                                    ShareHelper.shareText(context, "AfuTube ile video ve müzik indir: $shareLink")
                                     Toast.makeText(context, "Bu kurulumda APK tek dosya değil, link gönderildi", Toast.LENGTH_SHORT).show()
                                 } else scope.launch {
                                     preparingApk = true
                                     runCatching { withContext(Dispatchers.IO) { prepareApk(context, currentVersionName) } }
-                                        .onSuccess { uri -> shareApk(context, uri) }
+                                        .onSuccess { uri -> ShareHelper.shareFile(context, uri, "AfuTube'u paylaş", "AfuTube kurulum dosyası") }
                                         .onFailure { Toast.makeText(context, "APK hazırlanamadı", Toast.LENGTH_SHORT).show() }
                                     preparingApk = false
                                 }
@@ -160,42 +159,13 @@ fun SettingsScreen(
     }
 }
 
-private fun shareText(context: Context, text: String) {
-    val intent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
-    startShare(context, intent)
-}
-
-private fun shareApk(context: Context, uri: android.net.Uri) {
-    val intent = Intent(Intent.ACTION_SEND).setType("application/vnd.android.package-archive")
-        .putExtra(Intent.EXTRA_STREAM, uri).putExtra(Intent.EXTRA_TEXT, "AfuTube kurulum dosyası")
-        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    startShare(context, intent)
-}
-
-private fun startShare(context: Context, intent: Intent) {
-    val packageManager = context.packageManager
-    val whatsapp = listOf("com.whatsapp", "com.whatsapp.w4b").firstOrNull { packageName ->
-        runCatching { packageManager.getPackageInfo(packageName, 0) }.isSuccess
-    }
-    if (whatsapp != null) intent.setPackage(whatsapp)
-    try {
-        // Let Android resolve the implicit share intent directly. Wrapping it
-        // in another chooser leaves the resolver underneath on some API 34
-        // builds after Back, so returning to the settings screen takes two presses.
-        context.startActivity(intent)
-    } catch (_: Exception) {
-        intent.setPackage(null)
-        context.startActivity(Intent.createChooser(intent, "AfuTube'u paylaş"))
-    }
-}
-
 private fun prepareApk(context: Context, versionName: String): android.net.Uri {
     val directory = File(context.cacheDir, "share")
     directory.mkdirs()
     directory.listFiles()?.forEach { it.delete() }
     val destination = File(directory, "AfuTube-$versionName.apk")
     File(context.applicationInfo.sourceDir).copyTo(destination, overwrite = true)
-    return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", destination)
+    return ShareHelper.createShareUri(context, destination)
 }
 
 @Composable
