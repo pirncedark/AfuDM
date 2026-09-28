@@ -36,6 +36,17 @@ class ExtractorUpdatePolicyTest {
     }
 
     @Test
+    fun `403 after network retry appends recovery steps`() {
+        val retrySteps = listOf(DownloadRecoveryPolicy.Step.LOCAL, DownloadRecoveryPolicy.Step.LOCAL)
+        assertEquals(
+            listOf(DownloadRecoveryPolicy.Step.LOCAL, DownloadRecoveryPolicy.Step.LOCAL,
+                DownloadRecoveryPolicy.Step.YOUTUBE_EMBEDDED, DownloadRecoveryPolicy.Step.UPDATE_ENGINE,
+                DownloadRecoveryPolicy.Step.LOCAL, DownloadRecoveryPolicy.Step.YOUTUBE_FALLBACK),
+            DownloadRecoveryPolicy.stepsAfter403(retrySteps, index = 1, isYoutube = true)
+        )
+    }
+
+    @Test
     fun `youtube recovery switches player client instead of repeating the same request`() {
         assertEquals("youtube:player_client=web_embedded", DownloadRecoveryPolicy.youtubeExtractorArgs(DownloadRecoveryPolicy.Step.YOUTUBE_EMBEDDED))
         assertEquals("youtube:player_client=android,mweb", DownloadRecoveryPolicy.youtubeExtractorArgs(DownloadRecoveryPolicy.Step.YOUTUBE_FALLBACK))

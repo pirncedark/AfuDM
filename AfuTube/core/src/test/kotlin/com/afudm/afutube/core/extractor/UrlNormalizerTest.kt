@@ -31,4 +31,12 @@ class UrlNormalizerTest {
             UrlNormalizer.normalize("https://youtube.com/watch?v=abc123&si=drop&list=PL123&index=2&utm_medium=x&t=42&start=5")
         )
     }
+
+    @Test
+    fun `removes only utm and si tracking parameters on non YouTube hosts`() {
+        assertEquals(
+            "https://example.com/watch?keep=1&feature=share",
+            UrlNormalizer.normalize("https://example.com/watch?utm_source=x&keep=1&si=abc&feature=share")
+        )
+    }
 }

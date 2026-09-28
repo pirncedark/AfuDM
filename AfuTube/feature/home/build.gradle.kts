@@ -25,4 +25,5 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":extractor"))
     implementation(project(":updater"))
+    testImplementation("junit:junit:4.13.2")
 }
