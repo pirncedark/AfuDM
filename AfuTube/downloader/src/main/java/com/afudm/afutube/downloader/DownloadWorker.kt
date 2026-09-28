@@ -59,8 +59,7 @@ class DownloadWorker(
         val url       = params.inputData.getString(KEY_URL)       ?: return@withContext Result.failure()
         val formatId  = params.inputData.getString(KEY_FORMAT_ID) ?: "bestvideo+bestaudio/best"
         val outputDir = params.inputData.getString(KEY_OUTPUT_DIR)
-            ?: applicationContext.getExternalFilesDir(null)?.absolutePath
-            ?: return@withContext Result.failure()
+            ?: DownloadFolder.stagingDir(applicationContext).absolutePath
         val mergeAV   = params.inputData.getBoolean(KEY_MERGE, true)
         val audioFormat = params.inputData.getString(KEY_AUDIO_FORMAT)?.lowercase()
         val headerPairs = params.inputData.getStringArray(KEY_HEADERS).orEmpty().toList().chunked(2)
@@ -168,8 +167,10 @@ class DownloadWorker(
                             (before[file.absolutePath] == null || before[file.absolutePath] != (file.lastModified() to file.length()))
                     }
                     ?.maxByOrNull { it.lastModified() }
-            if (outputFile != null) Result.success(workDataOf("output_path" to outputFile.absolutePath))
-            else Result.failure(workDataOf("error" to "İndirme tamamlandı ancak dosya yolu bulunamadı"))
+            if (outputFile != null) {
+                val gorunurYol = DownloadFolder.publish(applicationContext, outputFile)
+                Result.success(workDataOf("output_path" to gorunurYol))
+            } else Result.failure(workDataOf("error" to "İndirme tamamlandı ancak dosya yolu bulunamadı"))
         } else {
             val error = if (youtube && saw403)
                 "YouTube bu videoyu \u015fu an vermiyor (403). Biraz sonra tekrar dene.\n${okunurHata(finalError, headerPairs.map { it[1] })}"
