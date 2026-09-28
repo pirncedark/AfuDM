@@ -11,10 +11,15 @@ try {
         "tests/db_test.py",
         "tests/network_core_test.py",
         "tests/cli_test.py",
-        "tests/guncelleme_test.py"
+        "tests/guncelleme_test.py",
+        "tests/extension_pending_message_test.mjs"
     )
     foreach ($test in $tests) {
-        & python $test
+        if ($test.EndsWith(".mjs")) {
+            & node $test
+        } else {
+            & python $test
+        }
         if ($LASTEXITCODE -ne 0) {
             Write-Error "Pre-push test failed: $test"
             exit $LASTEXITCODE

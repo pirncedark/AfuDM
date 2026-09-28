@@ -104,7 +104,7 @@ async function send(url, kind) {
     },
   });
   if (result.ok) {
-    say(chrome.i18n.getMessage("msgQueued"), "ok");
+    say(chrome.i18n.getMessage(result.pending ? "msgPending" : "msgQueued"), "ok");
   } else {
     say(result.error || chrome.i18n.getMessage("msgAddFailed"), "bad");
   }
