@@ -99,8 +99,11 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
     }
     LaunchedEffect(Unit) {
         if (UpdateManager.shouldCheckAutomatically(context)) {
-            UpdateManager.markChecked(context)
-            runCatching { UpdateManager.check(BuildConfig.VERSION_CODE, UpdateManager.includePrereleases(context)) }.getOrNull()?.let { availableUpdate = it }
+            runCatching { UpdateManager.check(BuildConfig.VERSION_CODE, UpdateManager.includePrereleases(context)) }
+                .onSuccess { update ->
+                    UpdateManager.markChecked(context)
+                    if (update != null) availableUpdate = update
+                }
         }
     }
 

@@ -126,6 +126,16 @@ object Sha256 {
     }
 }
 
+object UpdateCheckPolicy {
+    fun shouldCheckAutomatically(
+        lastSuccessfulCheck: Long?,
+        now: Long,
+        interval: Long,
+        enabled: Boolean = true,
+        manual: Boolean = false
+    ): Boolean = manual || (enabled && (lastSuccessfulCheck == null || now - lastSuccessfulCheck >= interval))
+}
+
 object UpdateManager {
     private const val API = "https://api.github.com/repos/pirncedark/AfuDM/releases"
     private const val MANIFEST = "https://github.com/pirncedark/AfuDM/releases/download/afutube-latest/AfuTube-update.json"
@@ -176,9 +186,11 @@ object UpdateManager {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(AUTO, enabled).apply()
     }
 
-    fun shouldCheckAutomatically(context: Context): Boolean =
-        autoCheckEnabled(context) && System.currentTimeMillis() - context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getLong(LAST_CHECK, 0) >= DAY_MS
+    fun shouldCheckAutomatically(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val lastCheck = if (prefs.contains(LAST_CHECK)) prefs.getLong(LAST_CHECK, 0) else null
+        return UpdateCheckPolicy.shouldCheckAutomatically(lastCheck, System.currentTimeMillis(), DAY_MS, autoCheckEnabled(context))
+    }
 
     fun markChecked(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         .edit().putLong(LAST_CHECK, System.currentTimeMillis()).apply()
