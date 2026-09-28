@@ -108,6 +108,7 @@
     </aside>
 
     <main class="main">
+      <div id="guncellemeSerit" class="guncelleme-serit" hidden aria-live="polite"><span id="guncellemeMesaj"></span><button class="btn primary" id="guncellemeBtn" data-i18n="upd.button">Güncelle</button></div>
       <div class="bar">
         <button class="btn primary" id="addBtn" data-i18n="bar.add">Link ekle</button>
         <button class="btn" id="lgBtn" data-i18n="bar.lg">Link yakala</button>
@@ -302,6 +303,7 @@
           <details class="adv-accordion" style="margin-top: 15px;">
             <summary data-i18n="set.advToggle">Gelişmiş Ayarlar</summary>
             <div class="adv-content">
+              <label class="opt"><input type="checkbox" id="sGuncellemeOto"> <span data-i18n="upd.auto">Güncellemeleri otomatik denetle</span></label>
               <div style="margin-bottom: 12px;">
                 <label class="opt"><input type="checkbox" id="sClip"> <span data-i18n="set.clip">Panoya kopyalanan linki
                     yakala</span></label>
@@ -343,6 +345,7 @@
           <div class="surum-kutu" style="margin-top: 12px;">
             <label data-i18n="set.surum">Sürüm</label>
             <div class="surum-satir" id="sSurum"></div>
+            <div class="guncelleme-ayar"><button class="btn ghost" id="guncellemeKontrolBtn" data-i18n="upd.check">Güncellemeleri denetle</button><span id="guncellemeAyarDurum" aria-live="polite"></span></div>
           </div>
         </div>
 

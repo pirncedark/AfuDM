@@ -597,6 +597,19 @@ select:focus-visible, button:focus-visible {
 .adv-only { display: none !important; }
 
 /* Advanced Accordion */
+.guncelleme-serit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 14px;
+  color: var(--text, #fff);
+  background: rgba(91, 157, 255, .12);
+  border-bottom: 1px solid rgba(91, 157, 255, .28);
+}
+.guncelleme-serit[hidden] { display: none; }
+.guncelleme-ayar { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.guncelleme-ayar span { font-size: 12px; color: var(--muted, #aaa); }
 .adv-accordion {
   background: var(--bg-deep);
   border: 1px solid var(--line-soft);

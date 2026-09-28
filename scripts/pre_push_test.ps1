@@ -10,7 +10,8 @@ try {
         "tests/manager_test.py",
         "tests/db_test.py",
         "tests/network_core_test.py",
-        "tests/cli_test.py"
+        "tests/cli_test.py",
+        "tests/guncelleme_test.py"
     )
     foreach ($test in $tests) {
         & python $test

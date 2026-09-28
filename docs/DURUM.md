@@ -1,6 +1,10 @@
 # AfuDM v2.7.4 - Durum & Devam Notu
 Son guncelleme: 2026-09-27
 
+- AfuDM uygulama içi güncellemesi: Releases kontrolü, SHA-256 doğrulaması ve paketli sürümde güvenli yeniden başlatma eklendi.
+- Güncelleme dosyaları data/guncelleme/ altında tutulur; data, downloads ve plugins güncelleme sırasında korunur.
+- Güncelleme akışı ağsız olarak tests/guncelleme_test.py ile doğrulanır.
+
 ## YENI: AfuDM v2.7.4 - hazirlanan yama surumu
 - PR #68: Duraklatma/surdurme arayuzde aninda uygulanir; islem hata verirse durum geri alinir ve tek cumlelik hata gosterilir. Tamamlanmis torrentlerde `forcePause` kullanilir.
 - PR #67: UI gate testindeki yaris durumu duzeltildi (yalniz test).
