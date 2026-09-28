@@ -9,6 +9,14 @@
 - Bicim/satir sonu temizligi TEKRAR YAPILMAYACAK: #72 (9873a51) ile main'de.
 - Sonraki adim: PR merge edildiyse yayin paketine karsi `AFUDM_DATA_DIR=<paket>/data` ile extension/video_panel/baslik/smoke testlerini tekrar kos (tek AfuDM ornegi).
 
+## AfuDM #88 (29 Eyl, MERGED): uzanti, kaydetme penceresi acikken (API pending:true) video menusu ve popup'ta "kuyruga eklendi" yerine
+  msgPending ("AfuDM penceresinde klasoru sec.") gosterir; background.js pending'i iki yanit yoluna gecirir.
+  Test: tests/extension_pending_message_test.mjs (scripts/pre_push_test.ps1 listesinde). misnomad.com/afu/afu.js yedek surum SNAPSHOT'u v2.8.0/v1.6.0 ile canlida.
+
+## AfuTube PR #89 (fix/afutube-dikey-guncelleme): dikey (Shorts) video kalitesi kisa kenardan + gunluk guncelleme denetimi.
+  27f5946 merge edilmis dala push'lanmisti; koordinator cherry-pick ile #89'a tasidi. ff06745: yon cogunluga gore, test en ust secenegi kontrol eder. Yerel 76/76.
+  ACIK (kullanici karari, acil degil): madde 7 tarayici video yakalama testi icin ornek site linki gerekiyor.
+
 ## AfuTube - dal `fix/afutube-hata-raporu`, PR #86 (v1.6.1 hata raporu duzeltmeleri)
 - 63a5a22 InitCoordinator initializer tekrar sondaki lambda (CI derleme hatasi); 2148464 analiz hata mesaji yalniz gercek YouTube host'unda "YouTube baglantisi" der
   (`UrlClassifier.isYouTubeHost`; classify() bilinmeyen siteleri yt-dlp icin YOUTUBE sayar, degistirilmedi).
