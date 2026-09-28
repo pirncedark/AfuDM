@@ -40,7 +40,9 @@ from playwright.sync_api import sync_playwright  # noqa: E402
 from api.server import LocalAPI  # noqa: E402
 
 EXT = ROOT / "extension"
-ENDPOINT_FILE = ROOT / "data" / "api_endpoint.json"
+DATA_DIR = Path(os.environ.get("AFUDM_DATA_DIR", ROOT / "data"))
+ENDPOINT_FILE = DATA_DIR / "api_endpoint.json"
+LOCAL_ENDPOINT_FILE = ROOT / "data" / "api_endpoint.json"
 APP_PORT = 6811
 PAIR_PORT = 6899
 DEAD_PORT = 6998  # hicbir sey dinlemiyor = "AfuDM kapali"
@@ -137,8 +139,10 @@ def main() -> int:
     if status != 200:
         print(f"AfuDM {APP_PORT} portunda calismiyor — once uygulamayi ac.")
         return 2
-    endpoint_backup = ENDPOINT_FILE.read_text("utf-8")
-    token = json.loads(endpoint_backup)["token"]
+    token = json.loads(ENDPOINT_FILE.read_text("utf-8"))["token"]
+    local_endpoint_backup = LOCAL_ENDPOINT_FILE.read_text("utf-8")
+    _, initial_snapshot = api("/snapshot", token)
+    original_save_window = initial_snapshot.get("settings", {}).get("kaydetme_penceresi", True)
 
     work = Path(tempfile.mkdtemp(prefix="afudm_ext_"))
     site_dir = work / "site"
@@ -158,13 +162,14 @@ def main() -> int:
     pair_api = LocalAPI(manager=None, port=PAIR_PORT)
     pair_port = pair_api.start()
     # start() api_endpoint.json'u bu porta gore yeniden yazar — asil kaydi geri koy.
-    ENDPOINT_FILE.write_text(endpoint_backup, encoding="utf-8")
+    LOCAL_ENDPOINT_FILE.write_text(local_endpoint_backup, encoding="utf-8")
 
     added_gids: list[str] = []
     _, before = api("/snapshot", token)
     gids_before = {i["gid"] for i in before.get("items", [])}
 
     try:
+        api("/settings", token, {"kaydetme_penceresi": False})
         with sync_playwright() as pw:
             ctx = pw.chromium.launch_persistent_context(
                 str(work / "profil"),
@@ -246,7 +251,7 @@ def main() -> int:
             page.click("#txt")
             txt = wait_for(lambda: browser_downloads("/not.txt", "complete"), timeout=20)
             _, snap = api("/snapshot", token)
-            in_afudm = any(i.get("source", "").endswith("/not.txt") for i in snap["items"])
+            in_afudm = any(i.get("source", "").endswith("/not.txt") for i in snap.get("items", []))
             record(".txt devralinmadi, tarayici indirdi", bool(txt) and not in_afudm)
 
             # --- AfuDM kapali ------------------------------------------------
@@ -282,14 +287,14 @@ def main() -> int:
                            and durum(item["gid"]), timeout=30) if item else {}
             record("Giris gerektiren dosya AfuDM'de TAMAMLANDI",
                    (son or {}).get("status") == "complete",
-                   f"{(son or {}).get('status')} {(son or {}).get('errorMessage', '')[:40]}")
+                   f"{(son or {}).get('status')} {((son or {}).get('errorMessage') or '')[:40]}")
             istekler = list(_Quiet.aria2_istekleri)
             record("HttpOnly oturum cerezi AfuDM'e gitti",
                    any(OTURUM in c for c, _ in istekler), f"{len(istekler)} aria2 istegi")
             record("Tarayici kimligi (User-Agent) AfuDM'e gitti",
                    any("Chrome" in ua for _, ua in istekler),
                    (istekler[-1][1][:40] if istekler else ""))
-            db_bayt = b"".join(f.read_bytes() for f in (ROOT / "data").glob("afudm.db*"))
+            db_bayt = b"".join(f.read_bytes() for f in DATA_DIR.glob("afudm.db*"))
             record("Cerez veritabanina YAZILMADI", OTURUM.split("=")[1].encode() not in db_bayt,
                    f"{len(db_bayt) // 1024} KB tarandi")
             if item:
@@ -307,7 +312,7 @@ def main() -> int:
             record("Cerez gonderimi KAPALIYKEN sunucu reddetti",
                    (son or {}).get("status") == "error"
                    and not any(OTURUM in c for c, _ in _Quiet.aria2_istekleri),
-                   (son or {}).get("errorMessage", "")[:50])
+                   ((son or {}).get("errorMessage") or "")[:50])
             set_cfg(sendCookies=True)
 
             # --- sayfadaki medya ---------------------------------------------
@@ -321,11 +326,12 @@ def main() -> int:
             record("Acilir pencerede JS hatasi yok", not errors, "; ".join(errors)[:80])
             ctx.close()
     finally:
+        api("/settings", token, {"kaydetme_penceresi": original_save_window})
         for gid in added_gids:
             api("/control", token, {"action": "remove", "gid": gid, "delete_files": True})
         pair_api.stop()
         site.shutdown()
-        ENDPOINT_FILE.write_text(endpoint_backup, encoding="utf-8")
+        LOCAL_ENDPOINT_FILE.write_text(local_endpoint_backup, encoding="utf-8")
         shutil.rmtree(work, ignore_errors=True)
 
     passed = sum(1 for _, ok, _ in results if ok)

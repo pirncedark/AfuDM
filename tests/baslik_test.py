@@ -49,6 +49,8 @@ if not bulunan:
     print("AfuDM penceresi yok — once uygulamayi ac.")
     sys.exit(2)
 ana = bulunan[0]
+if user32.IsIconic(ana):
+    user32.ShowWindow(ana, 9)  # SW_RESTORE
 kok = wintypes.RECT(); user32.GetWindowRect(ana, ctypes.byref(kok))
 ist = wintypes.POINT(0, 0); user32.ClientToScreen(ana, ctypes.byref(ist))
 cr = wintypes.RECT(); user32.GetClientRect(ana, ctypes.byref(cr))

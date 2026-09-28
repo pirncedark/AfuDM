@@ -1,3 +1,20 @@
+# DEVAM (2026-09-29 gece, koordinator oturumu) - ONCE BUNU OKU
+
+## AfuDM - dal `fix/canli-test-bulgulari` (PR: bu dal)
+- v2.8.0 yayin paketiyle canli test (rapor: worktree `_gorev/canli_test_rapor.md`, git'te degil) 1 urun + 5 test sorunu buldu; bu dal duzeltir:
+  - `core/manager.py` `/snapshot` `errorMessage` artik hic None donmez; `pause()` bitmis GID'de Aria2Error ile cokmez (False doner, durumu bozmaz).
+  - Testler: `AFUDM_DATA_DIR` ile calisan uygulamanin veri klasoru (port/token) secilebilir; video_panel dosya adi etiketi;
+    kaydetme penceresi test boyunca kapatilip geri yuklenir; baslik_test simge durumundaki pencereyi geri yukler; smoke pause beklentisi.
+- Dogrulama (yerelde): `tests/manager_test.py` Hepsi gecti (2 yeni regresyon), `scripts/pre_push_test.ps1` basarili. Canli (pencereli) testler bu turda KOSULMADI.
+- Bicim/satir sonu temizligi TEKRAR YAPILMAYACAK: #72 (9873a51) ile main'de.
+- Sonraki adim: PR merge edildiyse yayin paketine karsi `AFUDM_DATA_DIR=<paket>/data` ile extension/video_panel/baslik/smoke testlerini tekrar kos (tek AfuDM ornegi).
+
+## AfuTube - dal `fix/afutube-hata-raporu`, PR #86 (v1.6.1 hata raporu duzeltmeleri)
+- 63a5a22 InitCoordinator initializer tekrar sondaki lambda (CI derleme hatasi); 2148464 analiz hata mesaji yalniz gercek YouTube host'unda "YouTube baglantisi" der
+  (`UrlClassifier.isYouTubeHost`; classify() bilinmeyen siteleri yt-dlp icin YOUTUBE sayar, degistirilmedi).
+- Dogrulama: `AfuTube/` icinde `ANDROID_HOME=C:ndroid-sdk gradle test assembleDebug` -> 73/73 test, APK derlendi. gradlew yok (sistem gradle 9.6.0). Codex sandbox gradle calistiramaz.
+- Sonraki adim: #86 merge edildiyse AfuTube v1.6.1 yayini (release-afutube.yml) ayri karar.
+
 # AfuDM v2.7.4 - Durum & Devam Notu
 Son guncelleme: 2026-09-27
 
