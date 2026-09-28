@@ -6,9 +6,9 @@ import kotlinx.coroutines.sync.withLock
 
 /** Ensures that concurrent callers wait for the same initialization attempt. */
 class InitCoordinator<T>(
-    private val initializer: suspend (T) -> Unit,
     private val retryDelayMillis: Long = 30_000L,
-    private val nowMillis: () -> Long = System::currentTimeMillis
+    private val nowMillis: () -> Long = System::currentTimeMillis,
+    private val initializer: suspend (T) -> Unit
 ) {
     private val mutex = Mutex()
     private var result: CompletableDeferred<Result<Unit>>? = null
