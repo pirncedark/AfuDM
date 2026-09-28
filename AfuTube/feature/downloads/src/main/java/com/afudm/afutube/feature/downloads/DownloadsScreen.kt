@@ -4,6 +4,8 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -24,13 +27,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.work.WorkInfo
 import com.afudm.afutube.downloader.DownloadEngine
-import com.afudm.afutube.downloader.DownloadProgress
 import com.afudm.afutube.core.theme.AfuColors
 import com.afudm.afutube.core.share.ShareHelper
 import com.afudm.afutube.media.MediaFileType
 import com.afudm.afutube.media.MediaFileTypeDetector
 import com.afudm.afutube.media.PlayerActivity
-import java.util.UUID
 
 @Composable
 fun DownloadsScreen() {
@@ -96,6 +97,7 @@ fun DownloadsScreen() {
                     DownloadCard(
                         workInfo = workInfo,
                         outputPath = outputPath.takeIf { playable },
+                        onOpenFolder = { path -> openDownloadFolder(context, path) },
                         onPlay = { path, listen ->
                             val playIntent = PlayerActivity.intent(context, path, workInfo.tags.firstOrNull { it.startsWith("title:") }?.removePrefix("title:") ?: java.io.File(path).nameWithoutExtension)
                             if (listen) playIntent.putExtra(PlayerActivity.EXTRA_LISTEN, true)
@@ -117,6 +119,7 @@ fun DownloadsScreen() {
 private fun DownloadCard(
     workInfo : WorkInfo,
     outputPath: String?,
+    onOpenFolder: (String) -> Unit,
     onPlay: (String, Boolean) -> Unit,
     onShare: (String, String) -> Unit,
     onCancel : () -> Unit,
@@ -202,33 +205,49 @@ private fun DownloadCard(
             }
             if (outputPath != null) {
                 val audioOnly = MediaFileTypeDetector.fromPath(outputPath) == MediaFileType.AUDIO
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                ActionRow {
+                    if (!audioOnly) PlayPill(label = "İzle", icon = Icons.Default.PlayArrow, onClick = { onPlay(outputPath, false) })
+                    PlayPill(label = "Dinle", icon = Icons.Default.Headphones, onClick = { onPlay(outputPath, true) })
+                }
+                Spacer(Modifier.height(8.dp))
+                ActionRow {
+                    PlayPill(label = "Klasörü Aç", icon = Icons.Default.FolderOpen, onClick = { onOpenFolder(outputPath) })
                     IconButton(
                         onClick = { onShare(outputPath, title) },
                         modifier = Modifier.size(36.dp).semantics { contentDescription = "Paylaş" }
                     ) {
                         Icon(Icons.Default.Share, contentDescription = "Paylaş", tint = AfuColors.text)
                     }
-                    if (!audioOnly) PlayPill(label = "İzle", listen = false, onClick = { onPlay(outputPath, false) })
-                    PlayPill(label = "Dinle", listen = true, onClick = { onPlay(outputPath, true) })
                 }
             }
         }
     }
 }
 
+/** Duzme sirasi dolmazsa alt satira gecen, kaydirilabilir eylem satiri. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PlayPill(label: String, listen: Boolean, onClick: () -> Unit) {
+private fun ActionRow(content: @Composable RowScope.() -> Unit) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement   = Arrangement.spacedBy(8.dp),
+        content = content
+    )
+}
+
+@Composable
+private fun PlayPill(label: String, icon: ImageVector, onClick: () -> Unit) {
     val shape = RoundedCornerShape(50)
     Surface(
         onClick = onClick,
         shape = shape,
         color = AfuColors.surface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (listen) AfuColors.textMuted.copy(alpha = 0.35f) else AfuColors.accent),
+        border = androidx.compose.foundation.BorderStroke(1.dp, AfuColors.accent),
         modifier = Modifier.height(34.dp).semantics { contentDescription = label }
     ) {
         Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            Icon(if (listen) Icons.Default.Headphones else Icons.Default.PlayArrow, null, tint = if (listen) AfuColors.textMuted else AfuColors.accent, modifier = Modifier.size(16.dp))
+            Icon(icon, null, tint = AfuColors.accent, modifier = Modifier.size(16.dp))
             Text(label, color = AfuColors.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         }
     }
