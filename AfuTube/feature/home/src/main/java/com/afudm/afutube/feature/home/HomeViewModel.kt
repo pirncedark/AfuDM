@@ -7,6 +7,8 @@ import com.afudm.afutube.core.diagnostics.AnalysisError
 import com.afudm.afutube.core.diagnostics.AnalysisFailure
 import com.afudm.afutube.core.diagnostics.LastAnalysisErrorStore
 import com.afudm.afutube.core.extractor.MediaInfo
+import com.afudm.afutube.core.extractor.UrlClassifier
+import com.afudm.afutube.core.extractor.UrlType
 import com.afudm.afutube.extractor.ExtractorManager
 import com.afudm.afutube.extractor.YtDlpExtractor
 import com.afudm.afutube.updater.ExtractorUpdater
@@ -62,7 +64,7 @@ class HomeViewModel(context: Context) : ViewModel() {
                 analysisError?.let(LastAnalysisErrorStore::set)
                 _state.value.copy(
                     isLoading = false,
-                    error = "YouTube videosu analiz edilemedi.",
+                    error = analysisErrorMessage(normalizedUrl),
                     analysisError = analysisError
                 )
             }
@@ -91,6 +93,11 @@ class HomeViewModel(context: Context) : ViewModel() {
             channel = ExtractorUpdater.selectedChannel(appContext),
             force = false
         )
-        return if (update.error.isBlank()) extractor.extract(url) else firstResult
+        return if (update.attempted && update.error.isBlank()) extractor.extract(url) else firstResult
     }
+}
+
+internal fun analysisErrorMessage(url: String): String = when (UrlClassifier.classify(url)) {
+    UrlType.YOUTUBE -> "YouTube ba\u011flant\u0131s\u0131 analiz edilemedi."
+    else -> "Bu ba\u011flant\u0131 analiz edilemedi."
 }

@@ -29,8 +29,7 @@ object ExtractorUpdater {
         update = { context, channel ->
             MediaRuntime.withEngine {
                 if (channel == YoutubeDL.UpdateChannel.STABLE) {
-                    runCatching { updateStableWithoutApi(context) }
-                        .getOrElse { YoutubeDL.getInstance().updateYoutubeDL(context, channel) }
+                    updateStableWithoutApi(context)
                 } else YoutubeDL.getInstance().updateYoutubeDL(context, channel)
             }
         }
@@ -118,10 +117,19 @@ object ExtractorUpdater {
 
         val temp = File.createTempFile("yt-dlp", ".download", context.cacheDir)
         try {
-            val connection = URL("https://github.com/yt-dlp/yt-dlp/releases/latest/download/${YoutubeDL.ytdlpBin}")
+            val sumsConnection = URL("https://github.com/yt-dlp/yt-dlp/releases/download/$tag/SHA2-256SUMS")
+                .openConnection().apply { connectTimeout = 15_000; readTimeout = 30_000 }
+            val sums = sumsConnection.getInputStream().bufferedReader().use { it.readText() }
+            val expectedHash = sums.lineSequence().mapNotNull { line ->
+                val fields = line.trim().split(Regex("\\s+"))
+                if (fields.size >= 2 && fields.last().substringAfterLast('/') == YoutubeDL.ytdlpBin) fields.first() else null
+            }.firstOrNull()?.takeIf { it.matches(Regex("[a-fA-F0-9]{64}")) }
+                ?: error("yt-dlp SHA-256 checksum bulunamadı")
+            val connection = URL("https://github.com/yt-dlp/yt-dlp/releases/download/$tag/${YoutubeDL.ytdlpBin}")
                 .openConnection().apply { connectTimeout = 15_000; readTimeout = 60_000 }
             connection.getInputStream().use { input -> temp.outputStream().use { output -> input.copyTo(output) } }
             require(temp.length() >= MIN_BINARY_BYTES) { "yt-dlp binary eksik veya çok küçük" }
+            require(sha256(temp) == expectedHash) { "yt-dlp SHA-256 doğrulaması başarısız" }
 
             val directory = File(File(context.noBackupFilesDir, YoutubeDL.baseName), YoutubeDL.ytdlpDirName)
             check(directory.exists() || directory.mkdirs()) { "yt-dlp klasörü oluşturulamadı" }
@@ -137,6 +145,7 @@ object ExtractorUpdater {
                 check(staged.renameTo(binary)) { "Yeni yt-dlp binary kurulamadı" }
                 context.getSharedPreferences(LIBRARY_PREFS, Context.MODE_PRIVATE).edit()
                     .putString("dlpVersion", tag).putString("dlpVersionName", tag).apply()
+                youtubeDL.init_ytdlp(context, directory)
                 backup.delete()
             } catch (error: Exception) {
                 binary.delete()
@@ -147,6 +156,19 @@ object ExtractorUpdater {
             }
             return YoutubeDL.UpdateStatus.DONE
         } finally { temp.delete() }
+    }
+
+    private fun sha256(file: File): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().buffered().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun readLatestStableTag(): String? {

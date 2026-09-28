@@ -21,9 +21,9 @@ class ExtractorManager private constructor(context: Context) {
     private val extractors: MutableList<MediaExtractor> = mutableListOf()
 
     init {
-        // Sıralı deneme — önce yt-dlp, fallback olarak DirectUrl
-        register(YtDlpExtractor(context.applicationContext))
+        // Doğrudan medya bağlantısı önce denenir; başarısız olursa yt-dlp kullanılır.
         register(DirectUrlExtractor())
+        register(YtDlpExtractor(context.applicationContext))
     }
 
     fun register(extractor: MediaExtractor) {
@@ -36,12 +36,7 @@ class ExtractorManager private constructor(context: Context) {
             return Result.failure(IllegalArgumentException("Geçersiz URL: $normalizedUrl"))
         }
 
-        for (extractor in extractors) {
-            if (extractor.supports(normalizedUrl)) {
-                return runCatching { extractor.extract(normalizedUrl) }
-            }
-        }
-        return Result.failure(UnsupportedOperationException("Bu URL için extractor bulunamadı"))
+        return extractWithFallback(extractors, normalizedUrl)
     }
 
     companion object {
@@ -52,4 +47,18 @@ class ExtractorManager private constructor(context: Context) {
                 INSTANCE ?: ExtractorManager(context.applicationContext).also { INSTANCE = it }
             }
     }
+}
+
+internal suspend fun extractWithFallback(
+    extractors: List<MediaExtractor>,
+    url: String
+): Result<MediaInfo> {
+    var lastFailure: Throwable? = null
+    for (extractor in extractors) {
+        if (!extractor.supports(url)) continue
+        val result = runCatching { extractor.extract(url) }
+        if (result.isSuccess) return result
+        lastFailure = result.exceptionOrNull()
+    }
+    return Result.failure(lastFailure ?: UnsupportedOperationException("Bu URL için extractor bulunamadı"))
 }

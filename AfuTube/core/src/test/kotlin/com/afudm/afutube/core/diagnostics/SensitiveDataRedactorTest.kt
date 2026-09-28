@@ -21,4 +21,18 @@ class SensitiveDataRedactorTest {
         assertTrue(redacted.contains("token=<redacted>"))
         assertTrue(redacted.contains("list=playlist"))
     }
+
+    @Test
+    fun `copied analysis report redacts traceback secrets`() {
+        val report = AnalysisError(
+            AnalysisErrorCategory.EXTRACTOR,
+            "failed",
+            "unknown",
+            1,
+            "Authorization: Bearer hidden-value"
+        ).copyText()
+
+        assertFalse(report.contains("hidden-value"))
+        assertTrue(report.contains("Authorization: <redacted>"))
+    }
 }

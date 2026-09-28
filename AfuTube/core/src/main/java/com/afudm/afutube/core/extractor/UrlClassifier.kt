@@ -24,7 +24,7 @@ object UrlClassifier {
         val trimmed = url.trim()
         return try {
             val uri  = URI(trimmed)
-            val host = uri.host?.removePrefix("www.")?.lowercase() ?: return UrlType.UNSUPPORTED
+            val host = uri.host?.lowercase()?.removePrefix("www.") ?: return UrlType.UNSUPPORTED
             val path = uri.path?.lowercase() ?: ""
 
             when {

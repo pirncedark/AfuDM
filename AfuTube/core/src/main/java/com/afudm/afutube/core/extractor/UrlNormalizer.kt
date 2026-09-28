@@ -6,8 +6,8 @@ import java.nio.charset.StandardCharsets
 
 object UrlNormalizer {
     private val youtubeHosts = setOf("youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be")
-    private val keptQueryKeys = setOf("v", "list", "index", "t", "start")
-    private val trackingQueryKeys = setOf("si", "feature", "pp")
+    private val trackingQueryKeys = setOf("si")
+    private val keptYoutubeQueryKeys = setOf("v", "list", "index", "t", "start")
 
     fun normalize(raw: String): String? {
         val trimmed = raw.trim()
@@ -16,9 +16,18 @@ object UrlNormalizer {
         return runCatching {
             val uri = URI(trimmed)
             val host = uri.host?.lowercase()?.removePrefix("www.") ?: return@runCatching trimmed
-            if (host !in youtubeHosts) return@runCatching trimmed
-
             val query = parseQuery(uri.rawQuery)
+            if (host !in youtubeHosts) {
+                val cleaned = uri.rawQuery.orEmpty().split('&').filter { part ->
+                    if (part.isBlank()) return@filter false
+                    val key = URLDecoder.decode(part.substringBefore('='), StandardCharsets.UTF_8.name()).lowercase()
+                    !key.startsWith("utm_") && key != "si"
+                }
+                val builder = StringBuilder().append(uri.scheme).append("://").append(uri.rawAuthority).append(uri.rawPath.orEmpty())
+                if (cleaned.isNotEmpty()) builder.append('?').append(cleaned.joinToString("&"))
+                uri.rawFragment?.let { builder.append('#').append(it) }
+                return@runCatching builder.toString()
+            }
             val pathSegments = uri.rawPath.orEmpty().split('/').filter { it.isNotBlank() }
             val videoId = when {
                 host == "youtu.be" -> pathSegments.firstOrNull()
@@ -28,7 +37,7 @@ object UrlNormalizer {
 
             val kept = buildList {
                 add("v=${videoId}")
-                query.filter { (key, _) -> key in keptQueryKeys && key != "v" }.forEach { (key, value) ->
+                query.filter { (key, _) -> key in keptYoutubeQueryKeys && key != "v" }.forEach { (key, value) ->
                     add(if (value == null) key else "$key=$value")
                 }
             }
