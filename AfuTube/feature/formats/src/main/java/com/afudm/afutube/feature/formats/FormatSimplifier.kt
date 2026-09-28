@@ -34,12 +34,19 @@ object FormatSimplifier {
 
     fun simplify(formats: List<MediaFormat>): SimplifiedFormats {
         val videos = formats.filterNot { it.isAudioOnly }
-        val isPortrait = videos.any { format ->
+        val portraitCount = videos.count { format ->
             val size = dimensions.matchEntire(format.resolution)?.groupValues
             val width = size?.get(1)?.toIntOrNull()
             val height = size?.get(2)?.toIntOrNull()
             width != null && height != null && height > width
         }
+        val landscapeCount = videos.count { format ->
+            val size = dimensions.matchEntire(format.resolution)?.groupValues
+            val width = size?.get(1)?.toIntOrNull()
+            val height = size?.get(2)?.toIntOrNull()
+            width != null && height != null && width > height
+        }
+        val isPortrait = portraitCount > landscapeCount
         val limitDimension = if (isPortrait) "width" else "height"
         val audios = formats.filter { it.isAudioOnly || (it.acodec.isNotBlank() && it.acodec != "none") }
             // Dogrudan .mp4 gibi kaynaklarda yt-dlp codec bilgisini bos/"none" birakir; kullanici her zaman

@@ -65,14 +65,14 @@ class FormatSimplifierTest {
 
     @Test
     fun usesShortEdgeForPortraitAndLandscapeVideoQuality() {
-        assertEquals("1080p", simplifyResolution("1080x1920").videoOptions.single().label)
-        assertEquals("1080p", simplifyResolution("1920x1080").videoOptions.single().label)
-        assertEquals("720p", simplifyResolution("720x1280").videoOptions.single().label)
+        assertEquals("1080p", simplifyResolution("1080x1920").videoOptions.first().label)
+        assertEquals("1080p", simplifyResolution("1920x1080").videoOptions.first().label)
+        assertEquals("720p", simplifyResolution("720x1280").videoOptions.first().label)
         assertEquals("480p", FormatSimplifier.simplify(listOf(format("unknown", null, quality = "480p"))).videoOptions.single().label)
-        val portraitFormatId = simplifyResolution("1080x1920").videoOptions.single().formatId
+        val portraitFormatId = simplifyResolution("1080x1920").videoOptions.first().formatId
         assertTrue(portraitFormatId.contains("bestvideo[width<=1080][ext=mp4]"))
         assertFalse(portraitFormatId.contains("height<="))
-        val landscapeFormatId = simplifyResolution("1920x1080").videoOptions.single().formatId
+        val landscapeFormatId = simplifyResolution("1920x1080").videoOptions.first().formatId
         assertFalse(landscapeFormatId.contains("width<="))
     }
 
