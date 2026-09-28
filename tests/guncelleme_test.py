@@ -13,6 +13,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from core import guncelleme
+from app import Api
 
 
 class Sunucu(http.server.BaseHTTPRequestHandler):
@@ -105,6 +106,24 @@ def suite():
                     script = (root / "data/guncelleme/uygula.ps1").read_text(encoding="utf-8")
                     for folder in ("data", "downloads", "plugins"):
                         assert folder in script
+
+            # Başarısız kontrol başarısız denemeyi 24 saatlik cache'e yazmamalı.
+            api = Api.__new__(Api)
+            with mock.patch("app.paths.DATA", root / "api-data"), \
+                 mock.patch("app.guncelleme.kontrol", return_value={"ok": False}):
+                assert not api.guncelleme_kontrol()["ok"]
+                kontrol_kaydi = root / "api-data/guncelleme/kontrol.json"
+                assert not kontrol_kaydi.exists()
+
+            with mock.patch("app.paths.DATA", root / "api-data"), \
+                 mock.patch("app.guncelleme.kontrol", return_value={"ok": True, "var": False}):
+                assert api.guncelleme_kontrol()["ok"]
+                assert json.loads(kontrol_kaydi.read_text(encoding="utf-8"))["zaman"] > 0
+
+            api.manager = mock.Mock()
+            with mock.patch("app.paths.DATA", root / "api-data"):
+                assert api.guncelleme_otomatik_ayarla(True)["ok"]
+                assert not kontrol_kaydi.exists()
     finally:
         server.shutdown()
         server.server_close()

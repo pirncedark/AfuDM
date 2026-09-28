@@ -306,16 +306,22 @@ class Api:
 
     def guncelleme_kontrol(self) -> dict:
         sonuc = guncelleme.kontrol()
-        try:
-            kayit = paths.DATA / "guncelleme" / "kontrol.json"
-            kayit.parent.mkdir(parents=True, exist_ok=True)
-            kayit.write_text(json.dumps({"zaman": time.time()}), encoding="utf-8")
-        except OSError:
-            pass
+        if sonuc.get("ok"):
+            try:
+                kayit = paths.DATA / "guncelleme" / "kontrol.json"
+                kayit.parent.mkdir(parents=True, exist_ok=True)
+                kayit.write_text(json.dumps({"zaman": time.time()}), encoding="utf-8")
+            except OSError:
+                pass
         return sonuc
 
     def guncelleme_otomatik_ayarla(self, aktif: bool) -> dict:
         self.manager.store.set("guncelleme_otomatik", bool(aktif))
+        if aktif:
+            try:
+                (paths.DATA / "guncelleme" / "kontrol.json").unlink(missing_ok=True)
+            except OSError:
+                pass
         return {"ok": True}
 
     def guncelleme_son_kontrol(self) -> dict:
