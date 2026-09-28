@@ -8,11 +8,21 @@ import tempfile
 import threading
 import zipfile
 import sys
+import types
 from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from core import guncelleme
+
+# CI ortaminda pywebview kurulu degil. app import edilirken sadece modul
+# seviyesindeki tip ipuclari gerekir; dialog sabitleri runtime cagrilari icin.
+if sys.modules.get("webview") is None:
+    webview = types.ModuleType("webview")
+    webview.FOLDER_DIALOG = 1
+    webview.OPEN_DIALOG = 2
+    sys.modules["webview"] = webview
+
 from app import Api
 
 
