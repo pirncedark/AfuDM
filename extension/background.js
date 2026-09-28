@@ -696,7 +696,7 @@ async function videoIndir(cfg, sender, secenek, frameUrl) {
   }
   const referer = secenek.referer || frameUrl || sender.tab?.url || "";
   try {
-    await sendToAfudm(cfg, {
+    const sonuc = await sendToAfudm(cfg, {
       url: secenek.url,
       kind: secenek.kind,
       quality: secenek.quality,
@@ -708,7 +708,7 @@ async function videoIndir(cfg, sender, secenek, frameUrl) {
          basliklari maestro tarafinda zaten ayiklanir. */
       headers: { ...(referer ? { Referer: referer } : {}), ...temizBaslik(secenek.ekBaslik) },
     });
-    return { ok: true };
+    return { ok: true, pending: !!sonuc.pending };
   } catch (error) {
     return { ok: false, error: error.message };
   }
@@ -725,7 +725,8 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
       reply({ media: await medyaListesi(tab?.id ?? -1), pageUrl: tab?.url || "" });
     } else if (message.type === "add") {
       try {
-        reply({ ok: true, result: await sendToAfudm(cfg, message.payload) });
+        const result = await sendToAfudm(cfg, message.payload);
+        reply({ ok: true, result, pending: !!result.pending });
       } catch (error) {
         reply({ ok: false, error: error.message });
       }

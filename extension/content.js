@@ -307,7 +307,7 @@
       yanit = { ok: false, error: t("notifyNotRunning") };
     }
     if (yanit && yanit.ok) {
-      bilgi(t("msgQueued"), "iyi");
+      bilgi(t(yanit.pending ? "msgPending" : "msgQueued"), "iyi");
       setTimeout(menuyuKapat, 1800);
     } else {
       bilgi((yanit && yanit.error) || t("msgAddFailed"), "kotu");
