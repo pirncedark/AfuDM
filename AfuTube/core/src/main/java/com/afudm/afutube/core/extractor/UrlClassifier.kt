@@ -44,6 +44,13 @@ object UrlClassifier {
         }
     }
 
+    fun isYouTubeHost(url: String): Boolean = try {
+        val host = URI(url.trim()).host?.lowercase()?.removePrefix("www.")
+        host != null && host in YOUTUBE_HOSTS
+    } catch (_: Exception) {
+        false
+    }
+
     fun isValid(url: String): Boolean =
         classify(url) != UrlType.UNSUPPORTED &&
         (url.startsWith("http://") || url.startsWith("https://"))

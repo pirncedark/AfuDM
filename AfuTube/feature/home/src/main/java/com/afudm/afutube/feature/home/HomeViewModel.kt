@@ -8,7 +8,6 @@ import com.afudm.afutube.core.diagnostics.AnalysisFailure
 import com.afudm.afutube.core.diagnostics.LastAnalysisErrorStore
 import com.afudm.afutube.core.extractor.MediaInfo
 import com.afudm.afutube.core.extractor.UrlClassifier
-import com.afudm.afutube.core.extractor.UrlType
 import com.afudm.afutube.extractor.ExtractorManager
 import com.afudm.afutube.extractor.YtDlpExtractor
 import com.afudm.afutube.updater.ExtractorUpdater
@@ -97,7 +96,6 @@ class HomeViewModel(context: Context) : ViewModel() {
     }
 }
 
-internal fun analysisErrorMessage(url: String): String = when (UrlClassifier.classify(url)) {
-    UrlType.YOUTUBE -> "YouTube ba\u011flant\u0131s\u0131 analiz edilemedi."
-    else -> "Bu ba\u011flant\u0131 analiz edilemedi."
-}
+internal fun analysisErrorMessage(url: String): String =
+    if (UrlClassifier.isYouTubeHost(url)) "YouTube ba\u011flant\u0131s\u0131 analiz edilemedi."
+    else "Bu ba\u011flant\u0131 analiz edilemedi."
