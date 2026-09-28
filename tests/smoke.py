@@ -107,25 +107,35 @@ def test_http(manager: Manager) -> None:
 
     # duraklat
     before = find(manager, gid)
-    manager.pause(gid)
-    paused = wait_until(manager, gid, lambda i: i["status"] == "paused", 15, "duraklama")
-    record("Duraklat", bool(paused), f"durum: {paused['status']}" if paused else "")
-
-    # surdur ve kaldigi yerden devam
-    resume_from = paused["completedLength"] if paused else 0
-    manager.resume(gid)
-    resumed = wait_until(
-        manager, gid,
-        lambda i: i["status"] == "active" and i["completedLength"] > resume_from,
-        30, "surdurme",
-    )
-    record("Surdur + kaldigi yerden devam", bool(resumed),
-           f"{human_size(resume_from)} -> {human_size(resumed['completedLength'])}"
-           if resumed else "")
-    if before:
-        record("Ilerleme geriye gitmedi",
-               bool(resumed) and resumed["completedLength"] >= resume_from,
-               "bayt kaybi yok")
+    pause_ok = manager.pause(gid)
+    paused = (wait_until(manager, gid, lambda i: i["status"] == "paused", 15, "duraklama")
+              if pause_ok else find(manager, gid))
+    if pause_ok:
+        record("Duraklat", bool(paused), f"durum: {paused['status']}" if paused else "")
+        # surdur ve kaldigi yerden devam
+        resume_from = paused["completedLength"] if paused else 0
+        manager.resume(gid)
+        resumed = wait_until(
+            manager, gid,
+            lambda i: i["status"] == "active" and i["completedLength"] > resume_from,
+            30, "surdurme",
+        )
+        record("Surdur + kaldigi yerden devam", bool(resumed),
+               f"{human_size(resume_from)} -> {human_size(resumed['completedLength'])}"
+               if resumed else "")
+        if before:
+            record("Ilerleme geriye gitmedi",
+                   bool(resumed) and resumed["completedLength"] >= resume_from,
+                   "bayt kaybi yok")
+    else:
+        tamamlandi = bool(paused and paused["status"] == "complete")
+        record("Tamamlanmis GID duraklatma istegi", tamamlandi,
+               f"durum: {paused['status']}" if paused else "kayit bulunamadi")
+        record("Indirme tamamlandigi icin surdurme atlandi", tamamlandi)
+        if before:
+            record("Tamamlanan indirme ilerlemesi korundu",
+                   tamamlandi and paused["completedLength"] >= before["completedLength"],
+                   "bayt kaybi yok" if tamamlandi else "")
     manager.remove(gid, delete_files=True)
 
 

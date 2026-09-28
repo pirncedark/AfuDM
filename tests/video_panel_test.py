@@ -21,6 +21,7 @@ Sinananlar:
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -39,6 +40,7 @@ sys.path.insert(0, str(ROOT))
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 EXT = ROOT / "extension"
+DATA_DIR = Path(os.environ.get("AFUDM_DATA_DIR", ROOT / "data"))
 APP_PORT = 6811
 BASLIK = "Deneme Filmi 2026"
 results: list[tuple[str, bool, str]] = []
@@ -151,7 +153,9 @@ def main() -> int:
     if api("/ping")[0] != 200:
         print(f"AfuDM {APP_PORT} portunda calismiyor — once uygulamayi ac.")
         return 2
-    token = json.loads((ROOT / "data" / "api_endpoint.json").read_text("utf-8"))["token"]
+    token = json.loads((DATA_DIR / "api_endpoint.json").read_text("utf-8"))["token"]
+    _, initial_snapshot = api("/snapshot", token)
+    original_save_window = initial_snapshot.get("settings", {}).get("kaydetme_penceresi", True)
 
     is_klasoru = Path(tempfile.mkdtemp(prefix="afudm_vp_"))
     film, oynatici = is_klasoru / "film", is_klasoru / "oynatici"
@@ -194,6 +198,7 @@ def main() -> int:
         return next((i for i in snap.get("items", []) if i["gid"] == gid), {})
 
     try:
+        api("/settings", token, {"kaydetme_penceresi": False})
         with sync_playwright() as pw:
             ctx = pw.chromium.launch_persistent_context(
                 str(is_klasoru / "profil"), headless=False,
@@ -282,11 +287,12 @@ def main() -> int:
             except Exception:
                 pass
             etiketler = [s.strip().split("\n")[0] for s in secenekler.all_inner_texts()]
-            record("Duz webm videoda 'Dosya' secenegi (service worker yeniden basladiktan sonra)",
-                   any(e.startswith("Dosya") for e in etiketler),
+            dosya_etiketi = Path("klip.webm").name
+            record("Duz webm videoda dosya adi secenegi (service worker yeniden basladiktan sonra)",
+                   dosya_etiketi in etiketler,
                    (" | ".join(etiketler)) + ("" if sw_oldu else " [SW kapatilamadi]"))
-            if any(e.startswith("Dosya") for e in etiketler):
-                secenekler.filter(has_text="Dosya").first.click()
+            if dosya_etiketi in etiketler:
+                secenekler.filter(has_text=dosya_etiketi).first.click()
                 is_ = wait_for(lambda: yeni_is("/klip.webm"), timeout=15)
                 if is_:
                     eklenen.append(is_["gid"])
@@ -310,6 +316,7 @@ def main() -> int:
             record("Sayfalarda JS hatasi yok", not hatalar, "; ".join(hatalar)[:80])
             ctx.close()
     finally:
+        api("/settings", token, {"kaydetme_penceresi": original_save_window})
         for gid in eklenen:
             api("/control", token, {"action": "remove", "gid": gid, "delete_files": True})
         sunucu_a.shutdown()

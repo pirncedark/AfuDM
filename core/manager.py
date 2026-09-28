@@ -810,7 +810,12 @@ class Manager:
                 self.store.update_by_gid(gid, status="paused")
                 return True
             return False
-        self.rpc.pause(gid, force=True)
+        try:
+            self.rpc.pause(gid, force=True)
+        except Aria2Error:
+            # aria2 tamamlanmis veya artik etkin olmayan GID'leri duraklatmaz.
+            # RPC basarisizsa kayit durumunu oldugu gibi birak.
+            return False
         self.store.update_by_gid(gid, status="paused")
         return True
 
@@ -1647,7 +1652,7 @@ class Manager:
             "errorMessage": (
                 "Kaydedilen oturumdaki Cookie/Authorization güvenlik için silindi. Yeni giriş bilgileriyle indirmeyi Yenile."
                 if gid in getattr(self, "_auth_required_gids", set())
-                else status.get("errorMessage", "") or (row or {}).get("error", "")
+                else status.get("errorMessage", "") or (row or {}).get("error", "") or ""
             ),
             "infoHash": status.get("infoHash", ""),
             "numPieces": int(status.get("numPieces", 0) or 0),
