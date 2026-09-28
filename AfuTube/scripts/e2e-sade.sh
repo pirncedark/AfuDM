@@ -14,11 +14,13 @@ wait_chooser() {
 }
 return_to_settings() {
   local dump_name=$1 attempt=0
-  while [ "$attempt" -lt 3 ]; do
-    adb shell input keyevent KEYCODE_BACK
-    sleep 1
+  # BACK only while another app (the share chooser) is in front; a blind BACK after
+  # the chooser has already closed leaves Settings and then the app itself.
+  while [ "$attempt" -lt 8 ]; do
     dump "$dump_name"
     grep -q 'text="APK ' "$OUT/$dump_name.xml" && return 0
+    grep -q "package=\"$PKG\"" "$OUT/$dump_name.xml" || adb shell input keyevent KEYCODE_BACK
+    sleep 1.5
     attempt=$((attempt+1))
   done
   return 1
