@@ -69,6 +69,7 @@ fun SettingsScreen(
                                 appUpdateStatus = "Denetleniyor…"
                                 runCatching { UpdateManager.check(currentVersionCode, false) }
                                     .onSuccess { update ->
+                                        UpdateManager.markChecked(context)
                                         if (update == null) appUpdateStatus = "Uygulama güncel"
                                         else { appUpdateStatus = "Yeni sürüm bulundu"; onUpdateFound(update) }
                                     }

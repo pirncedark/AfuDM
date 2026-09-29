@@ -29,11 +29,25 @@ data class SimplifiedFormats(
 
 object FormatSimplifier {
     private val standardHeights = listOf(1080, 720, 480)
-    private val heightInResolution = Regex("(?:x|×)(\\d{3,4})(?:\\D|$)", RegexOption.IGNORE_CASE)
+    private val dimensions = Regex("^(\\d{3,5})[x×](\\d{3,5})$", RegexOption.IGNORE_CASE)
     private val heightInQuality = Regex("(?:^|\\D)(\\d{3,4})p(?:\\D|$)", RegexOption.IGNORE_CASE)
 
     fun simplify(formats: List<MediaFormat>): SimplifiedFormats {
         val videos = formats.filterNot { it.isAudioOnly }
+        val portraitCount = videos.count { format ->
+            val size = dimensions.matchEntire(format.resolution)?.groupValues
+            val width = size?.get(1)?.toIntOrNull()
+            val height = size?.get(2)?.toIntOrNull()
+            width != null && height != null && height > width
+        }
+        val landscapeCount = videos.count { format ->
+            val size = dimensions.matchEntire(format.resolution)?.groupValues
+            val width = size?.get(1)?.toIntOrNull()
+            val height = size?.get(2)?.toIntOrNull()
+            width != null && height != null && width > height
+        }
+        val isPortrait = portraitCount > landscapeCount
+        val limitDimension = if (isPortrait) "width" else "height"
         val audios = formats.filter { it.isAudioOnly || (it.acodec.isNotBlank() && it.acodec != "none") }
             // Dogrudan .mp4 gibi kaynaklarda yt-dlp codec bilgisini bos/"none" birakir; kullanici her zaman
             // MP4 + MP3 istiyor. Dosyada ses yoksa indirme karti yt-dlp hatasini gosterir.
@@ -48,7 +62,7 @@ object FormatSimplifier {
             val levels = standardHeights.filter { target -> heights.any { it >= target } }
                 .ifEmpty { listOf(heights.maxOrNull()!!) }
             levels.map { target ->
-                val matching = videos.filter { (heightOf(it) ?: Int.MIN_VALUE) <= target }
+                val matching = videos.filter { (qualityDimensionOf(it, isPortrait) ?: Int.MIN_VALUE) <= target }
                 val separateVideo = matching.filter { it.acodec == "none" }
                 val bestVideoSize = separateVideo.maxOfOrNull { it.fileSizeB.coerceAtLeast(0L) }
                     ?: matching.maxOfOrNull { it.fileSizeB.coerceAtLeast(0L) } ?: 0L
@@ -57,7 +71,7 @@ object FormatSimplifier {
                 val label = "${target}p" + if (fps >= 60) " 60" else ""
                 FormatOption(
                     label = label,
-                    formatId = "bestvideo[height<=$target][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=$target]+bestaudio/best[height<=$target]/best",
+                    formatId = "bestvideo[$limitDimension<=$target][ext=mp4]+bestaudio[ext=m4a]/bestvideo[$limitDimension<=$target]+bestaudio/best[$limitDimension<=$target]/best",
                     estimatedSize = estimateSize(bestVideoSize + if (includedAudio) 0L else bestAudioSize),
                     height = target,
                     mergeAV = true
@@ -83,9 +97,22 @@ object FormatSimplifier {
         else "~${mb.roundToLong()} MB"
     }
 
-    private fun heightOf(format: MediaFormat): Int? =
-        heightInResolution.find(format.resolution)?.groupValues?.get(1)?.toIntOrNull()
-            ?: heightInQuality.find(format.quality)?.groupValues?.get(1)?.toIntOrNull()
+    private fun heightOf(format: MediaFormat): Int? {
+        val size = dimensions.matchEntire(format.resolution)?.groupValues
+        val width = size?.get(1)?.toIntOrNull()
+        val height = size?.get(2)?.toIntOrNull()
+        return if (width != null && height != null) minOf(width, height)
+        else heightInQuality.find(format.quality)?.groupValues?.get(1)?.toIntOrNull()
+    }
+
+    private fun qualityDimensionOf(format: MediaFormat, isPortrait: Boolean): Int? {
+        val size = dimensions.matchEntire(format.resolution)?.groupValues
+        val width = size?.get(1)?.toIntOrNull()
+        val height = size?.get(2)?.toIntOrNull()
+        return if (width != null && height != null) {
+            if (isPortrait) width else height
+        } else heightOf(format)
+    }
 
     private fun Double.roundToLong(): Long = kotlin.math.round(this).toLong()
 }
