@@ -2,32 +2,38 @@
    Cevrimdisi calisir: sadece Windows'ta kurulu yazi tipleri kullanilir. */
 
 :root {
-  --bg: #14181f;
-  --bg-deep: #0f131a;
-  --surface: #1c222c;
-  --surface-2: #232b37;
-  --bg-hover: #1e2631;
-  --line: #2a3340;
-  --line-soft: #222a35;
-  --text: #e6eaf0;
-  --muted: #8a97a8;
-  --dim: #616e80;
+  --bg: #0a1628;
+  --bg-deep: #021e39;
+  --surface: #10151e;
+  --surface-2: #18263a;
+  --bg-hover: #142b43;
+  --line: #2b4963;
+  --line-soft: #1b344c;
+  --text: #f3f6fb;
+  --muted: #bfad8e;
+  --dim: #90a7b8;
 
-  --dl: #5b9dff;        /* indirme */
-  --dl-soft: #5b9dff2e;
-  --seed: #a78bfa;      /* paylasim / seed */
-  --seed-soft: #a78bfa2e;
-  --hold: #f6c445;      /* durdurulmus / zamanlanmis */
-  --hold-soft: #f6c4452e;
-  --err: #f2678a;       /* hata */
-  --warn: #f59e0b;      /* uyari */
+  --dl: #4fb3ff;        /* indirme / soguk mavi */
+  --dl-soft: #4fb3ff2e;
+  --seed: #e9b949;      /* paylasim / seed / hilal altini */
+  --seed-soft: #e9b9492e;
+  --hold: #ffb454;      /* durdurulmus / zamanlanmis */
+  --hold-soft: #ffb4542e;
+  --err: #ff6b7a;       /* hata */
+  --warn: #ffb454;      /* uyari */
   --done: #46c98b;      /* tamamlandi */
   --done-soft: #46c98b2e;
+
+  --torrent: #e9b949;   /* torrent rolu */
+  --video: #ff8a3d;     /* video rolu / gun batimi */
+  --accent: #ff8a3d;    /* marka aksani */
+  --text-muted: #bfad8e;
+  --error: #ff6b7a;
 
   --mono: "Cascadia Mono", Consolas, "Courier New", monospace;
   --ui: "Inter", system-ui, -apple-system, sans-serif;
   --ui-display: "Outfit", "Inter", sans-serif;
-  --primary-gradient: linear-gradient(135deg, #5b9dff 0%, #a78bfa 100%);
+  --primary-gradient: linear-gradient(135deg, #4fb3ff 0%, #ff8a3d 100%);
 
   --rail-w: 180px;
   --trace-h: 78px;
@@ -335,7 +341,7 @@ button { cursor: pointer; }
 .btn:hover { background: var(--surface-2); border-color: #35414f; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
 .btn:active { box-shadow: none; }
 .btn.primary { background: var(--primary-gradient); border-color: transparent; color: #fff; font-weight: 600; box-shadow: 0 4px 15px rgba(91, 157, 255, 0.2); }
-.btn.primary:hover { background: linear-gradient(135deg, #74afff 0%, #b8a2fa 100%); box-shadow: 0 6px 20px rgba(91, 157, 255, 0.35); }
+.btn.primary:hover { background: linear-gradient(135deg, #78c7ff 0%, #ffad6e 100%); box-shadow: 0 6px 20px rgba(91, 157, 255, 0.35); }
 .btn.ghost { background: none; border-color: transparent; color: var(--muted); }
 .btn.ghost:hover { color: var(--text); background: #ffffff0a; }
 .btn:disabled { opacity: 0.4; cursor: default; transform: none !important; box-shadow: none !important; }
