@@ -22,5 +22,5 @@ dependencies {
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation(kotlin("test"))
-    testImplementation("org.json:json:20240303")
+    testImplementation("org.json:json:20260814")
 }
