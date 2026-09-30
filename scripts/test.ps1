@@ -120,6 +120,7 @@ if (`$parseHatalari) {
         "tests/extension_download_handoff_test.mjs",
         "tests/download_window_ui_test.mjs",
         "tests/download_window_test.py",
+        "tests/local_api_startup_test.py",
         "tests/download_window_layout_test.py",
         "tests/pdf_handoff_http_test.py",
         "tests/pending_persistence_test.py",

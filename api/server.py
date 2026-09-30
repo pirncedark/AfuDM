@@ -18,6 +18,7 @@ import ntpath
 import os
 import secrets
 import socket
+import socketserver
 import subprocess
 import threading
 import time
@@ -925,7 +926,11 @@ class _ExclusiveServer(ThreadingHTTPServer):
     def server_bind(self) -> None:
         if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-        super().server_bind()
+        # HTTPServer.server_bind calls getfqdn synchronously. This numeric-only
+        # listener must start even when the machine's DNS service is unavailable.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = self.server_address[0]
+        self.server_port = self.server_address[1]
 
 
 class LocalAPI:

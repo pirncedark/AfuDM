@@ -1593,8 +1593,10 @@ class Api:
 class IndirmePenceresiApi:
     """Ana panelden bagimsiz, uzanti indirmesi icin kucuk onay penceresi."""
     def __init__(self, api: Api) -> None:
-        self.api = api
-        self.window = None
+        # pywebview recursively exposes public objects. Native Window/.NET
+        # objects and the parent bridge must stay outside that traversal.
+        self._api = api
+        self._window = None
         self._aktif = None
         self._yok_edildi = False
         self._sifirlama = 0
@@ -1602,21 +1604,21 @@ class IndirmePenceresiApi:
         self._gizli = False
 
     def bekleyen_listesi(self) -> dict:
-        sonuc = self.api.bekleyen_listesi()
+        sonuc = self._api.bekleyen_listesi()
         sonuc["ogeler"] = [x for x in sonuc["ogeler"] if x.get("source") == "browser"]
-        if not sonuc.get("ogeler") and not self._gid and self.window:
-            self.window.hide()
+        if not sonuc.get("ogeler") and not self._gid and self._window:
+            self._window.hide()
         return sonuc
 
     def kaydet_bilgi(self, url: str, filename: str = "", kind: str = "") -> dict:
-        return self.api.kaydet_bilgi(url, filename, kind)
+        return self._api.kaydet_bilgi(url, filename, kind)
 
     def probe_link(self, url: str) -> dict:
-        return self.api.probe_link(url)
+        return self._api.probe_link(url)
 
     def baslik(self, title: str) -> dict:
-        if self.window:
-            self.window.set_title(str(title)[:200])
+        if self._window:
+            self._window.set_title(str(title)[:200])
         return {"ok": True}
 
     def bekleyen_goster(self, kimlik: int) -> dict:
@@ -1625,13 +1627,13 @@ class IndirmePenceresiApi:
         if any(x["id"] == kimlik for x in self.bekleyen_listesi()["ogeler"]):
             self._aktif = kimlik
             self._gid = ""
-            if self.window:
-                self.window.show()
+            if self._window:
+                self._window.show()
             return {"ok": True}
         return {"ok": False}
 
     def bekleyen_onayla(self, kimlik: int, secim: dict) -> dict:
-        sonuc = self.api.bekleyen_onayla(kimlik, secim)
+        sonuc = self._api.bekleyen_onayla(kimlik, secim)
         if sonuc.get("ok"):
             self._aktif = None
             self._gid = sonuc.get("gid") or ""
@@ -1640,10 +1642,10 @@ class IndirmePenceresiApi:
     def bekleyen_iptal(self, kimlik: int) -> dict:
         if self._aktif == kimlik:
             self._aktif = None
-        return self.api.bekleyen_iptal(kimlik)
+        return self._api.bekleyen_iptal(kimlik)
 
     def indirme_durumu(self, gid: str) -> dict:
-        item = next((row for row in self.api.manager.snapshot().get("items", [])
+        item = next((row for row in self._api.manager.snapshot().get("items", [])
                      if row.get("gid") == gid), None)
         return {"ok": bool(item), "item": item or {}}
 
@@ -1651,8 +1653,8 @@ class IndirmePenceresiApi:
         self._gid = ""
         self._aktif = None
         self._gizli = True
-        if self.window:
-            self.window.hide()
+        if self._window:
+            self._window.hide()
         # Native closing runs on the UI thread. Never wait for evaluate_js here.
         self._sifirlama += 1
         return {"ok": True}
@@ -1661,33 +1663,33 @@ class IndirmePenceresiApi:
         return {"reset": self._sifirlama, "hidden": self._gizli}
 
     def kapanirken(self):
-        if self.api._cikiliyor:
+        if self._api._cikiliyor:
             return None
         self.kapat()
         return False
 
     def yok_et(self) -> None:
-        if self.window and not self._yok_edildi:
+        if self._window and not self._yok_edildi:
             self._yok_edildi = True
-            self.window.destroy()
+            self._window.destroy()
 
     def dil(self) -> str:
-        return lang.resolve(str(self.api.manager.store.get("language", "auto")))
+        return lang.resolve(str(self._api.manager.store.get("language", "auto")))
 
     def klasor_gozat(self, baslangic: str = "") -> dict:
-        if not self.window:
+        if not self._window:
             return {"ok": False}
-        secim = self.window.create_file_dialog(
-            webview.FOLDER_DIALOG, directory=baslangic or self.api.manager.current_download_dir())
+        secim = self._window.create_file_dialog(
+            webview.FOLDER_DIALOG, directory=baslangic or self._api.manager.current_download_dir())
         return {"ok": True, "yol": secim[0] if secim else ""}
 
     def goster(self) -> None:
         self._gizli = False
-        if not self.window:
+        if not self._window:
             return
         try:
-            pencere.one_getir(self.window)
-            self.window.evaluate_js("window.afudmDownloadRefresh && window.afudmDownloadRefresh()")
+            pencere.one_getir(self._window)
+            self._window.evaluate_js("window.afudmDownloadRefresh && window.afudmDownloadRefresh()")
         except Exception:
             pass
 
@@ -1903,7 +1905,7 @@ def main() -> int:
         hidden=True,
         resizable=False,
     )
-    prompt_api.window = prompt_window
+    prompt_api._window = prompt_window
     api._indirme_penceresi = prompt_api
     prompt_window.events.loaded += lambda: prompt_api.goster() if any(x.get("source") == "browser" for x in api._bekleyenler.ozet()) else None
 
