@@ -1,4 +1,5 @@
 """Download prompt lifecycle and approval regression tests; no real windows."""
+import importlib.util
 import sys
 import unittest
 import tempfile
@@ -144,6 +145,8 @@ class DownloadWindowTest(unittest.TestCase):
             self.assertTrue(self.api.guncelleme_uygula()['ok'])
         self.prompt.window.destroy.assert_called_once()
 
+    @unittest.skipUnless(importlib.util.find_spec('PIL') is not None,
+                         'Pillow yok (CI kalite isi); build_tray simge kuramaz')
     def test_tray_exit_closes_hidden_prompt(self):
         actions = []
         class Menu:
