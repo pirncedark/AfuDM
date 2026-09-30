@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.1](https://github.com/pirncedark/AfuDM/compare/v2.9.0...v2.9.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **api:** start local API without reverse DNS and keep native objects out of the download window bridge ([#96](https://github.com/pirncedark/AfuDM/issues/96)) ([f7a8c73](https://github.com/pirncedark/AfuDM/commit/f7a8c736ea715f800705a1a8db6265a31d579d7b))
+
 ## [2.9.0](https://github.com/pirncedark/AfuDM/compare/v2.8.0...v2.9.0) (2026-09-30)
 
 
