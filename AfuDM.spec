@@ -77,7 +77,9 @@ a = Analysis(
     ['app.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    # Also retain the browser handoff and prompt assets inside the executable.
+    # Portable releases copy these directories beside the exe as well.
+    datas=[('ui', 'ui'), ('extension', 'extension')],
     hiddenimports=['pystray._win32'],
     hookspath=[],
     hooksconfig={},

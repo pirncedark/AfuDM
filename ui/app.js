@@ -2684,7 +2684,7 @@ $("kayGo").onclick = async () => {
 async function bekleyenYokla() {
   let ogeler = [];
   try {
-    ogeler = (await call("bekleyen_listesi")).ogeler || [];
+    ogeler = ((await call("bekleyen_listesi")).ogeler || []).filter((item) => item.source !== "browser");
   } catch (_) { return; }
   // Gosterilen istek listeden DUSMEZ (onay/iptalde duser): sayarken cikarilir.
   const kalan = ogeler.length - (kayit.kimlik === null ? 0 : 1);

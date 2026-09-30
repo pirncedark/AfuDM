@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AfuDM — İndirme</title>
+  <style>
+    :root { color-scheme: dark; font: 14px "Segoe UI", sans-serif; background:#14181f; color:#eef1f7; }
+    body { margin:0; padding:22px; }
+    h1 { font-size:18px; margin:0 0 14px; }
+    #url { color:#aeb8c8; overflow-wrap:anywhere; max-height:42px; overflow:hidden; margin-bottom:14px; }
+    label { display:block; color:#c5ccda; margin:10px 0 5px; }
+    input, select { box-sizing:border-box; width:100%; padding:9px 10px; border:1px solid #394252; border-radius:7px; background:#1c222c; color:#fff; }
+    .row { display:flex; gap:8px; }
+    .row input, select { flex:1; }
+    button { border:0; border-radius:7px; padding:9px 14px; color:#fff; background:#303949; cursor:pointer; }
+    button.primary { background:#5579d7; font-weight:600; }
+    .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+    #error { color:#ff9292; min-height:18px; margin-top:8px; }
+  </style>
+</head>
+<body>
+  <h1 id="title" data-i18n="download.title">İndirme</h1>
+  <section id="confirmPane">
+    <div id="url"></div>
+    <label for="name" data-i18n="download.name">Dosya adı</label>
+    <input id="name" autocomplete="off">
+    <label for="folder" data-i18n="download.folder">Kaydedilecek klasör</label>
+    <div class="row"><input id="folder"><button id="browse" data-i18n="download.browse">Gözat</button></div>
+    <div id="qualityWrap" hidden><label for="quality" data-i18n="kay.quality">Kalite</label><select id="quality"><option value="best" data-i18n="add.q.best">best</option><option value="2160" data-i18n="add.q.2160">2160</option><option value="1080" data-i18n="add.q.1080">1080</option><option value="720" data-i18n="add.q.720">720</option><option value="480" data-i18n="add.q.480">480</option><option value="audio" data-i18n="add.q.audio">audio</option></select></div>
+    <div id="error" role="status"></div>
+    <div class="actions"><button id="cancel" data-i18n="download.cancel">Vazgeç</button><button id="start" data-i18n="download.start" class="primary">İndirmeyi başlat</button></div>
+  </section>
+  <section id="progressPane" hidden>
+    <div id="progressName"></div>
+    <progress id="progress" max="100" value="0" style="width:100%;margin:14px 0"></progress>
+    <div id="progressLabel" role="status">İndirme başlatılıyor…</div>
+    <div class="actions"><button id="close" data-i18n="download.close">Kapat</button></div>
+  </section>
+  <script src="i18n.js"></script>
+  <script>const lang = { t, setLang, applyStatic };</script>
+  <script src="download.js"></script>
+</body>
+</html>

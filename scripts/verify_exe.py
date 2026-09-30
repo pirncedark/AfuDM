@@ -8,6 +8,23 @@ from pathlib import Path
 
 from PyInstaller.archive.readers import CArchiveReader
 
+REQUIRED_ASSETS = (
+    "ui/download.html",
+    "ui/download.js",
+    "extension/download-handoff.js",
+)
+
+
+def verify_assets(reader: CArchiveReader) -> None:
+    names = {name.replace("\\", "/") for name in reader.toc}
+    missing = [name for name in REQUIRED_ASSETS if name not in names]
+    if missing:
+        raise RuntimeError("embedded assets missing: " + ", ".join(missing))
+    for name in REQUIRED_ASSETS:
+        archive_name = next(key for key in reader.toc if key.replace("\\", "/") == name)
+        if not reader.extract(archive_name):
+            raise RuntimeError(f"embedded asset empty: {name}")
+
 
 def nested_code(root: types.CodeType):
     stack = [root]
@@ -26,10 +43,29 @@ def load_carchive_module(reader: CArchiveReader, name: str) -> types.CodeType:
         raise RuntimeError(f"embedded module missing or invalid: {name}") from exc
 
 
-def verify(exe: Path, expected_version: str) -> None:
+def verify_headless(pyz, app: types.CodeType) -> None:
+    """Verify the packaged headless entry without launching a live service."""
+    try:
+        headless = pyz.extract("headless")
+    except (KeyError, ValueError, EOFError, TypeError) as exc:
+        raise RuntimeError("embedded module missing or invalid: headless") from exc
+    codes = list(nested_code(headless))
+    if not any(code.co_name == "calistir" for code in codes):
+        raise RuntimeError("embedded headless entry missing: calistir")
+    if any("webview" in code.co_names for code in codes):
+        raise RuntimeError("embedded headless imports webview")
+    if not any("--headless" in code.co_consts and "headless" in code.co_names
+               for code in nested_code(app)):
+        raise RuntimeError("embedded app lacks --headless dispatch")
+
+
+def verify(exe: Path, expected_version: str, headless: bool = False) -> None:
     reader = CArchiveReader(str(exe))
+    verify_assets(reader)
     app = load_carchive_module(reader, "app")
     pyz = reader.open_embedded_archive("PYZ.pyz")
+    if headless:
+        verify_headless(pyz, app)
     try:
         surum = pyz.extract("core.surum")
     except (KeyError, ValueError, EOFError, TypeError) as exc:
@@ -61,9 +97,10 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--exe", required=True, type=Path)
     parser.add_argument("--version", required=True)
+    parser.add_argument("--headless", action="store_true", help="Check embedded headless entry without starting it")
     args = parser.parse_args()
     try:
-        verify(args.exe, args.version)
+        verify(args.exe, args.version, headless=args.headless)
     except (OSError, RuntimeError, KeyError) as exc:
         print(f"GATE HATA: {exc}")
         return 1

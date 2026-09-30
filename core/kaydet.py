@@ -9,13 +9,15 @@ secer.
 - Klasor agaci: kisayollar (AfuDM, Masaustu, Indirilenler, Belgeler, Videolar,
   Muzik) + diskler; alt klasorler istendikce okunur (tum disk taranmaz).
 - Bekleyenler: uzantidan gelen indirme hemen baslamaz; cerezler/basliklar dahil
-  TUM istek bellekte tutulur, pencere onaylayinca aynen yonetici'ye verilir.
+  Istek atomik dosyada, cerezler/basliklar yalniz bellekte tutulur.
   (Cerezler burada da yalniz bellekte; bkz. core/cerez.py.)
 """
 from __future__ import annotations
 
 import ctypes
 import itertools
+import json
+import tempfile
 import os
 import string
 import threading
@@ -23,6 +25,7 @@ import time
 import urllib.parse
 import winreg
 from pathlib import Path
+from core import paths
 from . import dosya_adi as _dosya_mod
 from .dosya_adi import guvenli_dosya_adi, resolve_filename, split_stem_ext
 
@@ -195,24 +198,78 @@ def ag_konumu_dogrula(yol: str) -> str:
 
 # --- tarayicidan gelip onay bekleyen indirmeler -------------------------------
 class Bekleyenler:
-    SURE = 30 * 60  # yarim saatte onaylanmayan istek (ve cerezleri) atilir
+    SURE = 30 * 60  # yalniz gecici tarayici kimlik bilgilerinin omru
 
     def __init__(self) -> None:
         self._kilit = threading.Lock()
-        self._sayac = itertools.count(1)
         self._isler: dict[int, dict] = {}
+        self._dosya = paths.DATA / "pending_downloads.json"
+        try:
+            payload = json.loads(self._dosya.read_text(encoding="utf-8"))
+            if payload.get("version") != 1:
+                raise ValueError("Unsupported pending download format")
+            for row in payload["items"]:
+                ident = int(row["id"])
+                if ident < 1 or ident in self._isler or not isinstance(row["istek"], dict):
+                    raise ValueError("Invalid pending download")
+                self._isler[ident] = {"istek": row["istek"], "zaman": float(row["zaman"])}
+        except FileNotFoundError:
+            pass
+        except (ValueError, TypeError, KeyError, AttributeError):
+            self._isler = {}
+            self._dosya.rename(self._dosya.with_name(self._dosya.name + f".corrupt-{time.time_ns()}"))
+        self._sayac = itertools.count(max(self._isler, default=0) + 1)
+
+    def _sakla(self, isler: dict) -> None:
+        """Replace only after a complete, flushed write; secrets remain in RAM."""
+        rows = []
+        for ident, row in sorted(isler.items()):
+            request = {k: v for k, v in row["istek"].items()
+                       if k not in ("cookies", "headers", "user_agent")}
+            rows.append({"id": ident, "istek": request, "zaman": row["zaman"]})
+        self._dosya.parent.mkdir(parents=True, exist_ok=True)
+        fd, name = tempfile.mkstemp(prefix="pending-", suffix=".tmp", dir=self._dosya.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump({"version": 1, "items": rows}, handle, ensure_ascii=False)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(name, self._dosya)
+        finally:
+            Path(name).unlink(missing_ok=True)
+
+    def bak(self, kimlik: int) -> dict | None:
+        """Approval reads without removing the durable request prematurely."""
+        with self._kilit:
+            self._temizle()
+            row = self._isler.get(int(kimlik))
+            return dict(row["istek"]) if row else None
 
     def ekle(self, istek: dict) -> int:
         with self._kilit:
             self._temizle()
             kimlik = next(self._sayac)
-            self._isler[kimlik] = {"istek": dict(istek), "zaman": time.time()}
+            yeni = {**self._isler, kimlik: {"istek": dict(istek), "zaman": time.time()}}
+            self._sakla(yeni)
+            self._isler = yeni
             return kimlik
 
     def al(self, kimlik: int) -> dict | None:
         with self._kilit:
-            kayit = self._isler.pop(int(kimlik), None)
+            kimlik = int(kimlik)
+            kayit = self._isler.get(kimlik)
+            if kayit:
+                yeni = {k: v for k, v in self._isler.items() if k != kimlik}
+                self._sakla(yeni)
+                self._isler = yeni
             return kayit["istek"] if kayit else None
+
+    def geri_koy(self, kimlik: int, istek: dict) -> None:
+        """Keep a failed approval available under its original UI identity."""
+        with self._kilit:
+            yeni = {**self._isler, int(kimlik): {"istek": dict(istek), "zaman": time.time()}}
+            self._sakla(yeni)
+            self._isler = yeni
 
     def ozet(self) -> list[dict]:
         """Arayuze giden liste: cerez/baslik YOK, yalniz gosterilecekler."""
@@ -220,10 +277,14 @@ class Bekleyenler:
             self._temizle()
             return [{"id": k, "url": v["istek"].get("url", ""), "title": v["istek"].get("title") or "",
                      "filename": v["istek"].get("filename") or "", "kind": v["istek"].get("kind") or "",
-                     "quality": v["istek"].get("quality") or ""}
+                     "quality": v["istek"].get("quality") or "",
+                     "audio_only": bool(v["istek"].get("audio_only")),
+                     "source": v["istek"].get("source") or ""}
                     for k, v in sorted(self._isler.items())]
 
     def _temizle(self) -> None:
         esik = time.time() - self.SURE
-        for kimlik in [k for k, v in self._isler.items() if v["zaman"] < esik]:
-            del self._isler[kimlik]
+        for row in self._isler.values():
+            if row["zaman"] < esik:
+                for key in ("cookies", "headers", "user_agent"):
+                    row["istek"].pop(key, None)

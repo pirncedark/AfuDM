@@ -12,7 +12,7 @@
         veritabanina yazmaz (core/cerez.py).
 */
 
-importScripts("header-policy.js");
+importScripts("header-policy.js", "download-handoff.js");
 
 const DEFAULTS = {
   enabled: true,
@@ -106,24 +106,43 @@ async function cookiesFor(cfg, url) {
   }
 }
 
+async function reportHandoffError(cfg, error) {
+  // Best effort: the API may be unreachable; never replace the original error.
+  try {
+    if (!(await ping(cfg.port))) await portTara(cfg);
+    await fetch(endpoint(cfg, "/handoff/error"), {
+      method: "POST",
+      signal: AbortSignal.timeout(3000),
+      headers: { "Content-Type": "application/json", "X-AfuDM-Token": cfg.token },
+      body: JSON.stringify({ error: String(error.message || error) }),
+    });
+  } catch (_) {}
+}
+
 async function sendToAfudm(cfg, body) {
   /* interactive: AfuDM indirmeyi HEMEN baslatmaz, once kaydetme penceresini
      acar (klasor/ad/kategori secimi). Ayar kapaliysa uygulama yok sayar ve
      dogrudan baslatir; karar AfuDM'in, uzantinin degil. */
-  const payload = { user_agent: navigator.userAgent, interactive: true, ...body };
-  if (!payload.cookies) payload.cookies = await cookiesFor(cfg, payload.url);
-  // Port kaymis olabilir: gondermeden once dogrula (tarama gerekirse cfg.port guncellenir)
-  if (!(await ping(cfg.port))) await portTara(cfg);
-  const response = await fetch(endpoint(cfg, "/add"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-AfuDM-Token": cfg.token },
-    body: JSON.stringify(payload),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error || chrome.i18n.getMessage("msgNoResponse", [String(response.status)]));
+  try {
+    const payload = { user_agent: navigator.userAgent, interactive: true, ...body };
+    if (!payload.cookies) payload.cookies = await cookiesFor(cfg, payload.url);
+    // Port kaymis olabilir: gondermeden once dogrula (tarama gerekirse cfg.port guncellenir)
+    if (!(await ping(cfg.port))) await portTara(cfg);
+    const response = await fetch(endpoint(cfg, "/add"), {
+      method: "POST",
+      signal: AbortSignal.timeout(10000),
+      headers: { "Content-Type": "application/json", "X-AfuDM-Token": cfg.token },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data?.ok !== true) {
+      throw new Error(data?.error || chrome.i18n.getMessage("msgNoResponse", [String(response.status)]));
+    }
+    return data;
+  } catch (error) {
+    await reportHandoffError(cfg, error);
+    throw error;
   }
-  return data;
 }
 
 function notify(message, title = "AfuDM") {
@@ -168,37 +187,59 @@ function extensionOf(url) {
 }
 
 /* --- 1) Tarayici indirmesini devral --------------------------------- */
-chrome.downloads.onCreated.addListener(async (item) => {
-  const cfg = await config();
-  // Yonlendirmelerden SONRAKI adres: cerezler de bu adrese gore secilir,
-  // boylece aria2 yonlendirme zincirinde cerezi baska alana tasimaz.
-  const url = item.finalUrl || item.url;
-  if (!cfg.uzantiAcik || !cfg.enabled || !url || url.startsWith("blob:") || url.startsWith("data:")) {
-    return;
-  }
-  const skip = cfg.skipExtensions.split(",").map((s) => s.trim()).filter(Boolean);
-  if (skip.includes(extensionOf(url))) return;
-  if (item.fileSize > 0 && item.fileSize < cfg.minSizeMB * 1048576) return;
-  if (!(await afudmAlive(cfg))) return; // AfuDM kapali: tarayici devam etsin
-
-  try {
-    const sonuc = await sendToAfudm(cfg, {
-      url,
-      kind: "http",
-      filename: item.filename ? item.filename.split(/[\\/]/).pop() : undefined,
-      headers: item.referrer ? { Referer: item.referrer } : {},
-    });
-    chrome.downloads.cancel(item.id, () => chrome.downloads.erase({ id: item.id }));
-    notify(chrome.i18n.getMessage(sonuc.pending ? "msgPending" : "notifyResumed"));
-    chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
-      if (tabs.length && tabs[0].id) {
-        const ad = item.filename ? item.filename.split(/[\\/]/).pop() : chrome.i18n.getMessage("msgToastSingle");
-        sayfaToast(tabs[0].id, "AfuDM", ad);
-      }
-    }).catch(() => {});
-  } catch (error) {
+chrome.downloads.onCreated.addListener((item) => {
+  // Extension fully disabled means no pause, no inspection, and no takeover.
+  if (!uzantiAcik) return;
+  AfuDownloadHandoff.handle(item, {
+    pause: (id) => new Promise((resolve, reject) => chrome.downloads.pause(id, () => {
+      const error = chrome.runtime.lastError;
+      error ? reject(new Error(error.message)) : resolve();
+    })),
+    state: (id) => new Promise((resolve) => chrome.downloads.search({ id }, (rows) => resolve(rows[0] || {}))),
+    cancel: (id) => new Promise((resolve, reject) => chrome.downloads.cancel(id, () => {
+      const error = chrome.runtime.lastError;
+      error ? reject(new Error(error.message)) : resolve();
+    })),
+    removeFile: (id) => new Promise((resolve, reject) => chrome.downloads.removeFile(id, () => {
+      const error = chrome.runtime.lastError;
+      error ? reject(new Error(error.message)) : resolve();
+    })),
+    erase: (id) => new Promise((resolve, reject) => chrome.downloads.erase({ id }, () => {
+      const error = chrome.runtime.lastError;
+      error ? reject(new Error(error.message)) : resolve();
+    })),
+    resume: (id) => new Promise((resolve, reject) => chrome.downloads.resume(id, () => {
+      const error = chrome.runtime.lastError;
+      error ? reject(new Error(error.message)) : resolve();
+    })),
+    eligible: async (download, url) => {
+      const cfg = await config();
+      if (!cfg.uzantiAcik || !cfg.enabled) return false;
+      const skip = cfg.skipExtensions.split(",").map((s) => s.trim()).filter(Boolean);
+      if (skip.includes(extensionOf(url))) return false;
+      if (download.fileSize > 0 && download.fileSize < cfg.minSizeMB * 1048576) return false;
+      return (await afudmAlive(cfg)) ? cfg : false;
+    },
+    send: async (download, url) => {
+      const cfg = await config();
+      const sonuc = await sendToAfudm(cfg, {
+        url, kind: "http",
+        filename: download.filename ? download.filename.split(/[\\/]/).pop()
+          : (String(download.mime || "").toLowerCase() === "application/pdf" ? "download.pdf" : undefined),
+        headers: download.referrer ? { Referer: download.referrer } : {},
+      });
+      notify(chrome.i18n.getMessage(sonuc.pending ? "msgPending" : "notifyResumed"));
+      chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
+        if (tabs.length && tabs[0].id) {
+          const ad = download.filename ? download.filename.split(/[\\/]/).pop() : chrome.i18n.getMessage("msgToastSingle");
+          sayfaToast(tabs[0].id, "AfuDM", ad);
+        }
+      }).catch(() => {});
+      return true;
+    },
+  }).catch((error) => {
     notify(chrome.i18n.getMessage("notifyHandoffFailed") + error.message);
-  }
+  });
 });
 
 /* --- 2) Sayfadaki medyayi izle ------------------------------------- */

@@ -198,11 +198,15 @@ def test_bekleyen_onayla_on_eklenen_torrent_gidini_kullanir():
     Path(url).write_bytes(b"dummy torrent")
     try:
         preview_gid = mgr.torrent_on_ekle(url)
-        pending = Bekleyenler()
-        kimlik = pending.ekle({"url": url, "kind": "torrent"})
-        result = _api(mgr, pending).bekleyen_onayla(
-            kimlik, {"adopt_gid": preview_gid, "selected_files": [1]}
-        )
+        import tempfile
+        from unittest.mock import patch
+        from core import paths
+        with tempfile.TemporaryDirectory() as folder, patch.object(paths, "DATA", Path(folder)):
+            pending = Bekleyenler()
+            kimlik = pending.ekle({"url": url, "kind": "torrent"})
+            result = _api(mgr, pending).bekleyen_onayla(
+                kimlik, {"adopt_gid": preview_gid, "selected_files": [1]}
+            )
     finally:
         Path(url).unlink(missing_ok=True)
 
