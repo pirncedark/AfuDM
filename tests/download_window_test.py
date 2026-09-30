@@ -7,11 +7,16 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-try:
-    import webview  # noqa: F401  pywebview yoksa (CI kalite isi) app import edilemez
-except ImportError:
-    print("ATLANDI: pywebview kurulu degil")
-    raise SystemExit(0)
+import types
+# CI kalite isinde pywebview kurulu degil; app yalniz modul adi icin ister (bkz. guncelleme_test).
+if sys.modules.get("webview") is None:
+    try:
+        import webview  # noqa: F401
+    except ImportError:
+        _wv = types.ModuleType("webview")
+        _wv.FOLDER_DIALOG = 1
+        _wv.OPEN_DIALOG = 2
+        sys.modules["webview"] = _wv
 from app import Api, IndirmePenceresiApi, build_tray
 from core import kaydet
 

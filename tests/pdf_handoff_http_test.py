@@ -10,6 +10,16 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import types
+# CI kalite isinde pywebview kurulu degil; app yalniz modul adi icin ister (bkz. guncelleme_test).
+if sys.modules.get("webview") is None:
+    try:
+        import webview  # noqa: F401
+    except ImportError:
+        _wv = types.ModuleType("webview")
+        _wv.FOLDER_DIALOG = 1
+        _wv.OPEN_DIALOG = 2
+        sys.modules["webview"] = _wv
 from api.server import _Handler, _ExclusiveServer
 from app import Api
 from core import db, kaydet
