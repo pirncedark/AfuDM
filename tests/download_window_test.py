@@ -23,6 +23,40 @@ from core import kaydet
 
 
 class DownloadWindowTest(unittest.TestCase):
+    def test_prompt_bridge_does_not_traverse_native_window_or_parent_api(self):
+        import threading
+        try:
+            from webview.util import inject_pywebview
+        except ImportError:
+            self.skipTest('pywebview needed for its real bridge serializer')
+
+        touched = []
+        finished = threading.Event()
+        scripts = []
+
+        class NativeWindow:
+            @property
+            def native(self):
+                touched.append('native')
+                raise RuntimeError('Native .NET object must never be traversed')
+
+        prompt = IndirmePenceresiApi(SimpleNamespace(parent_only=lambda: None))
+        # Works before and after the private-reference fix; before it exposes
+        # the native object and entire parent API to pywebview's real walker.
+        setattr(prompt, '_window' if hasattr(prompt, '_window') else 'window', NativeWindow())
+        bridge_window = SimpleNamespace(
+            _js_api=prompt, _functions={}, _expose_lock=threading.Lock(),
+            run_js=scripts.append,
+            events=SimpleNamespace(before_load=threading.Event(),
+                                   _pywebviewready=threading.Event(), loaded=finished),
+        )
+        with patch('webview.util.load_js_files', return_value=('', '%(functions)s')):
+            inject_pywebview('edgechromium', bridge_window)
+            self.assertTrue(finished.wait(2), 'download bridge initialization did not finish')
+        self.assertEqual(touched, [], 'pywebview traversed the prompt native window')
+        self.assertNotIn('api.parent_only', scripts[-1])
+        self.assertIn('bekleyen_onayla', scripts[-1])
+
     @unittest.skipUnless((Path(__file__).resolve().parents[1] / 'engine/aria2c.exe').exists(),
                          'engine/aria2c.exe yok (CI motoru indirmez)')
     def test_inline_pdf_loopback_saved_name_and_manual_override(self):
@@ -94,14 +128,14 @@ class DownloadWindowTest(unittest.TestCase):
         self.api.manager.store.get.side_effect = lambda key, default=None: default
         self.api._hedef_klasor = lambda *args: None
         self.prompt = IndirmePenceresiApi(self.api)
-        self.prompt.window = Mock()
+        self.prompt._window = Mock()
         self.api._indirme_penceresi = self.prompt
 
     def test_main_closed_destroys_hidden_prompt_once(self):
         self.api.ana_pencere_kapandi()
         self.api.ana_pencere_kapandi()
         self.assertTrue(self.api._cikiliyor)
-        self.prompt.window.destroy.assert_called_once()
+        self.prompt._window.destroy.assert_called_once()
 
     def test_x_keeps_requests_and_reuses_window(self):
         first = self.api.tarayicidan_sor({'url': 'https://example.test/a.pdf'})
@@ -113,8 +147,8 @@ class DownloadWindowTest(unittest.TestCase):
         self.assertFalse(self.prompt.bekleyen_goster(first)['ok'])
         self.prompt.goster()
         self.assertTrue(self.prompt.bekleyen_goster(first)['ok'])
-        self.prompt.window.destroy.assert_not_called()
-        self.prompt.window.hide.assert_called()
+        self.prompt._window.destroy.assert_not_called()
+        self.prompt._window.hide.assert_called()
         self.api._cikiliyor = True
         self.assertIsNone(self.prompt.kapanirken())
 
@@ -132,18 +166,18 @@ class DownloadWindowTest(unittest.TestCase):
         self.assertTrue(self.api.pencere_kapat()['tepside'])
         self.api._window.hide.assert_called_once()
         self.api._window.destroy.assert_not_called()
-        self.prompt.window.destroy.assert_not_called()
+        self.prompt._window.destroy.assert_not_called()
         self.api.manager.store.get.side_effect = lambda key, default=None: False
         self.api._window.destroy.side_effect = self.api.ana_pencere_kapandi
         self.assertFalse(self.api.pencere_kapat()['tepside'])
-        self.prompt.window.destroy.assert_called_once()
+        self.prompt._window.destroy.assert_called_once()
 
     def test_update_closes_hidden_prompt(self):
         self.api._window = Mock()
         self.api._window.destroy.side_effect = self.api.ana_pencere_kapandi
         with patch('app.guncelleme.uygula', return_value={'ok': True}):
             self.assertTrue(self.api.guncelleme_uygula()['ok'])
-        self.prompt.window.destroy.assert_called_once()
+        self.prompt._window.destroy.assert_called_once()
 
     @unittest.skipUnless(importlib.util.find_spec('PIL') is not None,
                          'Pillow yok (CI kalite isi); build_tray simge kuramaz')
@@ -164,7 +198,7 @@ class DownloadWindowTest(unittest.TestCase):
         actions[-1](icon)
         icon.stop.assert_called_once()
         self.assertTrue(self.api._cikiliyor)
-        self.prompt.window.destroy.assert_called_once()
+        self.prompt._window.destroy.assert_called_once()
 
     def test_desktop_request_keeps_main_panel_confirmation(self):
         self.api._window = Mock()
@@ -232,7 +266,7 @@ class DownloadWindowTest(unittest.TestCase):
 
     def test_native_close_never_waits_for_javascript(self):
         self.assertIs(self.prompt.kapanirken(), False)
-        self.prompt.window.evaluate_js.assert_not_called()
+        self.prompt._window.evaluate_js.assert_not_called()
         self.assertEqual(self.prompt.pencere_durumu()['reset'], 1)
 
     def test_failed_approval_stays_visible_and_can_retry(self):
@@ -241,7 +275,7 @@ class DownloadWindowTest(unittest.TestCase):
         self.api.manager.add.side_effect = ValueError('temporary failure')
         self.assertFalse(self.prompt.bekleyen_onayla(ident, {})['ok'])
         self.assertEqual(self.prompt.bekleyen_listesi()['ogeler'][0]['id'], ident)
-        self.prompt.window.hide.assert_not_called()
+        self.prompt._window.hide.assert_not_called()
         self.api.manager.add.side_effect = None
         self.assertTrue(self.prompt.bekleyen_onayla(ident, {})['ok'])
         self.assertEqual(self.api.bekleyen_listesi()['ogeler'], [])
@@ -260,11 +294,11 @@ class DownloadWindowTest(unittest.TestCase):
         self.prompt.bekleyen_goster(ident)
         self.prompt.bekleyen_onayla(ident, {})
         self.prompt.bekleyen_listesi()
-        self.prompt.window.hide.assert_not_called()
+        self.prompt._window.hide.assert_not_called()
         next_id = self.api.tarayicidan_sor({'url': 'https://example.test/next.pdf'})
-        self.prompt.window.show.reset_mock()
+        self.prompt._window.show.reset_mock()
         self.prompt.bekleyen_goster(next_id)
-        self.prompt.window.show.assert_called_once()
+        self.prompt._window.show.assert_called_once()
 
 
 if __name__ == '__main__':
