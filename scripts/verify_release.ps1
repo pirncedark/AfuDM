@@ -36,7 +36,10 @@ try {
         "afuadm.py",
         "README.md",
         "ui/index.html",
+        "ui/download.html",
+        "ui/download.js",
         "extension/manifest.json",
+        "extension/download-handoff.js",
         "core/surum.py",
         "engine/aria2c.exe"
     )

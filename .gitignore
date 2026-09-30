@@ -35,3 +35,4 @@ release_notes.txt
 *.zip
 tanilar/*.zip
 .afudm_codex_roadmap_plan.txt
+dist_test/

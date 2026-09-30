@@ -202,6 +202,12 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 
     def _send(self, code: int, payload: dict) -> None:
+        if urlparse(self.path).path == "/add" and (code >= 400 or payload.get("ok") is False):
+            try:
+                self.manager.store.log("error", "Tarayici devretme istegi reddedildi: " +
+                                       str(getattr(self, "_handoff_error", "") or payload.get("error") or payload.get("message") or code)[:1000])
+            except Exception:
+                _LOG.exception("Tarayici devretme hatasi olay kaydina yazilamadi")
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -636,12 +642,15 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
+        self._handoff_error = ""
         if not self._rate_allowed(): self._hata(429, "RATE_LIMIT", "cok fazla istek; bir dakika sonra yeniden dene"); return
         if not self._authorized(query):
             self._hata(401, "GECERSIZ_TOKEN", "gecersiz token")
             return
-        data = self._body()
         try:
+            data = self._body()
+            if not isinstance(data, dict):
+                raise ValueError("istek JSON nesnesi olmali")
             if parsed.path == "/add":
                 url = data.get("url") or data.get("source") or ""
                 hedef = data.get("dest_dir")
@@ -654,6 +663,8 @@ class _Handler(BaseHTTPRequestHandler):
                 if (_boolean_al(data, "interactive") and _Handler.on_ask and url.strip()
                         and self.manager.store.get("kaydetme_penceresi")):
                     kimlik = _Handler.on_ask(data)
+                    if not kimlik:
+                        raise ValueError("indirme onay penceresi istegi kabul etmedi")
                     self._send(200, {"ok": True, "pending": True, "id": kimlik})
                     return
                 if not hedef and data.get("kategori"):
@@ -737,7 +748,6 @@ class _Handler(BaseHTTPRequestHandler):
                 if not yol_str:
                     self._hata(404, "HAZIR_DEGIL", "Dosya hazir degil veya yolu bulunamadi")
                     return
-                from pathlib import Path
                 if not _yol_kok_icinde(yol_str, self.manager.current_download_dir()):
                     self._hata(403, "HEDEF_DISARIDA", "dosya indirme kokunun disinda")
                     return
@@ -748,6 +758,10 @@ class _Handler(BaseHTTPRequestHandler):
                 token = secrets.token_urlsafe(12)
                 _Handler.shared_files[token] = {"path": yol, "created": time.time()}
                 self._send(200, {"ok": True, "token": token, "filename": yol.name})
+            elif parsed.path == "/handoff/error":
+                mesaj = str(data.get("error") or "Tarayici devretme istegi basarisiz")[:500]
+                self.manager.store.log("error", "Tarayici devretme hatasi: " + mesaj)
+                self._send(200, {"ok": True})
             elif parsed.path == "/settings":
                 self._send(200, {"ok": True, "settings": self.manager.update_settings(data)})
             elif parsed.path == "/rules":
@@ -890,6 +904,7 @@ class _Handler(BaseHTTPRequestHandler):
             else:
                 self._hata(404, "BILINMEYEN_YOL", "bilinmeyen yol")
         except Exception as exc:
+            self._handoff_error = f"{type(exc).__name__}: {exc}"
             govde = hata_json(exc)
             # Icin-de kodlar 400, INTERNAL 500 ile doner
             durum = 400 if govde.get("code") != "INTERNAL" else 500

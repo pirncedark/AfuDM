@@ -17,6 +17,17 @@
 
 const DICT = {
   tr: {
+    "download.title": "\u0130ndirme",
+    "download.name": "Dosya ad\u0131",
+    "download.folder": "Kaydedilecek klas\u00f6r",
+    "download.browse": "G\u00f6zat",
+    "download.cancel": "Vazge\u00e7",
+    "download.start": "\u0130ndirmeyi ba\u015flat",
+    "download.close": "Kapat",
+    "download.done": "\u0130ndirme tamamland\u0131.",
+    "download.failed": "\u0130ndirme tamamlanamad\u0131. Tekrar deneyin.",
+    "download.starting": "\u0130ndirme ba\u015flat\u0131l\u0131yor\u2026",
+
     "app.title": "AfuDM — indirme yöneticisi",
 
     /* --- WeTransfer Share UI --- */
@@ -856,6 +867,17 @@ const DICT = {
   },
 
   en: {
+    "download.title": "Download",
+    "download.name": "File name",
+    "download.folder": "Save folder",
+    "download.browse": "Browse",
+    "download.cancel": "Cancel",
+    "download.start": "Start download",
+    "download.close": "Close",
+    "download.done": "Download complete.",
+    "download.failed": "Download failed. Please try again.",
+    "download.starting": "Starting download\u2026",
+
     "rem.title": "Remove Download",
     "rem.desc": "Are you sure you want to remove this download from the list?",
     "rem.bulkTitle": "Remove Selected Downloads",

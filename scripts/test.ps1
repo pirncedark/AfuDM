@@ -117,6 +117,13 @@ if (`$parseHatalari) {
         "tests/tr_arama_test.py",
         "tests/pwa_test.py",
         "tests/torrent_yaris_test.mjs",
+        "tests/extension_download_handoff_test.mjs",
+        "tests/download_window_ui_test.mjs",
+        "tests/download_window_test.py",
+        "tests/download_window_layout_test.py",
+        "tests/pdf_handoff_http_test.py",
+        "tests/pending_persistence_test.py",
+        "tests/task_3b_tools_test.py",
         "tests/eklenti_test.py",
         "tests/headless_test.py",
         "tests/paket_import_test.py",
@@ -136,7 +143,7 @@ if (`$parseHatalari) {
         if ($t.EndsWith(".mjs") -or $t.EndsWith(".js")) {
             $out = & node $t 2>&1
         } else {
-            $out = & python $t 2>&1
+            $out = & python scripts/run_isolated_test.py $t 2>&1
         }
         $kod = $LASTEXITCODE
         $ErrorActionPreference = $eskiEAP

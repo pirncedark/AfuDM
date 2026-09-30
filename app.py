@@ -376,15 +376,16 @@ class Api:
         """Tek kaynak: core/servis.AfuDMServis.hedef_klasor (ayni oncelik kurali)."""
         return self.servis.hedef_klasor(secilen, url, kind, kategori)
 
-    def kaydet_bilgi(self, url: str) -> dict:
+    def kaydet_bilgi(self, url: str, filename: str = "", kind: str = "") -> dict:
         url = (url or "").strip()
-        kind = self.manager.detect_kind(url) if url else ""
-        kategori = kaydet.kategori_tahmin(url, kind) if url else "genel"
+        kind = kind or (self.manager.detect_kind(url) if url else "")
+        kategori = kaydet.kategori_tahmin(url, kind, filename) if url else "genel"
         ana = self.manager.current_download_dir()
         return {
             "ok": True,
             "kind": kind,
             "kategori": kategori,
+            "video_quality": self.manager.store.get("video_quality", "best"),
             "dosya_adi": self.manager.guess_name(url) if url and kind == "http" else "",
             "ana": ana,
             "kategori_klasorleri": bool(self.manager.store.get("kategori_klasorleri")),
@@ -400,7 +401,7 @@ class Api:
         cozulmus_ad = sonuc.get("filename", "")
         kategori = kaydet.kategori_tahmin(url, "http", cozulmus_ad)
         return {
-            "ok": True,
+            "ok": bool(sonuc.get("ok")),
             "filename": cozulmus_ad,
             "size": sonuc.get("size"),
             "content_type": sonuc.get("content_type"),
@@ -584,15 +585,25 @@ class Api:
             webview.FOLDER_DIALOG, directory=baslangic or self.manager.current_download_dir())
         return {"ok": True, "yol": secim[0] if secim else ""}
 
-    def tarayicidan_sor(self, istek: dict) -> int:
-        """Yerel API (uzanti) cagirir: istegi beklet, pencereyi ac ve one getir."""
-        kimlik = self._bekleyenler.ekle(istek)
+    def yerelden_sor(self, istek: dict) -> int:
+        """Desktop file associations keep the existing main-panel confirmation."""
+        kimlik = self._bekleyenler.ekle({**istek, "source": "desktop"})
         if self._window:
             pencere.one_getir(self._window)
             try:
                 self._window.evaluate_js("window.afudmBekleyen && window.afudmBekleyen()")
             except Exception:
-                pass  # sayfa hazir degil: arayuz tick'te kendisi sorar
+                pass
+        return kimlik
+
+    def tarayicidan_sor(self, istek: dict) -> int:
+        """Uzanti istegini bekletip yalniz ayri indirme penceresini goster."""
+        if istek.get("prompt_source") == "desktop":
+            return self.yerelden_sor(istek)
+        kimlik = self._bekleyenler.ekle({**istek, "source": "browser"})
+        indirme_penceresi = getattr(self, "_indirme_penceresi", None)
+        if indirme_penceresi:
+            indirme_penceresi.goster()
         return kimlik
 
     def bekleyen_listesi(self) -> dict:
@@ -603,13 +614,32 @@ class Api:
         return {"ok": True}
 
     def bekleyen_onayla(self, kimlik: int, secim: dict) -> dict:
-        istek = self._bekleyenler.al(kimlik)
-        if not istek:
-            return {"ok": False, "error": lang.t("err.notFound", str(self.manager.store.get("language", "auto")))}
-        url = istek.get("url") or ""
-        kind = istek.get("kind") or self.manager.detect_kind(url)
         try:
+            istek = self._bekleyenler.bak(kimlik)
+        except (ValueError, TypeError) as exc:
+            self.manager.store.log("error", "Download approval failed: " + str(exc)[:1000])
+            return {"ok": False, "error": lang.t("err.notFound", str(self.manager.store.get("language", "auto")))}
+        if not istek:
+            hata = lang.t("err.notFound", str(self.manager.store.get("language", "auto")))
+            self.manager.store.log("error", "Download approval failed: " + hata)
+            return {"ok": False, "error": hata}
+        try:
+            url = istek.get("url") or ""
+            kind = istek.get("kind") or self.manager.detect_kind(url)
             ad = kaydet.guvenli_dosya_adi(secim.get("filename") or "")
+            if kind == "http":
+                ad = ad or kaydet.guvenli_dosya_adi(istek.get("filename") or "")
+                generic = ad.lower() in {"download", "download.pdf"} and not secim.get("filename_edited")
+                if not dosya_adi.split_stem_ext(ad)[1] or generic:
+                    try:
+                        bilgi = dosya_adi.probe_url_info(url, headers=istek.get("headers") or {}, timeout=0.5)
+                    except Exception:
+                        bilgi = {}
+                    if bilgi.get("ok") and not secim.get("filename_edited"):
+                        ad = bilgi.get("filename") or ad
+                    ad = dosya_adi.ensure_extension(ad, bilgi.get("content_type") or istek.get("mime") or istek.get("content_type")) if ad else ""
+                    if not dosya_adi.split_stem_ext(ad)[1]:
+                        ad = ""
             istek_req = models.DownloadRequest.from_mapping({
                 "source": url,
                 "kind": kind,
@@ -618,7 +648,7 @@ class Api:
                 "audio_only": bool(secim.get("audio_only", istek.get("audio_only"))),
                 "start_at": secim.get("start_at") or "",
                 "headers": istek.get("headers") or {},
-                "filename": (ad or istek.get("filename")) if kind == "http" else None,
+                "filename": (ad or None) if kind == "http" else None,
                 "cookies": istek.get("cookies"),
                 "user_agent": istek.get("user_agent"),
                 "title": (ad or istek.get("title")) if kind == "video" else istek.get("title"),
@@ -641,7 +671,13 @@ class Api:
                 } if kind == "torrent" else {}),
             })
             sonuc = self.manager.add(istek_req)
+            if sonuc.get("ok") is False:
+                self.manager.store.log("error", "Download approval failed: " + str(sonuc.get("error") or "Download rejected")[:1000])
+            else:
+                self._bekleyenler.al(kimlik)
+                self.manager.store.log("info", "Download approval accepted", gid=sonuc.get("gid") or "")
         except Exception as exc:
+            self.manager.store.log("error", "Download approval failed: " + str(exc)[:1000])
             return {"ok": False, "error": str(exc)[:300]}
         return {"ok": True, **sonuc}
 
@@ -1476,6 +1512,13 @@ class Api:
                 self._window.maximize()
         return self.pencere_durumu()
 
+    def ana_pencere_kapandi(self) -> None:
+        """Every real main-window close also releases the hidden prompt."""
+        self._cikiliyor = True
+        prompt = getattr(self, "_indirme_penceresi", None)
+        if prompt:
+            prompt.yok_et()
+
     def pencere_kapat(self) -> dict:
         # qBittorrent tipi davranis: X uygulamayi kapatmaz, tepsiye gizler.
         # Tepsi simgesi kurulamadiysa gizlemek pencereyi erisilmez yapacagi icin
@@ -1547,6 +1590,108 @@ class Api:
             return {"ok": False, "error": str(exc)[:300]}
 
 
+class IndirmePenceresiApi:
+    """Ana panelden bagimsiz, uzanti indirmesi icin kucuk onay penceresi."""
+    def __init__(self, api: Api) -> None:
+        self.api = api
+        self.window = None
+        self._aktif = None
+        self._yok_edildi = False
+        self._sifirlama = 0
+        self._gid = ""
+        self._gizli = False
+
+    def bekleyen_listesi(self) -> dict:
+        sonuc = self.api.bekleyen_listesi()
+        sonuc["ogeler"] = [x for x in sonuc["ogeler"] if x.get("source") == "browser"]
+        if not sonuc.get("ogeler") and not self._gid and self.window:
+            self.window.hide()
+        return sonuc
+
+    def kaydet_bilgi(self, url: str, filename: str = "", kind: str = "") -> dict:
+        return self.api.kaydet_bilgi(url, filename, kind)
+
+    def probe_link(self, url: str) -> dict:
+        return self.api.probe_link(url)
+
+    def baslik(self, title: str) -> dict:
+        if self.window:
+            self.window.set_title(str(title)[:200])
+        return {"ok": True}
+
+    def bekleyen_goster(self, kimlik: int) -> dict:
+        if self._gizli:
+            return {"ok": False}
+        if any(x["id"] == kimlik for x in self.bekleyen_listesi()["ogeler"]):
+            self._aktif = kimlik
+            self._gid = ""
+            if self.window:
+                self.window.show()
+            return {"ok": True}
+        return {"ok": False}
+
+    def bekleyen_onayla(self, kimlik: int, secim: dict) -> dict:
+        sonuc = self.api.bekleyen_onayla(kimlik, secim)
+        if sonuc.get("ok"):
+            self._aktif = None
+            self._gid = sonuc.get("gid") or ""
+        return sonuc
+
+    def bekleyen_iptal(self, kimlik: int) -> dict:
+        if self._aktif == kimlik:
+            self._aktif = None
+        return self.api.bekleyen_iptal(kimlik)
+
+    def indirme_durumu(self, gid: str) -> dict:
+        item = next((row for row in self.api.manager.snapshot().get("items", [])
+                     if row.get("gid") == gid), None)
+        return {"ok": bool(item), "item": item or {}}
+
+    def kapat(self) -> dict:
+        self._gid = ""
+        self._aktif = None
+        self._gizli = True
+        if self.window:
+            self.window.hide()
+        # Native closing runs on the UI thread. Never wait for evaluate_js here.
+        self._sifirlama += 1
+        return {"ok": True}
+
+    def pencere_durumu(self) -> dict:
+        return {"reset": self._sifirlama, "hidden": self._gizli}
+
+    def kapanirken(self):
+        if self.api._cikiliyor:
+            return None
+        self.kapat()
+        return False
+
+    def yok_et(self) -> None:
+        if self.window and not self._yok_edildi:
+            self._yok_edildi = True
+            self.window.destroy()
+
+    def dil(self) -> str:
+        return lang.resolve(str(self.api.manager.store.get("language", "auto")))
+
+    def klasor_gozat(self, baslangic: str = "") -> dict:
+        if not self.window:
+            return {"ok": False}
+        secim = self.window.create_file_dialog(
+            webview.FOLDER_DIALOG, directory=baslangic or self.api.manager.current_download_dir())
+        return {"ok": True, "yol": secim[0] if secim else ""}
+
+    def goster(self) -> None:
+        self._gizli = False
+        if not self.window:
+            return
+        try:
+            pencere.one_getir(self.window)
+            self.window.evaluate_js("window.afudmDownloadRefresh && window.afudmDownloadRefresh()")
+        except Exception:
+            pass
+
+
 # --- komut satirindan gelen link (.torrent cift tiklama, magnet:) -----------
 def argvden_link(argv: list[str]) -> str:
     """Gezgin/tarayici "AfuDM.exe <yol|magnet>" diye cagirir; ilk anlamli baglanti."""
@@ -1576,7 +1721,7 @@ def calisan_ornege_yolla(link: str = "") -> bool:
     basliklar = {"Content-Type": "application/json", "X-AfuDM-Token": token}
     try:
         if link:
-            govde = json.dumps({"url": link, "interactive": True}).encode("utf-8")
+            govde = json.dumps({"url": link, "interactive": True, "prompt_source": "desktop"}).encode("utf-8")
             istek = urllib.request.Request(
                 f"http://127.0.0.1:{port}/add", data=govde, headers=basliklar)
             with urllib.request.urlopen(istek, timeout=3) as yanit:
@@ -1746,6 +1891,24 @@ def main() -> int:
         **_pencere_kwargs,
     )
     api._window = window
+    prompt_api = IndirmePenceresiApi(api)
+    prompt_window = webview.create_window(
+        lang.t("window.download", str(manager.store.get("language", "auto"))),
+        str(paths.UI / "download.html"),
+        js_api=prompt_api,
+        width=520,
+        height=460,
+        min_size=(460, 460),
+        background_color="#14181F",
+        hidden=True,
+        resizable=False,
+    )
+    prompt_api.window = prompt_window
+    api._indirme_penceresi = prompt_api
+    prompt_window.events.loaded += lambda: prompt_api.goster() if any(x.get("source") == "browser" for x in api._bekleyenler.ozet()) else None
+
+    prompt_window.events.closing += prompt_api.kapanirken
+    window.events.closed += api.ana_pencere_kapandi
     from api.server import _Handler as _ApiHandler  # noqa: E402
     _ApiHandler.servis = servis          # /capabilities tek kaynaktan
     _ApiHandler.on_ask = api.tarayicidan_sor
@@ -1789,6 +1952,8 @@ def main() -> int:
     manager.windows_notify = lambda baslik, metin: getattr(api, "_tepsi", None) and api._tepsi.notify(metin, baslik)
 
     def baslik_hazir() -> None:
+        if any(x.get("source") == "browser" for x in api._bekleyenler.ozet()):
+            prompt_api.goster()
         try:
             pencere.kapatinca_gizle(
                 window,
@@ -1816,7 +1981,7 @@ def main() -> int:
             pass
         # Cift tiklanan .torrent / magnet: kaydetme penceresinde acilsin
         if link:
-            api.tarayicidan_sor({"url": link})
+            api.yerelden_sor({"url": link})
         # UI yuklenmeden gelen LinkGrabber handoff'u da simdi islenir
         bekleyen = _bekleyen_linkgrabber[0]
         if bekleyen:
