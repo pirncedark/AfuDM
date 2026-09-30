@@ -1210,3 +1210,15 @@ tests/seed_dosya_test.py (YENI, 27 kontrol, ag gerektirmez).
 ## Push zinciri (2026-09-27): Pre-commit ve iki platformlu kalite denetimi eklendi.
 Release Please sürüm PR'ı/CHANGELOG'u üretir; `vX.Y.Z` tag'i mevcut `release.yml` exe derlemesini ve yayını başlatır.
 Gönderim sırası ve yerel kanca kurulumu: `docs/PUSH_SIRASI.md`.
+
+## IS4 — Ayarlar, Kurallar ve sürüm doğrulaması (2026-10-01)
+
+Durum: YARIM. Kaynak UI testleri geçti; çalışan EXE kabulü kullanıcıya ayrılmıştır ve henüz kaydedilmemiştir.
+
+- İncelenen kaynak: ui/index.html rulesOpen/brandSurum/globalModel/sSurum, ui/app.js rulesOpen/surumuYukle/surumuCiz/pywebviewready, ui/style.css global-model, app.py surum_bilgi ve core/surum.py (2.9.1). Panel API await öncesi açılıyor; rozet fixed sağ altta. Davranış testleri geçtiği için uygulama kodu değiştirilmedi.
+- tests/ui_ux_gate_test.py sahte surum_bilgi yanıtı 2.9.1 oldu. Beş yeni test: bekleyen rules_list sırasında tek modal/tek çağrı ve yanıt sonrası kurallar; eksik motor; eksik bridge; gecikmeli sürüm, başarısız API, Ayarlar yeniden açılışında görünür tekrar deneme ve sayfa reload; 640/800/1280 genişlikte rozetin ana Link ekle düğmesini örtmemesi. Marka, sağ alt ve Ayarlar uygulama/uzantı sürümleri kontrol edildi.
+- Güncel testler: python scripts/run_isolated_test.py tests/cli_surum_test.py → 25 kontrol, 0 hata; aynı runner ile ui_ux_gate_test.py → TR 22/22, EN 22/22. TR/EN aynı test kümesinin ayrı koşularıdır. Mevcut runner Google Fonts CSS isteğini yerel boş CSS yanıtıyla izole eder; harici font/ağ başarısı bu testin kabul ölçütü değildir. Kullanıcı data/downloads verisi kullanılmadı.
+- IS1 ile aynı paket: build_out/startup-candidate-latest/AfuDM-v2.9.1-win64-candidate.zip. Bu tur dosya varlığı ve SHA-256 doğrulandı: A22D987DF756E6D4929D341E0949502F844FC96E05EC087D33A1D850A00D9232.
+- Aynı paket EXE: C:/Users/afuuu/Desktop/afuproject/AfuDM/build_out/startup-candidate-latest/package/AfuDM/AfuDM.exe. SHA-256 bu tur doğrulandı: DA9534D23FA6964EA9BDAAFD1243A77874C7798C47C51FF7F3FB21FB4B0210CF. IS1'in gömülü varlık/sürüm doğrulaması yukarıdaki kayıttadır; bu tur yeni paket üretilmedi.
+- Çalışan EXE kabulü BEKLİYOR: kullanıcı aynı EXE'de Ayarlar ve Kuralları yönet açmalı; sağ alt, marka, Ayarlar ve uzantı sürümünü kaydetmeli. Çalışan EXE tam yolu ve hash'i seçili paketle eşleşmeli. Kaynak/headless testleri native EXE'nin çalıştığını veya eski kurulu uygulama kullanılmadığını kanıtlamaz. Kişisel ayar/data silinmedi; push/release yapılmadı.
+- git diff --check → exit 0. Commit denendi ancak sandbox .git/index.lock yazımını Permission denied ile engelledi; commit oluşmadı. Değişen dosyalar yalnız tests/ui_ux_gate_test.py ve docs/DURUM.md.
