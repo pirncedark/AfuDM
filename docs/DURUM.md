@@ -1,3 +1,20 @@
+# IS1 ? paketli indirme ve kapan?? kabul? (2026-10-01)
+
+Durum: YARIM; otomatik do?rulama ge?ti, ger?ek kullan?c?/native kabul? yok.
+
+- Kaynak HEAD: `0ef9daed5b1099ce636c5e6273f252ce23c3c42d` (v2.9.1). `git merge-base --is-ancestor` ile `94fb3da`, `f7a8c73`, `0ef9dae` bu HEAD i?inde do?ruland? (her biri exit 0). Ba?lang??ta izlenen dosya de?i?ikli?i yoktu; mevcut takip d??? raporlar, test ko?ucusu ve di?er i?ler korunmu?tur.
+- IS4 i?in de kullan?lacak se?ili paket: `build_out/startup-candidate-latest/AfuDM-v2.9.1-win64-candidate.zip`. SHA-256: `A22D987DF756E6D4929D341E0949502F844FC96E05EC087D33A1D850A00D9232`.
+- Paket EXE yolu: `build_out/startup-candidate-latest/package/AfuDM/AfuDM.exe`; SHA-256: `DA9534D23FA6964EA9BDAAFD1243A77874C7798C47C51FF7F3FB21FB4B0210CF`. G?m?l? s?r?m 2.9.1. Bu yol ?al??an uygulaman?n yolu olarak do?rulanmad?; mevcut yerel aday paket se?ildi, yeni paket ?retilmedi veya kurulu paket de?i?tirilmedi.
+- `scripts/verify_release.ps1 -ZipPath build_out/startup-candidate-latest/AfuDM-v2.9.1-win64-candidate.zip`: exit 0, 96 ZIP girdisi, 22,1 MB; beti?in ?a??rd??? `verify_exe.py` g?m?l? varl?k/s?r?m kontrol? ge?ti. Varsay?lan ZIP aramas? yaln?z build_out k?k?n? arad???ndan paketi bulamad?; a??k yol ile tekrar ?al??t?r?ld?.
+- ZIP'te kaynak `ui/` alt?ndaki 12 ve `extension/` alt?ndaki 12 dosya byte e?it (eksik/farkl?: 0). Paket EXE'sinde `ui/download.html`, `ui/download.js`, `extension/download-handoff.js`, `ui/app.js`, `ui/index.html`, `ui/style.css`, `ui/i18n.js` kaynakla byte e?it. Bu kontrol b?t?n g?m?l? Python kodunun HEAD ile e?itli?ini veya paketin CI yay?n ge?mi?ini kan?tlamaz.
+- G?ncel izole testler: `pdf_handoff_http_test.py` 5/5, `download_window_test.py` 20/20, `local_api_startup_test.py` 1/1 OK. `extension_download_handoff_test.mjs` ve `download_window_ui_test.mjs` passed. `git diff --check` ge?ti. Python testleri `scripts/run_isolated_test.py` ile ge?ici data/downloads yollar?nda ?al??t?; ger?ek kullan?c? verisi kullan?lmad?.
+- PDF MIME/uzant?s?z URL, inline filename, 3000 karakter sorgu ve a??k hedef klas?r?; reddedilen handoff'ta taray?c? devam?, kabulde tek aktar?m; pending iptali ve ana kapan??ta tek destroy mevcut testlerde ge?ti. Native olaylar test doubles ile s?nan?r; Windows X/Alt+F4 kabul? say?lmaz.
+- Ba?ar?s?z senaryo yeniden ?retilmedi; uygulama kodu/testi de?i?tirilmedi. ?zg?n PDF ba?lant?s? verilmedi?i i?in ?zg?n hatan?n nedeni h?l? bilinmiyor. ?nceden d?zeltilen Path g?lgelemesinin ?zg?n olay oldu?u kan?tlanm?? de?il.
+
+Kalan kullan?c? kabul? (g?rev dosyas?ndaki KULLANICI s?n?r?): ?al??an ger?ek EXE'nin yolu/s?r?m?/hash'i; ?zg?n PDF ba?lant?s?n? ayn? taray?c?yla indirip tek kay?t/tek dosya; pending X ve Alt+F4, ard?ndan yeni istek, ana X ve tepsi ??k??; gizli pencere/s?re? kalmamas?. Bu tur ger?ek uygulama a??lmad?/kapat?lmad?. Bu kabul kayd? gelmeden IS1 TAMAM de?ildir. Push/release yap?lmad?.
+
+---
+
 # DEVAM (2026-09-29 gece, koordinator oturumu) - ONCE BUNU OKU
 
 ## AfuDM - dal `fix/canli-test-bulgulari` (PR: bu dal)
@@ -1193,3 +1210,15 @@ tests/seed_dosya_test.py (YENI, 27 kontrol, ag gerektirmez).
 ## Push zinciri (2026-09-27): Pre-commit ve iki platformlu kalite denetimi eklendi.
 Release Please sürüm PR'ı/CHANGELOG'u üretir; `vX.Y.Z` tag'i mevcut `release.yml` exe derlemesini ve yayını başlatır.
 Gönderim sırası ve yerel kanca kurulumu: `docs/PUSH_SIRASI.md`.
+
+## IS4 — Ayarlar, Kurallar ve sürüm doğrulaması (2026-10-01)
+
+Durum: YARIM. Kaynak UI testleri geçti; çalışan EXE kabulü kullanıcıya ayrılmıştır ve henüz kaydedilmemiştir.
+
+- İncelenen kaynak: ui/index.html rulesOpen/brandSurum/globalModel/sSurum, ui/app.js rulesOpen/surumuYukle/surumuCiz/pywebviewready, ui/style.css global-model, app.py surum_bilgi ve core/surum.py (2.9.1). Panel API await öncesi açılıyor; rozet fixed sağ altta. Davranış testleri geçtiği için uygulama kodu değiştirilmedi.
+- tests/ui_ux_gate_test.py sahte surum_bilgi yanıtı 2.9.1 oldu. Beş yeni test: bekleyen rules_list sırasında tek modal/tek çağrı ve yanıt sonrası kurallar; eksik motor; eksik bridge; gecikmeli sürüm, başarısız API, Ayarlar yeniden açılışında görünür tekrar deneme ve sayfa reload; 640/800/1280 genişlikte rozetin ana Link ekle düğmesini örtmemesi. Marka, sağ alt ve Ayarlar uygulama/uzantı sürümleri kontrol edildi.
+- Güncel testler: python scripts/run_isolated_test.py tests/cli_surum_test.py → 25 kontrol, 0 hata; aynı runner ile ui_ux_gate_test.py → TR 22/22, EN 22/22. TR/EN aynı test kümesinin ayrı koşularıdır. Mevcut runner Google Fonts CSS isteğini yerel boş CSS yanıtıyla izole eder; harici font/ağ başarısı bu testin kabul ölçütü değildir. Kullanıcı data/downloads verisi kullanılmadı.
+- IS1 ile aynı paket: build_out/startup-candidate-latest/AfuDM-v2.9.1-win64-candidate.zip. Bu tur dosya varlığı ve SHA-256 doğrulandı: A22D987DF756E6D4929D341E0949502F844FC96E05EC087D33A1D850A00D9232.
+- Aynı paket EXE: C:/Users/afuuu/Desktop/afuproject/AfuDM/build_out/startup-candidate-latest/package/AfuDM/AfuDM.exe. SHA-256 bu tur doğrulandı: DA9534D23FA6964EA9BDAAFD1243A77874C7798C47C51FF7F3FB21FB4B0210CF. IS1'in gömülü varlık/sürüm doğrulaması yukarıdaki kayıttadır; bu tur yeni paket üretilmedi.
+- Çalışan EXE kabulü BEKLİYOR: kullanıcı aynı EXE'de Ayarlar ve Kuralları yönet açmalı; sağ alt, marka, Ayarlar ve uzantı sürümünü kaydetmeli. Çalışan EXE tam yolu ve hash'i seçili paketle eşleşmeli. Kaynak/headless testleri native EXE'nin çalıştığını veya eski kurulu uygulama kullanılmadığını kanıtlamaz. Kişisel ayar/data silinmedi; push/release yapılmadı.
+- git diff --check → exit 0. Commit denendi ancak sandbox .git/index.lock yazımını Permission denied ile engelledi; commit oluşmadı. Değişen dosyalar yalnız tests/ui_ux_gate_test.py ve docs/DURUM.md.

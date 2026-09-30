@@ -70,7 +70,7 @@ class UIUXGateTest(unittest.TestCase):
                     port_durumu: async () => window.fakeBackendState.port_status,
                     api_info: async () => ({ port: 6811 }),
                     rules_list: async () => ({ rules: [] }),
-                    surum_bilgi: async () => ({ surum: "2.4.0" }),
+                    surum_bilgi: async () => ({ surum: "2.9.1", uzanti: "2.9.1" }),
                     motor_durumu: async () => ({ motorlar: {}, ilerleme: {} }),
                     reliability_integrity: async () => "OK",
                     reliability_restart_engine: async () => ({ ok: window.fakeBackendState.engine_ok, message: "motor yeniden baslatildi" }),
@@ -225,7 +225,92 @@ class UIUXGateTest(unittest.TestCase):
         self.page.locator("#rulesOpen").click()
         expect(self.page.locator("#rulesVeil")).to_be_visible()
         self.page.keyboard.press("Escape")
-        expect(self.page.locator("#globalModel")).to_contain_text("AfuDM v2.4.0")
+        expect(self.page.locator("#globalModel")).to_contain_text("AfuDM v2.9.1")
+
+    def test_rules_delayed_response_opens_once_then_loads(self):
+        self.page.evaluate("""() => {
+            window.rulesCalls = 0;
+            window.pywebview.api.rules_list = () => {
+                window.rulesCalls++;
+                return new Promise(resolve => window.finishRules = resolve);
+            };
+            document.querySelector('#rulesOpen').click();
+        }""")
+        expect(self.page.locator("#rulesVeil")).to_be_visible(timeout=150)
+        self.assertEqual(self.page.locator(".veil.open").count(), 1)
+        self.assertEqual(self.page.evaluate("window.rulesCalls"), 1)
+        self.page.evaluate("window.finishRules({rules: [{name: 'Test rule', active: true, conditions: [], actions: {}}]})")
+        expect(self.page.locator("#rulesList [data-name='0']")).to_have_value("Test rule")
+        expect(self.page.locator("#rulesErr")).to_be_empty()
+
+    def test_rules_missing_engine_has_translated_action(self):
+        self.page.evaluate("delete window.pywebview.api.rules_list")
+        self.page.locator("#rulesOpen").click()
+        expect(self.page.locator("#rulesErr")).to_have_text(
+            self.page.evaluate("t('rules.engineMissing')"))
+        self.assertEqual(self.errors, [])
+
+    def test_rules_missing_bridge_has_translated_error(self):
+        self.page.evaluate("""() => {
+            const bridge = window.pywebview;
+            delete window.pywebview;
+            document.querySelector('#rulesOpen').click();
+            window.pywebview = bridge;
+        }""")
+        expect(self.page.locator("#rulesVeil")).to_be_visible()
+        expect(self.page.locator("#rulesErr")).to_have_text(self.page.evaluate("t('err.bridge')"))
+        self.assertEqual(self.errors, [])
+
+    def test_version_delayed_bridge_failure_and_visible_retry(self):
+        self.page.evaluate("""() => {
+            surumBilgisi = null;
+            document.querySelector('#brandSurum').textContent = '';
+            document.querySelector('#globalModel').textContent = '';
+            window.pywebview.api.surum_bilgi = () => new Promise(resolve => window.finishVersion = resolve);
+            window.dispatchEvent(new Event('pywebviewready'));
+        }""")
+        expect(self.page.locator("#list")).to_be_visible()
+        expect(self.page.locator("#globalModel")).to_be_empty()
+        self.page.evaluate("window.finishVersion({surum: '2.9.1', uzanti: '2.9.1'})")
+        expect(self.page.locator("#brandSurum")).to_have_text("v2.9.1")
+        expect(self.page.locator("#globalModel")).to_have_text("AfuDM v2.9.1")
+        self.page.locator("#openSettings").click()
+        expect(self.page.locator("#sSurum b")).to_have_text(["2.9.1", "2.9.1"])
+        self.page.keyboard.press("Escape")
+        self.page.evaluate("""async () => {
+            surumBilgisi = null;
+            document.querySelector('#brandSurum').textContent = '';
+            document.querySelector('#globalModel').textContent = '';
+            delete window.pywebview.api.surum_bilgi;
+            await surumuYukle();
+        }""")
+        self.page.locator("#openSettings").click()
+        expect(self.page.locator("#sSurum")).to_have_text(self.page.evaluate("t('set.surumYok')"))
+        self.page.keyboard.press("Escape")
+        self.page.evaluate("window.pywebview.api.surum_bilgi = async () => ({surum: '2.9.1', uzanti: '2.9.1'})")
+        self.page.locator("#openSettings").click()
+        expect(self.page.locator("#globalModel")).to_have_text("AfuDM v2.9.1")
+        expect(self.page.locator("#sSurum b")).to_have_text(["2.9.1", "2.9.1"])
+        self.page.keyboard.press("Escape")
+        self.page.reload()
+        self.page.evaluate("window.dispatchEvent(new Event('pywebviewready'))")
+        expect(self.page.locator("#globalModel")).to_have_text("AfuDM v2.9.1")
+        self.assertEqual(self.errors, [])
+
+    def test_version_badge_narrow_window_does_not_cover_primary_action(self):
+        for width in (640, 800, 1280):
+            with self.subTest(width=width):
+                self.page.set_viewport_size({"width": width, "height": 600})
+                badge = self.page.locator("#globalModel")
+                expect(badge).to_have_text("AfuDM v2.9.1")
+                box = badge.bounding_box()
+                button = self.page.locator("#addBtn").bounding_box()
+                self.assertLessEqual(box["x"] + box["width"], width)
+                self.assertLessEqual(box["y"] + box["height"], 600)
+                self.assertTrue(box["y"] >= button["y"] + button["height"] or
+                                box["x"] >= button["x"] + button["width"])
+                self.assertEqual(badge.evaluate("el => getComputedStyle(el).position"), "fixed")
+                self.assertEqual(badge.evaluate("el => getComputedStyle(el).pointerEvents"), "none")
 
     def test_trace_has_no_divider_below_the_speed_readout(self):
         """The trace/status junction is intentionally seamless."""
