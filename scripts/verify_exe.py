@@ -5,8 +5,10 @@ import argparse
 import marshal
 import types
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from PyInstaller.archive.readers import CArchiveReader
+if TYPE_CHECKING:  # PyInstaller yalniz exe dogrularken gerekir; CI testleri onsuz koşar
+    from PyInstaller.archive.readers import CArchiveReader
 
 REQUIRED_ASSETS = (
     "ui/download.html",
@@ -15,7 +17,7 @@ REQUIRED_ASSETS = (
 )
 
 
-def verify_assets(reader: CArchiveReader) -> None:
+def verify_assets(reader: "CArchiveReader") -> None:
     names = {name.replace("\\", "/") for name in reader.toc}
     missing = [name for name in REQUIRED_ASSETS if name not in names]
     if missing:
@@ -36,7 +38,7 @@ def nested_code(root: types.CodeType):
         )
 
 
-def load_carchive_module(reader: CArchiveReader, name: str) -> types.CodeType:
+def load_carchive_module(reader: "CArchiveReader", name: str) -> types.CodeType:
     try:
         return marshal.loads(reader.extract(name))
     except (KeyError, ValueError, EOFError, TypeError) as exc:
@@ -60,6 +62,8 @@ def verify_headless(pyz, app: types.CodeType) -> None:
 
 
 def verify(exe: Path, expected_version: str, headless: bool = False) -> None:
+    from PyInstaller.archive.readers import CArchiveReader
+
     reader = CArchiveReader(str(exe))
     verify_assets(reader)
     app = load_carchive_module(reader, "app")

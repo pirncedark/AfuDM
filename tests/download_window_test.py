@@ -1,4 +1,5 @@
 """Download prompt lifecycle and approval regression tests; no real windows."""
+import importlib.util
 import sys
 import unittest
 import tempfile
@@ -7,11 +8,23 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import types
+# CI kalite isinde pywebview kurulu degil; app yalniz modul adi icin ister (bkz. guncelleme_test).
+if sys.modules.get("webview") is None:
+    try:
+        import webview  # noqa: F401
+    except ImportError:
+        _wv = types.ModuleType("webview")
+        _wv.FOLDER_DIALOG = 1
+        _wv.OPEN_DIALOG = 2
+        sys.modules["webview"] = _wv
 from app import Api, IndirmePenceresiApi, build_tray
 from core import kaydet
 
 
 class DownloadWindowTest(unittest.TestCase):
+    @unittest.skipUnless((Path(__file__).resolve().parents[1] / 'engine/aria2c.exe').exists(),
+                         'engine/aria2c.exe yok (CI motoru indirmez)')
     def test_inline_pdf_loopback_saved_name_and_manual_override(self):
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
         import threading
@@ -132,6 +145,8 @@ class DownloadWindowTest(unittest.TestCase):
             self.assertTrue(self.api.guncelleme_uygula()['ok'])
         self.prompt.window.destroy.assert_called_once()
 
+    @unittest.skipUnless(importlib.util.find_spec('PIL') is not None,
+                         'Pillow yok (CI kalite isi); build_tray simge kuramaz')
     def test_tray_exit_closes_hidden_prompt(self):
         actions = []
         class Menu:
