@@ -54,8 +54,7 @@ class TorrentWorker(
         val title = params.inputData.getString(KEY_TITLE) ?: "Torrent"
 
         val outputDir = params.inputData.getString(KEY_OUTPUT_DIR)
-            ?: applicationContext.getExternalFilesDir(null)?.absolutePath
-            ?: applicationContext.filesDir.absolutePath
+            ?: DownloadFolder.stagingDir(applicationContext).absolutePath
 
         setForeground(buildForegroundInfo("$title başlatılıyor…", 0))
 
@@ -135,7 +134,7 @@ class TorrentWorker(
                 outFile.delete()
                 Result.failure(workDataOf("error" to "İndir iptal edildi"))
             } else {
-                Result.success(workDataOf("output_path" to outFile.absolutePath))
+                Result.success(workDataOf("output_path" to DownloadFolder.publish(applicationContext, outFile)))
             }
         } catch (e: Exception) {
             Result.failure(workDataOf("error" to (e.message ?: "Bilinmeyen hata")))
