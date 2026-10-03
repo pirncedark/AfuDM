@@ -36,3 +36,8 @@ release_notes.txt
 tanilar/*.zip
 .afudm_codex_roadmap_plan.txt
 dist_test/
+.gradle/
+_yedek/
+/startup-*.log
+/download_audit_results*.json
+/download_window_final_results.json
