@@ -23,6 +23,7 @@ for (const url of ['https://site.test/file.zip','https://site.test/file.pdf','ht
   assert.equal(click(url).stopped,true,url);
 }
 assert.equal(click('https://site.test/opaque',{download:'report.zip'}).stopped,true);
+assert.equal(click('https://cdn.test/dosya/f/v1.VbG2oOekl65SGPA1.b5my0rWkL3_UuPckCSHtxg.tGkrmm5').stopped,true, 'extensionless file endpoint');
 for (const url of ['https://site.test/page','https://site.test/cover.jpg','javascript:void(0)']) {
   assert.equal(click(url).stopped,undefined,url);
 }
@@ -30,7 +31,7 @@ assert.equal(click('https://site.test/file.zip',{}, {ctrlKey:true}).stopped,unde
 assert.equal(click('https://site.test/file.zip',{}, {button:1}).stopped,undefined);
 listeners.settings({enabled:{newValue:false}},'local');
 assert.equal(click('https://site.test/file.zip').stopped,undefined);
-assert.equal(sent.length,5);
+assert.equal(sent.length,6);
 assert.equal(sent[2].payload.kind,'torrent');
 assert.equal(sent[3].payload.kind,'torrent');
 console.log('PASS: preflight click, normal links, images, modifiers, disabled, torrent');

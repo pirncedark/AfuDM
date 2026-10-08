@@ -63,7 +63,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
             content, mime, disposition = b'<html><body>Download fixture</body></html>', 'text/html', ''
         elif self.path.startswith('/doc?'):
             content, mime, disposition = PDF, 'application/pdf', 'inline; filename="rapor.pdf"'
-        elif self.path.startswith('/dosya.zip'):
+        elif self.path.startswith(('/dosya.zip', '/dosya/f/')):
             content, mime, disposition = ZIP, 'application/octet-stream', 'attachment; filename="dosya.zip"'
         else:
             self.send_error(404)
@@ -236,6 +236,18 @@ def main():
         zip_files = list(paths.DOWNLOADS.rglob('dosya.zip'))
         assert len(zip_files) == 1 and zip_files[0].read_bytes() == ZIP
         print('PASS 3: two clicks, zero Chrome download events, one AfuDM download')
+
+        opaque_url = origin + '/dosya/f/v1.VbG2oOekl65SGPA1.b5my0rWkL3_UuPckCSHtxg.tGkrmm5'
+        page.evaluate('''url => {
+            const a = document.createElement('a'); a.href = url;
+            a.textContent = 'İndir'; document.body.appendChild(a);
+            a.id = 'opaque-download';
+        }''', opaque_url)
+        page.locator('#opaque-download').click()
+        wait(lambda: len(rows(opaque_url)) == 1 and rows(opaque_url)[0]['status'] == 'complete', 'extensionless download')
+        assert not created(opaque_url, 1), 'Extensionless link must never start Chrome download'
+        assert not downloads(opaque_url), 'No parallel Chrome item for extensionless link'
+        print('PASS 5: real extensionless file link, one AfuDM job, zero Chrome downloads')
 
         local_api.stop()
         offline_url = origin + '/dosya.zip?offline=1'

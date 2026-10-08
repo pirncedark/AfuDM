@@ -11,6 +11,12 @@ with sync_playwright() as playwright:
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.goto((ROOT / 'ui/download.html').as_uri())
+        assert not page.locator('#progressPane').is_visible(), 'hidden progress must not take confirmation space'
+        page.evaluate("document.getElementById('confirmPane').hidden=true;document.getElementById('progressPane').hidden=false")
+        assert not page.locator('#confirmPane').is_visible()
+        close = page.locator('#close').bounding_box()
+        assert close and close['y'] + close['height'] <= 481, close
+        page.evaluate("document.getElementById('confirmPane').hidden=false;document.getElementById('progressPane').hidden=true")
         for language in ('tr', 'en'):
             page.evaluate('''(language) => {
                 lang.setLang(language); lang.applyStatic();

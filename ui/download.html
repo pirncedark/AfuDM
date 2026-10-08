@@ -16,8 +16,10 @@
     #resetFolder { background:none; padding:4px 0; color:#aebfea; font-size:12px; margin-bottom:4px; cursor:pointer; }
     button { border:0; border-radius:7px; padding:8px 14px; color:#fff; background:#303949; cursor:pointer; }
     button.primary { background:#5579d7; font-weight:600; }
-    #confirmPane, #progressPane { flex:1; display:flex; flex-direction:column; }
-    .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:auto; padding-top:10px; }
+    [hidden] { display:none !important; }
+    #confirmPane, #progressPane { flex:1; min-height:0; display:flex; flex-direction:column; overflow-y:auto; }
+    #confirmPane > *, #progressPane > * { flex-shrink:0; }
+    .actions { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:8px; margin-top:auto; padding-top:10px; padding-bottom:4px; }
     #error { color:#ff9292; min-height:16px; margin-top:6px; }
   </style>
 </head>
