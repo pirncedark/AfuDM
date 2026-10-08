@@ -65,9 +65,9 @@ const AfuDownloadHandoff = (() => {
 
     // Stop every event immediately, including duplicates awaiting acceptance.
     const stopped = (async () => {
-      try { await deps.pause(item.id); return { paused: true, canceled: false }; }
+      try { await deps.cancel(item.id); return { paused: false, canceled: true }; }
       catch (_) {
-        try { await deps.cancel(item.id); return { paused: false, canceled: true }; }
+        try { await deps.pause(item.id); return { paused: true, canceled: false }; }
         catch (error) {
           const current = await deps.state(item.id);
           if (current.state === "complete") return { paused: false, canceled: false };

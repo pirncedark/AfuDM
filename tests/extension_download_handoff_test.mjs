@@ -23,44 +23,49 @@ function setup({ accepted = true, state = "in_progress" } = {}) {
       removeFile: async (id) => calls.push(["removeFile", id]),
       erase: async (id) => calls.push(["erase", id]),
       resume: async (id) => calls.push(["resume", id]),
+      download: async (item, url) => { calls.push(["download", url]); return 999; },
     },
   };
 }
 
-// Regression: a rejected pause must stop Chrome before a slow API request.
-const pauseRejected = setup();
-pauseRejected.deps.pause = async () => { throw new Error("pause rejected"); };
-pauseRejected.deps.send = async () => {
-  assert.ok(pauseRejected.calls.some(([name]) => name === "cancel"), "pause rejection cancels Chrome BEFORE send");
+const cancelRejected = setup();
+cancelRejected.deps.cancel = async () => { throw new Error("cancel rejected"); };
+cancelRejected.deps.send = async () => {
+  assert.ok(cancelRejected.calls.some(([name]) => name === "pause"), "cancel rejection pauses Chrome BEFORE send");
   return true;
 };
-assert.equal(await handle({ id: 101, url: "https://site.test/pause-rejected.pdf" }, pauseRejected.deps), true);
-assert.ok(pauseRejected.calls.some(([name]) => name === "erase"));
+assert.equal(await handle({ id: 101, url: "https://site.test/pause-rejected.pdf" }, cancelRejected.deps), true);
+assert.ok(cancelRejected.calls.some(([name]) => name === "erase"));
+
 
 const pdf = setup();
 assert.equal(await handle({ id: 7, url: "https://site.test/open?id=3", finalUrl: "https://cdn.test/report.pdf" }, pdf.deps), true);
 assert.ok(pdf.calls.some(([name, value]) => name === "send" && value.endsWith("report.pdf")), "redirected PDF URL is handed off");
 assert.ok(pdf.calls.some(([name]) => name === "removeFile"), "accepted Chrome copy is deleted");
-assert.ok(pdf.calls.findIndex(([name]) => name === "pause") < pdf.calls.findIndex(([name]) => name === "send"), "Chrome pauses before the handoff request");
+assert.ok(pdf.calls.findIndex(([name]) => name === "cancel") < pdf.calls.findIndex(([name]) => name === "send"), "Chrome cancels before the handoff request");
+
 
 const fail = setup({ accepted: false, state: "in_progress" });
 assert.equal(await handle({ id: 8, url: "https://site.test/rejected.pdf" }, fail.deps), false);
-assert.ok(fail.calls.some(([name]) => name === "resume"), "failed takeover preserves the browser download");
-assert.ok(!fail.calls.some(([name]) => name === "removeFile"), "failed takeover never deletes the browser file");
+assert.ok(fail.calls.some(([name]) => name === "download"), "failed takeover restarts the browser download");
+assert.ok(fail.calls.some(([name]) => name === "removeFile"), "failed takeover deletes the canceled browser file stub");
+
 
 const ineligible = setup();
 ineligible.deps.eligible = async () => false;
 assert.equal(await handle({ id: 18, url: "https://site.test/skipped.pdf" }, ineligible.deps), false);
-assert.ok(ineligible.calls.some(([name]) => name === "resume"), "ineligible paused Chrome download resumes");
+assert.ok(ineligible.calls.some(([name]) => name === "download"), "ineligible canceled Chrome download restarts");
 const rejected = setup();
 rejected.deps.send = async () => { throw new Error("API rejected request"); };
 await assert.rejects(handle({ id: 19, url: "https://site.test/rejected.pdf" }, rejected.deps));
-assert.ok(rejected.calls.some(([name]) => name === "resume"), "HTTP rejection resumes paused browser download");
+assert.ok(rejected.calls.some(([name]) => name === "download"), "HTTP rejection restarts canceled browser download");
+
 
 const cleanupError = setup({ state: "in_progress" });
 cleanupError.deps.cancel = async () => { cleanupError.calls.push(["cancel-failed"]); throw new Error("cancel race"); };
 assert.equal(await handle({ id: 13, url: "https://site.test/accepted.pdf" }, cleanupError.deps), true);
-assert.ok(!cleanupError.calls.some(([name]) => name === "resume"), "accepted takeover never resumes Chrome after a cancel race");
+assert.ok(!cleanupError.calls.some(([name]) => name === "download"), "accepted takeover never restarts Chrome after a cancel race");
+
 
 const completed = setup({ state: "complete" });
 assert.equal(await handle({ id: 9, url: "https://site.test/report.pdf" }, completed.deps), true);
@@ -78,7 +83,8 @@ race.deps.send = async (_item, url) => {
 const first = handle({ id: 10, url: "https://site.test/same.pdf" }, race.deps);
 await sendReady;
 const second = handle({ id: 11, url: "https://site.test/same.pdf" }, race.deps);
-assert.ok(race.calls.some(([name, id]) => name === 'pause' && id === 10), 'Chrome is stopped while send is pending');
+assert.ok(race.calls.some(([name, id]) => name === 'cancel' && id === 10), 'Chrome is stopped while send is pending');
+
 releaseSend();
 assert.equal(await first, true);
 assert.equal(await second, true);
@@ -91,8 +97,8 @@ const timeout = setup();
 timeout.deps.timeoutMs = 15;
 timeout.deps.send = async () => new Promise(() => {});
 await assert.rejects(handle({ id: 90, url: 'https://site.test/timeout.pdf' }, timeout.deps), /timed out/);
-assert.ok(timeout.calls.some(([name]) => name === 'resume'), 'timeout resumes Chrome');
-assert.ok(!timeout.calls.some(([name]) => name === 'cancel'), 'timeout never cancels Chrome');
+assert.ok(timeout.calls.some(([name]) => name === 'download'), 'timeout restarts Chrome');
+
 
 const repeated = setup();
 await handle({ id: 91, url: 'https://site.test/repeat.pdf' }, repeated.deps);
@@ -103,7 +109,8 @@ assert.equal(repeated.calls.filter(([name]) => name === 'send').length, 1, 'same
 for (const throws of [false, true]) {
   const fallback = setup({ accepted: false });
   const url = `https://site.test/fallback-${throws}.pdf`;
-  fallback.deps.pause = async () => { throw new Error("pause rejected"); };
+  fallback.deps.cancel = async () => { throw new Error("cancel rejected"); };
+
   if (throws) fallback.deps.send = async () => { throw new Error("send failed"); };
   fallback.deps.download = async (_item, restartedUrl) => {
     assert.equal(restartedUrl, url);
@@ -115,16 +122,18 @@ for (const throws of [false, true]) {
   if (throws) await assert.rejects(result, /send failed/);
   else assert.equal(await result, false);
   assert.equal(fallback.calls.filter(([name]) => name === "send").length, throws ? 0 : 1);
-  assert.ok(fallback.calls.some(([name]) => name === "download"));
+  assert.ok(fallback.calls.some(([name]) => name === "resume"));
 }
 const lateFallback = setup({ accepted: false });
-lateFallback.deps.pause = async () => { throw new Error("pause rejected"); };
+lateFallback.deps.cancel = async () => { throw new Error("cancel rejected"); };
+
 lateFallback.deps.download = async () => 211;
 await handle({ id: 210, url: "https://site.test/late-fallback.pdf" }, lateFallback.deps);
 assert.equal(await handle({ id: 211, url: "https://cdn.test/redirect.pdf" }, lateFallback.deps), false, "fallback ID bypasses even redirected events");
 
 const slowFallback = setup();
-slowFallback.deps.pause = async () => { throw new Error("pause rejected"); };
+slowFallback.deps.cancel = async () => { throw new Error("cancel rejected"); };
+
 let releaseSlow;
 let readySlow;
 const slowReady = new Promise(resolve => { readySlow = resolve; });
@@ -134,14 +143,15 @@ slowFallback.deps.send = async () => {
 };
 const slowResult = handle({ id: 220, url: "https://site.test/slow.pdf" }, slowFallback.deps);
 await slowReady;
-assert.ok(slowFallback.calls.some(([name]) => name === "cancel"), "Chrome canceled before slow send resolves");
+assert.ok(slowFallback.calls.some(([name]) => name === "pause"), "Chrome paused before slow send resolves");
 releaseSlow(true);
 await slowResult;
 assert.ok(slowFallback.calls.some(([name]) => name === "erase"));
 
 const completedRace = setup({ state: "complete" });
-completedRace.deps.pause = async () => { throw new Error("already complete"); };
 completedRace.deps.cancel = async () => { throw new Error("already complete"); };
+completedRace.deps.pause = async () => { throw new Error("already complete"); };
+
 assert.equal(await handle({ id: 230, url: "https://site.test/complete-race.pdf" }, completedRace.deps), true);
 assert.ok(completedRace.calls.some(([name]) => name === "removeFile"), "completed race leaves only AfuDM copy");
 

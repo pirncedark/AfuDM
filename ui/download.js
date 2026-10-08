@@ -13,6 +13,21 @@
   let lastReset = 0;
   const t = (key) => lang.t(key);
 
+  const size = (b) => {
+    if (b < 1024) return b + " B";
+    if (b < 1048576) return (b / 1024).toFixed(1) + " KB";
+    if (b < 1073741824) return (b / 1048576).toFixed(1) + " MB";
+    return (b / 1073741824).toFixed(2) + " GB";
+  };
+  const speed = (b) => b > 0 ? size(b) + "/s" : "—";
+  const clock = (s) => {
+    if (s <= 0) return "—";
+    if (s < 60) return s + " sn";
+    if (s < 3600) return Math.floor(s / 60) + " dk " + (s % 60) + " sn";
+    const h = Math.floor(s / 3600);
+    return h + " sa " + Math.floor((s % 3600) / 60) + " dk";
+  };
+
   function translate() {
     lang.setLang(dil);
     lang.applyStatic();
@@ -47,9 +62,17 @@
         return;
       }
       $("progressName").textContent = item.filename || item.title || t("download.title");
-      $("progress").value = Number(item.progress) || 0;
-      $("progressLabel").textContent = item.status === "complete"
-        ? t("download.done") : item.status === "error" ? t("download.failed") : `${Math.round(Number(item.progress) || 0)}%`;
+      const p = Math.round(Number(item.progress) || 0);
+      $("progress").value = p;
+      let text = p + "%";
+      if (item.status === "complete") {
+        text = t("download.done");
+      } else if (item.status === "error") {
+        text = t("download.failed");
+      } else if (item.status === "active") {
+        text = `${p}% \u2014 ${speed(item.downloadSpeed)} \u2014 ${clock(item.eta)} \u2014 ${size(item.completedLength || 0)} / ${size(item.totalLength || 0)}`;
+      }
+      $("progressLabel").textContent = text;
       return;
     }
     if (!ogeler.length) return;
