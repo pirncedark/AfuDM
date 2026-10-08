@@ -216,11 +216,11 @@ def main():
 
         pdf_url = origin + '/doc?id=1'
         trigger(pdf_url)
-        wait(lambda: created(pdf_url, 1), 'real PDF onCreated')
         wait(lambda: len(rows(pdf_url)) == 1 and rows(pdf_url)[0]['status'] == 'complete', 'PDF completion')
         pdf_files = list(paths.DOWNLOADS.rglob('rapor.pdf'))
         assert len(pdf_files) == 1 and pdf_files[0].read_bytes() == PDF
         assert len(rows(pdf_url)) == 1 and len(approvals) == 1
+        assert not created(pdf_url, 1), 'Preflight must prevent Chrome download creation'
         wait(lambda: cancelled(pdf_url), 'Chrome PDF cancellation/erasure')
         wait(lambda: not any(p.is_file() for p in chrome_dir.rglob('*')), 'no Chrome PDF artifact')
         print('PASS 1: PDF handoff, rapor.pdf, real aria2 content, Chrome cleanup')
@@ -228,26 +228,23 @@ def main():
         zip_url = origin + '/dosya.zip?duplicate=1'
         trigger(zip_url)
         trigger(zip_url)
-        wait(lambda: created(zip_url, 2), 'two real Chrome download events')
         wait(lambda: len(rows(zip_url)) == 1 and rows(zip_url)[0]['status'] == 'complete', 'duplicate handoff')
         wait(lambda: cancelled(zip_url), 'both Chrome downloads cancelled/erased')
         page.wait_for_timeout(1500)
         assert len(rows(zip_url)) == 1
+        assert not created(zip_url, 1), 'Double click must not create Chrome downloads'
         zip_files = list(paths.DOWNLOADS.rglob('dosya.zip'))
         assert len(zip_files) == 1 and zip_files[0].read_bytes() == ZIP
-        print('PASS 3: two real events, one AfuDM download')
+        print('PASS 3: two clicks, zero Chrome download events, one AfuDM download')
 
         local_api.stop()
         offline_url = origin + '/dosya.zip?offline=1'
         count_before = len(manager.store.list())
         trigger(offline_url)
-        wait(lambda: created(offline_url, 1), 'offline onCreated')
-        complete = wait(lambda: next((d for d in downloads(offline_url) if d['state'] == 'complete'), None),
-                        'Chrome fallback completes')
-        assert Path(complete['filename']).is_relative_to(chrome_dir)
-        assert Path(complete['filename']).read_bytes() == ZIP
+        page.wait_for_timeout(4000)
+        assert not created(offline_url, 1), 'Failed preflight must not silently download in Chrome'
         assert not rows(offline_url) and len(manager.store.list()) == count_before
-        print('PASS 2: API stopped, Chrome completes, no AfuDM record')
+        print('PASS 2: API stopped, no parallel Chrome download or AfuDM record')
 
         assert not any(call.args and call.args[0] is main_window for call in foreground.call_args_list)
         main_window.evaluate_js.assert_not_called()

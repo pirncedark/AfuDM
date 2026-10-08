@@ -229,7 +229,7 @@ chrome.downloads.onCreated.addListener((item) => {
     send: async (download, url) => {
       const cfg = await config();
       const sonuc = await sendToAfudm(cfg, {
-        url, kind: "http",
+        url, kind: /^magnet:/i.test(url) || /\.torrent(?:\?|$)/i.test(url) ? "torrent" : "http",
         filename: download.filename ? download.filename.split(/[\\/]/).pop()
           : (String(download.mime || "").toLowerCase() === "application/pdf" ? "download.pdf" : undefined),
         headers: download.referrer ? { Referer: download.referrer } : {},
@@ -762,10 +762,42 @@ async function videoIndir(cfg, sender, secenek, frameUrl) {
 }
 
 /* --- 5) Acilir pencere istekleri ---------------------------------- */
+const preflightActive = new Map();
+const preflightRecent = new Map();
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   (async () => {
     const cfg = await config();
-    if (message.type === "status") {
+    if (message.type === "downloadPreflight") {
+      const url = String(message.payload?.url || '');
+      if (!cfg.enabled || !cfg.uzantiAcik || !/^(https?:|magnet:)/i.test(url)) {
+        reply({ok:false}); return;
+      }
+      const key = `${sender.tab?.id}:${sender.frameId}:${url}`;
+      const recent = preflightRecent.get(key);
+      if (recent && Date.now() - recent.at < 5000) {reply(recent.result); return;}
+      let operation = preflightActive.get(key);
+      if (!operation) {
+        operation = (async () => {
+          try {
+            const result = await sendToAfudm(cfg, {
+              url, interactive:true, request_id:message.payload?.request_id,
+              filename:message.payload?.filename,
+              kind:/^magnet:/i.test(url) || /\.torrent(?:\?|$)/i.test(url) ? 'torrent' : 'http',
+              headers:sender.url ? {Referer:sender.url} : {},
+            });
+            const accepted = {ok:true,...result};
+            preflightRecent.set(key,{at:Date.now(),result:accepted});
+            for (const [old, value] of preflightRecent) if (Date.now()-value.at > 5000) preflightRecent.delete(old);
+            return accepted;
+          } catch (_) {
+            notify(chrome.i18n.getMessage('handoffRetry'));
+            return {ok:false,retryable:true};
+          }
+        })();
+        preflightActive.set(key,operation);
+      }
+      try {reply(await operation);} finally {if (preflightActive.get(key)===operation) preflightActive.delete(key);}
+    } else if (message.type === "status") {
       reply({ alive: await afudmAlive(cfg), cfg });
     } else if (message.type === "media") {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });

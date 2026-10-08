@@ -41,7 +41,8 @@
         "https://*/*"
       ],
       "js": [
-        "maestro-kanal.js"
+        "maestro-kanal.js",
+        "download-preflight.js"
       ],
       "all_frames": true,
       "run_at": "document_start"

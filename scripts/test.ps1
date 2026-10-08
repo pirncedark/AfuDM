@@ -118,6 +118,7 @@ if (`$parseHatalari) {
         "tests/pwa_test.py",
         "tests/torrent_yaris_test.mjs",
         "tests/extension_download_handoff_test.mjs",
+        "tests/extension_preflight_test.mjs",
         "tests/download_window_ui_test.mjs",
         "tests/download_window_test.py",
         "tests/local_api_startup_test.py",

@@ -58,7 +58,7 @@ try {
     if ($LASTEXITCODE -ne 0) { Write-Output "paketle.py basarisiz"; exit 1 }
 
     $cikti = Join-Path $kok "build_out\paket\AfuDM"
-    foreach ($asset in @("ui/download.html", "ui/download.js", "extension/download-handoff.js")) {
+    foreach ($asset in @("ui/download.html", "ui/download.js", "extension/download-handoff.js", "extension/download-preflight.js")) {
         if (-not (Test-Path (Join-Path $cikti $asset) -PathType Leaf)) {
             Write-Output "GATE HATA: paket icinde $asset yok"
             exit 1

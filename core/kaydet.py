@@ -248,6 +248,15 @@ class Bekleyenler:
     def ekle(self, istek: dict) -> int:
         with self._kilit:
             self._temizle()
+            request_id = istek.get("request_id")
+            if request_id:
+                if not isinstance(request_id, str) or len(request_id) > 128:
+                    raise ValueError("Invalid download request identity")
+                for ident, row in self._isler.items():
+                    if row["istek"].get("request_id") == request_id:
+                        if row["istek"].get("url") != istek.get("url"):
+                            raise ValueError("Download request identity conflicts with URL")
+                        return ident
             kimlik = next(self._sayac)
             yeni = {**self._isler, kimlik: {"istek": dict(istek), "zaman": time.time()}}
             self._sakla(yeni)
