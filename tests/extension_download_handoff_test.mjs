@@ -27,6 +27,16 @@ function setup({ accepted = true, state = "in_progress" } = {}) {
   };
 }
 
+// Regression: a rejected pause must stop Chrome before a slow API request.
+const pauseRejected = setup();
+pauseRejected.deps.pause = async () => { throw new Error("pause rejected"); };
+pauseRejected.deps.send = async () => {
+  assert.ok(pauseRejected.calls.some(([name]) => name === "cancel"), "pause rejection cancels Chrome BEFORE send");
+  return true;
+};
+assert.equal(await handle({ id: 101, url: "https://site.test/pause-rejected.pdf" }, pauseRejected.deps), true);
+assert.ok(pauseRejected.calls.some(([name]) => name === "erase"));
+
 const pdf = setup();
 assert.equal(await handle({ id: 7, url: "https://site.test/open?id=3", finalUrl: "https://cdn.test/report.pdf" }, pdf.deps), true);
 assert.ok(pdf.calls.some(([name, value]) => name === "send" && value.endsWith("report.pdf")), "redirected PDF URL is handed off");
@@ -53,8 +63,8 @@ assert.equal(await handle({ id: 13, url: "https://site.test/accepted.pdf" }, cle
 assert.ok(!cleanupError.calls.some(([name]) => name === "resume"), "accepted takeover never resumes Chrome after a cancel race");
 
 const completed = setup({ state: "complete" });
-assert.equal(await handle({ id: 9, url: "https://site.test/report.pdf" }, completed.deps), false);
-assert.ok(!completed.calls.some(([name]) => name === "send"), "completed browser download is not duplicated");
+assert.equal(await handle({ id: 9, url: "https://site.test/report.pdf" }, completed.deps), true);
+assert.ok(completed.calls.some(([name]) => name === "removeFile"), "completed Chrome copy is removed after acceptance");
 
 let releaseSend;
 let markReady;
@@ -68,7 +78,7 @@ race.deps.send = async (_item, url) => {
 const first = handle({ id: 10, url: "https://site.test/same.pdf" }, race.deps);
 await sendReady;
 const second = handle({ id: 11, url: "https://site.test/same.pdf" }, race.deps);
-assert.ok(!race.calls.some(([name]) => name === 'cancel'), 'Chrome is not canceled before acceptance');
+assert.ok(race.calls.some(([name, id]) => name === 'pause' && id === 10), 'Chrome is stopped while send is pending');
 releaseSend();
 assert.equal(await first, true);
 assert.equal(await second, true);
@@ -88,6 +98,52 @@ const repeated = setup();
 await handle({ id: 91, url: 'https://site.test/repeat.pdf' }, repeated.deps);
 await handle({ id: 91, url: 'https://site.test/repeat.pdf?redirected' }, repeated.deps);
 assert.equal(repeated.calls.filter(([name]) => name === 'send').length, 1, 'same download ID is accepted once');
+
+// Failed early cancellation restarts Chrome, bypassing recursive takeover.
+for (const throws of [false, true]) {
+  const fallback = setup({ accepted: false });
+  const url = `https://site.test/fallback-${throws}.pdf`;
+  fallback.deps.pause = async () => { throw new Error("pause rejected"); };
+  if (throws) fallback.deps.send = async () => { throw new Error("send failed"); };
+  fallback.deps.download = async (_item, restartedUrl) => {
+    assert.equal(restartedUrl, url);
+    fallback.calls.push(["download", restartedUrl]);
+    assert.equal(await handle({ id: 202, url }, fallback.deps), false, "early fallback event bypasses takeover");
+    return 202;
+  };
+  const result = handle({ id: 201, url }, fallback.deps);
+  if (throws) await assert.rejects(result, /send failed/);
+  else assert.equal(await result, false);
+  assert.equal(fallback.calls.filter(([name]) => name === "send").length, throws ? 0 : 1);
+  assert.ok(fallback.calls.some(([name]) => name === "download"));
+}
+const lateFallback = setup({ accepted: false });
+lateFallback.deps.pause = async () => { throw new Error("pause rejected"); };
+lateFallback.deps.download = async () => 211;
+await handle({ id: 210, url: "https://site.test/late-fallback.pdf" }, lateFallback.deps);
+assert.equal(await handle({ id: 211, url: "https://cdn.test/redirect.pdf" }, lateFallback.deps), false, "fallback ID bypasses even redirected events");
+
+const slowFallback = setup();
+slowFallback.deps.pause = async () => { throw new Error("pause rejected"); };
+let releaseSlow;
+let readySlow;
+const slowReady = new Promise(resolve => { readySlow = resolve; });
+slowFallback.deps.send = async () => {
+  readySlow();
+  return new Promise(resolve => { releaseSlow = resolve; });
+};
+const slowResult = handle({ id: 220, url: "https://site.test/slow.pdf" }, slowFallback.deps);
+await slowReady;
+assert.ok(slowFallback.calls.some(([name]) => name === "cancel"), "Chrome canceled before slow send resolves");
+releaseSlow(true);
+await slowResult;
+assert.ok(slowFallback.calls.some(([name]) => name === "erase"));
+
+const completedRace = setup({ state: "complete" });
+completedRace.deps.pause = async () => { throw new Error("already complete"); };
+completedRace.deps.cancel = async () => { throw new Error("already complete"); };
+assert.equal(await handle({ id: 230, url: "https://site.test/complete-race.pdf" }, completedRace.deps), true);
+assert.ok(completedRace.calls.some(([name]) => name === "removeFile"), "completed race leaves only AfuDM copy");
 
 const handoff = app.slice(app.indexOf("def tarayicidan_sor"), app.indexOf("def bekleyen_listesi"));
 assert.match(handoff, /indirme_penceresi\.goster\(\)/, "browser handoff opens the dedicated prompt");
@@ -159,6 +215,27 @@ posted = null;
 listeners["downloads.onCreated"]({ id: 43, url: "https://files.test/download?id=annual", finalUrl: "https://files.test/download?id=annual", filename: "", mime: "application/pdf", referrer: "", fileSize: 2 * 1024 * 1024 });
 for (let i = 0; i < 100 && !chromeMock.removed; i++) await new Promise((resolve) => setTimeout(resolve, 5));
 assert.equal(posted?.filename, "download.pdf", "an inline PDF with an extensionless URL receives a PDF filename");
+
+// Exercise fallback through the actual callback-based Chrome adapter.
+chromeMock.downloads.pause = (_id, cb) => {
+  chromeMock.runtime.lastError = { message: "pause rejected" };
+  cb();
+  chromeMock.runtime.lastError = null;
+};
+let fallbackCount = 0;
+chromeMock.downloads.download = (options, cb) => {
+  fallbackCount++;
+  assert.equal(options.url, "https://files.test/fallback-adapter.pdf");
+  listeners["downloads.onCreated"]({ id: 301, url: options.url });
+  cb(301);
+};
+bgContext.fetch = async (url) => {
+  if (String(url).endsWith("/ping") || String(url).endsWith("/handoff/error")) return { ok: true };
+  throw new Error("send failed");
+};
+listeners["downloads.onCreated"]({ id: 300, url: "https://files.test/fallback-adapter.pdf", fileSize: 2 * 1024 * 1024 });
+for (let i = 0; i < 100 && !fallbackCount; i++) await new Promise(resolve => setTimeout(resolve, 5));
+assert.equal(fallbackCount, 1, "failed handoff restarts Chrome once without a takeover loop");
 
 console.log("extension download handoff tests passed");
 

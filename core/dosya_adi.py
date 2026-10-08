@@ -269,12 +269,8 @@ def guvenli_dosya_adi(ad: str) -> str:
         return ""
 
     # Windows DOS ayrilmis aygit adlari
-    kok, uzanti = split_stem_ext(temiz)
-    if kok.upper() in DOS_AYGIT_ADLARI:
-        if uzanti:
-            temiz = f"_{kok}.{uzanti}"
-        else:
-            temiz = f"_{kok}"
+    if temiz.split(".", 1)[0].rstrip().upper() in DOS_AYGIT_ADLARI:
+        temiz = "_" + temiz
 
     # Uzantiyi koruyarak kirp (en fazla 200 karakter)
     EN_FAZLA = 200

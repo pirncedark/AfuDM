@@ -12,7 +12,8 @@
     label { display:block; color:#c5ccda; margin:10px 0 5px; }
     input, select { box-sizing:border-box; width:100%; padding:9px 10px; border:1px solid #394252; border-radius:7px; background:#1c222c; color:#fff; }
     .row { display:flex; gap:8px; }
-    .row input, select { flex:1; }
+    .row input, select { flex:1; min-width:0; }
+    #resetFolder { background:none; padding:7px 0; color:#aebfea; font-size:12px; }
     button { border:0; border-radius:7px; padding:9px 14px; color:#fff; background:#303949; cursor:pointer; }
     button.primary { background:#5579d7; font-weight:600; }
     .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
@@ -27,6 +28,7 @@
     <input id="name" autocomplete="off">
     <label for="folder" data-i18n="download.folder">Kaydedilecek klasör</label>
     <div class="row"><input id="folder"><button id="browse" data-i18n="download.browse">Gözat</button></div>
+    <button id="resetFolder" data-i18n="download.resetFolder">Varsay&#305;lan klas&#246;re d&#246;n</button>
     <div id="qualityWrap" hidden><label for="quality" data-i18n="kay.quality">Kalite</label><select id="quality"><option value="best" data-i18n="add.q.best">best</option><option value="2160" data-i18n="add.q.2160">2160</option><option value="1080" data-i18n="add.q.1080">1080</option><option value="720" data-i18n="add.q.720">720</option><option value="480" data-i18n="add.q.480">480</option><option value="audio" data-i18n="add.q.audio">audio</option></select></div>
     <div id="error" role="status"></div>
     <div class="actions"><button id="cancel" data-i18n="download.cancel">Vazgeç</button><button id="start" data-i18n="download.start" class="primary">İndirmeyi başlat</button></div>

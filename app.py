@@ -207,6 +207,7 @@ class Api:
         self._paylasim_sunucusu = PaylasimSunucusu(_Handler.shared_files)
         self._tunel = TunnelManager(str(paths.ENGINE / "cloudflared.exe"))
         self._guncelleme_kilidi = threading.Lock()
+        self._motor_kilidi = threading.Lock()
         self._guncelleme_isliyor = False
         self._guncelleme_durum = {"durum": "hazir", "inen": 0, "toplam": 0}
 
@@ -274,12 +275,12 @@ class Api:
 
     def motor_indir(self, ad: str) -> dict:
         """Istege bagli motoru arka planda indirir; ilerleme motor_durumu()'ndan okunur."""
-        if self._motor_ilerleme.get(ad, {}).get("durum") == "iniyor":
-            return {"ok": True, "zaten": True}
-
-        def is_parcasi() -> None:
+        with self._motor_kilidi:
+            if self._motor_ilerleme.get(ad, {}).get("durum") == "iniyor":
+                return {"ok": True, "zaten": True}
             self._motor_ilerleme[ad] = {"durum": "iniyor", "inen": 0, "toplam": 0}
 
+        def is_parcasi() -> None:
             def ilerleme(inen: int, toplam: int) -> None:
                 self._motor_ilerleme[ad] = {
                     "durum": "iniyor", "inen": inen, "toplam": toplam,
@@ -291,7 +292,12 @@ class Api:
             except Exception as exc:
                 self._motor_ilerleme[ad] = {"durum": "hata", "hata": str(exc)[:200]}
 
-        threading.Thread(target=is_parcasi, daemon=True).start()
+        try:
+            threading.Thread(target=is_parcasi, daemon=True).start()
+        except Exception as exc:
+            with self._motor_kilidi:
+                self._motor_ilerleme[ad] = {"durum": "hata", "hata": "İş başlatılamadı: " + str(exc)[:100]}
+            return {"ok": False, "error": str(exc)}
         return {"ok": True}
 
     def api_info(self) -> dict:
@@ -388,9 +394,16 @@ class Api:
             "video_quality": self.manager.store.get("video_quality", "best"),
             "dosya_adi": self.manager.guess_name(url) if url and kind == "http" else "",
             "ana": ana,
+            "son_klasor": self._coz_son_klasor(ana),
             "kategori_klasorleri": bool(self.manager.store.get("kategori_klasorleri")),
             "klasorler": {k: kaydet.kategori_klasoru(ana, k) for k in kaydet.KATEGORI_KLASORU},
         }
+
+    def _coz_son_klasor(self, ana: str) -> str:
+        kayit = self.manager.store.get("son_klasor")
+        if isinstance(kayit, dict) and kayit.get("ana") == ana:
+            return kayit.get("yol", "")
+        return ""
 
     def probe_link(self, url: str) -> dict:
         """Arka planda HEAD + Range 0-0 GET ile dosya adi, boyut ve MIME sondajlar."""
@@ -581,9 +594,13 @@ class Api:
     def klasor_gozat(self, baslangic: str = "") -> dict:
         if not self._window:
             return {"ok": False}
-        secim = self._window.create_file_dialog(
-            webview.FOLDER_DIALOG, directory=baslangic or self.manager.current_download_dir())
-        return {"ok": True, "yol": secim[0] if secim else ""}
+        try:
+            secim = self._window.create_file_dialog(
+                webview.FileDialog.FOLDER, directory=baslangic or self.manager.current_download_dir())
+            return {"ok": True, "yol": secim[0] if secim else ""}
+        except Exception as exc:
+            self.manager.store.log("error", "Folder selection failed: " + str(exc)[:1000])
+            return {"ok": False}
 
     def yerelden_sor(self, istek: dict) -> int:
         """Desktop file associations keep the existing main-panel confirmation."""
@@ -674,11 +691,16 @@ class Api:
             if sonuc.get("ok") is False:
                 self.manager.store.log("error", "Download approval failed: " + str(sonuc.get("error") or "Download rejected")[:1000])
             else:
+                if secim.get("folder_reset"):
+                    self.manager.store.set("son_klasor", "")
+                elif secim.get("folder_edited") and secim.get("dest_dir"):
+                    self.manager.store.set("son_klasor", {"yol": secim["dest_dir"], "ana": self.manager.current_download_dir()})
                 self._bekleyenler.al(kimlik)
                 self.manager.store.log("info", "Download approval accepted", gid=sonuc.get("gid") or "")
         except Exception as exc:
             self.manager.store.log("error", "Download approval failed: " + str(exc)[:1000])
-            return {"ok": False, "error": str(exc)[:300]}
+            error_code = "folder" if isinstance(exc, OSError) else ("engine" if "RPC" in str(exc) or "Timeout" in str(exc) else "failed")
+            return {"ok": False, "error_code": error_code, "error": str(exc)[:300], "error_details": str(exc)[:300]}
         return {"ok": True, **sonuc}
 
     # --- sistem baglantilari (baslangic, .torrent/magnet) ----------------
@@ -813,7 +835,7 @@ class Api:
             gid = self.manager.torrent_on_ekle(source)
             return {"ok": True, "gid": gid}
         except Exception as exc:
-            return {"ok": False, "error": str(exc)[:300]}
+            return {"ok": False, "error_code": "engine", "error": str(exc)[:300], "error_details": str(exc)[:300]}
 
     def torrent_on_iptal(self, gid: str) -> dict:
         """On-eklenmis torrenti kaldirir."""
@@ -821,7 +843,7 @@ class Api:
             self.manager.torrent_on_iptal(gid)
             return {"ok": True}
         except Exception as exc:
-            return {"ok": False, "error": str(exc)[:300]}
+            return {"ok": False, "error_code": "engine", "error": str(exc)[:300], "error_details": str(exc)[:300]}
 
     def torrent_dosyalari(self, gid: str) -> dict:
         """Torrent dosya agaci ve secim bilgisi."""
@@ -837,14 +859,14 @@ class Api:
                 "dosyalar": list(dosyalar),
             }
         except Exception as exc:
-            return {"ok": False, "error": str(exc)[:300]}
+            return {"ok": False, "error_code": "engine", "error": str(exc)[:300], "error_details": str(exc)[:300]}
 
     def torrent_secimi_ayarla(self, gid: str, indeksler: list[int]) -> dict:
         """Torrent dosya secimini canli uygula ve DB'ye yaz."""
         try:
             return self.manager.torrent_secimi_ayarla(gid, indeksler)
         except Exception as exc:
-            return {"ok": False, "error": str(exc)[:300]}
+            return {"ok": False, "error_code": "engine", "error": str(exc)[:300], "error_details": str(exc)[:300]}
     def torrent_metrikleri(self, gid: str) -> dict:
         """Torrent seed/ratio/tracker metrikleri koprusu."""
         try:
@@ -859,7 +881,7 @@ class Api:
                 "metrikler": sonuc if not hazir_degil else {},
             }
         except Exception as exc:
-            return {"ok": False, "error": str(exc)[:300], "hazir_degil": True, "neden": str(exc)[:300]}
+            return {"ok": False, "error_code": "engine", "error": str(exc)[:300], "error_details": str(exc)[:300], "hazir_degil": True, "neden": str(exc)[:300]}
 
     def loglar(self, gid: str = "") -> dict:
         """Detay paneli icin olay ve hata gunlukleri."""
@@ -1633,6 +1655,11 @@ class IndirmePenceresiApi:
         return {"ok": False}
 
     def bekleyen_onayla(self, kimlik: int, secim: dict) -> dict:
+        try:
+            if secim.get("dest_dir"):
+                Path(secim["dest_dir"]).mkdir(parents=True, exist_ok=True)
+        except (OSError, ValueError):
+            return {"ok": False, "error_code": "folder"}
         sonuc = self._api.bekleyen_onayla(kimlik, secim)
         if sonuc.get("ok"):
             self._aktif = None
@@ -1679,9 +1706,13 @@ class IndirmePenceresiApi:
     def klasor_gozat(self, baslangic: str = "") -> dict:
         if not self._window:
             return {"ok": False}
-        secim = self._window.create_file_dialog(
-            webview.FOLDER_DIALOG, directory=baslangic or self._api.manager.current_download_dir())
-        return {"ok": True, "yol": secim[0] if secim else ""}
+        try:
+            secim = self._window.create_file_dialog(
+                webview.FileDialog.FOLDER, directory=baslangic or self._api.manager.current_download_dir())
+            return {"ok": True, "yol": secim[0] if secim else ""}
+        except Exception as exc:
+            self._api.manager.store.log("error", "Folder selection failed: " + str(exc)[:1000])
+            return {"ok": False}
 
     def goster(self) -> None:
         self._gizli = False
@@ -1701,7 +1732,7 @@ def argvden_link(argv: list[str]) -> str:
         deger = arg.strip().strip('"')
         if not deger or deger.startswith("-"):
             continue
-        if deger.startswith(("magnet:", "http://", "https://", "ftp://")):
+        if deger.startswith(("magnet:", "http://", "https://", "ftp://", "afudm://")):
             return deger
         if deger.lower().endswith(".torrent") and Path(deger).exists():
             return str(Path(deger).resolve())

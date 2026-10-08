@@ -113,7 +113,6 @@ def ac(ek_arguman: str = "") -> None:
     hedef_exe, hedef_arg = hedef(ek_arguman)
     if acik_mi() and _kisayol_argumani() == hedef_arg:
         return
-    kisayol_yolu().unlink(missing_ok=True)
     if not Path(hedef_exe).exists():
         raise RuntimeError(f"baslangic hedefi bulunamadi: {hedef_exe}")
 
@@ -123,6 +122,7 @@ def ac(ek_arguman: str = "") -> None:
         raise OSError(f"baslangic klasoru olusturulamadi: {exc}") from exc
 
     betik_dosyasi = None
+    gecici_kisayol = None
     try:
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".ps1", delete=False, encoding="ascii"
@@ -130,10 +130,12 @@ def ac(ek_arguman: str = "") -> None:
             f.write(_BETIK)
             betik_dosyasi = Path(f.name)
 
+        with tempfile.NamedTemporaryFile(suffix=".lnk", dir=KLASOR, delete=False) as f:
+            gecici_kisayol = Path(f.name)
         komut = [
             "powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
             "-File", str(betik_dosyasi),
-            "-KisayolYolu", str(kisayol_yolu()),
+            "-KisayolYolu", str(gecici_kisayol),
             "-Hedef", hedef_exe,
             "-Argumanlar", hedef_arg,
             "-CalismaKlasoru", str(paths.BASE),
@@ -144,15 +146,17 @@ def ac(ek_arguman: str = "") -> None:
             komut, capture_output=True, text=True, encoding="utf-8", errors="replace",
             creationflags=CREATE_NO_WINDOW, timeout=90,
         )
+        if sonuc.returncode != 0 or not gecici_kisayol.is_file() or not gecici_kisayol.stat().st_size:
+            hata = (sonuc.stderr or sonuc.stdout or "bilinmeyen hata").strip()
+            raise OSError(f"kisayol olusturulamadi: {hata[:300]}")
+        gecici_kisayol.replace(kisayol_yolu())
     except (OSError, subprocess.SubprocessError) as exc:
         raise OSError(f"kisayol olusturma komutu calistirilamadi: {exc}") from exc
     finally:
         if betik_dosyasi is not None:
             betik_dosyasi.unlink(missing_ok=True)
-
-    if sonuc.returncode != 0 or not acik_mi():
-        hata = (sonuc.stderr or sonuc.stdout or "bilinmeyen hata").strip()
-        raise OSError(f"kisayol olusturulamadi: {hata[:300]}")
+        if gecici_kisayol is not None:
+            gecici_kisayol.unlink(missing_ok=True)
 
 
 

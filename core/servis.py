@@ -20,8 +20,15 @@ import threading
 import time
 
 from . import erisim, kaydet, models, paths, surum
-from .hata import AfuHata
+from .hata import AfuHata, hata_json
 from .erisim import ErisimDeposu, HizSinirlayici
+
+# Kullaniciya gonderilen hata metinleri TEK CUMLE olur (AGENTS.md kural 4):
+# ne oldu + ne yapmali. Windows hata kodu, yol, token ve ham iz metni API/panel
+# yanitina GIRMEZ; tanilama icin tek kaynak `store.log`'dur.
+ISLEM_YENIDEN_DENE = "Islem tamamlanamadi. Bir kez daha dene."
+AYAR_KAYDEDILEMEDI = "Ayar kaydedilemedi. Degeri kontrol edip yeniden dene."
+SUNUCU_ACILAMADI = "Yonetim sunucusu acilamadi. Bos bir port secip yeniden dene."
 
 # Bir ayarin ne zaman etkili oldugu. Arayuz bunu ROZET olarak gosterir;
 # tek kaynak burasidir (UI tahmin yurutmez).
@@ -83,8 +90,11 @@ class AfuDMServis:
         self.store = manager.store
         self.kip = kip
         self.erisim = ErisimDeposu(self.store)
+        # BASLANGIC istek limiti ETKIN PROFILIN limitidir (profil > genel ayar).
+        # Dogrudan `store.get("sunucu_istek_limiti")` okunurdu: profil seciliyken
+        # genel ayarin eski limiti sessizce gecerli kaliyordu.
         self.limitci = HizSinirlayici(
-            limit=int(self.store.get("sunucu_istek_limiti") or 120),
+            limit=int(self.sunucu_ayarlari()["istek_limiti"]),
             hatali_limit=int(self.store.get("sunucu_hatali_limit") or 8),
             kilit_saniye=int(self.store.get("sunucu_kilit_saniye") or 300),
         )
@@ -94,6 +104,34 @@ class AfuDMServis:
         self.sunucu = None
         self._sunucu_hata = ""
         self._lock = threading.RLock()
+
+    # ==================================================================
+    # hata cevirisi (kullanici metni + guvenli gunluk)
+    # ==================================================================
+    def _hata_gunluge(self, exc: BaseException, ne: str) -> None:
+        """Teknik ayrinti SADECE buraya. Yol/token/cerez metni maskelenir."""
+        try:
+            self.store.log("error", "%s basarisiz: %s: %s"
+                           % (ne, type(exc).__name__, str(exc)[:300]))
+        except Exception:
+            pass    # gunluk yazilamazsa islem yine de sessizce yutulur
+
+    @staticmethod
+    def _kullanici_mesaji(exc: BaseException, varsayilan: str) -> str:
+        """Girdi dogrulama hatalari (ValueError/AfuHata) insan metnidir,
+        dosya/engin/beklenmeyen hatalar maskelenir."""
+        try:
+            mesaj = str(hata_json(exc).get("message") or "").strip()
+        except Exception:
+            mesaj = ""
+        return mesaj[:200] or varsayilan
+
+    def _hata(self, exc: BaseException, kod: str, ne: str,
+              varsayilan: str = ISLEM_YENIDEN_DENE) -> dict:
+        """Sozlesme: `code` makine icin, `message`/`error` insan icin."""
+        self._hata_gunluge(exc, ne)
+        mesaj = self._kullanici_mesaji(exc, varsayilan)
+        return {"ok": False, "code": kod, "message": mesaj, "error": mesaj}
 
     # ==================================================================
     # indirmeler
@@ -207,7 +245,10 @@ class AfuDMServis:
                 else:
                     added += 1
             except Exception as exc:
-                failed.append(("%s: %s" % (url[:48], exc))[:180])
+                self._hata_gunluge(exc, "link eklenemedi")
+                # Satir metni kullaniciya gosterilir: link + TEK CUMLE.
+                failed.append(("%s: %s" % (url[:48],
+                                           self._kullanici_mesaji(exc, ISLEM_YENIDEN_DENE)))[:180])
         if not added and not scheduled and failed:
             return {"ok": False, "code": "EKLENEMEDI", "error": failed[0],
                     "failed": failed}
@@ -241,7 +282,7 @@ class AfuDMServis:
             err_msg = str(exc).lower()
             if eylem == "remove" and ("kayit bulunamadi" in err_msg or "not found" in err_msg):
                 return {"ok": True, "action": "remove", "gid": gid, "orphan": True}
-            return {"ok": False, "code": "ISLEM_HATASI", "error": str(exc)[:300]}
+            return self._hata(exc, "ISLEM_HATASI", "kontrol islemi")
         return {"ok": True, "action": eylem, "gid": gid}
 
     def baglanti_ayarla(self, gid: str, baglanti=None, hiz_kb=None) -> dict:
@@ -249,19 +290,19 @@ class AfuDMServis:
             return {"ok": True, **self.manager.baglanti_ayarla(
                 gid, baglanti=baglanti, hiz_kb=hiz_kb)}
         except Exception as exc:
-            return {"ok": False, "code": "ISLEM_HATASI", "error": str(exc)[:300]}
+            return self._hata(exc, "ISLEM_HATASI", "baglanti ayari")
 
     def yeniden_dene(self, row_id: int) -> dict:
         try:
             return {"ok": True, **self.manager.retry(int(row_id))}
         except Exception as exc:
-            return {"ok": False, "code": "ISLEM_HATASI", "error": str(exc)[:300]}
+            return self._hata(exc, "ISLEM_HATASI", "yeniden deneme")
 
     def yenile_link(self, gid: str, yeni_url: str, **kw) -> dict:
         try:
             return {"ok": True, **self.manager.renew(gid, yeni_url, **kw)}
         except Exception as exc:
-            return {"ok": False, "code": "ISLEM_HATASI", "error": str(exc)[:300]}
+            return self._hata(exc, "ISLEM_HATASI", "link yenileme")
 
     def bitmisleri_temizle(self) -> dict:
         return {"ok": True, "removed": self.store.clear_finished()}
@@ -289,7 +330,8 @@ class AfuDMServis:
         try:
             ayarlar = self.manager.update_settings(payload)
         except Exception as exc:
-            return {"ok": False, "code": "AYAR_HATASI", "error": str(exc)[:300]}
+            return self._hata(exc, "AYAR_HATASI", "ayar kaydetme",
+                              varsayilan=AYAR_KAYDEDILEMEDI)
         self.limitleri_tazele()
         return {
             "ok": True,
@@ -316,7 +358,7 @@ class AfuDMServis:
         try:
             return {"ok": True, **self.manager.set_mode(ad)}
         except Exception as exc:
-            return {"ok": False, "code": "BAD_REQUEST", "error": str(exc)[:200]}
+            return self._hata(exc, "BAD_REQUEST", "hiz profili secimi")
 
     # ==================================================================
     # yonetim sunucusu (HTTP)
@@ -339,7 +381,11 @@ class AfuDMServis:
         }
 
     def sunucu_baslat(self) -> dict:
-        """Yonetim sunucusunu ac. Idempotent: zaten aciksa mevcut durumu doner."""
+        """Yonetim sunucusunu ac. Idempotent: zaten aciksa mevcut durumu doner.
+
+        Baslangic istek limiti `__init__`de ETKIN PROFILDEN okunup limitciye
+        yazildigi icin burada TEKRAR yazilmaz: sunucuyu acan kodun limitci
+        uzerinde sonradan yaptigi ayar (orn. test/headless) ezilmez."""
         with self._lock:
             if self.sunucu is not None and self.sunucu.calisiyor:
                 return {"ok": True, "zaten": True, **self.sunucu_durumu()["sunucu"]}
@@ -350,14 +396,14 @@ class AfuDMServis:
                 self.sunucu.start()
                 self._sunucu_hata = ""
             except Exception as exc:
-                self._sunucu_hata = str(exc)[:300]
+                self._hata_gunluge(exc, "yonetim sunucusu acilamadi")
+                self._sunucu_hata = self._kullanici_mesaji(exc, SUNUCU_ACILAMADI)
                 self.sunucu = None
-                self.store.log("error", "yonetim sunucusu acilamadi: %s"
-                               % self._sunucu_hata)
                 return {"ok": False, "code": "SUNUCU_ACILAMADI",
-                        "error": self._sunucu_hata}
+                        "message": self._sunucu_hata, "error": self._sunucu_hata}
             self.store.set("sunucu_acik", True)
-            self.store.log("info", "yonetim sunucusu acildi (port %d)" % self.sunucu.port)
+            self.store.log("info", "yonetim sunucusu acildi (port %d, limit %d)"
+                           % (self.sunucu.port, self.limitci.limit))
             return {"ok": True, **self.sunucu_durumu()["sunucu"]}
 
     def sunucu_durdur(self) -> dict:
@@ -501,6 +547,11 @@ class AfuDMServis:
         if profil_id and self.erisim.profil(profil_id) is None:
             return {"ok": False, "code": "BAD_REQUEST", "error": "profil bulunamadi"}
         self.store.set("sunucu_profil_id", profil_id)
+        # Profil degisti: istek limiti ETKIN OLUR (profil > genel ayar).
+        try:
+            self.limitleri_tazele()
+        except Exception as exc:
+            self._hata_gunluge(exc, "istek limiti tazelenemedi")
         return {"ok": True, "etkin": profil_id, "sunucu_yeniden_gerekli": True}
 
     # ==================================================================

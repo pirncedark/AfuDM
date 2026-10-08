@@ -23,6 +23,46 @@ from core import kaydet
 
 
 class DownloadWindowTest(unittest.TestCase):
+    def test_folder_dialog_failure_is_returned_for_both_windows(self):
+        self.api._window = Mock()
+        for bridge in (self.api, self.prompt):
+            bridge._window.create_file_dialog.side_effect = RuntimeError('native failure')
+            self.assertFalse(bridge.klasor_gozat('/downloads')['ok'])
+
+    def test_selected_folder_reaches_request_and_is_remembered(self):
+        self.api._hedef_klasor = Api._hedef_klasor.__get__(self.api)
+        from core.servis import AfuDMServis
+        self.api.servis = AfuDMServis.__new__(AfuDMServis)
+        self.api.servis.manager = self.api.manager
+        self.api.manager.current_download_dir = lambda: '/downloads'
+        self.api.manager.guess_name = lambda url: 'paper.pdf'
+        ident = self.api.tarayicidan_sor({'url': 'https://example.test/paper.pdf'})
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        target = str(Path(tmp.name) / 'new' / 'chosen-folder')
+        self.assertTrue(self.prompt.bekleyen_onayla(ident, {'dest_dir': target, 'folder_edited': True})['ok'])
+        self.assertEqual(self.api.manager.add.call_args.args[0].dest_dir, target)
+        self.assertTrue(Path(target).is_dir())
+        self.api.manager.store.set.assert_called_with('son_klasor', {"yol": target, "ana": '/downloads'})
+        self.api.manager.store.get.side_effect = lambda key, default=None: {"yol": target, "ana": '/downloads'} if key == 'son_klasor' else default
+        self.assertEqual(self.prompt.kaydet_bilgi('https://example.test/paper.pdf')['son_klasor'], target)
+
+    def test_invalid_folder_keeps_pending_and_does_not_start(self):
+        ident = self.api.tarayicidan_sor({'url': 'https://example.test/paper.pdf'})
+        result = self.prompt.bekleyen_onayla(ident, {'dest_dir': 'bad\x00path'})
+        self.assertEqual(result, {'ok': False, 'error_code': 'folder'})
+        self.api.manager.add.assert_not_called()
+        self.assertTrue(self.api._bekleyenler.bak(ident))
+
+    def test_folder_dialog_uses_enum_and_cancel_is_success(self):
+        self.api._window = Mock()
+        import app
+        with patch.object(app.webview, 'FileDialog', SimpleNamespace(FOLDER=123), create=True):
+            for bridge in (self.api, self.prompt):
+                bridge._window.create_file_dialog.return_value = None
+                self.assertEqual(bridge.klasor_gozat('/downloads'), {'ok': True, 'yol': ''})
+                bridge._window.create_file_dialog.assert_called_with(123, directory='/downloads')
+
     def test_prompt_bridge_does_not_traverse_native_window_or_parent_api(self):
         import threading
         try:

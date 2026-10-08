@@ -57,7 +57,7 @@ def _ciktilari_utf8() -> None:
 
 
 def human_size(num: float) -> str:
-    for unit in ("KB", "MB", "GB", "TB", "PB"):
+    for unit in ("B", "KB", "MB", "GB", "TB", "PB"):
         if abs(num) < 1024:
             return "%.1f %s" % (num, unit)
         num /= 1024
@@ -563,7 +563,7 @@ def komut_kontrol(args) -> int:
         eylem = args.action.replace("-", "_")
         sonuc = _istek("POST", "/control", {
             "action": eylem, "gid": args.gid,
-            "delete_files": bool(args.delete_files),
+            "delete_files": bool(getattr(args, "delete_files", False)),
         })
     if args.json:
         print(json.dumps(sonuc, ensure_ascii=False))

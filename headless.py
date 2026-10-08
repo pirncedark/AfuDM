@@ -13,6 +13,7 @@ SQLite dosyasina ve ayni aria2 oturumuna asilmasin diye (bkz. core/ornek.py).
 """
 from __future__ import annotations
 
+import logging
 import sys
 import time
 from pathlib import Path
@@ -42,81 +43,81 @@ def calistir() -> int:
               % (lang.t(rapor["mesaj_anahtari"], "auto"),
                  var.get("pid"), var.get("kip")))
         return 4
-    if not paths.ARIA2C.exists():
-        kilit.birak()
-        print(f"HATA: motor bulunamadi -> {paths.ARIA2C}")
-        return 2
-
-    manager = Manager()
+    manager = servis = local_api = None
     try:
-        manager.start()
-    except Exception as exc:
-        kilit.birak()
-        print(f"HATA: aria2 baslatilamadi: {exc}")
-        return 3
+        if not paths.ARIA2C.exists():
+            print(f"HATA: motor bulunamadi -> {paths.ARIA2C}")
+            return 2
 
-    servis = AfuDMServis(manager, kip=ornek.KIP_HEADLESS)
-    from api.server import _Handler as _ApiHandler  # noqa: E402
-    _ApiHandler.servis = servis          # /capabilities tek kaynaktan
-    # Uzanti/CLI koprusu headless kipte de calisir (mevcut yerel API).
-    local_api = LocalAPI(manager, port=VARSAYILAN_API_PORT,
-                         lan=bool(manager.store.get("lan_erisimi")))
-    try:
-        port = local_api.start()
-        manager.store.set("api_port", port)
-        kilit.guncelle(api_port=port)
-    except Exception as exc:
-        print(f"UYARI: yerel API acilamadi: {exc}")
+        manager = Manager()
+        try:
+            manager.start()
+        except Exception:
+            logging.getLogger(__name__).exception("Motor baslatilamadi")
+            print("HATA: Indirme motoru baslatilamadi; uygulamayi yeniden acin.")
+            return 3
 
-    if not servis.erisim.yonetici_var_mi():
-        # Anahtarsiz sunucu kimseye yaramaz ve YANLIS bir guven verir.
-        print("HATA: yonetici erisim anahtari yok. Once masaustu AfuDM'de"
-              " Sunucu sekmesinden bir anahtar olustur.")
-        local_api.stop()
-        manager.stop()
-        kilit.birak()
-        return 5
+        servis = AfuDMServis(manager, kip=ornek.KIP_HEADLESS)
+        from api.server import _Handler as _ApiHandler  # noqa: E402
+        _ApiHandler.servis = servis          # /capabilities tek kaynaktan
+        # Uzanti/CLI koprusu headless kipte de calisir (mevcut yerel API).
+        local_api = LocalAPI(manager, port=VARSAYILAN_API_PORT,
+                             lan=bool(manager.store.get("lan_erisimi")))
+        try:
+            port = local_api.start()
+            manager.store.set("api_port", port)
+            kilit.guncelle(api_port=port)
+        except Exception:
+            logging.getLogger(__name__).exception("Yerel API acilamadi")
+            print("UYARI: Baglanti acilamadi; uygulamayi yeniden acin.")
 
-    sonuc = servis.sunucu_baslat()
-    if not sonuc.get("ok"):
-        print("HATA: %s" % sonuc.get("error"))
-        local_api.stop()
-        manager.stop()
-        kilit.birak()
-        return 6
-    durum = servis.sunucu_durumu()["sunucu"]
-    kilit.guncelle(sunucu_port=durum["port"], sunucu_adres=durum["adres"])
-    print("AfuDM sunucu kipinde calisiyor.")
-    print("  panel : %s" % durum["url"])
-    if durum["lan_url"]:
-        print("  ag    : %s" % durum["lan_url"])
-    print("  durdur: afuadm server stop")
-    # Duzenli kapanis bayragi: Windows'ta konsolsuz surece sinyal gonderilemez,
-    # bu yuzden `afuadm server stop` bu dosyayi olusturur ve biz temiz kapaniriz
-    # (aria2 oturumu kaydedilir, indirmeler kaybolmaz).
-    dur_bayragi = paths.DATA / "sunucu_dur.flag"
-    try:
-        dur_bayragi.unlink()           # onceki calismadan kalan bayat bayrak
-    except OSError:
-        pass
-    try:
-        while True:
-            if dur_bayragi.exists():
-                try:
-                    dur_bayragi.unlink()
-                except OSError:
-                    pass
-                print("kapatiliyor...")
-                break
-            time.sleep(1.0)
-    except KeyboardInterrupt:
-        pass
+        if not servis.erisim.yonetici_var_mi():
+            # Anahtarsiz sunucu kimseye yaramaz ve YANLIS bir guven verir.
+            print("HATA: yonetici erisim anahtari yok. Once masaustu AfuDM'de"
+                  " Sunucu sekmesinden bir anahtar olustur.")
+            return 5
+
+        sonuc = servis.sunucu_baslat()
+        if not sonuc.get("ok"):
+            print("HATA: %s" % sonuc.get("error"))
+            return 6
+        durum = servis.sunucu_durumu()["sunucu"]
+        kilit.guncelle(sunucu_port=durum["port"], sunucu_adres=durum["adres"])
+        print("AfuDM sunucu kipinde calisiyor.")
+        print("  panel : %s" % durum["url"])
+        if durum["lan_url"]:
+            print("  ag    : %s" % durum["lan_url"])
+        print("  durdur: afuadm server stop")
+        # Duzenli kapanis bayragi: Windows'ta konsolsuz surece sinyal gonderilemez,
+        # bu yuzden `afuadm server stop` bu dosyayi olusturur ve biz temiz kapaniriz
+        # (aria2 oturumu kaydedilir, indirmeler kaybolmaz).
+        dur_bayragi = paths.DATA / "sunucu_dur.flag"
+        try:
+            dur_bayragi.unlink()           # onceki calismadan kalan bayat bayrak
+        except OSError:
+            pass
+        try:
+            while True:
+                if dur_bayragi.exists():
+                    try:
+                        dur_bayragi.unlink()
+                    except OSError:
+                        pass
+                    print("kapatiliyor...")
+                    break
+                time.sleep(1.0)
+        except KeyboardInterrupt:
+            pass
+        return 0
     finally:
-        servis.sunucu_durdur()
-        local_api.stop()
-        manager.stop()
-        kilit.birak()
-    return 0
+        # Bir kaynagin kapanis hatasi digerlerini acik birakmamali.
+        for kaynak, metot in ((servis, "sunucu_durdur"), (local_api, "stop"),
+                              (manager, "stop"), (kilit, "birak")):
+            if kaynak is not None:
+                try:
+                    getattr(kaynak, metot)()
+                except Exception:
+                    logging.getLogger(__name__).exception("Headless kapanis hatasi: %s", metot)
 
 if __name__ == "__main__":
     sys.exit(calistir())

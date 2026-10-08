@@ -7,8 +7,11 @@ ciktisindan satir satir okunur.
 from __future__ import annotations
 
 import json
+import logging
+import os
 import re
 import subprocess
+import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
@@ -56,6 +59,55 @@ COMBINED_FORMATS = {
 }
 
 _SPLIT_FILENAME_RE = re.compile(r"^(?P<stem>.+)\.f\d+(?P<ext>\.[^.]+)$", re.IGNORECASE)
+
+# yt-dlp'nin ham hatasindan KULLANICIYA giden tek cumle.
+# Kural: ham metin her zaman korunur (`error` alani + gunluk + `ham_hata`),
+# ekranda gorunen metin ise "ne oldu + ne yapmali" (Afu basitlik kurali 4).
+# SIRA ONEMLI: en ozel ipucu once denenir, yoksa genel olan yutar —
+#   "Sign in to confirm you're not a bot" -> once "oturum", "gizli" degil
+#   "Video unavailable. This video is private or deleted" -> once "bulunamadi"
+# Metinler BILEREK ASCII (dosyanin gorunur uslubuna uyar; bkz. headless.py).
+# Not: bu tablo yereldir; core/lang.py sozlugu + ui/i18n.js'e tasinmasi
+# ayri bir gorev konusudur (core/lang.py bu gorevde yazilabilir degil).
+_HATA_CUMLERI: tuple[tuple[tuple[str, ...], tuple[str, str]], ...] = (
+    (("not a bot", "sign in to confirm", "confirm you"),
+     ("Bot kontrolu istiyor; site oturumuyla tekrar deneyin.",
+      "The site wants a bot check; sign in on the site and try again.")),
+    (("unavailable", "does not exist", "no such video"),
+     ("Video bulunamadi; adresi kontrol edip baska bir video deneyin.",
+      "Video not found; check the link and try another video.")),
+    (("has been removed", "removed by the uploader", "video was removed"),
+     ("Video kaldirilmis; baska bir video deneyin.",
+      "This video was removed; try another video.")),
+    (("private", "sign in if you", "members-only", "join this channel"),
+     ("Video gizli; siteye giris yapip tekrar deneyin.",
+      "This video is private; sign in on the site and try again.")),
+    (("age-restricted", "age restricted", "confirm your age"),
+     ("Video yas sinirli; siteye giris yapip tekrar deneyin.",
+      "This video is age restricted; sign in on the site and try again.")),
+    (("not made this video available", "not available in your country",
+      "blocked it in your country", "geo restricted", "geo-restricted"),
+     ("Video bu bolgede kapali; VPN kullanip tekrar deneyin.",
+      "This video is blocked in your country; use a VPN and try again.")),
+    (("429", "too many requests", "rate limit"),
+     ("Cok fazla istek gonderildi; biraz bekleyip tekrar deneyin.",
+      "Too many requests; wait a moment and try again.")),
+    (("403", "forbidden"),
+     ("Site erisimi engelledi; baglantiyi yeniden kurup tekrar deneyin.",
+      "The site blocked access; renew the connection and try again.")),
+    (("is live", "live event", "premieres in", "post-live", "will begin in"),
+     ("Video canli yayinda; yayin bitince tekrar indirin.",
+      "This video is live; download it after the stream ends.")),
+    (("500", "502", "503", "504", "internal server error", "bad gateway",
+      "service unavailable", "timed out", "timeout", "connection",
+      "unable to connect", "temporary failure", "name resolution",
+      "getaddrinfo", "network is unreachable", "remote end closed",
+      "ssl", "fragmented"),
+     ("Baglantiyi kuramadik; interneti kontrol edip tekrar deneyin.",
+      "Could not open the connection; check your internet and try again.")),
+)
+_HATA_VARSILAN = ("Video indirilemedi; adresi kontrol edip tekrar deneyin.",
+                  "Could not download the video; check the link and try again.")
 
 
 def birlesik_dosya_bul(dest_dir: str | Path, filename: str) -> Path | None:
@@ -233,6 +285,10 @@ class VideoJob:
     proc: subprocess.Popen | None = None
     status: str = "active"          # active | paused | complete | error | removed
     error: str = ""
+    # yt-dlp'nin ham ciktisi; `error` ham metni korur (gunluk/ayiklama sozlesmesi),
+    # `kullanici_hata()` bu metinden tek cumle uretir. Birlestirme/ffmpeg notu
+    # gibi elle yazilan hatalarda ham_hata BOS kalir ve kullanici metni gecer.
+    ham_hata: str = ""
     downloaded: int = 0
     total: int = 0
     speed: int = 0
@@ -511,6 +567,7 @@ class VideoJob:
                     pass                      # yedek de baslatilamadi: hatayi yaz
             self.status = "error"
             ham = " / ".join(tail[-3:])[:500] or f"yt-dlp cikis kodu {code}"
+            self.ham_hata = ham
             self.error = self.anlasilir_hata(ham)
             break
         self.speed = 0
@@ -646,13 +703,32 @@ class VideoJob:
             return
         # "Baslik.f137.mp4" -> "Baslik.mp4"
         taban = re.sub(r"\.f\d+$", "", video.stem)
-        hedef = video.with_name(taban + ".mp4")
-        if hedef.exists() and hedef not in (video, ses):
-            hedef = video.with_name(taban + " (birlesik).mp4")
+
+        def aday(sayi: int) -> Path:
+            if sayi == 0:
+                return video.with_name(taban + ".mp4")
+            ek = " (birlesik)" if sayi == 1 else " (birlesik %d)" % sayi
+            return video.with_name(taban + ek + ".mp4")
+
+        # Var olan birlesik cikti EZILMEZ: numaralandirilmis bos ad ara
+        # ("Baslik (birlesik).mp4" doluysa "Baslik (birlesik 2).mp4").
+        hedef = aday(0)
+        for sayi in range(1, 1000):
+            if not hedef.exists() and hedef not in (video, ses):
+                break
+            hedef = aday(sayi)
+        gecici: Path | None = None
         try:
-            gecici = hedef.with_suffix(".mp4.yarim")
+            # Once bos gecici dosyaya yaz, sonra ATOMIK olarak hedefe tasi:
+            # yazma yarida kesilirse onceki dosya bozulmaz.
+            tutamak = tempfile.NamedTemporaryFile(
+                dir=str(hedef.parent), prefix=taban[:40] + ".", suffix=".yarim",
+                delete=False)
+            gecici = Path(tutamak.name)
+            tutamak.close()
             mp4mux.birlestir(video, ses, gecici)
-            gecici.replace(hedef)
+            os.replace(gecici, hedef)
+            gecici = None
             for y in (video, ses):
                 try:
                     y.unlink()
@@ -664,6 +740,12 @@ class VideoJob:
         except Exception as exc:
             # Parcalar duruyor; kullanici kaybetmesin diye sessizce birak.
             self.error = "birlestirilemedi: %s" % str(exc)[:160]
+        finally:
+            if gecici is not None:
+                try:
+                    gecici.unlink()
+                except OSError:
+                    pass
 
     def anlasilir_hata(self, ham: str) -> str:
         """yt-dlp'nin ham hatasini kullanicinin anlayacagi cumleye cevirir.
@@ -671,11 +753,33 @@ class VideoJob:
         En sik durum: ffmpeg yokken YouTube'dan video istemek. YouTube artik
         ses+video birlesik format VERMIYOR (2026 olcumu), bu yuzden birlestirici
         olmadan istenen format bulunamiyor. Ham mesaj ("Requested format is not
-        available") kullaniciya hicbir sey anlatmiyor."""
+        available") kullaniciya hicbir sey anlatmiyor.
+
+        SOZLESME: ffmpeg disi her ham metin OLDU GIBI doner (tests/format_test.py
+        bunu zorunlu kilar); yalniz gunluge yazilir. Ekranda gosterilecek tek
+        cumleyi `kullanici_hata()` uretir."""
         if "requested format is not available" in ham.lower() and not self.ffmpeg_vardi:
             anahtar = "err.needFfmpegAudio" if self.audio_only else "err.needFfmpeg"
             return lang.t(anahtar, self.dil)
+        if ham:
+            logging.getLogger(__name__).warning("yt-dlp hatasi: %s", ham)
         return ham
+
+    def kullanici_hata(self) -> str:
+        """Kullaniciya giden HATA METNI: tek cumle, ne oldu + ne yapmali.
+
+        `ham_hata` doluysa (gercek yt-dlp hatasi) ipucuna gore metin secilir;
+        `ham_hata` bos ise elle yazilmis hata (birlestirme, ffmpeg notu)
+        oldugu gibi gecer."""
+        if not self.ham_hata or not self.error:
+            return self.error
+        if self.error != self.ham_hata:
+            return self.error          # zaten anlasilir metne cevrildi (ffmpeg notu)
+        kucuk = self.ham_hata.lower()
+        for ipuclari, (tr_metin, en_metin) in _HATA_CUMLERI:
+            if any(ipuc in kucuk for ipuc in ipuclari):
+                return tr_metin if lang.resolve(self.dil) == "tr" else en_metin
+        return _HATA_VARSILAN[0] if lang.resolve(self.dil) == "tr" else _HATA_VARSILAN[1]
 
     # --- kontrol ----------------------------------------------------------
     def stop(self) -> None:
@@ -700,6 +804,11 @@ class VideoJob:
 
     def to_dict(self) -> dict:
         total = self.total or 0
+        done = self.downloaded or 0
+        # Anlik hiz her tiklamada ziplar; basindan ortalama hiz ve gecen sure
+        # kullanicinin "ne kadar indi / ne kadar surecak" sorusunu sabit cevaplar.
+        elapsed = max(time.time() - self.started_at, 1.0)
+        avg_speed = int(done / elapsed) if done else 0
         return {
             "gid": self.job_id,
             "kind": "video",
@@ -709,11 +818,14 @@ class VideoJob:
             "totalLength": total,
             "completedLength": self.downloaded,
             "downloadSpeed": self.speed,
+            "avgSpeed": avg_speed,
+            "elapsed": int(elapsed),
+            "remaining": max(total - done, 0),
             "uploadSpeed": 0,
             "connections": 0,
             "numSeeders": 0,
             "eta": self.eta,
             "dir": self.dest_dir,
-            "errorMessage": self.error,
+            "errorMessage": self.kullanici_hata(),
             "source": self.url,
         }

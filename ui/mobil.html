@@ -316,6 +316,7 @@ function satir(is) {
 
 let acikTorrentGid = "";
 let torrentMetrikZamanlayici = null;
+let torrentKatmanNonce = 0;
 
 function torrentKatmanKapat() {
   if (torrentMetrikZamanlayici) {
@@ -360,10 +361,13 @@ async function torrentMetrikTazele(gid) {
 async function torrentKatmanAc(gid) {
   torrentKatmanKapat();
   acikTorrentGid = gid;
+  const nonce = ++torrentKatmanNonce;
   $("torrentBaslik").textContent = t("mobile.torrentTitle");
   $("torrentDosyalar").textContent = t("mobile.loading");
   $("seedOzet").innerHTML = "";
   $("torrentKaydet").disabled = false;
+  $("trackerTara").disabled = false;
+  $("trackerTara").textContent = "Tracker tara";
   $("torrentKatman").hidden = false;
   torrentMetrikZamanlayici = setInterval(() => { torrentMetrikTazele(gid); }, 3000);
   try {
@@ -371,6 +375,7 @@ async function torrentKatmanAc(gid) {
       api("/torrent/dosyalar?gid=" + encodeURIComponent(gid)),
       api("/seed?gid=" + encodeURIComponent(gid)),
     ]);
+    if (acikTorrentGid !== gid || nonce !== torrentKatmanNonce || $("torrentKatman").hidden) return;
     $("torrentBaslik").textContent = seedVeri.baslik || t("mobile.torrentTitle");
     seedOzetGoster(seedVeri);
     const dosyalar = dosyaVeri.dosyalar || [];
@@ -384,12 +389,19 @@ async function torrentKatmanAc(gid) {
       (dosya.secili ? " checked" : "") + '><span><b>' + kacir(dosya.ad) + "</b><small>" +
       boyut(dosya.boyut) + "</small></span></label>").join("") || t("mobile.filesNotFound");
   } catch (err) {
+    if (acikTorrentGid !== gid || nonce !== torrentKatmanNonce || $("torrentKatman").hidden) return;
     $("torrentDosyalar").textContent = t("mobile.filesLoadFailed");
     bildir(err.message, true);
   }
 }
 
-async function yenile() {
+let yenileTimer = null;
+let yenileInFlight = false;
+
+async function yenile(isManual = false) {
+  if (yenileInFlight) return;
+  if (yenileTimer) { clearTimeout(yenileTimer); yenileTimer = null; }
+  yenileInFlight = true;
   try {
     const veri = await api("/snapshot");
     const isler = veri.items || [];
@@ -415,7 +427,8 @@ async function yenile() {
     }
     $("bos").style.display = "";
   }
-  setTimeout(yenile, 1500);
+  yenileInFlight = false;
+  yenileTimer = setTimeout(yenile, 1500);
 }
 
 $("liste").addEventListener("click", async (olay) => {
@@ -443,7 +456,7 @@ $("liste").addEventListener("click", async (olay) => {
   try {
     await api("/control", { method: "POST",
       body: JSON.stringify({ action: dugme.dataset.eylem, gid: dugme.dataset.gid }) });
-    yenile();
+    yenile(true);
   } catch (err) { bildir(err.message, true); }
 });
 
@@ -469,7 +482,7 @@ $("torrentKaydet").addEventListener("click", async () => {
       body: JSON.stringify({ gid: acikTorrentGid, indeksler }) });
     bildir("Secim kaydedildi.");
     torrentKatmanKapat();
-    yenile();
+    yenile(true);
   } catch (err) {
     bildir(err.message, true);
   } finally {
@@ -489,6 +502,9 @@ $("trackerTara").addEventListener("click", async () => {
     seedOzetGoster(veri);
   } catch (err) {
     $("seedOzet").innerHTML = '<div class="hata">' + kacir(err.message) + "</div>";
+  } finally {
+    dugme.disabled = false;
+    dugme.textContent = eskiYazi;
   }
 });
 
@@ -563,7 +579,7 @@ $("baglanBtn").addEventListener("click", () => {
   }
   anahtarKaydet(yeni);
   bildir("Bağlanılıyor…");
-  yenile();
+  yenile(true);
 });
 
 /* Worker kaydi basarisiz olsa bile telefon arayuzu normal calismaya devam eder. */

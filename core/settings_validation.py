@@ -38,6 +38,11 @@ PORT_MIN = 1024
 PORT_MAX = 65535
 SNAIL_MIN = 1
 SNAIL_MAX = 1_000_000
+# Es zamanli indirme sayisi. aria2'ye dogrudan gider
+# (manager.apply_settings) ve `int(...)` ile okunur; "abc"/0/-1 gecerse
+# ValueError firlatip motoru ayarlamayi cokertirdi.
+ES_ZAMANLI_MIN = 1
+ES_ZAMANLI_MAX = 20
 
 # Uzanti adinda yasak: joker ve yol karakterleri. Bunlar dosya secicide
 # desen/klasor anlamina gelir; uzanti listesine girerse esleme saskinlasir.
@@ -136,6 +141,21 @@ def dogrula_snail_speed_kb(deger: Any) -> int:
     return hiz
 
 
+def dogrula_max_concurrent(deger: Any) -> int:
+    """Es zamanli indirme sayisi: 1..20 arasi TAM SAYI olmak zorunda.
+
+    Bu deger dogrudan aria2'ye gider ve `int(...)` ile okunur; metin ("abc")
+    ya da 0/-1 gibi gecersiz degerler motor ayarini cokertirdi.
+
+    Hata anahtari `err.invalidValue`: TR ve EN'de ZATEN var, boylece UI'da
+    ham anahtar gosterilmez.
+    """
+    adet = _tamsayi("max_concurrent", deger, "err.invalidValue")
+    if not ES_ZAMANLI_MIN <= adet <= ES_ZAMANLI_MAX:
+        raise AyarHatasi("max_concurrent", "err.invalidValue")
+    return adet
+
+
 def dogrula_proxy(deger: Any) -> str:
     """Bos proxy gecerlidir (= proxy kullanma). Doluysa bicim zorunlu.
 
@@ -224,6 +244,7 @@ DOGRULAYICILAR: dict[str, Callable[[Any], Any]] = {
     "api_port": dogrula_api_port,
     "api_listen_port": dogrula_api_listen_port,
     "snail_speed_kb": dogrula_snail_speed_kb,
+    "max_concurrent": dogrula_max_concurrent,
     "proxy": dogrula_proxy,
     "clipboard_exts": dogrula_clipboard_exts,
     "ag_konumlari": dogrula_ag_konumlari,

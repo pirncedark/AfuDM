@@ -46,7 +46,16 @@ class AutomationWorker:
 
     def _run(self, job):
         if job.get("status") == "cancelled": return
-        action, p = job["action"], job["payload"]; path=Path(p.get("path") or "")
+        action, p = job["action"], dict(job["payload"])
+        # Tamamlanan adimlarin kalici yolu, yeniden baslatilan worker'da da
+        # sonraki adima aktarilir; baska indirmenin yoluna dokunulmaz.
+        for onceki in self.store.automation_jobs(job["download_gid"]):
+            if onceki["id"] >= job["id"]: break
+            if (onceki["status"] == "complete" and
+                    onceki["action"] in ("move", "rename") and
+                    onceki["payload"].get("path")):
+                p["path"] = onceki["payload"]["path"]
+        path=Path(p.get("path") or "")
         self.store.automation_update(job["id"], progress=10)
         if action == "checksum":
             spec=str(p.get("checksum") or ""); algo, _, expected=spec.partition(":")
@@ -77,6 +86,10 @@ class AutomationWorker:
                 if not current or current["status"] == "cancelled": return
                 self.store.automation_update(job["id"], progress=max(20, int((seconds-left)*80/seconds)))
                 time.sleep(1)
-            if self.store.get("automation_power") == "shutdown": subprocess.Popen(["shutdown","/s","/t","0","/c","AfuDM otomasyonu"], creationflags=0x08000000)
-            else: guc.uyut()
+            if self.store.get("automation_power") == "shutdown":
+                sonuc = subprocess.run(["shutdown","/s","/t","0","/c","AfuDM otomasyonu"], capture_output=True, creationflags=0x08000000)
+                if sonuc.returncode != 0:
+                    raise RuntimeError("Bilgisayar kapatılamadı; izinleri kontrol edip yeniden deneyin.")
+            elif not guc.uyut():
+                raise RuntimeError("Bilgisayar uyutulamadı; güç ayarlarını kontrol edip yeniden deneyin.")
         self.store.automation_update(job["id"], payload=__import__("json").dumps(p), status="complete", progress=100, finished_at=time.time())

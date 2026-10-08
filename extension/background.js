@@ -212,6 +212,12 @@ chrome.downloads.onCreated.addListener((item) => {
       const error = chrome.runtime.lastError;
       error ? reject(new Error(error.message)) : resolve();
     })),
+    download: (download, url) => new Promise((resolve, reject) => chrome.downloads.download({
+      url,
+    }, (id) => {
+      const error = chrome.runtime.lastError;
+      error ? reject(new Error(error.message)) : resolve(id);
+    })),
     eligible: async (download, url) => {
       const cfg = await config();
       if (!cfg.uzantiAcik || !cfg.enabled) return false;
@@ -238,7 +244,7 @@ chrome.downloads.onCreated.addListener((item) => {
       return true;
     },
   }).catch((error) => {
-    notify(chrome.i18n.getMessage("notifyHandoffFailed") + error.message);
+    notify("AfuDM indirmeyi alamadı; tarayıcıdaki indirmeyi kontrol edin.");
   });
 });
 

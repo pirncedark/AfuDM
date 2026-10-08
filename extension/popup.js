@@ -106,7 +106,8 @@ async function send(url, kind) {
   if (result.ok) {
     say(chrome.i18n.getMessage(result.pending ? "msgPending" : "msgQueued"), "ok");
   } else {
-    say(result.error || chrome.i18n.getMessage("msgAddFailed"), "bad");
+    console.error("Popup download failed:", result.error);
+    say(chrome.i18n.getMessage("notifyNotRunning"), "bad");
   }
 }
 
@@ -161,7 +162,12 @@ $("save").onclick = async () => {
    portu, sonra araligi dene. Boylece kullanici port aramak zorunda kalmaz. */
 async function pairDene(port) {
   try {
-    return await fetch(`http://127.0.0.1:${port}/pair`);
+    const res = await fetch(`http://127.0.0.1:${port}/pair`);
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (data.ok && data.token) return { port, ok: true, token: data.token };
+    }
+    return { port, ok: false, status: res.status };
   } catch (_) {
     return null;
   }
@@ -172,24 +178,26 @@ $("pair").onclick = async () => {
   const portlar = [yazili];
   for (let p = 6811; p <= 6820; p++) if (p !== yazili) portlar.push(p);
   const yanitlar = await Promise.all(portlar.map(pairDene));   // hepsi AYNI ANDA
-  const i = yanitlar.findIndex(Boolean);
-  const port = i === -1 ? yazili : portlar[i];
-  const response = yanitlar[i];
-  if (!response) {
-    say(chrome.i18n.getMessage("notifyNotRunning"), "bad"); // AfuDM kapali / port yanlis
+  const basarili = yanitlar.find((y) => y && y.ok);
+  if (basarili) {
+    $("port").value = basarili.port;
+    await ask({ type: "save", cfg: { port: basarili.port, token: basarili.token, enabled: true } });
+    say(chrome.i18n.getMessage("msgPaired"), "ok");
+    refresh();
     return;
   }
-  $("port").value = port;
-  const data = await response.json().catch(() => ({}));
-  if (!data.ok) {
-    // Sunucunun Turkce metni yerine tarayici dilinde anlat.
-    say(response.status === 403 ? chrome.i18n.getMessage("msgPairClosed")
-      : chrome.i18n.getMessage("msgNoResponse", [String(response.status)]), "bad");
+  const kapali = yanitlar.find((y) => y && y.status === 403);
+  if (kapali) {
+    $("port").value = kapali.port;
+    say(chrome.i18n.getMessage("msgPairClosed"), "bad");
     return;
   }
-  await ask({ type: "save", cfg: { port, token: data.token, enabled: true } });
-  say(chrome.i18n.getMessage("msgPaired"), "ok");
-  refresh();
+  const failed = yanitlar.find((y) => y && y.status);
+  if (failed) {
+    say(chrome.i18n.getMessage("msgNoResponse", [String(failed.status)]), "bad");
+    return;
+  }
+  say(chrome.i18n.getMessage("notifyNotRunning"), "bad"); // AfuDM kapali / port yanlis
 };
 
 $("url").addEventListener("keydown", (event) => {

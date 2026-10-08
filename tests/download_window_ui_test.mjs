@@ -1,6 +1,8 @@
 ﻿import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 const code = fs.readFileSync(new URL('../ui/download.js', import.meta.url), 'utf8');
 async function fixture(item, categorized = true, probe = undefined) {
   const nodes = new Map();
@@ -108,3 +110,37 @@ for (const probe of [async()=>{throw new Error('offline');},()=>new Promise(()=>
  await f.node('start').onclick();
  assert.ok(f.calls.some(x=>x[0]==='confirm'));
 }
+for (const response of [undefined, {ok:false}, new Error('native failure')]) {
+ const f=await fixture({id:10,source:'browser',url:'https://example.test/a.pdf',kind:'http'});
+ f.window.pywebview.api.klasor_gozat=async()=>{if(response instanceof Error) throw response; return response;};
+ await f.node('browse').onclick();
+ assert.equal(f.node('error').textContent,'EN:download.browseFailed');
+}
+{
+ const f=await fixture({id:11,source:'browser',url:'https://example.test/a.pdf',kind:'http'});
+ f.window.pywebview.api.klasor_gozat=async()=>({ok:true,yol:'/chosen'});
+ await f.node('browse').onclick();
+ assert.equal(f.node('folder').value,'/chosen');
+ f.node('resetFolder').onclick();
+ assert.equal(f.node('folder').value,'/downloads/Documents');
+ f.node('folder').value='/manual'; f.node('folder').oninput();
+ f.node('name').value='manual.pdf'; f.node('name').oninput();
+ await f.node('start').onclick();
+ const options=f.calls.find(x=>x[0]==='confirm')[2];
+ assert.equal(options.dest_dir,'/manual'); assert.equal(options.filename,'manual.pdf');
+}
+{
+ const f=await fixture({id:12,source:'browser',url:'https://example.test/a.pdf',kind:'http'});
+ f.window.pywebview.api.kaydet_bilgi=async()=>({son_klasor:'/remembered',ana:'/downloads',kategori:'belge',kategori_klasorleri:true,klasorler:{belge:'/downloads/Documents'}});
+ f.window.afudmDownloadReset(); await f.window.afudmDownloadRefresh();
+ assert.equal(f.node('folder').value,'/remembered');
+ f.window.pywebview.api.bekleyen_onayla=async()=>({ok:false,error_code:'folder'});
+ await f.node('start').onclick();
+ assert.equal(f.node('error').textContent,'EN:download.folderError');
+ assert.equal(f.node('start').disabled,false);
+}
+console.log('download folder UI: browse errors, reset, manual fields, remembered folder and invalid path passed');
+const browserTest=spawnSync('python',[fileURLToPath(new URL('./download_window_layout_test.py',import.meta.url))],{encoding:'utf8'});
+process.stdout.write(browserTest.stdout || '');
+process.stderr.write(browserTest.stderr || '');
+assert.equal(browserTest.status,0,'Playwright download prompt UI failed');

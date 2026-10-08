@@ -66,14 +66,14 @@ class ClipboardWatcher(threading.Thread):
         self.get_extensions = get_extensions
         self.interval = interval
         self._seen = ""
-        self._stop = threading.Event()
+        self._stop_event = threading.Event()
 
     def prime(self) -> None:
         """Acilista panoda duran linki hemen sormasin."""
         self._seen = read_text().strip()
 
     def run(self) -> None:
-        while not self._stop.wait(self.interval):
+        while not self._stop_event.wait(self.interval):
             if not self.is_enabled():
                 continue
             try:
@@ -90,7 +90,7 @@ class ClipboardWatcher(threading.Thread):
                     pass
 
     def stop(self) -> None:
-        self._stop.set()
+        self._stop_event.set()
 
 
 def wait_for_clipboard(timeout: float = 2.0) -> str:

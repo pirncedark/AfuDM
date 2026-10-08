@@ -51,12 +51,17 @@ class TunnelManager:
         return proc
 
     def _read_url(self, proc: Any) -> str:
-        lines: queue.Queue[str] = queue.Queue()
+        lines: queue.Queue[str] = queue.Queue(maxsize=1)
 
         def reader() -> None:
             try:
                 for line in proc.stdout:
-                    lines.put(str(line))
+                    match = _URL.search(str(line))
+                    if match:
+                        try:
+                            lines.put_nowait(match.group(0))
+                        except queue.Full:
+                            pass
             except (OSError, TypeError):
                 return
 

@@ -132,8 +132,50 @@ if (`$parseHatalari) {
         "tests/telefona_indir_test.py",
         "tests/ui_startup_test.py",
         "tests/ui_ux_gate_test.py",
-        "tests/release_tools_test.py"
+        "tests/release_tools_test.py",
+        # --- 2026-10-08: SONUC_TEST.md "CI kosucusunda 28 test yok" bulgusu ---
+        # Asagidakiler CEVRIMDISI guvenlidir: canli Chrome/acik pencere/ag
+        # istemiyorlar, hepsi bu asamada tek tek calistirilip dogrulandi.
+        "tests/api_debug_duzeltme_test.py",
+        "tests/api_guvenlik_test.py",
+        "tests/cekirdek_debug_duzeltme_test.py",
+        "tests/eklenti_debug_duzeltme_test.py",
+        "tests/son_klasor_test.py",
+        "tests/indirme_metrik_test.py",
+        "tests/torrent_fix_regression_test.py",
+        "tests/video_debug_duzeltme_test.py",
+        "tests/daemon_test.py",
+        "tests/daemon_port_test.py",
+        "tests/guc_test.py",
+        "tests/guncelleme_test.py",
+        "tests/kopru_esleme_test.py",
+        "tests/mux_test.py",
+        "tests/pair_loopback_test.py",
+        "tests/paylasim_test.py",
+        "tests/paylasim_link_test.py",
+        "tests/pencere_dugme_test.py",
+        "tests/servis_debug_test.py",
+        "tests/tepsi_test.py",
+        "tests/tunel_test.py",
+        "tests/uzanti_boyut_test.py",
+        "tests/video_ui_test.py",
+        "tests/arayuz_debug_duzeltme_test.mjs",
+        "tests/extension_pending_message_test.mjs",
+        "tests/maestro_test.mjs"
     )
+
+    # BILEREK LISTE DISI BIRAKILANLAR (canli ortam isterler, CI'da calismazlar):
+    #   tests/chrome_ekle_test.py  - GERCEK Chrome acar/kapatir (kullanici oturumu).
+    #   tests/extension_test.py     - Playwright + gercek Chromium ile uzantiyi yukler.
+    #   tests/panel_dongu_test.py   - Playwright ile gercek panelde tiklar.
+    #   tests/video_panel_test.py   - Playwright + yt-dlp + gercek indirme zinciri.
+    #   tests/agda_paylas_test.py   - Playwright ile uc tarayiciyi birlikte surer.
+    #   tests/hover_sabit_test.py   - Playwright ile fare gezdirme/hover olcer.
+    #   tests/modal_kapat_test.py   - Playwright ile modal kapatma tiklamasi.
+    #   tests/port_test.py          - Playwright + Chrome ile port arayuzu acar.
+    #   tests/baslik_test.py        - ACIK AfuDM PENCERESI olmak zorunda (WM_NCHITTEST).
+    # Bunlar elle, uygulama acikken calistirilir:
+    #   python tests/baslik_test.py  (uygulama onceden acik olmali)
 
     $gecen = 0
     $kalan = 0

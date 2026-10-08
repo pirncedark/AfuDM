@@ -184,7 +184,8 @@ def main():
             pass
 
     print(f"\nSONUC: {passed_checks} gecti, {failed_checks} basarisiz")
-    if fails:
+    # Beklenmedik istisna `fails` listesine girmeden de BASARISIZDIR.
+    if fails or failed_checks > 0:
         for f in fails:
             print(f)
         sys.exit(1)

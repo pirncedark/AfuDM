@@ -77,6 +77,14 @@ function clock(seconds) {
   const h = Math.floor(s / 3600);
   return h + " sa " + Math.floor((s % 3600) / 60) + " dk";
 }
+/* Kaba sure: gecen sure icin saniye gurmak gürültü ("2 dk 0 sn"). */
+function clockShort(seconds) {
+  const s = Number(seconds) || 0;
+  if (s <= 0) return "—";
+  if (s < 60) return s + " sn";
+  if (s < 3600) return Math.floor(s / 60) + " dk";
+  return Math.floor(s / 3600) + " sa " + Math.floor((s % 3600) / 60) + " dk";
+}
 /* Durum etiketi sozlukten gelir (ui/i18n.js); bilinmeyen durum oldugu gibi yazilir. */
 function stateLabel(status) {
   const label = t("state." + status);
@@ -120,7 +128,10 @@ async function call(method, ...args) {
       () => reddet(new Error(t("err.timeout"))), sure)),
   ]);
 
-  if (out && out.ok === false) throw new Error(out.error || t("err.failed"));
+  if (out && out.ok === false && !out.hatalar) {
+    if (out.error_code) throw new Error(t("err." + out.error_code) || t("err.failed"));
+    throw new Error(out.error || t("err.failed"));
+  }
   return out;
 }
 
@@ -262,12 +273,21 @@ function renderList() {
         "</div>" +
         '<div class="num"><span class="big">' + item.progress.toFixed(1) + "%</span>" +
           '<div class="size-line">' + size(item.completedLength) + " / " +
-            (item.totalLength ? size(item.totalLength) : "?") + "</div></div>" +
+            (item.totalLength ? size(item.totalLength) : "?") + "</div>" +
+          (item.totalLength && item.status !== "complete"
+            ? '<div class="size-line">' + t("row.left") + " " + size(item.remaining || 0) + "</div>"
+            : "") +
+        "</div>" +
         '<div class="num big">' + (item.status === "complete" ? "" : speed(item.downloadSpeed)) +
           (seeding ? '<div class="size-line">' + item.numSeeders + " " + t("row.seed") + "</div>" :
-            '<div class="size-line">' + (item.connections ? item.connections + " " + t("row.conn") : "&nbsp;") + "</div>") +
+            '<div class="size-line">' + (item.avgSpeed && item.avgSpeed !== item.downloadSpeed
+              ? t("row.avg") + " " + speed(item.avgSpeed)
+              : (item.connections ? item.connections + " " + t("row.conn") : "&nbsp;")) + "</div>") +
         "</div>" +
-        '<div class="num eta">' + (item.status === "complete" ? "" : clock(item.eta)) + "</div>" +
+        '<div class="num eta">' + (item.status === "complete" ? "" : clock(item.eta)) +
+          (item.status !== "complete" && item.elapsed
+            ? '<div class="size-line">' + t("row.elapsed") + " " + clockShort(item.elapsed) + "</div>" : "") +
+        "</div>" +
         '<div class="state">' +
           '<span class="state-badge ' + rowClass(item) + '">' + stateText + '</span>' +
           '<div class="acts">' + right + "</div>" +
@@ -535,8 +555,13 @@ async function renderDrawer() {
 
 /* ---------- veri dongusu ---------- */
 let offlineArdisik = 0;   // art arda basarisiz snapshot sayisi (tek yavaslık yanıp sönme yapmasın)
+let tickTimer = null;
+let tickInFlight = false;
 
-async function tick() {
+async function tick(isManual = false) {
+  if (tickInFlight) return;
+  if (tickTimer) { clearTimeout(tickTimer); tickTimer = null; }
+  tickInFlight = true;
   try {
     const snap = await call("snapshot");
     offlineArdisik = 0;
@@ -593,7 +618,8 @@ async function tick() {
       if ($("engineRetry")) $("engineRetry").style.display = "inline-block";
     }
   }
-  setTimeout(tick, POLL_MS);
+  tickInFlight = false;
+  tickTimer = setTimeout(tick, POLL_MS);
 }
 
 if ($("engineRetry")) {
@@ -605,7 +631,7 @@ if ($("engineRetry")) {
     } catch (e) {
       console.warn("[AfuDM] motor yeniden başlatılamadı:", e);
     }
-    tick();
+    tick(true);
   };
 }
 
@@ -688,7 +714,7 @@ $("list").addEventListener("click", async (event) => {
           await call("control", act, gid, false);
           state.controlPending.delete(gid);
           renderList();
-          tick();
+          tick(true);
         } catch (err) {
           state.controlPending.delete(gid);
           state.controlOverrides.delete(gid);
@@ -902,18 +928,22 @@ $("remGo").onclick = async () => {
       try {
         await call("control", "remove", gid, { delete_files: delFiles });
         removedCount++;
+        state.items = state.items.filter((i) => i.gid !== gid);
+        state.lastDone.delete(gid);
+        if (state.selected === gid) state.selected = null;
+        state.selectedGids.delete(gid);
       } catch (_) {}
-      state.items = state.items.filter((i) => i.gid !== gid);
-      state.lastDone.delete(gid);
-      if (state.selected === gid) state.selected = null;
     }
-    state.selectedGids.clear();
     closeVeil("removeVeil");
     renderCounts();
     renderList();
     renderDrawer();
     updateBulkRemoveBtn();
-    toast(t("toast.bulkRemoved", { n: removedCount || gids.length }));
+    if (removedCount > 0) {
+      toast(t("toast.bulkRemoved", { n: removedCount }));
+    } else {
+      toast(t("err.failed"), true);
+    }
     return;
   }
 
@@ -1028,9 +1058,8 @@ function lgRender() {
     $("lgGo").disabled = true;
     return;
   }
-  const indeks = lgState.gosterim && lgState.gosterim.length
-    ? lgState.gosterim : lgState.ogeler.map((_, i) => i);
-  const secili = lgState.ogeler.filter((o) => o.secili).length;
+  const indeks = lgState.gosterim || lgState.ogeler.map((_, i) => i);
+  const secili = indeks.filter((i) => lgState.ogeler[i].secili).length;
   durum.textContent = t("lg.listCount", { g: indeks.length, n: lgState.ogeler.length }) +
     " · " + t("lg.sonuc", { n: lgState.ogeler.length, m: secili });
   $("lgGo").disabled = secili === 0;
@@ -1116,7 +1145,8 @@ async function linkgrabberProbe() {
 }
 
 async function linkgrabberEkle() {
-  const secili = lgState.ogeler.filter((o) => o.secili);
+  const indeks = lgState.gosterim || lgState.ogeler.map((_, i) => i);
+  const secili = indeks.map((i) => lgState.ogeler[i]).filter((o) => o.secili);
   if (!secili.length) { toast(t("err.noLink"), true); return; }
   const secim = {
     dest_dir: $("lgDest").value.trim(),
@@ -1334,7 +1364,7 @@ async function torMetrikleriGuncelle(gid) {
 }
 
 function torAgacKur(dosyalar) {
-  const kok = { ad: "", tamYol: "", klasor: true, cocuklar: {}, dosyalar: [] };
+  const kok = { ad: "", tamYol: "", klasor: true, cocuklar: Object.create(null), dosyalar: [] };
   for (const d of dosyalar) {
     const parcalar = d.yol_parcalari && d.yol_parcalari.length
       ? d.yol_parcalari
@@ -1344,7 +1374,7 @@ function torAgacKur(dosyalar) {
       const p = parcalar[i];
       if (!cur.cocuklar[p]) {
         const altYol = (cur.tamYol ? cur.tamYol + "/" : "") + p;
-        cur.cocuklar[p] = { ad: p, tamYol: altYol, klasor: true, cocuklar: {}, dosyalar: [] };
+        cur.cocuklar[p] = { ad: p, tamYol: altYol, klasor: true, cocuklar: Object.create(null), dosyalar: [] };
       }
       cur = cur.cocuklar[p];
     }
@@ -2663,20 +2693,25 @@ $("kayGo").onclick = async () => {
     secim.adopt_gid = kayit.preGid;
   }
 
-  kayit.preGid = null;
-  const kimlik = kayit.kimlik;
-  kayit.kimlik = null;
+  const btn = $("kayGo");
+  btn.disabled = true;
 
   try {
-    if (kimlik !== null) {
-      await call("bekleyen_onayla", kimlik, secim);
+    if (kayit.kimlik !== null) {
+      await call("bekleyen_onayla", kayit.kimlik, secim);
     } else {
       await call("add_links", { urls: [kayit.url], ...secim });
     }
+    kayit.preGid = null;
+    kayit.kimlik = null;
     closeVeil("kaydetVeil");
     toast(secim.start_at ? t("toast.scheduled", { n: 1 }) : t("toast.started", { n: 1 }));
     bekleyenYokla();
-  } catch (err) { $("kayErr").textContent = err.message; }
+  } catch (err) {
+    $("kayErr").textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
 };
 
 /* Tarayicidan gelen istek: Python pencereyi one getirip afudmBekleyen() cagirir.
@@ -3219,7 +3254,8 @@ function plgCiz() {
     });
     dugme(t("plg.update"), "", () => plgGuncelle(e.ad));
     if (e.onceki_surum) {
-      dugme(t("plg.rollback") + " (" + e.onceki_surum + ")", "ghost", () => plgGeriAl(e.ad, e.onceki_surum, e.baslik));
+      const b = dugme(t("plg.rollback") + " (" + e.onceki_surum + ")", "ghost", () => {}, true);
+      b.title = t("plg.rollbackNoSupport");
     }
     dugme(t("plg.remove"), "ghost", () => plgKaldir(e.ad, e.baslik));
     kart.appendChild(dugmeler);
@@ -3333,10 +3369,6 @@ async function plgIslemiIzle(basariMesaji) {
     await new Promise((r) => setTimeout(r, 400));
   }
   return false;
-}
-function plgGeriAl(ad, surum, baslik) {
-  if (!confirm(t("plg.confirmRollback", { p1: baslik, p2: surum }))) return;
-  plgIslem(ad, async () => await _plgApi({ eylem: "geri_al", ad }));
 }
 
 

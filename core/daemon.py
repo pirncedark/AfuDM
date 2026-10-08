@@ -139,7 +139,7 @@ def _args(secret: str, download_dir: str, port: int = RPC_PORT) -> list[str]:
         "--bt-detach-seed-only=true",
         "--seed-ratio=1.0",
         "--follow-torrent=true",
-        "--bt-save-metadata=true",
+        "--bt-save-metadata=false",
         # --- oturum: kapatip acinca kaldigi yerden ---
         "--save-session=%s" % paths.SESSION_FILE,
         "--input-file=%s" % paths.SESSION_FILE,

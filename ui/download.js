@@ -9,6 +9,7 @@
   let qualityDirty = false;
   let nameDirty = false;
   let folderDirty = false;
+  let folderReset = false;
   let lastReset = 0;
   const t = (key) => lang.t(key);
 
@@ -54,25 +55,35 @@
     if (!ogeler.length) return;
     const item = ogeler[0];
     if (active?.id === item.id) return;
-    active = item;
+
+    $("start").disabled = true;
+    busy = true;
     const selectedId = item.id;
-    const shown = await window.pywebview.api.bekleyen_goster(selectedId);
-    if (!shown?.ok) {
-      if (active?.id === selectedId) active = null;
-      return;
+    let video = false;
+    try {
+      const shown = await window.pywebview.api.bekleyen_goster(selectedId);
+      if (!shown?.ok) {
+        return;
+      }
+      defaults = await window.pywebview.api.kaydet_bilgi(item.url, item.filename || "", item.kind || "");
+      video = (item.kind || defaults.kind) === "video";
+      qualityDirty = false;
+      nameDirty = false;
+      folderDirty = false;
+      folderReset = false;
+      $("qualityWrap").hidden = !video;
+      $("quality").value = item.audio_only ? "audio" : item.quality || defaults.video_quality || "best";
+
+      $("url").textContent = item.url;
+      $("name").value = item.filename || (video ? "" : item.title || defaults.dosya_adi || "");
+      $("folder").value = defaults.son_klasor || ((defaults.kategori_klasorleri && defaults.klasorler?.[defaults.kategori]) || defaults.ana || "");
+      $("error").textContent = "";
+
+      active = item;
+    } finally {
+      $("start").disabled = false;
+      busy = false;
     }
-    defaults = await window.pywebview.api.kaydet_bilgi(item.url, item.filename || "", item.kind || "");
-    if (active?.id !== selectedId) return;
-    const video = (item.kind || defaults.kind) === "video";
-    qualityDirty = false;
-    nameDirty = false;
-    folderDirty = false;
-    $("qualityWrap").hidden = !video;
-    $("quality").value = item.audio_only ? "audio" : item.quality || defaults.video_quality || "best";
-    $("url").textContent = item.url;
-    $("name").value = item.filename || (video ? "" : item.title || defaults.dosya_adi || "");
-    $("folder").value = (defaults.kategori_klasorleri && defaults.klasorler?.[defaults.kategori]) || defaults.ana || "";
-    $("error").textContent = "";
     if (!video && /^https?:\/\//i.test(item.url) && window.pywebview.api.probe_link) {
       const initialName = $("name").value;
       const initialFolder = $("folder").value;
@@ -81,8 +92,8 @@
         if (!nameDirty && $("name").value === initialName && info.filename) $("name").value = info.filename;
         if (info.kategori) {
           defaults.kategori = info.kategori;
-          if (!folderDirty && $("folder").value === initialFolder && defaults.kategori_klasorleri) {
-            $("folder").value = defaults.klasorler?.[info.kategori] || defaults.ana || "";
+          if (!folderDirty && !folderReset && $("folder").value === initialFolder && defaults.kategori_klasorleri) {
+            $("folder").value = defaults.son_klasor || (defaults.klasorler?.[info.kategori] || defaults.ana || "");
           }
         }
       }).catch(() => {});
@@ -100,8 +111,18 @@
   $("name").oninput = () => { nameDirty = true; };
   $("folder").oninput = () => { folderDirty = true; };
   $("browse").onclick = async () => {
-    const out = await window.pywebview.api.klasor_gozat($("folder").value);
-    if (out.yol) { folderDirty = true; $("folder").value = out.yol; }
+    try {
+      const out = await window.pywebview.api.klasor_gozat($("folder").value);
+      if (!out || out.ok === false) throw new Error();
+      if (out.yol) { folderDirty = true; folderReset = false; $("folder").value = out.yol; $("error").textContent = ""; }
+    } catch {
+      $("error").textContent = t("download.browseFailed");
+    }
+  };
+  $("resetFolder").onclick = () => {
+    folderDirty = false;
+    folderReset = true;
+    $("folder").value = (defaults.kategori_klasorleri && defaults.klasorler?.[defaults.kategori]) || defaults.ana || "";
   };
   $("cancel").onclick = cancel;
   $("start").onclick = async () => {
@@ -112,19 +133,21 @@
       const out = await window.pywebview.api.bekleyen_onayla(active.id, {
         filename: $("name").value.trim(), dest_dir: $("folder").value.trim(),
         ...(nameDirty ? {filename_edited: true} : {}),
+        ...(folderDirty ? {folder_edited: true} : {}),
+        ...(folderReset ? {folder_reset: true} : {}),
         kategori: defaults.kategori || "genel",
         ...((active.kind || defaults.kind) === "video" ? {
           quality: !qualityDirty && active.quality ? active.quality : $("quality").value,
           audio_only: !qualityDirty && active.audio_only !== undefined ? active.audio_only : $("quality").value === "audio",
         } : {}),
       });
-      if (!out.ok) throw new Error(out.error || t("download.failed"));
+      if (!out.ok) throw new Error(out.error_code || out.error || "failed");
       active = null;
       runningGid = out.gid || "";
       $("confirmPane").hidden = !!runningGid;
       $("progressPane").hidden = !runningGid;
     } catch (error) {
-      $("error").textContent = t("download.failed");
+      $("error").textContent = error.message === "folder" ? t("download.folderError") : t("download.failed");
     } finally {
       busy = false;
       $("start").disabled = false;
