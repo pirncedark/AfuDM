@@ -1090,6 +1090,9 @@ class Api:
     def retry(self, row_id: int) -> dict:
         return self.servis.yeniden_dene(row_id)
 
+    def link_yenile(self, gid: str, yeni_url: str) -> dict:
+        return self.servis.yenile_link(str(gid), str(yeni_url or ""))
+
     def clear_finished(self) -> dict:
         return self.servis.bitmisleri_temizle()
 

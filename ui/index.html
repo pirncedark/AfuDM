@@ -1271,6 +1271,23 @@
 
   <div class="toast" id="toast"></div>
 
+  <!-- Link guncelle (suresi dolan linkin yerine yenisi) -->
+  <div class="veil" id="renewVeil">
+    <div class="sheet rules-sheet" style="max-width: 460px;">
+      <h2 data-i18n="renew.title">Linki güncelle</h2>
+      <div class="body">
+        <p data-i18n="renew.desc" style="margin-bottom: 12px; color: var(--text);">Eski linkin süresi dolduysa yenisini yapıştır. İndirme kaldığı yerden devam eder.</p>
+        <input type="text" id="renewUrl" placeholder="https://" style="width:100%;">
+        <div id="renewErr" style="color:#ff6b6b; margin-top:8px; min-height:1em;"></div>
+      </div>
+      <div class="foot">
+        <button class="btn ghost" data-close="renewVeil" data-i18n="set.cancel">Vazgeç</button>
+        <span style="flex:1"></span>
+        <button class="btn primary" id="renewGo" data-i18n="renew.go">Güncelle</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Kaldirma onayi -->
   <div class="veil" id="removeVeil">
     <div class="sheet rules-sheet" style="max-width: 400px;">

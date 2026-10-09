@@ -2896,6 +2896,18 @@ function metinMenusu(alan) {
   ];
 }
 
+let renewGid = "";
+$("renewGo").onclick = async () => {
+  const url = $("renewUrl").value.trim();
+  if (!/^(https?|ftp):\/\//i.test(url)) { $("renewErr").textContent = t("renew.bad"); return; }
+  try {
+    const out = await call("link_yenile", renewGid, url);
+    if (out && out.ok === false) { $("renewErr").textContent = out.error || t("renew.bad"); return; }
+    closeVeil("renewVeil");
+    toast(t("renew.done"));
+  } catch (err) { $("renewErr").textContent = err.message; }
+};
+
 document.addEventListener("contextmenu", async (event) => {
   const alan = event.target.closest("input[type=text], input:not([type]), input[type=search], textarea");
   if (alan) {
@@ -2932,6 +2944,14 @@ document.addEventListener("contextmenu", async (event) => {
         openVeil("shareVeil");
       } },
     "ayrac",
+    { etiket: t("ctx.renew"), pasif: !["http", "ftp"].includes(oge.kind) || oge.status === "complete",
+      calis: async () => {
+        renewGid = gid;
+        $("renewUrl").value = "";
+        $("renewErr").textContent = "";
+        openVeil("renewVeil");
+        $("renewUrl").focus();
+      } },
     { etiket: t("ctx.again"), pasif: !adres,
       calis: async () => {
         $("urls").value = adres;
