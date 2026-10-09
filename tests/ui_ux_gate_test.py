@@ -106,6 +106,52 @@ class UIUXGateTest(unittest.TestCase):
         expect(self.page.locator("#list")).to_be_visible()
         expect(self.page.locator(".rail")).to_be_visible()
 
+    def test_auto_update_downloads_cached_release_and_waits_for_idle(self):
+        result = self.page.evaluate("""async () => {
+            const events = [];
+            const api = window.pywebview.api;
+            api.guncelleme_son_kontrol = async () => ({aktif:true, paketli:true,
+                zaman:Date.now()/1000, bilgi:{ok:true,var:true,yeni:'2.10.0'}});
+            api.guncelleme_kontrol = async () => { throw new Error('cached check should be reused'); };
+            api.guncelleme_indir = async b => { events.push('download:' + b.yeni); return {ok:true}; };
+            api.guncelleme_durum = async () => ({durum:'bitti'});
+            api.guncelleme_uygula = async automatic => {
+                events.push('apply:' + automatic);
+                return events.filter(x => x.startsWith('apply:')).length === 1
+                    ? {ok:true,bekle:true} : {ok:true};
+            };
+            const delay = window.setTimeout;
+            window.setTimeout = (f, ms, ...args) => delay(f, ms >= 2000 ? 0 : ms, ...args);
+            try { await guncellemeOtomatikKontrol(); } finally { window.setTimeout = delay; }
+            return events;
+        }""")
+        self.assertEqual(result, ['download:2.10.0', 'apply:true', 'apply:true'])
+        self.assertEqual(self.errors, [])
+
+    def test_auto_update_opt_out_does_not_download(self):
+        result = self.page.evaluate("""async () => {
+            let downloads = 0;
+            window.pywebview.api.guncelleme_son_kontrol = async () => ({aktif:false,paketli:true});
+            window.pywebview.api.guncelleme_indir = async () => { downloads++; return {ok:true}; };
+            await guncellemeOtomatikKontrol();
+            return downloads;
+        }""")
+        self.assertEqual(result, 0)
+        self.assertEqual(self.errors, [])
+
+    def test_update_rejected_download_stops_without_apply(self):
+        result = self.page.evaluate("""async () => {
+            let applied = false;
+            guncellemeBilgisi = {ok:true,var:true,yeni:'2.10.0'};
+            window.pywebview.api.guncelleme_indir = async () => ({ok:false,hata:'download rejected'});
+            window.pywebview.api.guncelleme_durum = async () => ({durum:'bitti'});
+            window.pywebview.api.guncelleme_uygula = async () => {applied=true; return {ok:true};};
+            await guncellemeBaslat(false);
+            return {applied, locked:guncellemeIsliyor, disabled:document.getElementById('guncellemeBtn').disabled};
+        }""")
+        self.assertEqual(result, {'applied': False, 'locked': False, 'disabled': False})
+        self.assertEqual(self.errors, [])
+
     def test_share_filename_is_rendered_as_text_without_script_execution(self):
         self.page.evaluate("""() => {
             window.__xss = undefined;

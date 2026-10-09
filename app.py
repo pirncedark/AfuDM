@@ -316,7 +316,7 @@ class Api:
             try:
                 kayit = paths.DATA / "guncelleme" / "kontrol.json"
                 kayit.parent.mkdir(parents=True, exist_ok=True)
-                kayit.write_text(json.dumps({"zaman": time.time()}), encoding="utf-8")
+                kayit.write_text(json.dumps({"zaman": time.time(), "bilgi": sonuc}), encoding="utf-8")
             except OSError:
                 pass
         return sonuc
@@ -332,11 +332,15 @@ class Api:
 
     def guncelleme_son_kontrol(self) -> dict:
         aktif = self.manager.store.get("guncelleme_otomatik", True) is not False
+        durum = {"aktif": aktif, "paketli": bool(getattr(sys, "frozen", False))}
         try:
             kayit = paths.DATA / "guncelleme" / "kontrol.json"
-            return {**json.loads(kayit.read_text(encoding="utf-8")), "aktif": aktif}
+            once = json.loads(kayit.read_text(encoding="utf-8"))
+            if once.get("bilgi", {}).get("mevcut") != surum.SURUM:
+                return {"zaman": 0, **durum}
+            return {**once, **durum}
         except (OSError, ValueError):
-            return {"zaman": 0, "aktif": aktif}
+            return {"zaman": 0, **durum}
 
     def guncelleme_indir(self, bilgi: dict) -> dict:
         with self._guncelleme_kilidi:
@@ -360,13 +364,35 @@ class Api:
     def guncelleme_durum(self) -> dict:
         return dict(self._guncelleme_durum)
 
-    def guncelleme_uygula(self) -> dict:
-        sonuc = guncelleme.uygula()
-        if sonuc.get("ok"):
-            self._cikiliyor = True
-            if self._window:
-                self._window.destroy()
-        return sonuc
+    def _guncelleme_mesgul(self) -> bool:
+        try:
+            snap = self.manager.snapshot()
+            stat = snap.get("stat", {})
+            mesgul = (not snap.get("engine_ok") or self._bekleyenler.ozet()
+                      or int(stat.get("numActive", 0)) or int(stat.get("numWaiting", 0))
+                      or any(item.get("status") in ("active", "waiting", "queued", "seeding")
+                             for item in snap.get("items", [])))
+        except Exception:
+            mesgul = True  # Unknown engine state must never interrupt a transfer.
+        return bool(mesgul)
+
+    def guncelleme_uygula(self, otomatik: bool = False) -> dict:
+        with self._guncelleme_kilidi:
+            if self._cikiliyor:
+                return {"ok": True, "zaten": True}
+            if otomatik and self.manager.store.get("guncelleme_otomatik", True) is False:
+                return {"ok": True, "iptal": True}
+            if self._guncelleme_mesgul():
+                return {"ok": True, "bekle": True}
+            def son_kontrol() -> bool:
+                return (not self._guncelleme_mesgul()
+                        and (not otomatik or self.manager.store.get("guncelleme_otomatik", True) is not False))
+            sonuc = guncelleme.uygula(son_kontrol=son_kontrol)
+            if sonuc.get("ok") and not sonuc.get("bekle"):
+                self._cikiliyor = True
+                if self._window:
+                    self._window.destroy()
+            return sonuc
 
     def peers(self, gid: str) -> dict:
         return {"ok": True, "peers": self.manager.peers(gid)}

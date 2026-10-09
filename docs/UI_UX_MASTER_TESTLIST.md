@@ -958,3 +958,15 @@ Main feature smoke PASS
 - [x] P0 failure: 0; uncaught JS error: 0; broken click target: 0; modal failure: 0.
 - [x] Tamamlanan responsive seti: 1280x720, 1366x768, 1920x1080; 125%, 150%, 200% DPI.
 - [ ] Bu listede işaretlenmemiş özellik-spesifik manuel testler (indirici, torrent, mobil, eklenti vb.) bu release gate'in kapsamı dışındadır.
+
+## Otomatik güncelleme doğrulaması (2026-10-09, v2.9.2)
+
+- [x] Yerel HTTP sunucusundan yeni sürüm indirme ve SHA-256 doğrulaması.
+- [x] Değiştirilen veya hatalı güncelleme dosyasının kurulmasını engelleme.
+- [x] Aktif/kuyrukta indirme, seed, bekleyen onay veya çevrimdışı motor varken yeniden başlatmama.
+- [x] Otomatik güncellemeyi kapatma; elle güncelleme düğmesini koruma.
+- [x] Önbellekteki yeni sürümü otomatik indirme ve boşta kalana kadar bekleme (gerçek tarayıcı UI testi).
+- [x] Windows güncelleme betiğini geçici kurulumda çalıştırma: ayarlar/geçmiş, indirmeler, eklentiler ve ek motorları koruma.
+- [x] Standart test paketi: 87 test dosyası geçti, 0 başarısız.
+- [ ] GitHub'da v2.9.2 ZIP ve checksum yayımlandıktan sonra eski kurulu sürümden canlı yükseltme.
+- [ ] Güncelleyicisi olmayan eski kopyaların bir defalık elle geçirilmesi (uzaktan otomatik değiştirilemez).

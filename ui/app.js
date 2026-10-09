@@ -2804,6 +2804,7 @@ window.addEventListener("pywebviewready", () => {
   surumuYukle();
   setTimeout(() => guncellemeOtomatikKontrol(), 1200);
 });
+setInterval(() => { if (state.ready) guncellemeOtomatikKontrol(); }, 3600000);
 initDrawerResize();
 tick();
 drawTrace();
@@ -2981,15 +2982,22 @@ async function guncellemeKontrol(sessiz = false) {
 }
 
 async function guncellemeOtomatikKontrol() {
+  if (guncellemeIsliyor) return;
   try {
     const once = await call("guncelleme_son_kontrol");
     if (once.aktif === false) return;
-    if (Date.now() / 1000 - (once.zaman || 0) < 86400) return;
-    await guncellemeKontrol(true);
+    const bilgi = Date.now() / 1000 - (once.zaman || 0) < 86400
+      ? once.bilgi : await guncellemeKontrol(true);
+    if (bilgi?.ok && bilgi.var) {
+      guncellemeBilgisi = bilgi;
+      $("guncellemeMesaj").textContent = t("upd.ready", { version: bilgi.yeni });
+      $("guncellemeSerit").hidden = false;
+      if (once.paketli !== false) await guncellemeBaslat(true);
+    }
   } catch (_) { /* Sessiz acilis kontrolu. */ }
 }
 
-async function guncellemeBaslat() {
+async function guncellemeBaslat(otomatik = false) {
   if (guncellemeIsliyor || !guncellemeBilgisi) return;
   guncellemeIsliyor = true;
   const dugme = $("guncellemeBtn");
@@ -3008,9 +3016,29 @@ async function guncellemeBaslat() {
       }
       await new Promise((resolve) => setTimeout(resolve, 400));
     }
+    // Give notice before restarting; never close a modal the user is editing.
+    if (otomatik) {
+      $("guncellemeMesaj").textContent = t("upd.idleReady");
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+    }
+    while (true) {
+      if (otomatik && document.querySelector(".veil.open, .veil.on")) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        continue;
+      }
+      const out = await call("guncelleme_uygula", otomatik);
+      if (out.iptal) {
+        $("guncellemeMesaj").textContent = t("upd.ready", { version: guncellemeBilgisi.yeni });
+        dugme.disabled = false;
+        guncellemeIsliyor = false;
+        return;
+      }
+      if (!out.ok) throw new Error(out.hata || t("upd.error"));
+      if (!out.bekle) break;
+      $("guncellemeMesaj").textContent = t("upd.waitIdle");
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
     $("guncellemeMesaj").textContent = t("upd.restarting");
-    const out = await call("guncelleme_uygula");
-    if (!out.ok) throw new Error(out.hata || t("upd.error"));
   } catch (err) {
     $("guncellemeMesaj").textContent = err.message || t("upd.error");
     dugme.disabled = false;
@@ -3018,7 +3046,7 @@ async function guncellemeBaslat() {
   }
 }
 
-$("guncellemeBtn").onclick = guncellemeBaslat;
+$("guncellemeBtn").onclick = () => guncellemeBaslat(false);
 $("guncellemeKontrolBtn").onclick = async () => {
   $("guncellemeAyarDurum").textContent = "";
   await guncellemeKontrol(false);
@@ -3027,6 +3055,7 @@ $("sGuncellemeOto").onchange = async () => {
   try {
     await call("guncelleme_otomatik_ayarla", $("sGuncellemeOto").checked);
     state.settings.guncelleme_otomatik = $("sGuncellemeOto").checked;
+    if ($("sGuncellemeOto").checked) guncellemeOtomatikKontrol();
   } catch (_) {
     $("sGuncellemeOto").checked = state.settings.guncelleme_otomatik !== false;
   }

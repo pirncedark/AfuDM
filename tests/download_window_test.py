@@ -213,7 +213,10 @@ class DownloadWindowTest(unittest.TestCase):
         self.prompt._window.destroy.assert_called_once()
 
     def test_update_closes_hidden_prompt(self):
+        import threading
+        self.api._guncelleme_kilidi = threading.Lock()
         self.api._window = Mock()
+        self.api.manager.snapshot = lambda: {'engine_ok': True, 'items': [], 'stat': {}}
         self.api._window.destroy.side_effect = self.api.ana_pencere_kapandi
         with patch('app.guncelleme.uygula', return_value={'ok': True}):
             self.assertTrue(self.api.guncelleme_uygula()['ok'])
