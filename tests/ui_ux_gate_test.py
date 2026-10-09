@@ -71,6 +71,8 @@ class UIUXGateTest(unittest.TestCase):
                     api_info: async () => ({ port: 6811 }),
                     rules_list: async () => ({ rules: [] }),
                     surum_bilgi: async () => ({ surum: "2.9.1", uzanti: "2.9.1" }),
+                    butunluk_tara: async () => ({ok: true, durum: "saglam"}),
+                    butunluk_hepsini_tara: async () => ({ok: true, taranan: 0}),
                     motor_durumu: async () => ({ motorlar: {}, ilerleme: {} }),
                     reliability_integrity: async () => "OK",
                     reliability_restart_engine: async () => ({ ok: window.fakeBackendState.engine_ok, message: "motor yeniden baslatildi" }),
@@ -544,6 +546,8 @@ class UIUXGateTest(unittest.TestCase):
                         snapshot: async () => ({ items: [], settings: {}, stat: {}, engine_ok: true, lang: "tr" }),
                         port_durumu: async () => ({ calisan: 6811 }), api_info: async () => ({ port: 6811 }),
                         motor_durumu: async () => ({ motorlar: {}, ilerleme: {} }), reliability_integrity: async () => "OK",
+                        butunluk_tara: async () => ({ok: true, durum: "saglam"}),
+                        butunluk_hepsini_tara: async () => ({ok: true, taranan: 0}),
                         telefon_durumu: async () => ({ acik: false, adres: "" }), seed_dosyalari: async () => ({ eklenebilir: [], uygulanan: [] })
                     }};
                 """)

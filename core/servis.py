@@ -304,6 +304,24 @@ class AfuDMServis:
         except Exception as exc:
             return self._hata(exc, "ISLEM_HATASI", "link yenileme")
 
+    def butunluk_tara(self, gid: str) -> dict:
+        try:
+            return self.manager.butunluk_tara(gid)
+        except Exception as exc:
+            return self._hata(exc, "ISLEM_HATASI", "butunluk tara")
+
+    def butunluk_onar(self, gid: str, yeni_url: str) -> dict:
+        try:
+            return self.manager.butunluk_onar(gid, yeni_url)
+        except Exception as exc:
+            return self._hata(exc, "ISLEM_HATASI", "butunluk onar")
+
+    def butunluk_hepsini_tara(self) -> dict:
+        try:
+            return self.manager.butunluk_hepsini_tara()
+        except Exception as exc:
+            return self._hata(exc, "ISLEM_HATASI", "tum butunluk tara")
+
     def bitmisleri_temizle(self) -> dict:
         return {"ok": True, "removed": self.store.clear_finished()}
 

@@ -2907,6 +2907,29 @@ $("renewGo").onclick = async () => {
     toast(t("renew.done"));
   } catch (err) { $("renewErr").textContent = err.message; }
 };
+let fixGid = "";
+$("fixGo").onclick = async () => {
+  const url = $("fixUrl").value.trim();
+  if (!/^(https?|ftp):\/\//i.test(url)) { $("fixErr").textContent = t("renew.bad"); return; }
+  try {
+    const out = await call("butunluk_onar", fixGid, url);
+    if (out && out.ok === false) { $("fixErr").textContent = out.neden || t("renew.bad"); return; }
+    closeVeil("fixVeil");
+    toast(t("fix.done") || "Onarım başlatıldı.");
+    updateRowCache(fixGid, { status: "repairing", errorMessage: "" });
+    renderList();
+  } catch (err) { $("fixErr").textContent = err.message || err.toString(); }
+};
+
+$("scanAllBtn").onclick = async () => {
+  const out = await call("butunluk_hepsini_tara");
+  if (out && out.ok) {
+    toast(t("bar.scanAllDone").replace("{n}", out.taranan));
+  } else {
+    toast(t("bar.scanAllErr") + (out ? out.error : ""));
+  }
+};
+
 
 document.addEventListener("contextmenu", async (event) => {
   const alan = event.target.closest("input[type=text], input:not([type]), input[type=search], textarea");
@@ -2944,7 +2967,27 @@ document.addEventListener("contextmenu", async (event) => {
         openVeil("shareVeil");
       } },
     "ayrac",
-    { etiket: t("ctx.renew"), pasif: !["http", "ftp"].includes(oge.kind) || oge.status === "complete",
+    { etiket: t("ctx.scanFile"), pasif: oge.status !== "complete",
+      calis: async () => {
+        const out = await call("butunluk_tara", gid);
+        if (out && out.ok) {
+           if (out.durum === "saglam") toast(t("ctx.scanOk"));
+           else toast(t("ctx.scanBad") + out.neden);
+        } else {
+           toast(t("ctx.scanErr"));
+        }
+      } },
+    { etiket: t("ctx.repairFile") || "Yeni linkle onar",
+      pasif: oge.status !== "complete" || !["http", "ftp"].includes(oge.kind),
+      calis: async () => {
+        fixGid = gid;
+        $("fixUrl").value = "";
+        $("fixErr").textContent = "";
+        openVeil("fixVeil");
+        $("fixUrl").focus();
+      } },
+    { etiket: t("ctx.renew"),
+      pasif: !["http", "ftp"].includes(oge.kind) || (oge.status === "complete" && !oge.error),
       calis: async () => {
         renewGid = gid;
         $("renewUrl").value = "";
@@ -2952,6 +2995,7 @@ document.addEventListener("contextmenu", async (event) => {
         openVeil("renewVeil");
         $("renewUrl").focus();
       } },
+
     { etiket: t("ctx.again"), pasif: !adres,
       calis: async () => {
         $("urls").value = adres;

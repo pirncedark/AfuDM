@@ -114,6 +114,7 @@
         <button class="btn" id="lgBtn" data-i18n="bar.lg">Link yakala</button>
         <button class="btn" id="pauseAll" data-i18n="bar.pauseAll">Tümünü duraklat</button>
         <button class="btn" id="resumeAll" data-i18n="bar.resumeAll">Tümünü sürdür</button>
+        <button class="btn" id="scanAllBtn" data-i18n="bar.scanAll">Tümünü tara</button>
         <button class="btn ghost" id="selectAllBtn" style="display:none;" data-i18n="bar.selectAll">Tümünü Seç</button>
         <button class="btn ghost" id="removeSelected"
           style="display:none; color: #ff4d4f; border-color: rgba(255,77,79,0.4); font-weight: bold;"
@@ -1284,6 +1285,23 @@
         <button class="btn ghost" data-close="renewVeil" data-i18n="set.cancel">Vazgeç</button>
         <span style="flex:1"></span>
         <button class="btn primary" id="renewGo" data-i18n="renew.go">Güncelle</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Yeni linkle onar -->
+  <div class="veil" id="fixVeil">
+    <div class="sheet rules-sheet" style="max-width: 460px;">
+      <h2 data-i18n="fix.title">Yeni Linkle Onar</h2>
+      <div class="body">
+        <p data-i18n="fix.desc" style="margin-bottom: 12px; color: var(--text);">Eksik veya hatalı inmiş dosyayı silmeden, yeni bir link vererek sadece bozuk kısımları onarın.</p>
+        <input type="text" id="fixUrl" placeholder="https://" style="width:100%;">
+        <div id="fixErr" style="color:#ff6b6b; margin-top:8px; min-height:1em;"></div>
+      </div>
+      <div class="foot">
+        <button class="btn ghost" data-close="fixVeil" data-i18n="set.cancel">Vazgeç</button>
+        <span style="flex:1"></span>
+        <button class="btn primary" id="fixGo" data-i18n="fix.go">Onar</button>
       </div>
     </div>
   </div>

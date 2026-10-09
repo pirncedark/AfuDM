@@ -1093,6 +1093,12 @@ class Api:
     def link_yenile(self, gid: str, yeni_url: str) -> dict:
         return self.servis.yenile_link(str(gid), str(yeni_url or ""))
 
+    def butunluk_tara(self, gid: str) -> dict:
+        return self.servis.butunluk_tara(str(gid))
+
+    def butunluk_hepsini_tara(self) -> dict:
+        return self.servis.butunluk_hepsini_tara()
+
     def clear_finished(self) -> dict:
         return self.servis.bitmisleri_temizle()
 

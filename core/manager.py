@@ -1336,21 +1336,25 @@ class Manager:
                 "%s isleri yenilenemez — yalnizca http(s)/ftp indirmeleri"
                 % row["kind"]
             )
+        status = {}
         try:
-            status = self.rpc.tell_status(gid, ["status", "files"])
+            status = self.rpc.tell_status(gid, ["status", "files", "dir"])
         except Aria2Error as exc:
-            raise ValueError("motor o isi bilmiyor: %s" % str(exc)[:120]) from exc
+            if row.get("status") in ("complete", "error"):
+                status = {"status": row["status"]}
+            else:
+                raise ValueError("motor o isi bilmiyor: %s" % str(exc)[:120]) from exc
+
         dosyalar = status.get("files") or []
-        if not dosyalar:
-            raise ValueError("dosya bilgisi yok")
-        uriler = dosyalar[0].get("uris") or []
         eski = ""
-        for u in uriler:
-            if u.get("status") == "used":
-                eski = u.get("uri", "")
-                break
-        if not eski:
-            eski = uriler[0].get("uri", "") if uriler else ""
+        if dosyalar:
+            uriler = dosyalar[0].get("uris") or []
+            for u in uriler:
+                if u.get("status") == "used":
+                    eski = u.get("uri", "")
+                    break
+            if not eski:
+                eski = uriler[0].get("uri", "") if uriler else ""
         if not eski:
             eski = row.get("source") or ""
 
@@ -1371,6 +1375,57 @@ class Manager:
         if cerez_temiz:
             basliklar.append("Cookie: " + cerez.baslik(cerez_temiz))
             self._cerezler[row["id"]] = cerez_temiz
+
+        if durum == "complete":
+            # Bozuk dosyayi sil ve yeni bir indirme baslat (add_uri)
+            dosya_yolu = None
+            if dosyalar and dosyalar[0].get("path"):
+                dosya_yolu = dosyalar[0]["path"]
+            else:
+                hedef_klasor = row.get("dest_dir") or self.current_download_dir()
+                dosya_yolu = os.path.join(hedef_klasor, row["title"])
+
+            if dosya_yolu and os.path.exists(dosya_yolu):
+                try: os.remove(dosya_yolu)
+                except: pass
+            if dosya_yolu and os.path.exists(dosya_yolu + ".aria2"):
+                try: os.remove(dosya_yolu + ".aria2")
+                except: pass
+
+            try: self.rpc.remove_download_result(gid)
+            except: pass
+
+            aria_opt = self._baglanti_secenekleri(options)
+            if basliklar:
+                aria_opt["header"] = basliklar
+            if options.get("user_agent"):
+                aria_opt["user-agent"] = options["user_agent"]
+            if row.get("dest_dir"):
+                aria_opt["dir"] = row["dest_dir"]
+
+            try:
+                aria_opt["gid"] = gid
+                yeni_gid = self.rpc.add_uri([yeni_url], aria_opt)
+            except Aria2Error:
+                if "gid" in aria_opt: del aria_opt["gid"]
+                yeni_gid = self.rpc.add_uri([yeni_url], aria_opt)
+
+            self.store.update_by_id(
+                row["id"],
+                gid=yeni_gid,
+                source=yeni_url,
+                options=json.dumps(options, ensure_ascii=False),
+                error=None,
+                status="active"
+            )
+            self.store.log("info", f"bozuk dosya yenilendi (yeni gid: {yeni_gid}): {row['title']}", gid=yeni_gid)
+            return {
+                "ok": True,
+                "gid": yeni_gid,
+                "eski": eski,
+                "yeni": yeni_url,
+                "degisen": 1,
+            }
 
         if aktif:
             try:
@@ -1664,7 +1719,7 @@ class Manager:
                 h = self.magnet_infohash(row["source"])
                 if h and h in self._removed_hashes:
                     continue
-            if row["status"] in ("complete", "error", "scheduled", "paused"):
+            if row["status"] in ("complete", "error", "scheduled", "paused", "repairing"):
                 items.append(self._shape_row(row))
         try:
             stat = self.rpc.global_stat()
@@ -1747,23 +1802,39 @@ class Manager:
     def _shape_row(self, row: dict) -> dict:
         total = int(row.get("total_bytes") or 0)
         done = int(row.get("done_bytes") or 0)
+
+        status = row["status"]
+        progress = round(done / total * 100, 1) if total else 0.0
+        error_msg = row.get("error") or ""
+
+        if status == "repairing":
+            import json
+            opts = json.loads(row.get("options") or "{}")
+            rep = opts.get("repair_state", {})
+            if rep:
+                rep_total = rep.get("toplam_blok", 1)
+                rep_done = rep.get("duzeltilen", 0)
+                progress = round((rep_done / rep_total) * 100, 1) if rep_total else 0.0
+                if rep.get("hata"):
+                    error_msg = rep["hata"]
+
         return {
             "id": row["id"],
             "gid": row["gid"] or f"row:{row['id']}",
             "kind": row["kind"],
-            "status": row["status"],
+            "status": status,
             "title": row["title"] or row["source"],
             "filename": row["filename"] or "",
             "totalLength": total,
             "completedLength": done,
-            "progress": round(done / total * 100, 1) if total else 0.0,
+            "progress": progress,
             "downloadSpeed": 0,
             "uploadSpeed": 0,
             "connections": 0,
             "numSeeders": 0,
             "eta": 0,
             "dir": row["dest_dir"] or "",
-            "errorMessage": row["error"] or "",
+            "errorMessage": error_msg,
             "source": row["source"],
             "start_after": row["start_after"],
         }
@@ -2248,10 +2319,212 @@ class Manager:
         sonuc = self.tracker_tara(gid)
         if not sonuc.get("ok"):
             self.store.log("warn", f"tracker taramasi basarisiz: {sonuc.get('error', '')}"[:150], gid=gid or "")
+    def butunluk_tara(self, gid: str) -> dict:
+        from . import butunluk
+        row = self.store.by_gid(gid)
+        if not row:
+            return {"ok": False, "durum": "bulunamadi", "neden": "Kayıt bulunamadı."}
+
+        dosya_yolu = None
+        try:
+            status = self.rpc.tell_status(gid, ["files", "dir"])
+            dosyalar = status.get("files", [])
+            if dosyalar and dosyalar[0].get("path"):
+                dosya_yolu = dosyalar[0]["path"]
+            elif dosyalar and status.get("dir"):
+                # Yol yoksa dir + title deneyelim
+                pass
+        except Aria2Error:
+            pass
+
+        if not dosya_yolu:
+            klasor = row.get("dest_dir") or self.current_download_dir()
+            dosya_yolu = os.path.join(klasor, row["title"])
+
+        if not os.path.exists(dosya_yolu):
+            return {"ok": False, "durum": "bulunamadi", "neden": "Dosya diskte bulunamadı."}
+
+        beklenen_boyut = row.get("size")
+
+        # Scan
+        sonuc = butunluk.tara(dosya_yolu, beklenen_boyut=beklenen_boyut)
+
+        if sonuc["durum"] != "saglam":
+            # Veritabanina isliyoruz
+            self.store.update_by_id(row["id"], error=sonuc["neden"])
+
+        return {"ok": True, **sonuc}
+    def butunluk_onar(self, gid: str, yeni_url: str) -> dict:
+        row = self.store.by_gid(gid)
+        if not row:
+            return {"ok": False, "neden": "Kayıt bulunamadı."}
+
+        dosya_yolu = self.resolve_item_path(gid)
+        if not dosya_yolu or not dosya_yolu.exists():
+            return {"ok": False, "neden": "Dosya bulunamadı."}
+
+        import urllib.request
+        import urllib.error
+        import json
+
+        opts = json.loads(row.get("options") or "{}")
+
+        try:
+            req = urllib.request.Request(yeni_url, method="HEAD")
+            if "header" in opts:
+                for h in opts["header"]:
+                    if ":" in h:
+                        k, v = h.split(":", 1)
+                        req.add_header(k.strip(), v.strip())
+            ua = "AfuDM"
+            for h in opts.get("header", []):
+                if h.lower().startswith("user-agent:"):
+                    ua = h.split(":", 1)[1].strip()
+            if not req.has_header("User-agent"):
+                req.add_header("User-Agent", ua)
+
+            resp = urllib.request.urlopen(req, timeout=10)
+
+            if resp.status in (403, 404):
+                return {"ok": False, "neden": "Link geçersiz, yeni link ver."}
+
+            if resp.headers.get_content_type() == "text/html":
+                return {"ok": False, "neden": "Link geçersiz (HTML döndü), yeni link ver."}
+
+            cl = resp.headers.get("Content-Length")
+            cr = resp.headers.get("Accept-Ranges")
+            if cr != "bytes":
+                # Sunucu Range desteklemiyor olabilir, ama bazı sunucular başlıkta göndermese de destekler.
+                pass
+
+            yerel_boyut = dosya_yolu.stat().st_size
+            if cl and int(cl) != yerel_boyut:
+                 return {"ok": False, "neden": f"Boyut uyuşmuyor. Beklenen: {yerel_boyut}, Linkteki: {cl}"}
+
+        except Exception as e:
+            return {"ok": False, "neden": f"Link doğrulanamadı: {str(e)}"}
+
+        from . import butunluk
+        # Sadece bozuk blokları al
+        # Eğer options'ta kayıtlı bir onarım varsa ondan devam et
+        rep = opts.get("repair_state", {})
+        if rep and rep.get("yeni_url") == yeni_url and rep.get("bozuk_bloklar"):
+            # Kaldığı yerden
+            pass
+        else:
+            scan_res = butunluk.tara(str(dosya_yolu), beklenen_boyut=yerel_boyut)
+            if scan_res.get("durum") != "bozuk":
+                 return {"ok": False, "neden": "Dosya sağlam, onarıma gerek yok."}
+
+            rep = {
+                "bozuk_bloklar": scan_res.get("bozuk_bloklar", []),
+                "toplam_blok": scan_res.get("toplam_blok", 0),
+                "duzeltilen": 0,
+                "yeni_url": yeni_url,
+                "hata": ""
+            }
+
+        opts["repair_state"] = rep
+        self.store.update_by_gid(gid, options=json.dumps(opts, ensure_ascii=False), status="repairing")
+
+        import threading
+        t = threading.Thread(target=self._repair_thread, args=(gid,), daemon=True)
+        t.start()
+
+        return {"ok": True, "durum": "Onarım başlatıldı."}
+
+    def _repair_thread(self, gid: str):
+        import urllib.request
+        import urllib.error
+        import json
+        row = self.store.by_gid(gid)
+        if not row: return
+
+        opts = json.loads(row.get("options") or "{}")
+        rep = opts.get("repair_state", {})
+        if not rep: return
+
+        dosya_yolu = self.resolve_item_path(gid)
+        if not dosya_yolu or not dosya_yolu.exists(): return
+
+        yeni_url = rep.get("yeni_url")
+        bozuk_bloklar = rep.get("bozuk_bloklar", [])
+
+        try:
+            with open(dosya_yolu, "r+b") as f:
+                while bozuk_bloklar:
+                    guncel_row = self.store.by_gid(gid)
+                    if not guncel_row or guncel_row.get("status") != "repairing":
+                        break
+
+                    blok = bozuk_bloklar[0]
+                    start = blok["offset"]
+                    end = start + blok["boyut"] - 1
+
+                    from . import butunluk
+                    basl = {}
+                    for h in opts.get("header", []):
+                        if ":" in h:
+                            k, v = h.split(":", 1)
+                            basl[k.strip()] = v.strip()
+                    data = butunluk.blok_indir(yeni_url, basl, start, blok["boyut"])
+
+                    f.seek(start)
+                    f.write(data)
+
+                    bozuk_bloklar.pop(0)
+                    rep["duzeltilen"] += 1
+                    rep["bozuk_bloklar"] = bozuk_bloklar
+                    opts["repair_state"] = rep
+                    self.store.update_by_gid(gid, options=json.dumps(opts, ensure_ascii=False))
+
+            guncel_row = self.store.by_gid(gid)
+            if guncel_row and guncel_row.get("status") == "repairing":
+                if not bozuk_bloklar:
+                    from . import butunluk
+                    scan_res = butunluk.tara(str(dosya_yolu), beklenen_boyut=dosya_yolu.stat().st_size)
+                    if scan_res.get("durum") == "saglam":
+                        opts.pop("repair_state", None)
+                        self.store.update_by_gid(gid, options=json.dumps(opts, ensure_ascii=False), status="complete", error=None)
+                        aria2_file = dosya_yolu.parent / (dosya_yolu.name + ".aria2")
+                        if aria2_file.exists():
+                            try: aria2_file.unlink()
+                            except: pass
+                        self.store.log("info", f"Onarım tamamlandı: {guncel_row.get('title')}", gid=gid)
+                    else:
+                        raise Exception("Onarım sonrası tarama başarısız. Hala bozuk blok var.")
+        except Exception as e:
+            guncel_row = self.store.by_gid(gid)
+            if guncel_row and guncel_row.get("status") == "repairing":
+                rep["hata"] = str(e)
+                opts["repair_state"] = rep
+                self.store.update_by_gid(gid, options=json.dumps(opts, ensure_ascii=False), status="error", error=f"Onarım hatası: {str(e)}")
+
+    def butunluk_hepsini_tara(self) -> dict:
+        from . import butunluk
+        rows = self.store.all_downloads()
+        complete_rows = [r for r in rows if r.get("status") == "complete" and r.get("kind") in ("http", "ftp")]
+        sonuclar = {}
+        for row in complete_rows:
+            gid = row.get("gid")
+            if gid:
+                sonuc = self.butunluk_tara(gid)
+                sonuclar[gid] = sonuc
+        return {"ok": True, "sonuclar": sonuclar, "taranan": len(complete_rows)}
+
 
     # --- bitis islemleri --------------------------------------------------
     def _on_complete(self, title: str, size: int, gid: str = "") -> None:
         self.store.log("info", f"tamamlandi: {title} ({human_size(size)})", gid=gid or "")
+        tara_sonuc = self.butunluk_tara(gid)
+        if tara_sonuc.get("ok") and tara_sonuc.get("durum") == "bozuk":
+            self.store.log("warn", f"Bozuk indi: {title} - {tara_sonuc.get('neden')}", gid=gid or "")
+            if self.store.get("windows_notifications") and callable(self.windows_notify):
+                try: self.windows_notify("AfuDM", "Bozuk indi: Yeniden indirmeniz gerekebilir.")
+                except Exception: pass
+            # Bozuksa otomasyona/kapatmaya vs gitmesin, direk don.
+            return
+
         self.automation.enqueue_download(gid, self.store.by_gid(gid))
         if self.store.get("windows_notifications") and callable(self.windows_notify):
             try: self.windows_notify("AfuDM", f"Indirme tamamlandi: {title}")
