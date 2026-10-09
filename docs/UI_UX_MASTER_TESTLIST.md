@@ -970,3 +970,12 @@ Main feature smoke PASS
 - [x] Standart test paketi: 87 test dosyası geçti, 0 başarısız.
 - [ ] GitHub'da v2.9.2 ZIP ve checksum yayımlandıktan sonra eski kurulu sürümden canlı yükseltme.
 - [ ] Güncelleyicisi olmayan eski kopyaların bir defalık elle geçirilmesi (uzaktan otomatik değiştirilemez).
+
+## Otomasyon erişimi (2026-10-09)
+
+- [x] Ayarlar > Otomasyon sekmesi normal görünümde erişilebilir.
+- [x] Tüm indirmeler bitince kapatma/uyutma kontrolleri görünür; mevcut indirmeleri de kapsadığı açıklanır.
+- [x] Yeni indirmeler için otomasyon, bildirim, güç eylemi ve geri sayım kontrolleri görünür.
+- [x] Komut, şablon ve adım sırası gibi teknik alanlar Gelişmiş Ayarlar altında kalır.
+- [x] Gerçek tarayıcıda Türkçe ve İngilizce erişim testi; İngilizce %200 DPI UI gate 26/26 geçti.
+- [x] Kullanıcının çalışan uygulaması yeniden başlatılmadı, EXE değiştirilmedi; yeni görünüm bir sonraki açılışta yüklenir.

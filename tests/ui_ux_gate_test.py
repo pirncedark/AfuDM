@@ -106,6 +106,25 @@ class UIUXGateTest(unittest.TestCase):
         expect(self.page.locator("#list")).to_be_visible()
         expect(self.page.locator(".rail")).to_be_visible()
 
+    def test_automation_settings_are_accessible_without_advanced_mode(self):
+        self.page.locator("#openSettings").click()
+        tab = self.page.locator("#setVeil [data-stab='otomasyon']")
+        expect(tab).to_be_visible()
+        expect(tab).to_have_text("Automation" if self.test_lang == "en" else "Otomasyon")
+        tab.click()
+        pane = self.page.locator("#sPaneOtomasyon")
+        for selector in ("#sShutdown", "#sSleep", "#sAutoEnabled", "#sAutoPower", "#sAutoSeconds"):
+            expect(pane.locator(selector)).to_be_visible()
+        pane.locator("#sShutdown").check()
+        expect(pane.locator("#sShutdown")).to_be_checked()
+        pane.locator("#sAutoPower").select_option("sleep")
+        self.assertEqual(pane.locator("#sAutoPower").input_value(), "sleep")
+        expect(pane.locator("#sAutoScript")).to_be_hidden()
+        pane.locator(".adv-accordion summary").click()
+        expect(pane.locator("#sAutoScript")).to_be_visible()
+        self.assertEqual(self.page.locator("#sShutdown").count(), 1)
+        self.assertEqual(self.errors, [])
+
     def test_auto_update_downloads_cached_release_and_waits_for_idle(self):
         result = self.page.evaluate("""async () => {
             const events = [];

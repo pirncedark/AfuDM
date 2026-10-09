@@ -260,6 +260,7 @@
             <button type="button" class="set-tab-btn active" data-stab="genel" data-i18n="set.tabGenel">Genel</button>
             <button type="button" class="set-tab-btn" data-stab="indirme" data-i18n="set.tabIndirme">İndirme</button>
             <button type="button" class="set-tab-btn" data-stab="video" data-i18n="set.tabVideo">Video</button>
+            <button type="button" class="set-tab-btn" data-stab="otomasyon" data-i18n="auto.title">Otomasyon</button>
             <button type="button" class="set-tab-btn" data-stab="ag" data-i18n="set.tabAg">Ağ & Bağlantı</button>
             <button type="button" class="set-tab-btn adv-only" data-stab="araclar" data-i18n="set.tabAraclar">Sistem &
               Araçlar</button>
@@ -403,10 +404,6 @@
                     listesini günlük güncelle</span></label>
                 <label class="opt"><input type="checkbox" id="sNotify"> <span data-i18n="set.notify">Bitince Telegram'a
                     haber ver</span></label>
-                <label class="opt"><input type="checkbox" id="sShutdown"> <span data-i18n="set.shutdown">Hepsi bitince
-                    bilgisayarı kapat</span></label>
-                <label class="opt"><input type="checkbox" id="sSleep"> <span data-i18n="set.sleep">Hepsi bitince
-                    bilgisayarı uyut</span></label>
               </div>
             </div> <!-- adv-content -->
           </details>
@@ -599,20 +596,30 @@
           <div class="hint" id="apiHint"></div>
         </div>
 
-        <!-- ARAÇLAR SEKME (Gelişmiş) -->
-        <div class="set-pane adv-only" id="sPaneAraclar">
+        <!-- Otomasyon: normal ayarlardan tek tikla ulasilabilir. -->
+        <div class="set-pane" id="sPaneOtomasyon">
+          <div class="seed-kutu">
+            <label data-i18n="auto.allDownloads">Tüm indirmeler bitince</label>
+            <div class="hint" data-i18n="auto.allHint">Bu seçim şu anda devam eden indirmeler için de geçerlidir.</div>
+            <div class="opts">
+              <label class="opt"><input type="checkbox" id="sShutdown"> <span data-i18n="set.shutdown">Hepsi bitince bilgisayarı kapat</span></label>
+              <label class="opt"><input type="checkbox" id="sSleep"> <span data-i18n="set.sleep">Hepsi bitince bilgisayarı uyut</span></label>
+            </div>
+          </div>
           <div class="seed-kutu" id="automationSettings">
             <label data-i18n="auto.title">Otomasyon</label>
             <div class="hint" data-i18n="auto.hint">İndirme tamamlanınca seçtiğin adımlar sırayla arka planda çalışır.
             </div>
+            <label class="opt"><input type="checkbox" id="sAutoEnabled"> <span data-i18n="auto.enabled">Otomasyonu aç</span> <em class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</em></label>
+            <details class="adv-accordion">
+              <summary data-i18n="set.advToggle">Gelişmiş Ayarlar</summary>
+              <div class="adv-content">
             <div><label for="sAutoSteps" data-i18n="auto.order">Adım sırası (virgülle)</label><input id="sAutoSteps"
                 type="text" spellcheck="false">
               <div class="hint" data-i18n="auto.orderHint">checksum, extract, move, rename, script, notify, power
                 kullan. Geçersiz adımlar atlanır.</div><span class="rozet" data-i18n="auto.badgeNew">yeni
                 indirmelerde</span>
             </div>
-            <label class="opt"><input type="checkbox" id="sAutoEnabled"> <span data-i18n="auto.enabled">Otomasyonu
-                aç</span> <em class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</em></label>
             <div class="grid2">
               <label class="opt"><input type="checkbox" id="sAutoChecksum"> <span data-i18n="auto.checksum">Checksum
                   doğrula</span> <em class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</em></label>
@@ -630,6 +637,8 @@
                 dosya adından komut üretilmez.</div><span class="rozet" data-i18n="auto.badgeNew">yeni
                 indirmelerde</span>
             </div>
+              </div>
+            </details>
             <div class="grid2"><label class="opt"><input type="checkbox" id="sAutoNotify"> <span
                   data-i18n="auto.notify">Bildirim gönder</span> <em class="rozet" data-i18n="auto.badgeNew">yeni
                   indirmelerde</em></label>
@@ -643,6 +652,10 @@
                 type="number" min="5"><span class="rozet" data-i18n="auto.badgeNew">yeni indirmelerde</span></div>
           </div>
 
+        </div>
+
+        <!-- ARAÇLAR SEKME (Gelişmiş) -->
+        <div class="set-pane adv-only" id="sPaneAraclar">
           <div class="seed-kutu" id="pluginSecurityPanel"
             style="margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
             <label data-i18n="set.plg.title">Eklenti Güvenliği</label>
