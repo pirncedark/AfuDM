@@ -39,6 +39,9 @@ jobs:
           python-version: "3.11"
       - name: Cevrimdisi kutuphaneler
         run: python -m pip install --quiet pywebview pystray pillow qrcode playwright
+      # daemon_test gercek aria2c ister; engine/*.exe git'te yok (.gitignore)
+      - name: aria2c motorunu indir
+        run: python -c "from core import engines; engines.indir('aria2c')"
       - name: Cevrimdisi testler (ag gerektirmez)
         run: powershell -ExecutionPolicy Bypass -File scripts/test.ps1
 
