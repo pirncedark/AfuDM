@@ -42,23 +42,24 @@ const pdf = setup();
 assert.equal(await handle({ id: 7, url: "https://site.test/open?id=3", finalUrl: "https://cdn.test/report.pdf" }, pdf.deps), true);
 assert.ok(pdf.calls.some(([name, value]) => name === "send" && value.endsWith("report.pdf")), "redirected PDF URL is handed off");
 assert.ok(pdf.calls.some(([name]) => name === "removeFile"), "accepted Chrome copy is deleted");
-assert.ok(pdf.calls.findIndex(([name]) => name === "cancel") < pdf.calls.findIndex(([name]) => name === "send"), "Chrome cancels before the handoff request");
+assert.ok(pdf.calls.findIndex(([name]) => name === "pause") < pdf.calls.findIndex(([name]) => name === "send"), "Chrome pauses before the handoff request");
 
 
 const fail = setup({ accepted: false, state: "in_progress" });
 assert.equal(await handle({ id: 8, url: "https://site.test/rejected.pdf" }, fail.deps), false);
-assert.ok(fail.calls.some(([name]) => name === "download"), "failed takeover restarts the browser download");
-assert.ok(fail.calls.some(([name]) => name === "removeFile"), "failed takeover deletes the canceled browser file stub");
+assert.ok(fail.calls.some(([name]) => name === "resume"), "failed takeover resumes the browser download");
+assert.ok(!fail.calls.some(([name]) => name === "cancel"), "rejected handoff never cancels Chrome");
+assert.ok(!fail.calls.some(([name]) => name === "removeFile"), "failed takeover retains the browser copy");
 
 
 const ineligible = setup();
 ineligible.deps.eligible = async () => false;
 assert.equal(await handle({ id: 18, url: "https://site.test/skipped.pdf" }, ineligible.deps), false);
-assert.ok(ineligible.calls.some(([name]) => name === "download"), "ineligible canceled Chrome download restarts");
+assert.ok(ineligible.calls.some(([name]) => name === "resume"), "ineligible canceled Chrome download restarts");
 const rejected = setup();
 rejected.deps.send = async () => { throw new Error("API rejected request"); };
 await assert.rejects(handle({ id: 19, url: "https://site.test/rejected.pdf" }, rejected.deps));
-assert.ok(rejected.calls.some(([name]) => name === "download"), "HTTP rejection restarts canceled browser download");
+assert.ok(rejected.calls.some(([name]) => name === "resume"), "HTTP rejection restarts canceled browser download");
 
 
 const cleanupError = setup({ state: "in_progress" });
@@ -83,7 +84,7 @@ race.deps.send = async (_item, url) => {
 const first = handle({ id: 10, url: "https://site.test/same.pdf" }, race.deps);
 await sendReady;
 const second = handle({ id: 11, url: "https://site.test/same.pdf" }, race.deps);
-assert.ok(race.calls.some(([name, id]) => name === 'cancel' && id === 10), 'Chrome is stopped while send is pending');
+assert.ok(race.calls.some(([name, id]) => name === 'pause' && id === 10), 'Chrome is stopped while send is pending');
 
 releaseSend();
 assert.equal(await first, true);
@@ -97,7 +98,7 @@ const timeout = setup();
 timeout.deps.timeoutMs = 15;
 timeout.deps.send = async () => new Promise(() => {});
 await assert.rejects(handle({ id: 90, url: 'https://site.test/timeout.pdf' }, timeout.deps), /timed out/);
-assert.ok(timeout.calls.some(([name]) => name === 'download'), 'timeout restarts Chrome');
+assert.ok(timeout.calls.some(([name]) => name === 'resume'), 'timeout restarts Chrome');
 
 
 const repeated = setup();
@@ -196,10 +197,10 @@ const chromeMock = {
   webRequest: { onBeforeRequest: apiEvents["webRequest.onBeforeRequest"], onHeadersReceived: apiEvents["webRequest.onHeadersReceived"] },
   webNavigation: { onCommitted: apiEvents["webNavigation.onCommitted"] }, alarms: { create: () => {}, clear: () => {}, onAlarm: apiEvents["alarms.onAlarm"] },
   contextMenus: { create: () => {}, onInstalled: apiEvents["contextMenus.onInstalled"], onClicked: apiEvents["contextMenus.onClicked"] },
-  i18n: { getMessage: (key) => key },
+  i18n: { getMessage: (key) => key, getUILanguage: () => "en" },
 };
 const bgContext = {
-  chrome: chromeMock, navigator: { userAgent: "Chrome regression test" }, AbortSignal,
+  URL, Blob, Uint8Array, chrome: chromeMock, navigator: { userAgent: "Chrome regression test" }, AbortSignal,
   importScripts: () => {}, setTimeout, clearTimeout,
   fetch: async (url, options = {}) => {
     if (String(url).endsWith("/ping")) return { ok: true };
@@ -226,26 +227,16 @@ listeners["downloads.onCreated"]({ id: 43, url: "https://files.test/download?id=
 for (let i = 0; i < 100 && !chromeMock.removed; i++) await new Promise((resolve) => setTimeout(resolve, 5));
 assert.equal(posted?.filename, "download.pdf", "an inline PDF with an extensionless URL receives a PDF filename");
 
-// Exercise fallback through the actual callback-based Chrome adapter.
-chromeMock.downloads.pause = (_id, cb) => {
-  chromeMock.runtime.lastError = { message: "pause rejected" };
-  cb();
-  chromeMock.runtime.lastError = null;
-};
-let fallbackCount = 0;
-chromeMock.downloads.download = (options, cb) => {
-  fallbackCount++;
-  assert.equal(options.url, "https://files.test/fallback-adapter.pdf");
-  listeners["downloads.onCreated"]({ id: 301, url: options.url });
-  cb(301);
-};
+// Exercise rejection through the callback-based Chrome adapter.
+chromeMock.resumed = false;
+downloadState = "in_progress";
 bgContext.fetch = async (url) => {
-  if (String(url).endsWith("/ping") || String(url).endsWith("/handoff/error")) return { ok: true };
+  if (String(url).endsWith("/ping") || String(url).endsWith("/handoff/error")) return {ok:true};
   throw new Error("send failed");
 };
-listeners["downloads.onCreated"]({ id: 300, url: "https://files.test/fallback-adapter.pdf", fileSize: 2 * 1024 * 1024 });
-for (let i = 0; i < 100 && !fallbackCount; i++) await new Promise(resolve => setTimeout(resolve, 5));
-assert.equal(fallbackCount, 1, "failed handoff restarts Chrome once without a takeover loop");
+listeners["downloads.onCreated"]({id:300, url:"https://files.test/fallback-adapter.pdf", fileSize:100});
+for (let i=0; i<100 && !chromeMock.resumed; i++) await new Promise(resolve => setTimeout(resolve,5));
+assert.ok(chromeMock.resumed, "failed handoff resumes the existing Chrome download");
 
 console.log("extension download handoff tests passed");
 
@@ -287,10 +278,71 @@ for (const [id, properties] of [
 
 const fresh = setup();
 assert.equal(await handle({ id: 404, url: "https://site.test/fresh.pdf", state: "in_progress", startTime: new Date().toISOString(), bytesReceived: 0 }, fresh.deps), true);
-assert.ok(fresh.calls.findIndex(([name]) => name === "cancel") < fresh.calls.findIndex(([name]) => name === "send"));
+assert.ok(fresh.calls.findIndex(([name]) => name === "pause") < fresh.calls.findIndex(([name]) => name === "send"));
 assert.ok(fresh.calls.some(([name]) => name === "erase"));
 
 const invalidTime = setup();
 assert.equal(await handle({ id: 405, url: "https://site.test/invalid-time.pdf", startTime: "invalid" }, invalidTime.deps), true);
 assert.ok(invalidTime.calls.some(([name]) => name === "send"), "invalid startTime must not mark a download stale");
 console.log("stale download guard tests passed");
+
+// Regression: page-owned downloads must reach the acceptance boundary.
+const regressions = [];
+for (const [id, url] of [[501, 'blob:https://site.test/png'], [502, 'data:image/png;base64,aGVsbG8=']]) {
+  const local = setup();
+  if (!await handle({id, url, fileSize: 5}, local.deps)) regressions.push(url.split(':')[0] + ' rejected before eligible/send');
+}
+const defaults = vm.runInNewContext(background.slice(background.indexOf('const DEFAULTS'), background.indexOf('/* webRequest')) + '\nDEFAULTS');
+if (defaults.minSizeMB !== 0) regressions.push('small PNG excluded by default minSizeMB=' + defaults.minSizeMB);
+assert.deepEqual(regressions, [], 'A/B regression evidence');
+console.log('blob/data and small-download regressions passed');
+
+// Old exclusion preferences migrate once; later deliberate settings survive.
+const localStore = {minSizeMB:1, skipExtensions:'png'};
+chromeMock.storage.local.get = async defaults => Object.fromEntries(
+  Object.entries(defaults).map(([key, value]) => [key, key === 'token' ? 'local-token' : (localStore[key] ?? value)]));
+chromeMock.storage.local.set = async values => Object.assign(localStore, values);
+let freshCfg = await vm.runInNewContext('config()', bgContext);
+assert.equal(freshCfg.minSizeMB, 0);
+assert.equal(freshCfg.skipExtensions, '');
+Object.assign(localStore, {minSizeMB:2, skipExtensions:'png'});
+freshCfg = await vm.runInNewContext('config()', bgContext);
+assert.equal(freshCfg.minSizeMB, 2);
+assert.equal(freshCfg.skipExtensions, 'png');
+Object.assign(localStore, {minSizeMB:0, skipExtensions:''});
+posted = null;
+chromeMock.removed = false;
+downloadState = 'in_progress';
+bgContext.fetch = async (url, options={}) => {
+  if (String(url).endsWith('/ping')) return {ok:true};
+  posted = JSON.parse(options.body);
+  return {ok:true,json:async()=>({ok:true})};
+};
+listeners['downloads.onCreated']({id:503,url:'https://files.test/small.png',filename:'small.png',fileSize:100});
+for (let i=0; i<100 && !chromeMock.removed; i++) await new Promise(resolve=>setTimeout(resolve,5));
+assert.equal(posted?.filename,'small.png');
+assert.ok(chromeMock.removed);
+console.log('small PNG service-worker transfer and one-time preference migration passed');
+
+let binaryPost;
+const pngBytes = new Uint8Array([137,80,78,71]);
+chromeMock.tabs.query = async () => [{id:1}];
+chromeMock.webNavigation.getAllFrames = async () => [{frameId:0}];
+chromeMock.tabs.sendMessage = async (_tab, message) => {
+  if (message.type==='afudmBlobOpen') return {ok:true,id:'fixture',size:pngBytes.length};
+  if (message.type==='afudmBlobRead') return {ok:true,bytes:Array.from(pngBytes)};
+  return {ok:true};
+};
+bgContext.fetch = async (url, options={}) => {
+  if (String(url).startsWith('data:')) return {blob:async()=>new Blob([pngBytes])};
+  binaryPost = {url, options};
+  return {ok:true,json:async()=>({ok:true,gid:'local:fixture'})};
+};
+for (const url of ['blob:https://site.test/fixture', 'data:image/png;base64,iVBORw==']) {
+  bgContext.localUrl = url;
+  await vm.runInNewContext("sendLocalFile({port:6811,token:'local-token'}, {filename:'image.png'}, localUrl)",bgContext);
+  assert.ok(binaryPost.url.endsWith('/add_blob?filename=image.png'));
+  assert.equal(binaryPost.options.headers['X-AfuDM-Token'],'local-token');
+  assert.deepEqual(new Uint8Array(await binaryPost.options.body.arrayBuffer()),pngBytes);
+}
+console.log('blob chunk and data binary upload boundary passed');

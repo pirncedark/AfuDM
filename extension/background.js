@@ -18,8 +18,9 @@ const DEFAULTS = {
   enabled: true,
   port: 6811,
   token: "",
-  minSizeMB: 1,
-  skipExtensions: "html,htm,css,js,json,xml,svg,ico,woff,woff2,txt",
+  minSizeMB: 0,
+  skipExtensions: "",
+  downloadContract: 0,
   videoCatch: true,
   sendCookies: true,
   /* ANA ANAHTAR: kapaliyken uzanti HICBIR SEYE dokunmaz — indirme devralmaz,
@@ -45,6 +46,10 @@ chrome.storage.onChanged.addListener((degisen) => {
 
 async function config() {
   const stored = await chrome.storage.local.get(DEFAULTS);
+  if (stored.downloadContract !== 1) {
+    Object.assign(stored, { minSizeMB: 0, skipExtensions: "", downloadContract: 1 });
+    await chrome.storage.local.set({ minSizeMB: 0, skipExtensions: "", downloadContract: 1 });
+  }
   return { ...DEFAULTS, ...stored };
 }
 
@@ -145,6 +150,50 @@ async function sendToAfudm(cfg, body) {
   }
 }
 
+// Page-owned objects travel in bounded messages; never send their URL to aria2.
+async function sendLocalFile(cfg, download, url) {
+  const filename = download.filename ? download.filename.split(/[\\/]/).pop() : "download.png";
+  let body;
+  const limit = 512 * 1024 * 1024;
+  try {
+    if (/^data:/i.test(url)) {
+      if (url.length > 48 * 1024 * 1024) throw new Error("Dosya çok büyük; tarayıcıdan kaydedin.");
+      body = await (await fetch(url)).blob();
+      if (body.size > 32 * 1024 * 1024) throw new Error("Dosya çok büyük; tarayıcıdan kaydedin.");
+    } else {
+      const tabs = await chrome.tabs.query({});
+      let source;
+      for (const tab of tabs) {
+        const frames = await chrome.webNavigation.getAllFrames({tabId:tab.id}).catch(() => []);
+        for (const frame of frames || []) {
+          const reply = await chrome.tabs.sendMessage(tab.id, {type:"afudmBlobOpen", url}, {frameId:frame.frameId}).catch(() => null);
+          if (reply?.ok) { source = {tabId:tab.id, frameId:frame.frameId, ...reply}; break; }
+        }
+        if (source) break;
+      }
+      if (!source || source.size > limit) throw new Error("Görsel alınamadı; tarayıcıdan kaydedin.");
+      const chunks = [];
+      try {
+        for (let offset = 0; offset < source.size; offset += 256 * 1024) {
+          const chunk = await chrome.tabs.sendMessage(source.tabId, {type:"afudmBlobRead", id:source.id, offset}, {frameId:source.frameId});
+          if (!chunk?.ok || chunk.bytes.length !== Math.min(256 * 1024, source.size-offset)) throw new Error("Görsel alınamadı; tarayıcıdan kaydedin.");
+          chunks.push(new Uint8Array(chunk.bytes));
+        }
+        body = new Blob(chunks);
+      } finally {
+        await chrome.tabs.sendMessage(source.tabId, {type:"afudmBlobClose", id:source.id}, {frameId:source.frameId}).catch(() => {});
+      }
+    }
+    const response = await fetch(endpoint(cfg, "/add_blob?filename=" + encodeURIComponent(filename)), {
+      method:"POST", headers:{"X-AfuDM-Token":cfg.token, "Content-Type":"application/octet-stream"}, body,
+      signal:AbortSignal.timeout(120000),
+    });
+    const result = await response.json();
+    if (!response.ok || result.ok !== true) throw new Error(result.error || "Görsel alınamadı; tarayıcıdan kaydedin.");
+    return result;
+  } catch (error) { await reportHandoffError(cfg, error); throw error; }
+}
+
 function notify(message, title = "AfuDM") {
   chrome.notifications.create({
     type: "basic",
@@ -226,21 +275,17 @@ chrome.downloads.onCreated.addListener((item) => {
       if (download.fileSize > 0 && download.fileSize < cfg.minSizeMB * 1048576) return false;
       return (await afudmAlive(cfg)) ? cfg : false;
     },
+    timeoutMs: 120000,
     send: async (download, url) => {
       const cfg = await config();
-      const sonuc = await sendToAfudm(cfg, {
+      const sonuc = /^(blob|data):/i.test(url) ? await sendLocalFile(cfg, download, url) : await sendToAfudm(cfg, {
         url, kind: /^magnet:/i.test(url) || /\.torrent(?:\?|$)/i.test(url) ? "torrent" : "http",
         filename: download.filename ? download.filename.split(/[\\/]/).pop()
           : (String(download.mime || "").toLowerCase() === "application/pdf" ? "download.pdf" : undefined),
-        headers: download.referrer ? { Referer: download.referrer } : {},
+        headers: download.referrer ? { Referer: download.referrer, Origin: new URL(download.referrer).origin } : {},
       });
-      notify(chrome.i18n.getMessage(sonuc.pending ? "msgPending" : "notifyResumed"));
-      chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
-        if (tabs.length && tabs[0].id) {
-          const ad = download.filename ? download.filename.split(/[\\/]/).pop() : chrome.i18n.getMessage("msgToastSingle");
-          sayfaToast(tabs[0].id, "AfuDM", ad);
-        }
-      }).catch(() => {});
+      notify(sonuc.pending ? chrome.i18n.getMessage("msgPending")
+        : (chrome.i18n.getUILanguage().startsWith("tr") ? "İndirme başladı." : "Download started."));
       return true;
     },
   }).catch((error) => {
@@ -783,7 +828,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
               url, interactive:true, request_id:message.payload?.request_id,
               filename:message.payload?.filename,
               kind:/^magnet:/i.test(url) || /\.torrent(?:\?|$)/i.test(url) ? 'torrent' : 'http',
-              headers:sender.url ? {Referer:sender.url} : {},
+              headers:sender.url ? {Referer:sender.url, Origin:new URL(sender.url).origin} : {},
             });
             const accepted = {ok:true,...result};
             preflightRecent.set(key,{at:Date.now(),result:accepted});

@@ -12,6 +12,7 @@ function ask(message) {
 }
 
 async function refresh() {
+  // status calls config(): the one-time downloadContract migration precedes rendering.
   const status = await ask({ type: "status" });
   $("dot").className = "dot" + (status.alive ? " ok" : "");
   $("state").textContent = status.alive

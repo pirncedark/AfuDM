@@ -155,7 +155,7 @@ def main() -> int:
         return 2
     token = json.loads((DATA_DIR / "api_endpoint.json").read_text("utf-8"))["token"]
     _, initial_snapshot = api("/snapshot", token)
-    original_save_window = initial_snapshot.get("settings", {}).get("kaydetme_penceresi", True)
+    original_save_window = initial_snapshot.get("settings", {}).get("kaydetme_penceresi", False)
 
     is_klasoru = Path(tempfile.mkdtemp(prefix="afudm_vp_"))
     film, oynatici = is_klasoru / "film", is_klasoru / "oynatici"

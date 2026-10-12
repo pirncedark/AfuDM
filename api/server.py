@@ -669,6 +669,53 @@ class _Handler(BaseHTTPRequestHandler):
         else:
             self._hata(404, "BILINMEYEN_YOL", "bilinmeyen yol")
 
+    def _add_blob(self, query):
+        """Authenticated binary body, bounded streaming, server-owned destination."""
+        from core.dosya_adi import guvenli_dosya_adi
+        target = None
+        try:
+            length = int(self.headers.get("Content-Length", "-1"))
+            if length > 512 * 1024 * 1024:
+                self.close_connection = True
+                self._hata(413, "DOSYA_BUYUK", "Dosya çok büyük; tarayıcıdan kaydedin.")
+                return
+            if length < 0 or self.headers.get("Transfer-Encoding"):
+                raise ValueError("Dosya boyutu eksik; yeniden indirin.")
+            raw = query.get("filename", ["download.png"])[0]
+            if not raw or any(c in raw for c in ("/", "\\", ":", "\x00")) or raw in (".", "..") or any(k != "filename" for k in query):
+                raise ValueError("Dosya adı geçersiz; yeniden indirin.")
+            name = guvenli_dosya_adi(raw)
+            root = Path(self.manager.current_download_dir()).resolve()
+            root.mkdir(parents=True, exist_ok=True)
+            # Exclusive creation prevents overwrites, including symlinks and races.
+            for index in range(10000):
+                candidate = root / (name if index == 0 else f"{Path(name).stem} ({index}){Path(name).suffix}")
+                try:
+                    output = candidate.open("xb")
+                    target = candidate
+                    break
+                except FileExistsError:
+                    continue
+            else:
+                raise ValueError("Dosya kaydedilemedi; yeniden indirin.")
+            self.connection.settimeout(30)
+            with output:
+                remaining = length
+                while remaining:
+                    chunk = self.rfile.read(min(256 * 1024, remaining))
+                    if not chunk:
+                        raise ValueError("Dosya aktarımı yarıda kaldı; yeniden indirin.")
+                    output.write(chunk)
+                    remaining -= len(chunk)
+            result = self.manager.add_completed_file(target)
+            target = None
+            self._send(200, {"ok": True, **result})
+        except Exception:
+            self.close_connection = True
+            if target is not None:
+                target.unlink(missing_ok=True)
+            self._hata(400, "DOSYA_ALINAMADI", "Dosya alınamadı; tarayıcıdan yeniden indirin.")
+
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
@@ -676,6 +723,9 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._rate_allowed(): self._hata(429, "RATE_LIMIT", "cok fazla istek; bir dakika sonra yeniden dene"); return
         if not self._authorized(query):
             self._hata(401, "GECERSIZ_TOKEN", "gecersiz token")
+            return
+        if parsed.path == "/add_blob":
+            self._add_blob(query)
             return
         try:
             data = self._body()
@@ -691,7 +741,7 @@ class _Handler(BaseHTTPRequestHandler):
                         return
                     hedef = str(Path(hedef).resolve())
                 if (_boolean_al(data, "interactive") and _Handler.on_ask and url.strip()
-                        and self.manager.store.get("kaydetme_penceresi")):
+                        and (data.get("prompt_source") == "desktop" or self.manager.store.get("kaydetme_penceresi"))):
                     kimlik = _Handler.on_ask(data)
                     if not kimlik:
                         raise ValueError("indirme onay penceresi istegi kabul etmedi")

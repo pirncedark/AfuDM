@@ -95,6 +95,7 @@ class PDFHandoffHTTPTest(unittest.TestCase):
 
     def test_existing_instance_desktop_handoff_keeps_source(self):
         from unittest.mock import Mock
+        self.store.set("kaydetme_penceresi", False)
         self.api._window = Mock()
         with patch('app.pencere.one_getir'):
             status, result = self.post({"url": "magnet:?xt=urn:btih:test",
@@ -102,6 +103,15 @@ class PDFHandoffHTTPTest(unittest.TestCase):
         self.assertEqual(status, 200, result)
         self.assertEqual(self.api.bekleyen_listesi()["ogeler"][0]["source"], "desktop")
         self.api._window.evaluate_js.assert_called_once()
+
+    def test_automatic_acceptance_skips_prompt(self):
+        self.store.set("kaydetme_penceresi", False)
+        with patch.object(_Handler, "on_ask") as ask:
+            status, result = self.post({"url":"https://example.test/image.png", "interactive":True})
+        self.assertEqual(status, 200, result)
+        self.assertFalse(result.get("pending", False))
+        ask.assert_not_called()
+        self.assertEqual(self.requests[-1].source, "https://example.test/image.png")
 
     def test_pdf_ask_accepts_explicit_local_destination(self):
         status, result = self.post({"url": "https://example.test/document",

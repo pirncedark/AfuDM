@@ -53,7 +53,7 @@ const AfuDownloadHandoff = (() => {
 
   async function handle(item, deps) {
     const url = item.finalUrl || item.url;
-    if (!url || /^(blob|data):/i.test(url)) return false;
+    if (!url) return false;
     const startTime = item.startTime ? Date.parse(item.startTime) : NaN;
     if (item.state === "interrupted" ||
         (Number.isFinite(startTime) && Date.now() - startTime > STALE_MS) ||
@@ -70,14 +70,12 @@ const AfuDownloadHandoff = (() => {
 
     // Stop every event immediately, including duplicates awaiting acceptance.
     const stopped = (async () => {
-      try { await deps.cancel(item.id); return { paused: false, canceled: true }; }
-      catch (_) {
-        try { await deps.pause(item.id); return { paused: true, canceled: false }; }
-        catch (error) {
-          const current = await deps.state(item.id);
-          if (current.state === "complete") return { paused: false, canceled: false };
-          throw error;
-        }
+      try { await deps.pause(item.id); return { paused: true, canceled: false }; }
+      catch (error) {
+        const current = await deps.state(item.id);
+        if (current.state === "complete") return { paused: false, canceled: false };
+        // No cancellation until acceptance: a page blob may not be restartable.
+        throw error;
       }
     })();
     const previous = active.get(url);

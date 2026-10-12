@@ -124,6 +124,7 @@ if (`$parseHatalari) {
         "tests/local_api_startup_test.py",
         "tests/download_window_layout_test.py",
         "tests/pdf_handoff_http_test.py",
+        "tests/add_blob_test.py",
         "tests/pending_persistence_test.py",
         "tests/task_3b_tools_test.py",
         "tests/eklenti_test.py",

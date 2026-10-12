@@ -97,7 +97,7 @@ DEFAULTS: dict[str, Any] = {
     "api_listen_port": 6811,
     "api_port": 6811,
     # Tarayicidan gelen indirmede once kaydetme penceresi (IDM gibi)
-    "kaydetme_penceresi": True,
+    "kaydetme_penceresi": False,
     # Bos hedefte indirmeler downloads/Video, downloads/Muzik... altina
     "kategori_klasorleri": True,
     # qBittorrent gibi: kucult gorev cubuguna, X sistem tepsisine gitsin
@@ -368,6 +368,10 @@ class Store:
                 )
             self.conn.commit()
             _guncelle_sema(self.conn)
+            if not self.get("auto_accept_migrated", False):
+                self.conn.execute("UPDATE settings SET value = 'false' WHERE key = 'kaydetme_penceresi'")
+                self.conn.execute("INSERT OR REPLACE INTO settings(key,value) VALUES('auto_accept_migrated','true')")
+                self.conn.commit()
 
     # --- ayarlar ----------------------------------------------------------
     def get(self, key: str, default: Any = None) -> Any:

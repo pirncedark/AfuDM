@@ -544,3 +544,52 @@
     if (!video.paused) goster(video);
   }
 })();
+
+// Isolated-world reader retains page blobs only for the duration of a handoff.
+(() => {
+  const objects = new Map();
+  const clicked = new Map();
+  document.addEventListener("click", event => {
+    const link = event.target.closest?.("a[download]");
+    if (!link?.href.startsWith("blob:")) return;
+    const url = link.href;
+    // Start reading before a page revokes the object immediately after clicking.
+    const operation = fetch(url).then(response => {
+      if (!response.ok) throw new Error("blob unavailable");
+      return response.blob();
+    });
+    operation.catch(() => {});
+    clicked.set(url, operation);
+    setTimeout(() => clicked.delete(url), 120000);
+  }, true);
+  chrome.runtime.onMessage.addListener((message, _sender, reply) => {
+    if (!/^afudmBlob(Open|Read|Close)$/.test(message.type || "")) return;
+    (async () => {
+      try {
+        for (const [id, entry] of objects) if (Date.now() - entry.at > 120000) objects.delete(id);
+        if (message.type === "afudmBlobOpen") {
+          const url = new URL(message.url);
+          if (url.protocol !== "blob:" || url.origin !== location.origin) throw new Error("foreign blob");
+          const blob = await (clicked.get(url.href) || fetch(url.href).then(response => {
+            if (!response.ok) throw new Error("blob unavailable");
+            return response.blob();
+          }));
+          clicked.delete(url.href);
+          if (blob.size > 512 * 1024 * 1024) throw new Error("blob too large");
+          const id = crypto.randomUUID();
+          objects.set(id, {blob, at:Date.now()});
+          reply({ok:true, id, size:blob.size});
+        } else if (message.type === "afudmBlobClose") {
+          objects.delete(message.id); reply({ok:true});
+        } else {
+          const entry = objects.get(message.id);
+          if (!entry || !Number.isSafeInteger(message.offset) || message.offset < 0) throw new Error("invalid chunk");
+          entry.at = Date.now();
+          const bytes = new Uint8Array(await entry.blob.slice(message.offset, message.offset + 256 * 1024).arrayBuffer());
+          reply({ok:true, bytes:Array.from(bytes)});
+        }
+      } catch (_) { reply({ok:false}); }
+    })();
+    return true;
+  });
+})();
