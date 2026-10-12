@@ -1096,6 +1096,9 @@ class Api:
     def butunluk_tara(self, gid: str) -> dict:
         return self.servis.butunluk_tara(str(gid))
 
+    def butunluk_onar(self, gid: str, yeni_url: str) -> dict:
+        return self.servis.butunluk_onar(str(gid), str(yeni_url or ""))
+
     def butunluk_hepsini_tara(self) -> dict:
         return self.servis.butunluk_hepsini_tara()
 
