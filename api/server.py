@@ -687,11 +687,15 @@ class _Handler(BaseHTTPRequestHandler):
             name = guvenli_dosya_adi(raw)
             root = Path(self.manager.current_download_dir()).resolve()
             root.mkdir(parents=True, exist_ok=True)
+            root_text = os.path.normpath(str(root))
             # Exclusive creation prevents overwrites, including symlinks and races.
             for index in range(10000):
-                candidate = root / (name if index == 0 else f"{Path(name).stem} ({index}){Path(name).suffix}")
+                leaf = name if index == 0 else f"{Path(name).stem} ({index}){Path(name).suffix}"
+                candidate = os.path.normpath(os.path.join(root_text, leaf))
+                if os.path.dirname(candidate) != root_text or not candidate.startswith(root_text + os.sep):
+                    raise ValueError("Dosya adı geçersiz; yeniden indirin.")
                 try:
-                    output = candidate.open("xb")
+                    output = open(candidate, "xb")
                     target = candidate
                     break
                 except FileExistsError:
@@ -707,13 +711,16 @@ class _Handler(BaseHTTPRequestHandler):
                         raise ValueError("Dosya aktarımı yarıda kaldı; yeniden indirin.")
                     output.write(chunk)
                     remaining -= len(chunk)
-            result = self.manager.add_completed_file(target)
+            result = self.manager.add_completed_file(Path(target))
             target = None
             self._send(200, {"ok": True, **result})
         except Exception:
             self.close_connection = True
             if target is not None:
-                target.unlink(missing_ok=True)
+                try:
+                    os.unlink(target)
+                except OSError:
+                    pass
             self._hata(400, "DOSYA_ALINAMADI", "Dosya alınamadı; tarayıcıdan yeniden indirin.")
 
     def do_POST(self) -> None:  # noqa: N802

@@ -68,6 +68,7 @@ def tls_context(base):
     certfile.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
     keyfile.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(certfile, keyfile)
     return context
 
