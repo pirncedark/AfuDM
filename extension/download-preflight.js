@@ -12,7 +12,9 @@
     enabled = settings.enabled !== false && settings.uzantiAcik !== false;
   });
   const files = /\.(zip|rar|7z|tar|gz|bz2|xz|iso|exe|msi|apk|dmg|pdf|epub|docx?|xlsx?|pptx?|mp4|mkv|webm|mp3|flac|torrent)$/i;
-  const fileEndpoint = /^\/(?:dosya|download|downloads)\/(?:f\/)?[^/]+\/?$/i;
+  // Only the opaque /dosya/f/<id> file endpoint. Generic /download/<id> pages are HTML
+  // landing pages (quality pick, countdown); Chrome's download event covers real files.
+  const fileEndpoint = /^\/dosya\/f\/[^/]+\/?$/i;
   document.addEventListener('click', event => {
     if (!enabled || event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) return;
     const anchor = event.composedPath().map(node => node.closest?.('a[href]')).find(Boolean);
