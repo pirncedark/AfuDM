@@ -1,9 +1,11 @@
 package com.afudm.afutube.downloader
 
-/** Dependency-free JVM checks; main can be run without Android or JUnit. */
-object TorrentWorkerTest {
-    @JvmStatic
-    fun main(args: Array<String>) {
+import org.junit.Test
+
+/** JVM checks discovered by the Android unit test task. */
+class TorrentWorkerTest {
+    @Test
+    fun torrentProgressAndArguments() {
         val progress = checkNotNull(parseTorrentProgress(
             "[#abcd12 12MiB/100MiB(12%) CN:5 DL:2.1MiB ETA:1m]"))
         check(progress == TorrentProgress(12, "12MiB/100MiB", "2.1MiB/s", 60, false))

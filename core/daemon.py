@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import atexit
+from collections import deque
 import json
 import re
 import secrets
@@ -159,6 +160,15 @@ def _args(secret: str, download_dir: str, port: int = RPC_PORT) -> list[str]:
     ]
 
 
+def _startup_log_tail() -> str:
+    """Keep startup diagnostics available even if aria2 never created its log."""
+    try:
+        with paths.ARIA2_LOG.open(encoding="utf-8", errors="replace") as log:
+            return "".join(deque(log, maxlen=20)).strip() or "(log bos)"
+    except OSError as exc:
+        return "(log okunamadi: %s)" % exc
+
+
 class Aria2Daemon:
     def __init__(self, download_dir: str | None = None) -> None:
         paths.ensure_dirs()
@@ -223,8 +233,9 @@ class Aria2Daemon:
                 return self.rpc
             if self.proc.poll() is not None:
                 raise RuntimeError(
-                    "aria2c baslatilamadi (cikis kodu %s). Log: %s"
-                    % (self.proc.returncode, paths.ARIA2_LOG)
+                    "aria2c baslatilamadi (cikis kodu %s). Log: %s\nSon 20 satir:\n%s"
+                    % (self.proc.returncode, paths.ARIA2_LOG,
+                       _startup_log_tail().replace(self.secret, "[REDACTED]"))
                 )
             time.sleep(0.25)
         raise TimeoutError(
