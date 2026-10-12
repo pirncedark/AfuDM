@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.9.3](https://github.com/pirncedark/AfuDM/compare/v2.9.2...v2.9.3) (2026-10-12)
+
+
+### Bug Fixes
+
+* **extension:** do not hijack generic /download/&lt;id&gt; landing pages ([#106](https://github.com/pirncedark/AfuDM/issues/106)) ([56e9818](https://github.com/pirncedark/AfuDM/commit/56e98189b1769027c53d5a2a22e7d559f6333507))
+* **extension:** hand off ChatGPT/blob/small downloads to AfuDM + auto-accept default ([#105](https://github.com/pirncedark/AfuDM/issues/105)) ([7854e22](https://github.com/pirncedark/AfuDM/commit/7854e22802e9b418492b98b1f2bf1601d01d608e))
+
 ## [2.9.1](https://github.com/pirncedark/AfuDM/compare/v2.9.0...v2.9.1) (2026-09-30)
 
 
