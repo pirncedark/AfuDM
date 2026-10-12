@@ -67,11 +67,12 @@ jobs:
       - name: Cevrimdisi kutuphaneler
         run: python -m pip install --quiet pywebview pystray pillow qrcode pyinstaller playwright
 
-      - name: Cevrimdisi testler
-        run: powershell -ExecutionPolicy Bypass -File scripts/test.ps1
-
+      # daemon_test gercek aria2c ister; testlerden ONCE indirilmeli (v2.9.2 release burada dustu)
       - name: Motorlari indir
         run: python -c "from core import engines; engines.indir('aria2c')"
+
+      - name: Cevrimdisi testler
+        run: powershell -ExecutionPolicy Bypass -File scripts/test.ps1
 
       - name: PyInstaller ile EXE derle
         run: python -m PyInstaller --noconfirm --clean AfuDM.spec
