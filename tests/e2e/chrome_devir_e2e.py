@@ -5,6 +5,10 @@ Intentionally excluded from scripts/test.ps1. All application/browser data is te
 """
 from __future__ import annotations
 
+import base64
+import datetime
+import ipaddress
+import ssl
 import atexit
 import os
 from pathlib import Path
@@ -44,6 +48,31 @@ def small_pdf():
     return data + f'trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{start}\n%%EOF\n'.encode()
 
 
+PNG = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=')
+
+
+def tls_context(base):
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, 'localhost')])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cert = (x509.CertificateBuilder().subject_name(subject).issuer_name(subject)
+            .public_key(key.public_key()).serial_number(x509.random_serial_number())
+            .not_valid_before(now-datetime.timedelta(minutes=1)).not_valid_after(now+datetime.timedelta(days=1))
+            .add_extension(x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address('127.0.0.1'))]), False)
+            .sign(key, hashes.SHA256()))
+    certfile, keyfile = base / 'fixture.pem', base / 'fixture.key'
+    certfile.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    keyfile.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.load_cert_chain(certfile, keyfile)
+    return context
+
+
 PDF = small_pdf()
 ZIP = b'PK\x03\x04' + b'AfuDM-test' * 150000
 
@@ -61,6 +90,11 @@ class FixtureHandler(BaseHTTPRequestHandler):
     def respond(self, body):
         if self.path == '/':
             content, mime, disposition = b'<html><body>Download fixture</body></html>', 'text/html', ''
+        elif self.path.startswith('/signed.png?sig=test'):
+            if 'fixture=allowed' not in self.headers.get('Cookie', '') or not self.headers.get('Referer') or not self.headers.get('User-Agent'):
+                self.send_error(403)
+                return
+            content, mime, disposition = PNG, 'image/png', 'attachment; filename="signed.png"'
         elif self.path.startswith('/doc?'):
             content, mime, disposition = PDF, 'application/pdf', 'inline; filename="rapor.pdf"'
         elif self.path.startswith(('/dosya.zip', '/dosya/f/')):
@@ -109,7 +143,7 @@ def main():
         real_args = daemon._args
         def isolated_args(*args):
             return real_args(*args) + ['--enable-dht=false', '--enable-dht6=false',
-                                       '--bt-enable-lpd=false', f'--listen-port={free_port()}']
+                                       '--bt-enable-lpd=false', '--check-certificate=false', f'--listen-port={free_port()}']
         stack.enter_context(patch.object(daemon, '_args', isolated_args))
         from core.manager import Manager
         from api import server
@@ -166,13 +200,22 @@ def main():
         stack.callback(httpd.shutdown)
         origin = f'http://127.0.0.1:{httpd.server_port}'
 
+        httpsd = ThreadingHTTPServer(('127.0.0.1', 0), FixtureHandler)
+        httpsd.socket = tls_context(base).wrap_socket(httpsd.socket, server_side=True)
+        tls_thread = threading.Thread(target=httpsd.serve_forever, daemon=True)
+        tls_thread.start()
+        stack.callback(tls_thread.join, 5)
+        stack.callback(httpsd.server_close)
+        stack.callback(httpsd.shutdown)
+        secure_origin = f'https://127.0.0.1:{httpsd.server_port}'
+
         from playwright.sync_api import sync_playwright
         playwright = stack.enter_context(sync_playwright())
         chrome_dir = base / 'chrome-downloads'
         chrome_dir.mkdir()
         context = playwright.chromium.launch_persistent_context(
             str(base / 'profile'), channel='chromium', headless=True,
-            accept_downloads=True, downloads_path=str(chrome_dir),
+            accept_downloads=True, ignore_https_errors=True, downloads_path=str(chrome_dir),
             args=[f'--disable-extensions-except={ROOT / "extension"}',
                   f'--load-extension={ROOT / "extension"}'])
         stack.callback(context.close)
@@ -248,6 +291,35 @@ def main():
         assert not created(opaque_url, 1), 'Extensionless link must never start Chrome download'
         assert not downloads(opaque_url), 'No parallel Chrome item for extensionless link'
         print('PASS 5: real extensionless file link, one AfuDM job, zero Chrome downloads')
+
+        # Fresh default: browser-origin requests require no save prompt.
+        manager.store.set('kaydetme_penceresi', False)
+        before_approvals = len(approvals)
+        context.add_cookies([{'name':'fixture', 'value':'allowed', 'url':secure_origin}])
+        page.goto(secure_origin)
+        signed_url = secure_origin + '/signed.png?sig=test'
+        trigger(signed_url)
+        wait(lambda: len(rows(signed_url)) == 1 and rows(signed_url)[0]['status'] == 'complete', 'signed cookie HTTPS PNG')
+        assert len(list(paths.DOWNLOADS.rglob('signed.png'))) == 1
+        assert next(paths.DOWNLOADS.rglob('signed.png')).read_bytes() == PNG
+        assert len(approvals) == before_approvals
+        print('PASS 6: small signed HTTPS PNG, scoped cookie/Referer/User-Agent, automatic acceptance')
+
+        # Wait for the document_idle reader before generating page-owned objects.
+        page.wait_for_timeout(1000)
+        for mode in ('blob', 'data'):
+            filename = mode + '.png'
+            page.evaluate("""({mode, filename, encoded}) => {
+                const bytes = Uint8Array.from(atob(encoded), c => c.charCodeAt(0));
+                const a = document.createElement('a');
+                a.href = mode === 'blob' ? URL.createObjectURL(new Blob([bytes], {type:'image/png'})) : 'data:image/png;base64,' + encoded;
+                a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+            }""", {'mode':mode, 'filename':filename, 'encoded':base64.b64encode(PNG).decode()})
+            wait(lambda: any(row['filename'] == filename and row['status'] == 'complete' for row in manager.store.list()), mode + ' PNG completion')
+            assert (paths.DOWNLOADS / filename).read_bytes() == PNG
+            wait(lambda: not any(p.is_file() for p in chrome_dir.rglob('*')), 'Chrome local object cleanup')
+            assert len(approvals) == before_approvals
+            print(f'PASS 7/{mode}: page object bytes in default directory, complete manager record, no Chrome copy')
 
         local_api.stop()
         offline_url = origin + '/dosya.zip?offline=1'

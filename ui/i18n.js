@@ -527,7 +527,7 @@ const DICT = {
     "klas.muzik": "Müzik",
     "klas.disk": "Disk",
 
-    "set.kaydet": "İndirmeden önce kaydetme penceresini göster",
+    "set.kaydet": "Otomatik kabul: indirmeleri sormadan varsayılan klasöre indir",
     "set.kategori": "Dosyaları kategori klasörlerine ayır",
     "set.tepsi": "X ile kapatınca sistem tepsisine git",
     "hint.tepsi": "Küçültme normal görev çubuğuna iner. X uygulamayı kapatmaz; simge sağ alttaki ^ okunun altına gider.",
@@ -1407,7 +1407,7 @@ const DICT = {
     "klas.muzik": "Music",
     "klas.disk": "Drive",
 
-    "set.kaydet": "Show the save dialog before downloading",
+    "set.kaydet": "Automatic acceptance: download to the default folder without asking",
     "set.kategori": "Sort files into category folders",
     "set.tepsi": "Send to the system tray when X is clicked",
     "hint.tepsi": "Minimize uses the normal Windows taskbar. X keeps AfuDM running under the ^ arrow at the bottom right.",

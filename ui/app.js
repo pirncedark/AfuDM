@@ -1911,7 +1911,7 @@ $("openSettings").onclick = async () => {
   $("sShutdown").checked = !!s.shutdown_when_done;
   $("sSleep").checked = !!s.sleep_when_done;
   gucDurumu();
-  $("sKaydet").checked = s.kaydetme_penceresi !== false;
+  $("sKaydet").checked = s.kaydetme_penceresi === false;
   $("sKategori").checked = s.kategori_klasorleri !== false;
   $("sTepsi").checked = s.tepsiye_kucult !== false;
   $("sBasTepside").checked = s.baslangicta_tepside !== false;
@@ -2285,7 +2285,7 @@ $("setGo").onclick = async () => {
     windows_notifications: $("sWinNotify").checked,
     shutdown_when_done: $("sShutdown").checked,
     sleep_when_done: $("sSleep").checked,
-    kaydetme_penceresi: $("sKaydet").checked,
+    kaydetme_penceresi: !$("sKaydet").checked,
     kategori_klasorleri: $("sKategori").checked,
     tepsiye_kucult: $("sTepsi").checked,
     baslangicta_tepside: $("sBasTepside").checked,

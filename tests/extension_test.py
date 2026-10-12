@@ -142,7 +142,7 @@ def main() -> int:
     token = json.loads(ENDPOINT_FILE.read_text("utf-8"))["token"]
     local_endpoint_backup = LOCAL_ENDPOINT_FILE.read_text("utf-8")
     _, initial_snapshot = api("/snapshot", token)
-    original_save_window = initial_snapshot.get("settings", {}).get("kaydetme_penceresi", True)
+    original_save_window = initial_snapshot.get("settings", {}).get("kaydetme_penceresi", False)
 
     work = Path(tempfile.mkdtemp(prefix="afudm_ext_"))
     site_dir = work / "site"

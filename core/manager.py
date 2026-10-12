@@ -7,6 +7,7 @@ Sorumluluklari:
   - zamanlanmis baslatma, gunluk tracker guncelleme, bitince bildirim/kapatma
 """
 from __future__ import annotations
+import re
 
 import base64
 import hashlib
@@ -513,6 +514,23 @@ class Manager:
         return bool(status.get("followedBy"))
 
     # --- ekleme -----------------------------------------------------------
+    def add_completed_file(self, path: Path) -> dict:
+        """Register an already received page object without launching an engine."""
+        path = Path(path).resolve()
+        root = Path(self.current_download_dir()).resolve()
+        if path.parent != root or not path.is_file():
+            raise ValueError("Dosya indirme klasöründe olmalı.")
+        import uuid
+        gid = "local:" + uuid.uuid4().hex
+        size = path.stat().st_size
+        row_id = self.store.add(kind="http", source="local:" + gid.split(":", 1)[1],
+                                title=path.name, dest_dir=str(root), gid=gid,
+                                options={"local_file": True})
+        self.store.update_by_id(row_id, filename=path.name, status="complete",
+                                total_bytes=size, done_bytes=size, finished_at=time.time())
+        self.store.log("info", "Tarayıcıdan gelen dosya kaydedildi.")
+        return {"id": row_id, "gid": gid, "kind": "http"}
+
     def add(self, source: str | models.DownloadRequest, **kw) -> dict:
         """Is ekler. Girdi ya `models.DownloadRequest` ya da flat-kwargs'tir;
         ikisi de TEK kuralla (`models.DownloadRequest.from_mapping`) gecerli
@@ -2225,6 +2243,9 @@ class Manager:
                 if name:
                     fields["filename"] = name
                 if state == "error":
+                    if (row.get("kind") == "http" and row.get("status") != "error"
+                            and re.search(r"\b(?:401|403)\b", status.get("errorMessage", ""))):
+                        self.store.log("warn", "Görsel indirilemedi; tarayıcıdan yeniden indirin.", gid=gid)
                     fields["error"] = (
                         "Kaydedilen oturumdaki Cookie/Authorization guvenlik icin silindi. Yeni giris bilgileriyle indirmeyi Yenile."
                         if gid in getattr(self, "_auth_required_gids", set())
