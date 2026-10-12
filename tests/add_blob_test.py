@@ -69,7 +69,7 @@ class BlobTest(unittest.TestCase):
             self.assertEqual(row["total_bytes"], len(body))
             self.assertEqual(row["done_bytes"], len(body))
             target = Path(row["dest_dir"]) / row["filename"]
-            self.assertEqual(target.parent, self.root)
+            self.assertEqual(target.parent.resolve(), self.root.resolve())
             self.assertEqual(target.read_bytes(), body)
         self.assertEqual(len(list(self.root.iterdir())), 2)
         self.assertEqual((self.root / "image.png").read_bytes(), b"first PNG")
