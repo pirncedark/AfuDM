@@ -197,6 +197,17 @@ def ag_konumu_dogrula(yol: str) -> str:
 
 
 # --- tarayicidan gelip onay bekleyen indirmeler -------------------------------
+def _url_anahtari(source: str) -> str:
+    """Normalize URL identity without changing path, credentials or query."""
+    parsed = urllib.parse.urlsplit(source)
+    if parsed.scheme.lower() not in ("http", "https", "ftp"):
+        return source
+    credentials, separator, address = parsed.netloc.rpartition("@")
+    netloc = (credentials + separator if separator else "") + address.lower()
+    return urllib.parse.urlunsplit((parsed.scheme.lower(), netloc,
+                                   parsed.path or "/", parsed.query, ""))
+
+
 class Bekleyenler:
     SURE = 30 * 60  # yalniz gecici tarayici kimlik bilgilerinin omru
 
@@ -256,6 +267,12 @@ class Bekleyenler:
                     if row["istek"].get("request_id") == request_id:
                         if row["istek"].get("url") != istek.get("url"):
                             raise ValueError("Download request identity conflicts with URL")
+                        return ident
+            url = istek.get("url")
+            if url:
+                anahtar = _url_anahtari(url)
+                for ident, row in self._isler.items():
+                    if _url_anahtari(row["istek"].get("url") or "") == anahtar:
                         return ident
             kimlik = next(self._sayac)
             yeni = {**self._isler, kimlik: {"istek": dict(istek), "zaman": time.time()}}

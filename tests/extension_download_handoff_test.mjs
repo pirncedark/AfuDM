@@ -273,3 +273,24 @@ bgContext.fetch = async (url, options = {}) => {
 };
 await assert.rejects(vm.runInNewContext("sendToAfudm({port:6811,token:'test'}, {url:'https://example.test/pdf'})", bgContext));
 assert.equal(logged.length, 1, 'malformed acceptance must be logged and must not cancel Chrome');
+
+// Restored downloads must be ignored before touching Chrome or AfuDM.
+for (const [id, properties] of [
+  [401, { state: "interrupted" }],
+  [402, { state: "in_progress", startTime: new Date(Date.now() - 60000).toISOString() }],
+  [403, { bytesReceived: 5000, canResume: true }],
+]) {
+  const stale = setup();
+  assert.equal(await handle({ id, url: `https://site.test/stale-${id}.pdf`, ...properties }, stale.deps), false);
+  assert.deepEqual(stale.calls, [], "stale download must not invoke any dependency");
+}
+
+const fresh = setup();
+assert.equal(await handle({ id: 404, url: "https://site.test/fresh.pdf", state: "in_progress", startTime: new Date().toISOString(), bytesReceived: 0 }, fresh.deps), true);
+assert.ok(fresh.calls.findIndex(([name]) => name === "cancel") < fresh.calls.findIndex(([name]) => name === "send"));
+assert.ok(fresh.calls.some(([name]) => name === "erase"));
+
+const invalidTime = setup();
+assert.equal(await handle({ id: 405, url: "https://site.test/invalid-time.pdf", startTime: "invalid" }, invalidTime.deps), true);
+assert.ok(invalidTime.calls.some(([name]) => name === "send"), "invalid startTime must not mark a download stale");
+console.log("stale download guard tests passed");

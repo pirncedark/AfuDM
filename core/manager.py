@@ -23,6 +23,7 @@ from pathlib import Path
 from video import ytdlp
 
 from .dosya_adi import resolve_filename
+from .kaydet import _url_anahtari
 
 from . import cerez, eklenti, lang, models, paths, trackers, rules, settings_validation
 from .automation import AutomationWorker
@@ -478,13 +479,15 @@ class Manager:
         for row in self.store.list(limit=300):
             if row["status"] not in self.ACTIVE_STATES:
                 continue
-            ayni = row["source"] == source or (
+            ayni = _url_anahtari(row["source"]) == _url_anahtari(source) or (
                 infohash and self.magnet_infohash(row["source"]) == infohash
             )
             if not ayni:
                 continue
             # Zamanlanmis is henuz motorda olmaz; o gercekten kuyruktadir.
-            if row["status"] == "scheduled" or canli is None or row["gid"] in canli:
+            if (row["status"] == "scheduled"
+                    or (row["status"] == "queued" and not row["gid"])
+                    or canli is None or row["gid"] in canli):
                 return row
             self.store.update_by_id(
                 row["id"], status="error", finished_at=time.time(),
@@ -525,63 +528,64 @@ class Manager:
                 "gecersiz baglanti: http(s), ftp, magnet ya da .torrent dosyasi olmali"
             )
         kind = req.kind or self.detect_kind(req.source)
-        duplicate = self.find_duplicate(req.source)
-        paused_preview = (
-            kind == "torrent"
-            and duplicate
-            and duplicate.get("status") == "paused"
-            and duplicate.get("gid")
-            and self.store.by_gid(duplicate["gid"]) is None
-        )
-        if duplicate and not paused_preview and not (
-                req.adopt_gid and duplicate.get("gid") == req.adopt_gid):
-            label = "bu torrent" if kind == "torrent" else "bu baglanti"
-            raise ValueError(f"{label} zaten kuyrukta: {duplicate.get('title') or req.source[:60]}")
-        category = "video" if kind == "video" else ("torrent" if kind == "torrent" else "")
-        resolved = rules.evaluate(self.store.rules_list(), {"dest_dir": self.current_download_dir(), "proxy": self.store.get("proxy", ""), "max_speed_kb": self.store.get("max_speed_kb", 0), "split": self.store.get("max_conn_per_server", 16)}, rules.context(req.source, req.filename or req.title or "", 0, kind, category), {"dest_dir": req.dest_dir, "proxy": req.proxy})
-        effective = resolved["effective_options"]
-        dest_dir = effective.get("dest_dir") or self.current_download_dir()
-        rule_start_after = models.parse_time_spec(effective.get("start_after", ""))
-        start_after = req.start_after or rule_start_after
-        Path(dest_dir).mkdir(parents=True, exist_ok=True)
-        options = {
-            "quality": req.quality or self.store.get("video_quality", "best"),
-            "audio_only": req.audio_only,
-            "playlist": req.playlist,
-            "headers": req.headers or {},
-            "filename": req.filename or "",
-            "user_agent": req.user_agent or "",
-            "title": req.title or "",
-            "proxy": effective.get("proxy", ""),
-            "hiz_kb": effective.get("max_speed_kb", 0),
-            "baglanti": effective.get("split", 0),
-            "rules_trace": resolved["trace"],
-            "checksum": req.checksum or "",
-            "adopt_gid": getattr(req, "adopt_gid", None),
-            "selected_files": getattr(req, "selected_files", None),
-            # v1.6 Video Pro: istege bagli, varsayilanlar DB ayarlarindan
-            # (video_quality uslubu); request verilen onde gelir.
-            "altyazi_diller": req.altyazi_diller or self.store.get("video_altyazi_diller", ""),
-            "oto_altyazi": req.oto_altyazi or self.store.get("video_oto_altyazi", False),
-            "altyazi_goem": req.altyazi_goem or self.store.get("video_altyazi_goem", False),
-            "kucuk_resim": req.kucuk_resim or self.store.get("video_kucuk_resim", ""),
-            "ustveri_goem": req.ustveri_goem or self.store.get("video_ustveri_goem", False),
-            "bolumler": req.bolumler or self.store.get("video_bolumler", ""),
-            "sponsorblock": req.sponsorblock or self.store.get("video_sponsorblock", ""),
-            "bolum_araligi": req.bolum_araligi or self.store.get("video_bolum_araligi", ""),
-            "kapsayici": req.kapsayici or self.store.get("video_kapsayici", ""),
-            "ses_formati": req.ses_formati or self.store.get("video_ses_formati", ""),
-            "dosya_sablonu": req.dosya_sablonu or self.store.get("video_dosya_sablonu", ""),
-            "tarayici_cerezi": req.tarayici_cerezi or self.store.get("video_tarayici_cerezi", ""),
-        }
-        row_id = self.store.add(
-            kind=kind,
-            source=req.source,
-            title=options["title"] or self.guess_name(req.source),
-            dest_dir=dest_dir,
-            options=options,
-            start_after=start_after,
-        )
+        with self._kilit():
+            duplicate = self.find_duplicate(req.source)
+            paused_preview = (
+                kind == "torrent"
+                and duplicate
+                and duplicate.get("status") == "paused"
+                and duplicate.get("gid")
+                and self.store.by_gid(duplicate["gid"]) is None
+            )
+            if duplicate and not paused_preview and not (
+                    req.adopt_gid and duplicate.get("gid") == req.adopt_gid):
+                label = "bu torrent" if kind == "torrent" else "bu baglanti"
+                raise ValueError(f"{label} zaten kuyrukta: {duplicate.get('title') or req.source[:60]}")
+            category = "video" if kind == "video" else ("torrent" if kind == "torrent" else "")
+            resolved = rules.evaluate(self.store.rules_list(), {"dest_dir": self.current_download_dir(), "proxy": self.store.get("proxy", ""), "max_speed_kb": self.store.get("max_speed_kb", 0), "split": self.store.get("max_conn_per_server", 16)}, rules.context(req.source, req.filename or req.title or "", 0, kind, category), {"dest_dir": req.dest_dir, "proxy": req.proxy})
+            effective = resolved["effective_options"]
+            dest_dir = effective.get("dest_dir") or self.current_download_dir()
+            rule_start_after = models.parse_time_spec(effective.get("start_after", ""))
+            start_after = req.start_after or rule_start_after
+            Path(dest_dir).mkdir(parents=True, exist_ok=True)
+            options = {
+                "quality": req.quality or self.store.get("video_quality", "best"),
+                "audio_only": req.audio_only,
+                "playlist": req.playlist,
+                "headers": req.headers or {},
+                "filename": req.filename or "",
+                "user_agent": req.user_agent or "",
+                "title": req.title or "",
+                "proxy": effective.get("proxy", ""),
+                "hiz_kb": effective.get("max_speed_kb", 0),
+                "baglanti": effective.get("split", 0),
+                "rules_trace": resolved["trace"],
+                "checksum": req.checksum or "",
+                "adopt_gid": getattr(req, "adopt_gid", None),
+                "selected_files": getattr(req, "selected_files", None),
+                # v1.6 Video Pro: istege bagli, varsayilanlar DB ayarlarindan
+                # (video_quality uslubu); request verilen onde gelir.
+                "altyazi_diller": req.altyazi_diller or self.store.get("video_altyazi_diller", ""),
+                "oto_altyazi": req.oto_altyazi or self.store.get("video_oto_altyazi", False),
+                "altyazi_goem": req.altyazi_goem or self.store.get("video_altyazi_goem", False),
+                "kucuk_resim": req.kucuk_resim or self.store.get("video_kucuk_resim", ""),
+                "ustveri_goem": req.ustveri_goem or self.store.get("video_ustveri_goem", False),
+                "bolumler": req.bolumler or self.store.get("video_bolumler", ""),
+                "sponsorblock": req.sponsorblock or self.store.get("video_sponsorblock", ""),
+                "bolum_araligi": req.bolum_araligi or self.store.get("video_bolum_araligi", ""),
+                "kapsayici": req.kapsayici or self.store.get("video_kapsayici", ""),
+                "ses_formati": req.ses_formati or self.store.get("video_ses_formati", ""),
+                "dosya_sablonu": req.dosya_sablonu or self.store.get("video_dosya_sablonu", ""),
+                "tarayici_cerezi": req.tarayici_cerezi or self.store.get("video_tarayici_cerezi", ""),
+            }
+            row_id = self.store.add(
+                kind=kind,
+                source=req.source,
+                title=options["title"] or self.guess_name(req.source),
+                dest_dir=dest_dir,
+                options=options,
+                start_after=start_after,
+            )
         temiz = cerez.temizle(req.cookies)
         if temiz:
             self._cerezler[row_id] = temiz

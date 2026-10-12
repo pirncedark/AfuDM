@@ -1,5 +1,6 @@
 /* Browser download takeover with pause-first semantics. */
 const AfuDownloadHandoff = (() => {
+  const STALE_MS = 15000;
   const active = new Map();
   const recent = new Map();
   const acceptedIds = new Set();
@@ -53,6 +54,10 @@ const AfuDownloadHandoff = (() => {
   async function handle(item, deps) {
     const url = item.finalUrl || item.url;
     if (!url || /^(blob|data):/i.test(url)) return false;
+    const startTime = item.startTime ? Date.parse(item.startTime) : NaN;
+    if (item.state === "interrupted" ||
+        (Number.isFinite(startTime) && Date.now() - startTime > STALE_MS) ||
+        (item.bytesReceived > 0 && item.canResume)) return false;
     if (fallbackIds.delete(item.id)) return false;
     const fallback = fallbackUrls.get(item.url) || fallbackUrls.get(url);
     if (fallback) {
