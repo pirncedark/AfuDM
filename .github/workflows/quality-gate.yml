@@ -29,6 +29,9 @@ jobs:
         run: python -m pip install --quiet pywebview pystray pillow qrcode playwright
       - name: Install Playwright Chromium
         run: python -m playwright install chromium
+      # daemon_test needs the real aria2c engine (engine/*.exe is gitignored)
+      - name: Prepare aria2c engine for daemon test
+        run: python -c "from core import engines; engines.indir('aria2c')"
       - name: Run offline desktop tests
         shell: pwsh
         run: powershell -ExecutionPolicy Bypass -File scripts/test.ps1

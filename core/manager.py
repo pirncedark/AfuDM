@@ -17,11 +17,13 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+from contextlib import nullcontext
 from pathlib import Path
 
 from video import ytdlp
 
 from .dosya_adi import resolve_filename
+from .kaydet import _url_anahtari
 
 from . import cerez, eklenti, lang, models, paths, trackers, rules, settings_validation
 from .automation import AutomationWorker
@@ -88,6 +90,7 @@ class Manager:
         self._stop = threading.Event()
         self._last_tracker_check = 0.0
         self._known_complete: set[str] = set()
+        self._preview_gids: set[str] = set()
         self._removed_gids: set[str] = set()
         self._removed_hashes: set[str] = set()
         self.last_error: str = ""
@@ -100,6 +103,11 @@ class Manager:
         # ve HTTP API ayni nesneyi kullanir (ayri durum tutulmaz).
         self.eklentiler = eklenti.EklentiServisi(self.store)
         self.windows_notify = None
+
+    def _kilit(self):
+        """Kurucu cagrilmadan olusturulan Manager'larda `_lock` yoktur; o durumda
+        kilitsiz (nullcontext) calisir. Testler ve dummy yoneticiler boyle kurulur."""
+        return getattr(self, "_lock", None) or nullcontext()
 
     def _recover_orphan_video_jobs(self) -> None:
         """Onceki oturumdan kalmis, artik calisan isi olmayan video kayitlarini duzelt."""
@@ -299,9 +307,10 @@ class Manager:
             new_dir = changes["download_dir"] or str(paths.default_download_dir())
             Path(new_dir).mkdir(parents=True, exist_ok=True)
             try:
+                self.daemon.download_dir = new_dir
                 self.rpc.change_global_option({"dir": new_dir})
-            except Aria2Error:
-                pass
+            except Aria2Error as exc:
+                self.store.log("warn", f"genel indirme klasoru uygulanamadi: {exc}")
         self.apply_settings()
         return self.store.all_settings()
 
@@ -470,13 +479,15 @@ class Manager:
         for row in self.store.list(limit=300):
             if row["status"] not in self.ACTIVE_STATES:
                 continue
-            ayni = row["source"] == source or (
+            ayni = _url_anahtari(row["source"]) == _url_anahtari(source) or (
                 infohash and self.magnet_infohash(row["source"]) == infohash
             )
             if not ayni:
                 continue
             # Zamanlanmis is henuz motorda olmaz; o gercekten kuyruktadir.
-            if row["status"] == "scheduled" or canli is None or row["gid"] in canli:
+            if (row["status"] == "scheduled"
+                    or (row["status"] == "queued" and not row["gid"])
+                    or canli is None or row["gid"] in canli):
                 return row
             self.store.update_by_id(
                 row["id"], status="error", finished_at=time.time(),
@@ -517,63 +528,64 @@ class Manager:
                 "gecersiz baglanti: http(s), ftp, magnet ya da .torrent dosyasi olmali"
             )
         kind = req.kind or self.detect_kind(req.source)
-        duplicate = self.find_duplicate(req.source)
-        paused_preview = (
-            kind == "torrent"
-            and duplicate
-            and duplicate.get("status") == "paused"
-            and duplicate.get("gid")
-            and self.store.by_gid(duplicate["gid"]) is None
-        )
-        if duplicate and not paused_preview and not (
-                req.adopt_gid and duplicate.get("gid") == req.adopt_gid):
-            label = "bu torrent" if kind == "torrent" else "bu baglanti"
-            raise ValueError(f"{label} zaten kuyrukta: {duplicate.get('title') or req.source[:60]}")
-        category = "video" if kind == "video" else ("torrent" if kind == "torrent" else "")
-        resolved = rules.evaluate(self.store.rules_list(), {"dest_dir": self.current_download_dir(), "proxy": self.store.get("proxy", ""), "max_speed_kb": self.store.get("max_speed_kb", 0), "split": self.store.get("max_conn_per_server", 16)}, rules.context(req.source, req.filename or req.title or "", 0, kind, category), {"dest_dir": req.dest_dir, "proxy": req.proxy})
-        effective = resolved["effective_options"]
-        dest_dir = effective.get("dest_dir") or self.current_download_dir()
-        rule_start_after = models.parse_time_spec(effective.get("start_after", ""))
-        start_after = req.start_after or rule_start_after
-        Path(dest_dir).mkdir(parents=True, exist_ok=True)
-        options = {
-            "quality": req.quality or self.store.get("video_quality", "best"),
-            "audio_only": req.audio_only,
-            "playlist": req.playlist,
-            "headers": req.headers or {},
-            "filename": req.filename or "",
-            "user_agent": req.user_agent or "",
-            "title": req.title or "",
-            "proxy": effective.get("proxy", ""),
-            "hiz_kb": effective.get("max_speed_kb", 0),
-            "baglanti": effective.get("split", 0),
-            "rules_trace": resolved["trace"],
-            "checksum": req.checksum or "",
-            "adopt_gid": getattr(req, "adopt_gid", None),
-            "selected_files": getattr(req, "selected_files", None),
-            # v1.6 Video Pro: istege bagli, varsayilanlar DB ayarlarindan
-            # (video_quality uslubu); request verilen onde gelir.
-            "altyazi_diller": req.altyazi_diller or self.store.get("video_altyazi_diller", ""),
-            "oto_altyazi": req.oto_altyazi or self.store.get("video_oto_altyazi", False),
-            "altyazi_goem": req.altyazi_goem or self.store.get("video_altyazi_goem", False),
-            "kucuk_resim": req.kucuk_resim or self.store.get("video_kucuk_resim", ""),
-            "ustveri_goem": req.ustveri_goem or self.store.get("video_ustveri_goem", False),
-            "bolumler": req.bolumler or self.store.get("video_bolumler", ""),
-            "sponsorblock": req.sponsorblock or self.store.get("video_sponsorblock", ""),
-            "bolum_araligi": req.bolum_araligi or self.store.get("video_bolum_araligi", ""),
-            "kapsayici": req.kapsayici or self.store.get("video_kapsayici", ""),
-            "ses_formati": req.ses_formati or self.store.get("video_ses_formati", ""),
-            "dosya_sablonu": req.dosya_sablonu or self.store.get("video_dosya_sablonu", ""),
-            "tarayici_cerezi": req.tarayici_cerezi or self.store.get("video_tarayici_cerezi", ""),
-        }
-        row_id = self.store.add(
-            kind=kind,
-            source=req.source,
-            title=options["title"] or self.guess_name(req.source),
-            dest_dir=dest_dir,
-            options=options,
-            start_after=start_after,
-        )
+        with self._kilit():
+            duplicate = self.find_duplicate(req.source)
+            paused_preview = (
+                kind == "torrent"
+                and duplicate
+                and duplicate.get("status") == "paused"
+                and duplicate.get("gid")
+                and self.store.by_gid(duplicate["gid"]) is None
+            )
+            if duplicate and not paused_preview and not (
+                    req.adopt_gid and duplicate.get("gid") == req.adopt_gid):
+                label = "bu torrent" if kind == "torrent" else "bu baglanti"
+                raise ValueError(f"{label} zaten kuyrukta: {duplicate.get('title') or req.source[:60]}")
+            category = "video" if kind == "video" else ("torrent" if kind == "torrent" else "")
+            resolved = rules.evaluate(self.store.rules_list(), {"dest_dir": self.current_download_dir(), "proxy": self.store.get("proxy", ""), "max_speed_kb": self.store.get("max_speed_kb", 0), "split": self.store.get("max_conn_per_server", 16)}, rules.context(req.source, req.filename or req.title or "", 0, kind, category), {"dest_dir": req.dest_dir, "proxy": req.proxy})
+            effective = resolved["effective_options"]
+            dest_dir = effective.get("dest_dir") or self.current_download_dir()
+            rule_start_after = models.parse_time_spec(effective.get("start_after", ""))
+            start_after = req.start_after or rule_start_after
+            Path(dest_dir).mkdir(parents=True, exist_ok=True)
+            options = {
+                "quality": req.quality or self.store.get("video_quality", "best"),
+                "audio_only": req.audio_only,
+                "playlist": req.playlist,
+                "headers": req.headers or {},
+                "filename": req.filename or "",
+                "user_agent": req.user_agent or "",
+                "title": req.title or "",
+                "proxy": effective.get("proxy", ""),
+                "hiz_kb": effective.get("max_speed_kb", 0),
+                "baglanti": effective.get("split", 0),
+                "rules_trace": resolved["trace"],
+                "checksum": req.checksum or "",
+                "adopt_gid": getattr(req, "adopt_gid", None),
+                "selected_files": getattr(req, "selected_files", None),
+                # v1.6 Video Pro: istege bagli, varsayilanlar DB ayarlarindan
+                # (video_quality uslubu); request verilen onde gelir.
+                "altyazi_diller": req.altyazi_diller or self.store.get("video_altyazi_diller", ""),
+                "oto_altyazi": req.oto_altyazi or self.store.get("video_oto_altyazi", False),
+                "altyazi_goem": req.altyazi_goem or self.store.get("video_altyazi_goem", False),
+                "kucuk_resim": req.kucuk_resim or self.store.get("video_kucuk_resim", ""),
+                "ustveri_goem": req.ustveri_goem or self.store.get("video_ustveri_goem", False),
+                "bolumler": req.bolumler or self.store.get("video_bolumler", ""),
+                "sponsorblock": req.sponsorblock or self.store.get("video_sponsorblock", ""),
+                "bolum_araligi": req.bolum_araligi or self.store.get("video_bolum_araligi", ""),
+                "kapsayici": req.kapsayici or self.store.get("video_kapsayici", ""),
+                "ses_formati": req.ses_formati or self.store.get("video_ses_formati", ""),
+                "dosya_sablonu": req.dosya_sablonu or self.store.get("video_dosya_sablonu", ""),
+                "tarayici_cerezi": req.tarayici_cerezi or self.store.get("video_tarayici_cerezi", ""),
+            }
+            row_id = self.store.add(
+                kind=kind,
+                source=req.source,
+                title=options["title"] or self.guess_name(req.source),
+                dest_dir=dest_dir,
+                options=options,
+                start_after=start_after,
+            )
         temiz = cerez.temizle(req.cookies)
         if temiz:
             self._cerezler[row_id] = temiz
@@ -602,6 +614,20 @@ class Manager:
             raise
         self.store.attach_gid(row["id"], gid)
         self.store.log("info", f"basladi [{kind}]: {row['title']}", gid=gid)
+        previews = getattr(self, "_preview_gids", set())
+        accepted = {gid, options.get("adopt_gid")}
+        for _ in range(len(previews) + 1):
+            before = len(accepted)
+            for preview in list(previews):
+                try:
+                    followed = self.rpc.tell_status(preview, ["followedBy"]).get("followedBy") or []
+                except Aria2Error:
+                    continue
+                if any(child in accepted for child in followed):
+                    accepted.add(preview)
+            if len(accepted) == before:
+                break
+        previews.difference_update(accepted)
         return {"id": row["id"], "gid": gid, "kind": kind}
 
     def _proksi(self, options: dict) -> dict | None:
@@ -693,9 +719,10 @@ class Manager:
                 pass
 
             try:
-                self.rpc.change_option(gid, {"dir": dest_dir})
+                self.rpc.change_option(gid, {"dir": dest_dir, "bt-save-metadata": "false"})
             except Aria2Error as exc:
                 self.store.log("error", f"kayit dizini degistirilemedi: {exc}", gid=gid)
+                raise ValueError("Secilen klasore kaydedilemiyor, baska bir klasor secin.") from exc
 
             selected = options.get("selected_files")
             if selected:
@@ -713,7 +740,7 @@ class Manager:
             return gid
 
         source = row["source"]
-        aria_options = {"dir": dest_dir}
+        aria_options = {"dir": dest_dir, "bt-save-metadata": "false"}
         proksi = self._proksi(options)
         if proksi:
             aria_options.update(P.aria2_secenekleri(proksi))
@@ -729,7 +756,7 @@ class Manager:
             raise
 
     def _launch_video(self, row: dict, options: dict, dest_dir: str) -> str:
-        with self._lock:
+        with self._kilit():
             self._video_seq += 1
             job_id = f"yt:{self._video_seq}"
         cerezler = self._cerezler.get(row["id"])
@@ -879,13 +906,22 @@ class Manager:
             gids_to_remove.add(actual_gid)
 
         targets: list[Path] = []
+        # Silme kovasi: kaydin kendi indirme klasoru, yoksa genel indirme klasoru.
+        kova = Path(row["dest_dir"]) if row and row.get("dest_dir") else None
+        if kova is None:
+            try:
+                kova = Path(self.current_download_dir())
+            except (OSError, TypeError, ValueError):
+                kova = None
 
         if actual_gid.startswith("yt:"):
             job = self.video_jobs.pop(actual_gid, None)
             if job:
                 job.stop()
                 if job.filename and job.dest_dir:
-                    targets.append(Path(job.dest_dir) / job.filename)
+                    guvenli = self._guvenli_hedef(Path(job.dest_dir), Path(job.dest_dir) / job.filename, gid=actual_gid)
+                    if guvenli:
+                        targets.append(guvenli)
         else:
             # aria2 parent/child GID baglantilari (followedBy / following)
             try:
@@ -909,7 +945,9 @@ class Manager:
                             g_status = self.rpc.tell_status(g, ["files"])
                             for entry in g_status.get("files") or []:
                                 if entry.get("path"):
-                                    targets.append(Path(entry["path"]))
+                                    guvenli = self._guvenli_hedef(kova, Path(entry["path"]), gid=g)
+                                    if guvenli:
+                                        targets.append(guvenli)
                         except Exception:
                             pass
             except Exception:
@@ -931,26 +969,38 @@ class Manager:
                 pass
         if row:
             if row.get("filename") and row.get("dest_dir"):
-                targets.append(Path(row["dest_dir"]) / row["filename"])
+                guvenli = self._guvenli_hedef(kova, Path(row["dest_dir"]) / row["filename"], gid=actual_gid)
+                if guvenli:
+                    targets.append(guvenli)
             elif row.get("target_path"):
-                targets.append(Path(row["target_path"]))
-            if row.get("dest_dir"):
-                dest_dir = Path(row["dest_dir"])
-                if row.get("filename"):
-                    targets.append(dest_dir / row["filename"])
-                if row.get("title"):
-                    targets.append(dest_dir / row["title"])
+                guvenli = self._guvenli_hedef(kova, Path(row["target_path"]), gid=actual_gid)
+                if guvenli:
+                    targets.append(guvenli)
+            if kova is not None:
+                for ham in (row.get("filename"), row.get("title")):
+                    if ham:
+                        guvenli = self._guvenli_hedef(kova, kova / str(ham), gid=actual_gid)
+                        if guvenli:
+                            targets.append(guvenli)
                 try:
                     options = json.loads(row.get("options") or "{}")
-                    if options.get("filename"):
-                        targets.append(dest_dir / options["filename"])
-                    if options.get("title"):
-                        targets.append(dest_dir / options["title"])
                 except (json.JSONDecodeError, TypeError):
-                    pass
+                    options = {}
+                for ham in (options.get("filename"), options.get("title")):
+                    if ham:
+                        guvenli = self._guvenli_hedef(kova, kova / str(ham), gid=actual_gid)
+                        if guvenli:
+                            targets.append(guvenli)
             if row.get("source") and row["source"].lower().endswith(".torrent"):
                 local_torrent = Path(row["source"])
-                if local_torrent.exists() and local_torrent.is_file():
+                # Kullanicinin kendi .torrent dosyasi: indirme klasoru disindaysa SILINMEZ.
+                if kova is None or not self._guvenli_hedef(kova, local_torrent, gid=actual_gid):
+                    self.store.log(
+                        "info",
+                        "kaynak .torrent indirme klasoru disinda, silinmedi",
+                        gid=actual_gid,
+                    )
+                elif local_torrent.exists() and local_torrent.is_file():
                     targets.append(local_torrent)
 
         if delete_files and targets:
@@ -1071,6 +1121,31 @@ class Manager:
 
         return None
 
+
+    def _guvenli_hedef(self, kova: Path | None, aday: Path, gid: str = "") -> Path | None:
+        """Aday yolun indirme klasorunun ICINDE oldugunu kanitlar; disaridaaysa
+        silinmez. `..\\..\\x` veya mutlak yol ile indirme klasorunun disina
+        cikmak mumkun oldugu icin her hedef `resolve()` edilir. Klasorun kendisi
+        de reddedilir (tek kayit tum klasoru silemez)."""
+        if kova is None:
+            return None
+        try:
+            kok = Path(kova).resolve()
+            hedef = Path(aday).resolve()
+        except (OSError, ValueError, RuntimeError):
+            return None
+        if hedef == kok:
+            return None
+        try:
+            hedef.relative_to(kok)
+        except ValueError:
+            self.store.log(
+                "warn",
+                "dosya indirme klasorunda degil, silinmedi",
+                gid=gid,
+            )
+            return None
+        return hedef
 
     def _cerez_birak(self, row: dict | None) -> None:
         if row:
@@ -1265,21 +1340,25 @@ class Manager:
                 "%s isleri yenilenemez — yalnizca http(s)/ftp indirmeleri"
                 % row["kind"]
             )
+        status = {}
         try:
-            status = self.rpc.tell_status(gid, ["status", "files"])
+            status = self.rpc.tell_status(gid, ["status", "files", "dir"])
         except Aria2Error as exc:
-            raise ValueError("motor o isi bilmiyor: %s" % str(exc)[:120]) from exc
+            if row.get("status") in ("complete", "error"):
+                status = {"status": row["status"]}
+            else:
+                raise ValueError("motor o isi bilmiyor: %s" % str(exc)[:120]) from exc
+
         dosyalar = status.get("files") or []
-        if not dosyalar:
-            raise ValueError("dosya bilgisi yok")
-        uriler = dosyalar[0].get("uris") or []
         eski = ""
-        for u in uriler:
-            if u.get("status") == "used":
-                eski = u.get("uri", "")
-                break
-        if not eski:
-            eski = uriler[0].get("uri", "") if uriler else ""
+        if dosyalar:
+            uriler = dosyalar[0].get("uris") or []
+            for u in uriler:
+                if u.get("status") == "used":
+                    eski = u.get("uri", "")
+                    break
+            if not eski:
+                eski = uriler[0].get("uri", "") if uriler else ""
         if not eski:
             eski = row.get("source") or ""
 
@@ -1300,6 +1379,57 @@ class Manager:
         if cerez_temiz:
             basliklar.append("Cookie: " + cerez.baslik(cerez_temiz))
             self._cerezler[row["id"]] = cerez_temiz
+
+        if durum == "complete":
+            # Bozuk dosyayi sil ve yeni bir indirme baslat (add_uri)
+            dosya_yolu = None
+            if dosyalar and dosyalar[0].get("path"):
+                dosya_yolu = dosyalar[0]["path"]
+            else:
+                hedef_klasor = row.get("dest_dir") or self.current_download_dir()
+                dosya_yolu = os.path.join(hedef_klasor, row["title"])
+
+            if dosya_yolu and os.path.exists(dosya_yolu):
+                try: os.remove(dosya_yolu)
+                except: pass
+            if dosya_yolu and os.path.exists(dosya_yolu + ".aria2"):
+                try: os.remove(dosya_yolu + ".aria2")
+                except: pass
+
+            try: self.rpc.remove_download_result(gid)
+            except: pass
+
+            aria_opt = self._baglanti_secenekleri(options)
+            if basliklar:
+                aria_opt["header"] = basliklar
+            if options.get("user_agent"):
+                aria_opt["user-agent"] = options["user_agent"]
+            if row.get("dest_dir"):
+                aria_opt["dir"] = row["dest_dir"]
+
+            try:
+                aria_opt["gid"] = gid
+                yeni_gid = self.rpc.add_uri([yeni_url], aria_opt)
+            except Aria2Error:
+                if "gid" in aria_opt: del aria_opt["gid"]
+                yeni_gid = self.rpc.add_uri([yeni_url], aria_opt)
+
+            self.store.update_by_id(
+                row["id"],
+                gid=yeni_gid,
+                source=yeni_url,
+                options=json.dumps(options, ensure_ascii=False),
+                error=None,
+                status="active"
+            )
+            self.store.log("info", f"bozuk dosya yenilendi (yeni gid: {yeni_gid}): {row['title']}", gid=yeni_gid)
+            return {
+                "ok": True,
+                "gid": yeni_gid,
+                "eski": eski,
+                "yeni": yeni_url,
+                "degisen": 1,
+            }
 
         if aktif:
             try:
@@ -1494,7 +1624,7 @@ class Manager:
         if not kaynak.startswith("magnet:") and not kaynak.startswith("http"):
             if not kaynak:
                 kaynak = f"magnet:?xt=urn:btih:{infohash}"
-        secenekler = {"dir": hedef}
+        secenekler = {"dir": hedef, "bt-save-metadata": "false"}
         # ``select-file`` belirtilmezse aria2 tum dosyalari secer. Kullanici
         # tercihi varsa (bos tercih dahil) yeniden eklenen torrente acikca
         # yeniden ver; aksi halde seed tazeleme tum torrent'i indirir.
@@ -1533,19 +1663,21 @@ class Manager:
     def snapshot(self) -> dict:
         items: list[dict] = []
         gids_seen: set[str] = set()
-        try:
-            live = (
-                self.rpc.tell_active()
-                + self.rpc.tell_waiting(0, 200)
-                + self.rpc.tell_stopped(0, 200)
-            )
-        except Aria2Error as exc:
-            self.last_error = str(exc)
-            live = []
+        with self._kilit():
+            try:
+                live = (
+                    self.rpc.tell_active()
+                    + self.rpc.tell_waiting(0, 200)
+                    + self.rpc.tell_stopped(0, 200)
+                )
+            except Aria2Error as exc:
+                self.last_error = str(exc)
+                live = []
+            self._preview_takip(live)
         ids_seen: set[int] = set()   # DB id bazli duplicate engeli
         for status in live:
             gid = status.get("gid", "")
-            if not gid or gid in self._removed_gids:
+            if not gid or gid in self._removed_gids or gid in getattr(self, "_preview_gids", set()):
                 continue
             infohash = (status.get("infoHash") or "").lower()
             if infohash and infohash in self._removed_hashes:
@@ -1591,7 +1723,7 @@ class Manager:
                 h = self.magnet_infohash(row["source"])
                 if h and h in self._removed_hashes:
                     continue
-            if row["status"] in ("complete", "error", "scheduled", "paused"):
+            if row["status"] in ("complete", "error", "scheduled", "paused", "repairing"):
                 items.append(self._shape_row(row))
         try:
             stat = self.rpc.global_stat()
@@ -1631,6 +1763,11 @@ class Manager:
         is_torrent = bool(bittorrent) or bool(status.get("infoHash"))
         speed = int(status.get("downloadSpeed", 0) or 0)
         eta = int((total - done) / speed) if speed > 0 and total > done else 0
+        # Ortalama hiz: anlik hiz her tiklamada ziplar; basindan ne kadar
+        # indigimizi bilmek icin indirilen bayt / gecen sure. started_at DB'de.
+        started = float((row or {}).get("started_at") or 0.0)
+        elapsed = max(time.time() - started, 1.0) if started else 0.0
+        avg_speed = int(done / elapsed) if elapsed and done else 0
         return {
             "id": row["id"] if row else None,
             "gid": gid,
@@ -1643,6 +1780,9 @@ class Manager:
             "completedLength": done,
             "progress": round(done / total * 100, 1) if total else 0.0,
             "downloadSpeed": speed,
+            "avgSpeed": avg_speed,
+            "elapsed": int(elapsed),
+            "remaining": max(total - done, 0),
             "uploadSpeed": int(status.get("uploadSpeed", 0) or 0),
             "connections": int(status.get("connections", 0) or 0),
             "numSeeders": int(status.get("numSeeders", 0) or 0),
@@ -1666,23 +1806,39 @@ class Manager:
     def _shape_row(self, row: dict) -> dict:
         total = int(row.get("total_bytes") or 0)
         done = int(row.get("done_bytes") or 0)
+
+        status = row["status"]
+        progress = round(done / total * 100, 1) if total else 0.0
+        error_msg = row.get("error") or ""
+
+        if status == "repairing":
+            import json
+            opts = json.loads(row.get("options") or "{}")
+            rep = opts.get("repair_state", {})
+            if rep:
+                rep_total = rep.get("toplam_blok", 1)
+                rep_done = rep.get("duzeltilen", 0)
+                progress = round((rep_done / rep_total) * 100, 1) if rep_total else 0.0
+                if rep.get("hata"):
+                    error_msg = rep["hata"]
+
         return {
             "id": row["id"],
             "gid": row["gid"] or f"row:{row['id']}",
             "kind": row["kind"],
-            "status": row["status"],
+            "status": status,
             "title": row["title"] or row["source"],
             "filename": row["filename"] or "",
             "totalLength": total,
             "completedLength": done,
-            "progress": round(done / total * 100, 1) if total else 0.0,
+            "progress": progress,
             "downloadSpeed": 0,
             "uploadSpeed": 0,
             "connections": 0,
             "numSeeders": 0,
             "eta": 0,
             "dir": row["dest_dir"] or "",
-            "errorMessage": row["error"] or "",
+            "errorMessage": error_msg,
             "source": row["source"],
             "start_after": row["start_after"],
         }
@@ -1711,6 +1867,8 @@ class Manager:
         """Kullanici dosya secimi yapabilsin diye torrenti duraklatilmis olarak aria2'ye ekler.
         DB'ye kaydedilmez; secim/iptal adiminda nihai islem yapilir."""
         aria_options = {
+            "dir": self.current_download_dir(),
+            "bt-save-metadata": "false",
             "pause": "true",
             "pause-metadata": "false",
         }
@@ -1718,29 +1876,44 @@ class Manager:
         if proksi:
             aria_options.update(P.aria2_secenekleri(proksi))
 
-        local = Path(source)
-        try:
-            if local.exists() and local.suffix.lower() == ".torrent":
-                payload = base64.b64encode(local.read_bytes()).decode("ascii")
-                return self.rpc.add_torrent(payload, aria_options)
-            return self.rpc.add_uri([source], aria_options)
-        except Aria2Error as exc:
-            if "already registered" in str(exc).lower():
-                raise ValueError("bu torrent zaten kuyrukta") from exc
-            raise
+        with self._kilit():
+            local = Path(source)
+            try:
+                if local.exists() and local.suffix.lower() == ".torrent":
+                    payload = base64.b64encode(local.read_bytes()).decode("ascii")
+                    gid = self.rpc.add_torrent(payload, aria_options)
+                else:
+                    gid = self.rpc.add_uri([source], aria_options)
+                if not hasattr(self, "_preview_gids"):
+                    self._preview_gids = set()
+                self._preview_gids.add(gid)
+                return gid
+            except Aria2Error as exc:
+                if "already registered" in str(exc).lower():
+                    raise ValueError("bu torrent zaten kuyrukta") from exc
+                raise
 
     def torrent_on_iptal(self, gid: str) -> None:
         """On-eklenmis ancak iptal edilmis torrenti aria2'den siler."""
+        child = None
         try:
             durum = self.rpc.tell_status(gid, ["followedBy"])
             child = (durum.get("followedBy") or [None])[0]
-            self.rpc.remove(gid, force=True)
-            self.rpc.remove_result(gid)
-            if child:
-                self.rpc.remove(child, force=True)
-                self.rpc.remove_result(child)
-        except Aria2Error:
-            pass
+        except Exception:
+            child = None
+        getattr(self, "_removed_gids", set()).update(g for g in (gid, child) if g)
+        # Parent ve child AYRI bloklarda: biri hata verirse digeri aria2'de asili kalmasin.
+        for tekil in (gid, child):
+            if not tekil:
+                continue
+            try:
+                self.rpc.remove(tekil, force=True)
+            except Exception:
+                pass
+            try:
+                self.rpc.remove_result(tekil)
+            except Exception:
+                pass
 
     # --- torrent dosyalari ------------------------------------------------
     @staticmethod
@@ -2011,13 +2184,30 @@ class Manager:
         except Exception:
             pass
 
+    def _preview_takip(self, statuses: list[dict]) -> None:
+        previews = getattr(self, "_preview_gids", set())
+        # Follow links in either order: metadata and HTTP .torrent can form a chain.
+        for _ in range(len(statuses) + 1):
+            before = len(previews)
+            for status in statuses:
+                if status.get("gid") in previews:
+                    previews.update(status.get("followedBy") or [])
+                if status.get("following") in previews:
+                    previews.add(status.get("gid", ""))
+            if len(previews) == before:
+                break
+
     def _sync_aria2(self) -> None:
-        try:
-            statuses = self.rpc.tell_active() + self.rpc.tell_stopped(0, 100)
-        except Aria2Error:
-            return
+        with self._kilit():
+            try:
+                statuses = self.rpc.tell_active() + self.rpc.tell_stopped(0, 100)
+            except Aria2Error:
+                return
+            self._preview_takip(statuses)
         for status in statuses:
             gid = status.get("gid", "")
+            if gid in getattr(self, "_preview_gids", set()):
+                continue
             row = self.store.by_gid(gid)
             if row is None:
                 row = self._reattach_torrent(status)
@@ -2076,6 +2266,13 @@ class Manager:
         bitince "tamamlandi" yazilmaz, ayni magnet "zaten kuyrukta" der).
         Cozum: info hash DEGISMEZ — kaydi onunla bul ve yeni GID'e bagla.
         """
+        if status.get("gid") in getattr(self, "_preview_gids", set()):
+            return None
+        parent = self.store.by_gid(status.get("following", ""))
+        if parent:
+            self.store.update_by_id(parent["id"], gid=status["gid"])
+            self.store.torrent_dosya_secimlerini_tasi(parent["gid"], status["gid"])
+            return self.store.by_id(parent["id"])
         infohash = (status.get("infoHash") or "").lower()
         if not infohash:
             return None
@@ -2126,10 +2323,212 @@ class Manager:
         sonuc = self.tracker_tara(gid)
         if not sonuc.get("ok"):
             self.store.log("warn", f"tracker taramasi basarisiz: {sonuc.get('error', '')}"[:150], gid=gid or "")
+    def butunluk_tara(self, gid: str) -> dict:
+        from . import butunluk
+        row = self.store.by_gid(gid)
+        if not row:
+            return {"ok": False, "durum": "bulunamadi", "neden": "Kayıt bulunamadı."}
+
+        dosya_yolu = None
+        try:
+            status = self.rpc.tell_status(gid, ["files", "dir"])
+            dosyalar = status.get("files", [])
+            if dosyalar and dosyalar[0].get("path"):
+                dosya_yolu = dosyalar[0]["path"]
+            elif dosyalar and status.get("dir"):
+                # Yol yoksa dir + title deneyelim
+                pass
+        except Aria2Error:
+            pass
+
+        if not dosya_yolu:
+            klasor = row.get("dest_dir") or self.current_download_dir()
+            dosya_yolu = os.path.join(klasor, row["title"])
+
+        if not os.path.exists(dosya_yolu):
+            return {"ok": False, "durum": "bulunamadi", "neden": "Dosya diskte bulunamadı."}
+
+        beklenen_boyut = row.get("size")
+
+        # Scan
+        sonuc = butunluk.tara(dosya_yolu, beklenen_boyut=beklenen_boyut)
+
+        if sonuc["durum"] != "saglam":
+            # Veritabanina isliyoruz
+            self.store.update_by_id(row["id"], error=sonuc["neden"])
+
+        return {"ok": True, **sonuc}
+    def butunluk_onar(self, gid: str, yeni_url: str) -> dict:
+        row = self.store.by_gid(gid)
+        if not row:
+            return {"ok": False, "neden": "Kayıt bulunamadı."}
+
+        dosya_yolu = self.resolve_item_path(gid)
+        if not dosya_yolu or not dosya_yolu.exists():
+            return {"ok": False, "neden": "Dosya bulunamadı."}
+
+        import urllib.request
+        import urllib.error
+        import json
+
+        opts = json.loads(row.get("options") or "{}")
+
+        try:
+            req = urllib.request.Request(yeni_url, method="HEAD")
+            if "header" in opts:
+                for h in opts["header"]:
+                    if ":" in h:
+                        k, v = h.split(":", 1)
+                        req.add_header(k.strip(), v.strip())
+            ua = "AfuDM"
+            for h in opts.get("header", []):
+                if h.lower().startswith("user-agent:"):
+                    ua = h.split(":", 1)[1].strip()
+            if not req.has_header("User-agent"):
+                req.add_header("User-Agent", ua)
+
+            resp = urllib.request.urlopen(req, timeout=10)
+
+            if resp.status in (403, 404):
+                return {"ok": False, "neden": "Link geçersiz, yeni link ver."}
+
+            if resp.headers.get_content_type() == "text/html":
+                return {"ok": False, "neden": "Link geçersiz (HTML döndü), yeni link ver."}
+
+            cl = resp.headers.get("Content-Length")
+            cr = resp.headers.get("Accept-Ranges")
+            if cr != "bytes":
+                # Sunucu Range desteklemiyor olabilir, ama bazı sunucular başlıkta göndermese de destekler.
+                pass
+
+            yerel_boyut = dosya_yolu.stat().st_size
+            if cl and int(cl) != yerel_boyut:
+                 return {"ok": False, "neden": f"Boyut uyuşmuyor. Beklenen: {yerel_boyut}, Linkteki: {cl}"}
+
+        except Exception as e:
+            return {"ok": False, "neden": f"Link doğrulanamadı: {str(e)}"}
+
+        from . import butunluk
+        # Sadece bozuk blokları al
+        # Eğer options'ta kayıtlı bir onarım varsa ondan devam et
+        rep = opts.get("repair_state", {})
+        if rep and rep.get("yeni_url") == yeni_url and rep.get("bozuk_bloklar"):
+            # Kaldığı yerden
+            pass
+        else:
+            scan_res = butunluk.tara(str(dosya_yolu), beklenen_boyut=yerel_boyut)
+            if scan_res.get("durum") != "bozuk":
+                 return {"ok": False, "neden": "Dosya sağlam, onarıma gerek yok."}
+
+            rep = {
+                "bozuk_bloklar": scan_res.get("bozuk_bloklar", []),
+                "toplam_blok": scan_res.get("toplam_blok", 0),
+                "duzeltilen": 0,
+                "yeni_url": yeni_url,
+                "hata": ""
+            }
+
+        opts["repair_state"] = rep
+        self.store.update_by_gid(gid, options=json.dumps(opts, ensure_ascii=False), status="repairing")
+
+        import threading
+        t = threading.Thread(target=self._repair_thread, args=(gid,), daemon=True)
+        t.start()
+
+        return {"ok": True, "durum": "Onarım başlatıldı."}
+
+    def _repair_thread(self, gid: str):
+        import urllib.request
+        import urllib.error
+        import json
+        row = self.store.by_gid(gid)
+        if not row: return
+
+        opts = json.loads(row.get("options") or "{}")
+        rep = opts.get("repair_state", {})
+        if not rep: return
+
+        dosya_yolu = self.resolve_item_path(gid)
+        if not dosya_yolu or not dosya_yolu.exists(): return
+
+        yeni_url = rep.get("yeni_url")
+        bozuk_bloklar = rep.get("bozuk_bloklar", [])
+
+        try:
+            with open(dosya_yolu, "r+b") as f:
+                while bozuk_bloklar:
+                    guncel_row = self.store.by_gid(gid)
+                    if not guncel_row or guncel_row.get("status") != "repairing":
+                        break
+
+                    blok = bozuk_bloklar[0]
+                    start = blok["offset"]
+                    end = start + blok["boyut"] - 1
+
+                    from . import butunluk
+                    basl = {}
+                    for h in opts.get("header", []):
+                        if ":" in h:
+                            k, v = h.split(":", 1)
+                            basl[k.strip()] = v.strip()
+                    data = butunluk.blok_indir(yeni_url, basl, start, blok["boyut"])
+
+                    f.seek(start)
+                    f.write(data)
+
+                    bozuk_bloklar.pop(0)
+                    rep["duzeltilen"] += 1
+                    rep["bozuk_bloklar"] = bozuk_bloklar
+                    opts["repair_state"] = rep
+                    self.store.update_by_gid(gid, options=json.dumps(opts, ensure_ascii=False))
+
+            guncel_row = self.store.by_gid(gid)
+            if guncel_row and guncel_row.get("status") == "repairing":
+                if not bozuk_bloklar:
+                    from . import butunluk
+                    scan_res = butunluk.tara(str(dosya_yolu), beklenen_boyut=dosya_yolu.stat().st_size)
+                    if scan_res.get("durum") == "saglam":
+                        opts.pop("repair_state", None)
+                        self.store.update_by_gid(gid, options=json.dumps(opts, ensure_ascii=False), status="complete", error=None)
+                        aria2_file = dosya_yolu.parent / (dosya_yolu.name + ".aria2")
+                        if aria2_file.exists():
+                            try: aria2_file.unlink()
+                            except: pass
+                        self.store.log("info", f"Onarım tamamlandı: {guncel_row.get('title')}", gid=gid)
+                    else:
+                        raise Exception("Onarım sonrası tarama başarısız. Hala bozuk blok var.")
+        except Exception as e:
+            guncel_row = self.store.by_gid(gid)
+            if guncel_row and guncel_row.get("status") == "repairing":
+                rep["hata"] = str(e)
+                opts["repair_state"] = rep
+                self.store.update_by_gid(gid, options=json.dumps(opts, ensure_ascii=False), status="error", error=f"Onarım hatası: {str(e)}")
+
+    def butunluk_hepsini_tara(self) -> dict:
+        from . import butunluk
+        rows = self.store.all_downloads()
+        complete_rows = [r for r in rows if r.get("status") == "complete" and r.get("kind") in ("http", "ftp")]
+        sonuclar = {}
+        for row in complete_rows:
+            gid = row.get("gid")
+            if gid:
+                sonuc = self.butunluk_tara(gid)
+                sonuclar[gid] = sonuc
+        return {"ok": True, "sonuclar": sonuclar, "taranan": len(complete_rows)}
+
 
     # --- bitis islemleri --------------------------------------------------
     def _on_complete(self, title: str, size: int, gid: str = "") -> None:
         self.store.log("info", f"tamamlandi: {title} ({human_size(size)})", gid=gid or "")
+        tara_sonuc = self.butunluk_tara(gid)
+        if tara_sonuc.get("ok") and tara_sonuc.get("durum") == "bozuk":
+            self.store.log("warn", f"Bozuk indi: {title} - {tara_sonuc.get('neden')}", gid=gid or "")
+            if self.store.get("windows_notifications") and callable(self.windows_notify):
+                try: self.windows_notify("AfuDM", "Bozuk indi: Yeniden indirmeniz gerekebilir.")
+                except Exception: pass
+            # Bozuksa otomasyona/kapatmaya vs gitmesin, direk don.
+            return
+
         self.automation.enqueue_download(gid, self.store.by_gid(gid))
         if self.store.get("windows_notifications") and callable(self.windows_notify):
             try: self.windows_notify("AfuDM", f"Indirme tamamlandi: {title}")

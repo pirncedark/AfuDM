@@ -28,6 +28,17 @@ class PendingPersistenceTest(unittest.TestCase):
         restarted.al(ident)
         self.assertNotIn(ident, [r["id"] for r in kaydet.Bekleyenler().ozet()])
 
+    def test_request_retry_survives_restart_without_second_prompt(self):
+        request = {"url": "https://example.test/a.zip", "request_id": "retry-123"}
+        queue = kaydet.Bekleyenler()
+        ident = queue.ekle(request)
+        self.assertEqual(queue.ekle(request), ident)
+        restarted = kaydet.Bekleyenler()
+        self.assertEqual(restarted.ekle(request), ident)
+        self.assertEqual(len(restarted.ozet()), 1)
+        with self.assertRaises(ValueError):
+            restarted.ekle({**request, "url": "https://example.test/b.zip"})
+
     def test_atomic_failure_keeps_previous_file_and_memory(self):
         queue = kaydet.Bekleyenler()
         queue.ekle({"url": "https://example.test/a.pdf"})

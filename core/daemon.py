@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import atexit
+from collections import deque
 import json
 import re
 import secrets
@@ -139,7 +140,7 @@ def _args(secret: str, download_dir: str, port: int = RPC_PORT) -> list[str]:
         "--bt-detach-seed-only=true",
         "--seed-ratio=1.0",
         "--follow-torrent=true",
-        "--bt-save-metadata=true",
+        "--bt-save-metadata=false",
         # --- oturum: kapatip acinca kaldigi yerden ---
         "--save-session=%s" % paths.SESSION_FILE,
         "--input-file=%s" % paths.SESSION_FILE,
@@ -157,6 +158,15 @@ def _args(secret: str, download_dir: str, port: int = RPC_PORT) -> list[str]:
         # iptal eder (IPv4'e dusmez) — netcheck bunu calisma aninda olcer.
         *netcheck.aria2_ipv6_args(),
     ]
+
+
+def _startup_log_tail() -> str:
+    """Keep startup diagnostics available even if aria2 never created its log."""
+    try:
+        with paths.ARIA2_LOG.open(encoding="utf-8", errors="replace") as log:
+            return "".join(deque(log, maxlen=20)).strip() or "(log bos)"
+    except OSError as exc:
+        return "(log okunamadi: %s)" % exc
 
 
 class Aria2Daemon:
@@ -223,8 +233,9 @@ class Aria2Daemon:
                 return self.rpc
             if self.proc.poll() is not None:
                 raise RuntimeError(
-                    "aria2c baslatilamadi (cikis kodu %s). Log: %s"
-                    % (self.proc.returncode, paths.ARIA2_LOG)
+                    "aria2c baslatilamadi (cikis kodu %s). Log: %s\nSon 20 satir:\n%s"
+                    % (self.proc.returncode, paths.ARIA2_LOG,
+                       _startup_log_tail().replace(self.secret, "[REDACTED]"))
                 )
             time.sleep(0.25)
         raise TimeoutError(

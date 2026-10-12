@@ -40,6 +40,7 @@ try {
         "ui/download.js",
         "extension/manifest.json",
         "extension/download-handoff.js",
+        "extension/download-preflight.js",
         "core/surum.py",
         "engine/aria2c.exe"
     )

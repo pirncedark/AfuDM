@@ -409,10 +409,20 @@ class Store:
 
     def rules_save(self, rules: list[dict]) -> None:
         with self._lock:
-            self.conn.execute("BEGIN"); self.conn.execute("DELETE FROM rules")
-            for priority, rule in enumerate(rules, 1):
-                self.conn.execute("INSERT INTO rules(id,name,active,priority,match_type,conditions,actions) VALUES(?,?,?,?,?,?,?)", (rule["id"],rule["name"],int(bool(rule.get("active",True))),priority,rule.get("match_type","all"),json.dumps(rule.get("conditions") or []),json.dumps(rule.get("actions") or {})))
-            self.conn.commit()
+            # BEGIN sonrasi INSERT hatasi (eksik "id"/"name" gibi) islemi ACIK
+            # birakirdi; sonraki commit yarim/bos kurallari kalicilastirirdi.
+            # Bu yuzden hata halinde rollback + yeniden yukseltilir.
+            try:
+                self.conn.execute("BEGIN"); self.conn.execute("DELETE FROM rules")
+                for priority, rule in enumerate(rules, 1):
+                    self.conn.execute("INSERT INTO rules(id,name,active,priority,match_type,conditions,actions) VALUES(?,?,?,?,?,?,?)", (rule["id"],rule["name"],int(bool(rule.get("active",True))),priority,rule.get("match_type","all"),json.dumps(rule.get("conditions") or []),json.dumps(rule.get("actions") or {})))
+                self.conn.commit()
+            except Exception:
+                try:
+                    self.conn.rollback()
+                except sqlite3.Error:
+                    pass
+                raise
 
     # --- indirmeler -------------------------------------------------------
     def add(

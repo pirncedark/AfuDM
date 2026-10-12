@@ -14,6 +14,7 @@ try {
         "tests/guncelleme_test.py",
         "tests/extension_pending_message_test.mjs",
         "tests/extension_download_handoff_test.mjs",
+        "tests/extension_preflight_test.mjs",
         "tests/download_window_ui_test.mjs",
         "tests/download_window_test.py",
         "tests/pdf_handoff_http_test.py"

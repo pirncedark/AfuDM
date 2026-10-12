@@ -1,4 +1,5 @@
 import sys
+import tempfile
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from core.manager import Manager
@@ -163,18 +164,17 @@ def test_iptal_edildiginde_indirme_kaldiriliyor():
 def test_tek_dosyali_ve_turkce_isimli_torrent():
     mgr = DummyManager()
     mgr._proksi = lambda opts: None
-    tor_file = Path("test.torrent")
-    tor_file.write_bytes(b"dummy")
-    try:
+    # Ornek dosya GECICI dizinde: depo kokundeki ayni adli dosya ezilmez/silinmez.
+    with tempfile.TemporaryDirectory() as klasor:
+        tor_file = Path(klasor) / "test.torrent"
+        tor_file.write_bytes(b"dummy")
         gid = mgr.torrent_on_ekle(str(tor_file))
         dosyalar = mgr.torrent_dosyalari(gid)
-        assert getattr(dosyalar, "hazir_degil", False) is False
-        assert len(dosyalar) == 1
-        assert dosyalar[0]["ad"] == "türkçe_belge.txt"
-        assert dosyalar[0]["yol"] == "türkçe_belge.txt"
-    finally:
-        if tor_file.exists():
-            tor_file.unlink()
+
+    assert getattr(dosyalar, "hazir_degil", False) is False
+    assert len(dosyalar) == 1
+    assert dosyalar[0]["ad"] == "türkçe_belge.txt"
+    assert dosyalar[0]["yol"] == "türkçe_belge.txt"
 
 
 def _api(manager, pending):
@@ -194,11 +194,10 @@ def test_bekleyen_onayla_on_eklenen_torrent_gidini_kullanir():
 
     mgr = DummyManager()
     mgr._proksi = lambda opts: None
-    url = "dialog-preview.torrent"
-    Path(url).write_bytes(b"dummy torrent")
-    try:
+    with tempfile.TemporaryDirectory() as klasor:
+        url = str(Path(klasor) / "dialog-preview.torrent")
+        Path(url).write_bytes(b"dummy torrent")
         preview_gid = mgr.torrent_on_ekle(url)
-        import tempfile
         from unittest.mock import patch
         from core import paths
         with tempfile.TemporaryDirectory() as folder, patch.object(paths, "DATA", Path(folder)):
@@ -207,8 +206,6 @@ def test_bekleyen_onayla_on_eklenen_torrent_gidini_kullanir():
             result = _api(mgr, pending).bekleyen_onayla(
                 kimlik, {"adopt_gid": preview_gid, "selected_files": [1]}
             )
-    finally:
-        Path(url).unlink(missing_ok=True)
 
     assert result["ok"] is True
     assert len(mgr.rpc.eklenenler) == 1
@@ -224,9 +221,9 @@ def test_servis_ekle_on_eklenen_torrent_gidini_kullanir():
 
     mgr = DummyManager()
     mgr._proksi = lambda opts: None
-    url = "dialog-preview-service.torrent"
-    Path(url).write_bytes(b"dummy torrent")
-    try:
+    with tempfile.TemporaryDirectory() as klasor:
+        url = str(Path(klasor) / "dialog-preview-service.torrent")
+        Path(url).write_bytes(b"dummy torrent")
         preview_gid = mgr.torrent_on_ekle(url)
         service = object.__new__(AfuDMServis)
         service.manager = mgr
@@ -234,8 +231,6 @@ def test_servis_ekle_on_eklenen_torrent_gidini_kullanir():
         result = service.ekle({
             "urls": [url], "adopt_gid": preview_gid, "selected_files": [1]
         })
-    finally:
-        Path(url).unlink(missing_ok=True)
 
     assert result["ok"] is True
     assert len(mgr.rpc.eklenenler) == 1
@@ -276,12 +271,10 @@ def test_torrent_dosyasi_infohashi_bulunup_paused_gid_benimsenir():
     mgr.store.attach_gid(row, preview_gid)
     # The preview has no DB row: remove it to model the save dialog's temporary GID.
     mgr.store.kayitlar.clear()
-    path = Path("infohash-test.torrent")
-    path.write_bytes(torrent)
-    try:
+    with tempfile.TemporaryDirectory() as klasor:
+        path = Path(klasor) / "infohash-test.torrent"
+        path.write_bytes(torrent)
         result = mgr.add(str(path), kind="torrent")
-    finally:
-        path.unlink(missing_ok=True)
 
     assert len(mgr.rpc.eklenenler) == 0
     assert result["gid"] == preview_gid
@@ -322,21 +315,17 @@ def test_cok_dosyali_bencode_infohashi_tekli_yol_ve_tekli_tracker_listelerinde_b
             (b"info", info),
         ])
     )
-    path = Path("multi-file-odd-lists.torrent")
-    path.write_bytes(torrent)
-    try:
+    with tempfile.TemporaryDirectory() as klasor:
+        path = Path(klasor) / "multi-file-odd-lists.torrent"
+        path.write_bytes(torrent)
         assert Manager._torrent_dosya_infohash(str(path)) == hashlib.sha1(info).hexdigest()
-    finally:
-        path.unlink(missing_ok=True)
 
 
 def test_bozuk_torrent_bencode_infohashi_bos_doner():
-    path = Path("malformed-infohash.torrent")
-    path.write_bytes(b"d4:infod4:pathl5:abc")
-    try:
+    with tempfile.TemporaryDirectory() as klasor:
+        path = Path(klasor) / "malformed-infohash.torrent"
+        path.write_bytes(b"d4:infod4:pathl5:abc")
         assert Manager._torrent_dosya_infohash(str(path)) == ""
-    finally:
-        path.unlink(missing_ok=True)
 
 if __name__ == "__main__":
     test_duraklatilmis_ekleme_gid_dondurur()

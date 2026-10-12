@@ -198,7 +198,7 @@ def _duz_ornekler(f, stbl: Kutu) -> list[Ornek]:
         i = 8
         for _ in range(adet):
             sayi = _u32(ctts, i)
-            kayma = struct.unpack_from(">i", ctts, i + 4)[0]
+            kayma = struct.unpack_from(">i" if ctts[0] == 1 else ">I", ctts, i + 4)[0]
             cts_liste.extend([kayma] * sayi)
             i += 8
 
@@ -250,15 +250,16 @@ def _parcali_ornekler(f, dosya_boyutu: int, iz_kimlik: int, trex: dict) -> list[
                 i += 4
             v_bayrak = _u32(veri, i) if bayraklar & 0x000020 else trex["bayrak"]
 
+            sonraki_ofset = temel_ofset
             for trun in (c for c in traf.cocuklar if c.tur == b"trun"):
                 f.seek(trun.govde)
                 t = f.read(trun.konum + trun.boyut - trun.govde)
                 t_bayrak = int.from_bytes(t[1:4], "big")
                 sayi = _u32(t, 4)
                 j = 8
-                konum = temel_ofset
+                konum = sonraki_ofset
                 if t_bayrak & 0x000001:       # data-offset-present (isaretli)
-                    konum += struct.unpack_from(">i", t, j)[0]
+                    konum = temel_ofset + struct.unpack_from(">i", t, j)[0]
                     j += 4
                 ilk_ornek_bayragi = None
                 if t_bayrak & 0x000004:       # first-sample-flags-present
@@ -275,7 +276,7 @@ def _parcali_ornekler(f, dosya_boyutu: int, iz_kimlik: int, trex: dict) -> list[
                     if t_bayrak & 0x000400:
                         bayrak = _u32(t, j); j += 4
                     if t_bayrak & 0x000800:
-                        cts = struct.unpack_from(">i", t, j)[0]; j += 4
+                        cts = struct.unpack_from(">i" if t[0] == 1 else ">I", t, j)[0]; j += 4
                     if n == 0 and ilk_ornek_bayragi is not None:
                         bayrak = ilk_ornek_bayragi
                     # bayragin 16. biti "sample_is_non_sync_sample"
@@ -283,6 +284,7 @@ def _parcali_ornekler(f, dosya_boyutu: int, iz_kimlik: int, trex: dict) -> list[
                     ornekler.append(Ornek(ofset=konum, boyut=boyut, sure=sure,
                                           cts=cts, anahtar=anahtar))
                     konum += boyut
+                sonraki_ofset = konum
     return ornekler
 
 
@@ -403,8 +405,9 @@ def _ctts(ornekler: list[Ornek]):
             girisler[-1][0] += 1
         else:
             girisler.append([1, o.cts])
-    govde = _tam(0) + _tam(len(girisler))
-    govde += b"".join(_tam(a) + struct.pack(">i", b) for a, b in girisler)
+    surum = 1 if any(o.cts < 0 for o in ornekler) else 0
+    govde = _tam(surum << 24) + _tam(len(girisler))
+    govde += b"".join(_tam(a) + struct.pack(">i" if surum else ">I", b) for a, b in girisler)
     return _kutu(b"ctts", govde)
 
 

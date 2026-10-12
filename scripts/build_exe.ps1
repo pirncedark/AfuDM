@@ -15,7 +15,7 @@ $kok = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Push-Location $kok
 try {
     if (-not (Test-Path "AfuDM.spec")) { Write-Host "GATE HATA: AfuDM.spec yok"; exit 1 }
-    foreach ($asset in @("ui/download.html", "ui/download.js", "extension/download-handoff.js")) {
+    foreach ($asset in @("ui/download.html", "ui/download.js", "extension/download-handoff.js", "extension/download-preflight.js")) {
         if (-not (Test-Path $asset -PathType Leaf)) {
             Write-Host "GATE HATA: $asset yok"
             exit 1

@@ -139,7 +139,7 @@ delegate bool EnumProc(System.IntPtr h, System.IntPtr l);
 [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(System.IntPtr h, System.Text.StringBuilder s, int n);
 [DllImport("user32.dll")] static extern bool IsWindowVisible(System.IntPtr h);
 [DllImport("user32.dll")] public static extern System.IntPtr GetDlgItem(System.IntPtr h, int id);
-[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern System.IntPtr SendMessage(System.IntPtr h, int m, System.IntPtr w, string l);
+[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern System.IntPtr SendMessageTimeout(System.IntPtr h, int m, System.IntPtr w, string l, int f, int t, out System.IntPtr res);
 [DllImport("user32.dll")] public static extern bool PostMessage(System.IntPtr h, int m, System.IntPtr w, System.IntPtr l);
 [DllImport("user32.dll")] public static extern bool IsWindow(System.IntPtr h);
 public static System.IntPtr Bul(int[] pids) {
@@ -157,6 +157,9 @@ public static System.IntPtr Bul(int[] pids) {
 }
 "@
 function Diyalog {
+  # DIKKAT: burada $HedefPid KULLANILMAZ. Chrome klasor secme penceresini AYRI bir
+  # chrome.exe surecinde acar; pencere sahibi hedef PID degil. Yalnizca hedef PID'e
+  # bakmak pencereyi gormeyi engeller ("Klasor secme penceresi acilmadi").
   $pids = [int[]]@(Get-Process chrome -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
   $h = [AfuDM.Diyalog]::Bul($pids)
   if ($h -ne [System.IntPtr]::Zero) { return $h }
@@ -167,7 +170,8 @@ $WM_SETTEXT = 0x000C; $BM_CLICK = 0x00F5
 for ($deneme = 0; $deneme -lt 3 -and [AfuDM.Diyalog]::IsWindow($diyalog); $deneme++) {
   # Ilk denemede tam yol; pencere klasorun ICINE girdiyse bos birakip "Klasor Sec".
   $deger = if ($deneme -eq 0) { $Klasor } else { "" }
-  [void][AfuDM.Diyalog]::SendMessage([AfuDM.Diyalog]::GetDlgItem($diyalog, 1152), $WM_SETTEXT, [System.IntPtr]::Zero, $deger)
+  $res = [System.IntPtr]::Zero
+  [void][AfuDM.Diyalog]::SendMessageTimeout([AfuDM.Diyalog]::GetDlgItem($diyalog, 1152), $WM_SETTEXT, [System.IntPtr]::Zero, $deger, 2, 2000, [ref]$res)
   # PostMessage: tik diyalogu kapatirken bu betik beklemede kalmasin
   [void][AfuDM.Diyalog]::PostMessage([AfuDM.Diyalog]::GetDlgItem($diyalog, 1), $BM_CLICK, [System.IntPtr]::Zero, [System.IntPtr]::Zero)
   Start-Sleep -Milliseconds 1500
@@ -287,26 +291,36 @@ class OtomatikEkleme:
             betik = subprocess.Popen(komut, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                      text=True, encoding="utf-8", errors="replace",
                                      creationflags=CREATE_NO_WINDOW)
+            # stdout dongusu ancak surec BITINCE doner; eskiden wait(timeout=180)
+            # donguye SONRA geldiginden zaman asimi sessizce gec kaliyordu.
+            # Simdi zaman asimi ayri bir zamanlayicida, akis da kapatilir.
             son_hata = ""
-            for satir in betik.stdout:  # type: ignore[union-attr]
-                satir = satir.strip()
-                if not satir.startswith("{"):
-                    if satir:
-                        son_hata = satir[:300]
-                    continue
-                try:
-                    olay = json.loads(satir)
-                except json.JSONDecodeError:
-                    continue
-                self._guncelle(adim=(olay["adim"], olay["durum"]))
-                if olay["durum"] == "hata":
-                    son_hata = olay.get("mesaj", "")
-                else:
-                    sira = ADIMLAR.index(olay["adim"])
-                    if sira + 1 < len(ADIMLAR):
-                        self._guncelle(adim=(ADIMLAR[sira + 1], "calisiyor"))
-            kod = betik.wait(timeout=180)
-            self._guncelle(sonuc="kuruldu" if kod == 0 else "hata", mesaj="" if kod == 0 else son_hata)
+            zaman_asimi = threading.Timer(180.0, lambda: betik.kill())
+            zaman_asimi.start()
+            try:
+                for satir in betik.stdout:  # type: ignore[union-attr]
+                    satir = satir.strip()
+                    if not satir.startswith("{"):
+                        if satir:
+                            son_hata = satir[:300]
+                        continue
+                    try:
+                        olay = json.loads(satir)
+                    except json.JSONDecodeError:
+                        continue
+                    self._guncelle(adim=(olay["adim"], olay["durum"]))
+                    if olay["durum"] == "hata":
+                        son_hata = olay.get("mesaj", "")
+                    else:
+                        sira = ADIMLAR.index(olay["adim"])
+                        if sira + 1 < len(ADIMLAR):
+                            self._guncelle(adim=(ADIMLAR[sira + 1], "calisiyor"))
+                kod = betik.wait()
+                self._guncelle(sonuc="kuruldu" if kod == 0 else "hata", mesaj="" if kod == 0 else son_hata)
+            finally:
+                zaman_asimi.cancel()
+                if betik.stdout is not None:
+                    betik.stdout.close()
         except Exception as exc:  # otomasyon basarisizsa elle kurulum yolu hala acik
             self._guncelle(sonuc="hata", mesaj=str(exc)[:300])
         finally:

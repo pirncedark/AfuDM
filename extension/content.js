@@ -243,8 +243,10 @@
       drmSebebi = String(veri.sebep || "drm");
     } else if (veri.tur === "liste" && typeof veri.url === "string"
                && typeof veri.metin === "string") {
+      yasayanListeler.delete(veri.url);
       yasayanListeler.set(veri.url, veri.metin.slice(0, 2_000_000));
       if (veri.istek && typeof veri.istek === "object") {
+        listeBasliklari.delete(veri.url);
         listeBasliklari.set(veri.url, veri.istek);
       }
       if (yasayanListeler.size > 16) {

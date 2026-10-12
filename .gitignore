@@ -38,6 +38,13 @@ tanilar/*.zip
 dist_test/
 .gradle/
 _yedek/
+
+# --- Ajan calisma notlari: gecici gorev/sonuc dosyalari, depoya girmez ---
+_gorev/
+_kurtarma/
+/GOREV_*.md
+/SONUC_*.md
+/DOWNLOAD_WINDOW_REVIEW_CODEX.md
 /startup-*.log
 /download_audit_results*.json
 /download_window_final_results.json

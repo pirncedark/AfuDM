@@ -303,6 +303,7 @@ def main() -> int:
 
             set_cfg(sendCookies=False)
             _Quiet.aria2_istekleri.clear()
+            page.wait_for_timeout(2000)
             page.click("#korumali")
             item = wait_for(korumali_item, timeout=20)
             if item:

@@ -14,6 +14,7 @@ REQUIRED_ASSETS = (
     "ui/download.html",
     "ui/download.js",
     "extension/download-handoff.js",
+    "extension/download-preflight.js",
 )
 
 

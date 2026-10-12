@@ -28,6 +28,7 @@ from pathlib import Path
 
 from core import models, paths
 from core.hata import hata_json
+from core.paylasim_sunucusu import _range_coz
 
 _LOG = logging.getLogger(__name__)
 
@@ -146,9 +147,44 @@ def _boolean_al(data: dict, anahtar: str) -> bool:
         normal = deger.strip().lower()
         if normal in ("true", "1"):
             return True
-        if normal in ("false", "0"):
+        if normal in ("false", "0", "", "no"):
             return False
     raise ValueError(f"{anahtar} boolean olmali (true/false/1/0)")
+
+
+class _GovdeHatasi(ValueError):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+
+
+def _govde_oku(handler, limit: int = 8 * 1024 * 1024) -> dict:
+    try:
+        length = int(handler.headers.get("Content-Length") or 0)
+    except ValueError:
+        handler.close_connection = True
+        raise _GovdeHatasi(400, "Istek okunamadi. Yeniden dene.")
+    if length < 0 or length > limit:
+        handler.close_connection = True
+        raise _GovdeHatasi(413 if length > limit else 400,
+                           "Istek boyutu uygun degil. Daha kucuk bir istek gonder.")
+    if not length:
+        return {}
+    try:
+        raw = handler.rfile.read(length)
+    except (TimeoutError, OSError):
+        handler.close_connection = True
+        raise _GovdeHatasi(408, "Istek tamamlanamadi. Yeniden dene.")
+    if len(raw) != length:
+        handler.close_connection = True
+        raise _GovdeHatasi(400, "Istek eksik geldi. Yeniden dene.")
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise _GovdeHatasi(400, "Istek okunamadi. Yeniden dene.")
+    if not isinstance(data, dict):
+        raise _GovdeHatasi(400, "Istek bicimi uygun degil. Yeniden dene.")
+    return data
 
 
 def load_or_create_token() -> str:
@@ -189,6 +225,10 @@ class _Handler(BaseHTTPRequestHandler):
     rotate_token = None
     _rate: dict[str, list[float]] = {}
     shared_files: dict[str, dict] = {}
+
+    def setup(self) -> None:
+        self.request.settimeout(15.0)
+        super().setup()
 
     # --- yardimcilar ------------------------------------------------------
     def log_message(self, fmt: str, *args) -> None:  # konsolu kirletmesin
@@ -320,17 +360,13 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             file_size = yol.stat().st_size
             range_header = self.headers.get("Range", "")
-            start, end = 0, file_size - 1
-            if range_header.startswith("bytes="):
-                try:
-                    ranges = range_header.split("=")[1].split("-")
-                    start = int(ranges[0]) if ranges[0] else 0
-                    end = int(ranges[1]) if len(ranges) > 1 and ranges[1] else file_size - 1
-                except ValueError:
-                    pass
-            if start >= file_size:
+            try:
+                start, end = _range_coz(range_header, file_size)
+            except ValueError:
                 self.send_response(416)
                 self.send_header("Content-Range", f"bytes */{file_size}")
+                self.send_header("Content-Length", "0")
+                self._cors()
                 self.end_headers()
                 return
             chunk_size = end - start + 1
@@ -367,14 +403,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self._hata(500, "AKIS_HATASI", "Dosya aktarimi baslatilamadi")
 
     def _body(self) -> dict:
-        length = int(self.headers.get("Content-Length") or 0)
-        if not length:
-            return {}
-        raw = self.rfile.read(length)
-        try:
-            return json.loads(raw.decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            return {}
+        return _govde_oku(self)
 
     # --- yollar -----------------------------------------------------------
     def do_OPTIONS(self) -> None:  # noqa: N802
@@ -904,6 +933,8 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(200, {"ok": True, "pending": True})
             else:
                 self._hata(404, "BILINMEYEN_YOL", "bilinmeyen yol")
+        except _GovdeHatasi as exc:
+            self._hata(exc.status, "GOVDE_HATASI", str(exc))
         except Exception as exc:
             self._handoff_error = f"{type(exc).__name__}: {exc}"
             govde = hata_json(exc)

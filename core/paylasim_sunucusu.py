@@ -7,6 +7,27 @@ from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 
+def _range_coz(header: str, size: int) -> tuple[int, int]:
+    """Tek bytes araligini dogrula; doyurulamayan aralik ValueError verir."""
+    if not header:
+        return 0, size - 1
+    import re
+    match = re.fullmatch(r"bytes=([0-9]*)-([0-9]*)", header.strip())
+    if not match or size <= 0:
+        raise ValueError("gecersiz aralik")
+    left, right = match.groups()
+    if not left:
+        suffix = int(right) if right else 0
+        if suffix <= 0:
+            raise ValueError("gecersiz suffix")
+        return max(size - suffix, 0), size - 1
+    start = int(left)
+    end = min(int(right), size - 1) if right else size - 1
+    if start >= size or end < start:
+        raise ValueError("aralik dosya disinda")
+    return start, end
+
+
 class _PaylasimHandler(BaseHTTPRequestHandler):
     shares: dict[str, dict] = {}
 
@@ -37,27 +58,16 @@ class _PaylasimHandler(BaseHTTPRequestHandler):
                 self._send_error()
                 return
 
-            start, end, partial = 0, max(size - 1, 0), False
             range_header = self.headers.get("Range", "")
-            if range_header:
-                if not range_header.startswith("bytes=") or "," in range_header:
-                    self._send_error()
-                    return
-                spec = range_header[6:].strip()
-                try:
-                    left, right = spec.split("-", 1)
-                    if not left:
-                        length = int(right)
-                        start = max(size - length, 0)
-                    else:
-                        start = int(left)
-                    end = min(int(right), size - 1) if right else size - 1
-                    if start < 0 or start > end or start >= size:
-                        raise ValueError
-                    partial = True
-                except (ValueError, TypeError):
-                    self._send_error()
-                    return
+            try:
+                start, end = _range_coz(range_header, size)
+            except ValueError:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            partial = bool(range_header)
 
             length = max(0, end - start + 1)
             self.send_response(206 if partial else 200)

@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT))
 
 import paketle  # noqa: E402
 
-PROMPT_ASSETS = ("ui/download.html", "ui/download.js", "extension/download-handoff.js")
+PROMPT_ASSETS = ("ui/download.html", "ui/download.js", "extension/download-handoff.js", "extension/download-preflight.js")
 
 
 def test_release_bundle_imports_without_checkout_path() -> None:

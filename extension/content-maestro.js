@@ -67,10 +67,11 @@
       istek: istekBasliklari || {},
       yanit: yanitBasliklari || {},
     };
-    const vardi = depo.has(adres);
+    const eski = depo.get(adres);
+    const degisti = !eski || eski.metin !== kayit.metin || JSON.stringify(eski.istek) !== JSON.stringify(kayit.istek);
     depo.set(adres, kayit);                       // tazesi eskisini ezsin (imza yenilenir)
     while (depo.size > EN_COK_KAYIT) depo.delete(depo.keys().next().value);
-    if (!vardi) duyur(kayit);
+    if (degisti) duyur(kayit);
   }
 
   function drmBildir(sebep) {
