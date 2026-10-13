@@ -490,3 +490,15 @@ dedikten sonraki 2 dakika içinde verilir. aria2'nin RPC anahtarı da her
 kurulumda rastgele üretilir.
 
 Geliştirme notları: `docs/DURUM.md`
+
+## License / Lisans
+
+AfuDM's original code is licensed under the [MIT License](LICENSE).
+Third-party software, bundled engines, runtime dependencies, and files with
+existing license notices retain their own licenses and copyright notices.
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the existing
+[AfuDM Mobile license](AfuDM_Mobile/LICENSE).
+
+AfuDM'nin özgün kodu [MIT lisansı](LICENSE) ile yayımlanır. Üçüncü taraf
+bileşenlerin ve mevcut lisans bildirimi taşıyan dosyaların kendi lisansları
+ve telif bildirimleri korunur; kök MIT lisansı bunların yerine geçmez.
