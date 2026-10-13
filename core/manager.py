@@ -1319,7 +1319,16 @@ class Manager:
             raise ValueError("kayit bulunamadi")
         if row.get("gid") in getattr(self, "_auth_required_gids", set()):
             raise ValueError("Bu indirme yeni giris bilgisi gerektiriyor; Yenile akisini kullanin.")
+        eski_gid = row.get("gid")
         self.store.update_by_id(row_id, status="queued", gid=None, error=None)
+        if eski_gid:
+            # Ayni kayit yerinde yeniden baslar; motorun eski hata kaydi ikinci
+            # bir "Hata" satiri olarak listede kalmasin.
+            self._removed_gids.add(eski_gid)
+            try:
+                self.rpc.remove_result(eski_gid)
+            except Aria2Error:
+                pass
         return self._launch(self.store.by_id(row_id))  # type: ignore[arg-type]
 
     # --- olen linki yenileme (NDM'nin "Renew expired link" mantigi) ----------
@@ -1414,7 +1423,7 @@ class Manager:
                 try: os.remove(dosya_yolu + ".aria2")
                 except: pass
 
-            try: self.rpc.remove_download_result(gid)
+            try: self.rpc.remove_result(gid)
             except: pass
 
             aria_opt = self._baglanti_secenekleri(options)
