@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.5](https://github.com/pirncedark/AfuDM/compare/v2.9.4...v2.9.5) (2026-10-13)
+
+
+### Bug Fixes
+
+* **integrity:** stop false 'damaged block' alarms; update button no longer stuck on hidden approvals ([#109](https://github.com/pirncedark/AfuDM/issues/109)) ([61df810](https://github.com/pirncedark/AfuDM/commit/61df810034de5c8d6a6048e67ed734387c6ce008))
+
 ## [2.9.4](https://github.com/pirncedark/AfuDM/compare/v2.9.3...v2.9.4) (2026-10-13)
 
 
