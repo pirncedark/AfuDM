@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.4](https://github.com/pirncedark/AfuDM/compare/v2.9.3...v2.9.4) (2026-10-13)
+
+
+### Bug Fixes
+
+* **manager:** retry restarts the same row without leaving a ghost error row ([#107](https://github.com/pirncedark/AfuDM/issues/107)) ([98c906c](https://github.com/pirncedark/AfuDM/commit/98c906c5fe2ed32d988c71c6238c89651fd1cb3e))
+
 ## [2.9.3](https://github.com/pirncedark/AfuDM/compare/v2.9.2...v2.9.3) (2026-10-12)
 
 
