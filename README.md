@@ -262,6 +262,12 @@ AfuDM/
 
 ---
 
+## Afu family
+
+- [AfuDesk](https://github.com/pirncedark/afudesk) — serverless remote desktop: connect with one code (Windows)
+- [AfuTube](https://github.com/pirncedark/AfuDM/releases?q=afutube) — video downloader (Android)
+- [AfuRemote](https://github.com/pirncedark/AfuRemote) — phone as TV remote (Android)
+
 # AfuDM (Türkçe)
 
 IDM'in yerine geçen portable indirme yöneticisi. Dosya, video ve torrent indirir;
@@ -490,3 +496,9 @@ dedikten sonraki 2 dakika içinde verilir. aria2'nin RPC anahtarı da her
 kurulumda rastgele üretilir.
 
 Geliştirme notları: `docs/DURUM.md`
+
+## Afu ailesi
+
+- [AfuDesk](https://github.com/pirncedark/afudesk) — sunucusuz uzak masaüstü: tek kodla bağlan (Windows)
+- [AfuTube](https://github.com/pirncedark/AfuDM/releases?q=afutube) — video indirici (Android)
+- [AfuRemote](https://github.com/pirncedark/AfuRemote) — telefondan TV kumandası (Android)
