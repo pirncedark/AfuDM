@@ -22,7 +22,10 @@
     let url;
     try {url = new URL(anchor.href, location.href);} catch (_) {return;}
     if (!['http:','https:','magnet:'].includes(url.protocol)) return;
-    if (url.protocol !== 'magnet:' && !anchor.hasAttribute('download') && !files.test(url.pathname) && !fileEndpoint.test(url.pathname)) return;
+    // Browsers honor a `download` attribute only for same-origin links; for other sites the
+    // link just navigates (often to an HTML page), so it must not be taken over.
+    const downloadAttr = anchor.hasAttribute('download') && url.origin === location.origin;
+    if (url.protocol !== 'magnet:' && !downloadAttr && !files.test(url.pathname) && !fileEndpoint.test(url.pathname)) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     const payload = {url:url.href, request_id:crypto.randomUUID(),
