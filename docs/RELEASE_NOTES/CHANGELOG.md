@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.6](https://github.com/pirncedark/AfuDM/compare/v2.9.5...v2.9.6) (2026-10-13)
+
+
+### Bug Fixes
+
+* **extension:** ignore download attribute on cross-origin links ([#111](https://github.com/pirncedark/AfuDM/issues/111)) ([c9b4eec](https://github.com/pirncedark/AfuDM/commit/c9b4eec6bb4dd7bd0266e4face8586d9dd9adcd8))
+
 ## [2.9.5](https://github.com/pirncedark/AfuDM/compare/v2.9.4...v2.9.5) (2026-10-13)
 
 
