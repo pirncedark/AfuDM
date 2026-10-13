@@ -210,6 +210,21 @@ def suite():
             with mock.patch("app.guncelleme.uygula") as apply:
                 assert api.guncelleme_uygula()["bekle"]
                 apply.assert_not_called()
+            # Waiting on an approval is reported as such; only a user click may skip it.
+            with mock.patch("app.guncelleme.uygula") as apply:
+                bekle = api.guncelleme_uygula(True, True)
+                assert bekle["bekle"] and bekle["neden"] == "bekleyen"
+                apply.assert_not_called()
+            with mock.patch("app.guncelleme.uygula", return_value={"ok": True}) as apply:
+                assert api.guncelleme_uygula(False, True)["ok"]
+                apply.assert_called_once()
+            api._cikiliyor = False
+            api._window.destroy.reset_mock()
+            api.manager.snapshot.return_value = {"engine_ok": True, "items": [{"status": "active"}], "stat": {}}
+            with mock.patch("app.guncelleme.uygula") as apply:
+                assert api.guncelleme_uygula(False, True)["neden"] == "aktif"
+                apply.assert_not_called()
+            api.manager.snapshot.return_value = {"engine_ok": True, "items": [], "stat": {}}
             api._bekleyenler.ozet.return_value = []
             api.manager.store.get.side_effect = lambda key, default=None: False
             with mock.patch("app.guncelleme.uygula") as apply:

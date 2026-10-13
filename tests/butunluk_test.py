@@ -167,3 +167,73 @@ def test_blok_indir_html_ve_range_yok_reddedilir():
                 blok_indir("http://127.0.0.1:%d/x" % srv.server_port, {}, 0, 100)
         finally:
             srv.shutdown()
+
+
+def _aria2_kontrol(parca, toplam, dolu_parca):
+    import struct
+    sayi = -(-toplam // parca)
+    bit = bytearray((sayi + 7) // 8)
+    for i in range(dolu_parca):
+        bit[i // 8] |= 0x80 >> (i % 8)
+    return (struct.pack(">HI", 1, 0) + struct.pack(">I", 20) + b"\x00" * 20
+            + struct.pack(">IQQ", parca, toplam, 0) + struct.pack(">I", len(bit)) + bytes(bit))
+
+
+def test_rastgele_veri_json_gibi_baslasa_bozuk_sayilmaz():
+    # Sikistirilmis arsivde bir blok tesaduf '{' ile baslayabilir; JSON hata sayfasi degildir.
+    import random
+    rng = random.Random(7)
+    govde = bytes([0x7B]) + bytes(rng.randrange(256) for _ in range(5000))
+    with tempfile.NamedTemporaryFile(suffix=".rar", delete=False) as f:
+        f.write(b"Rar!\x1A\x07\x01\x00" + govde)
+        dosya_yolu = f.name
+    try:
+        assert tara(dosya_yolu, uzanti=".rar")["durum"] == "saglam"
+    finally:
+        os.remove(dosya_yolu)
+
+
+def test_gercek_json_hata_sayfasi_hala_bozuk():
+    with tempfile.NamedTemporaryFile(suffix=".rar", delete=False) as f:
+        f.write(b'{"error": "link expired", "code": 403}')
+        dosya_yolu = f.name
+    try:
+        assert tara(dosya_yolu, uzanti=".zip")["durum"] == "bozuk"
+    finally:
+        os.remove(dosya_yolu)
+
+
+def test_tam_aria2_kontrol_dosyasi_eksik_sayilmaz_ve_silinir():
+    with tempfile.NamedTemporaryFile(suffix=".rar", delete=False) as f:
+        f.write(b"Rar!\x1A\x07\x01\x00" + b"abc" * 100)
+        dosya_yolu = f.name
+    aria2_yolu = dosya_yolu + ".aria2"
+    with open(aria2_yolu, "wb") as f:
+        f.write(_aria2_kontrol(1024, 1000, 1))
+    try:
+        assert tara(dosya_yolu, uzanti=".rar")["durum"] == "saglam"
+        from core.butunluk import artik_kontrol_dosyasini_sil
+        assert artik_kontrol_dosyasini_sil(dosya_yolu) is True
+        assert not os.path.exists(aria2_yolu)
+    finally:
+        for yol in (dosya_yolu, aria2_yolu):
+            if os.path.exists(yol):
+                os.remove(yol)
+
+
+def test_yarim_aria2_kontrol_dosyasi_eksik_ve_silinmez():
+    with tempfile.NamedTemporaryFile(suffix=".rar", delete=False) as f:
+        f.write(b"Rar!\x1A\x07\x01\x00" + b"abc" * 100)
+        dosya_yolu = f.name
+    aria2_yolu = dosya_yolu + ".aria2"
+    with open(aria2_yolu, "wb") as f:
+        f.write(_aria2_kontrol(100, 1000, 4))
+    try:
+        assert tara(dosya_yolu, uzanti=".rar")["durum"] == "eksik"
+        from core.butunluk import artik_kontrol_dosyasini_sil
+        assert artik_kontrol_dosyasini_sil(dosya_yolu) is False
+        assert os.path.exists(aria2_yolu)
+    finally:
+        for yol in (dosya_yolu, aria2_yolu):
+            if os.path.exists(yol):
+                os.remove(yol)

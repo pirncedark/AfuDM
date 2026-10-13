@@ -2353,27 +2353,30 @@ class Manager:
         sonuc = self.tracker_tara(gid)
         if not sonuc.get("ok"):
             self.store.log("warn", f"tracker taramasi basarisiz: {sonuc.get('error', '')}"[:150], gid=gid or "")
-    def butunluk_tara(self, gid: str) -> dict:
-        from . import butunluk
-        row = self.store.by_gid(gid)
+    def _indirme_dosya_yolu(self, gid: str, row: dict | None = None) -> str | None:
+        row = row or self.store.by_gid(gid)
         if not row:
-            return {"ok": False, "durum": "bulunamadi", "neden": "Kayıt bulunamadı."}
-
+            return None
         dosya_yolu = None
         try:
             status = self.rpc.tell_status(gid, ["files", "dir"])
             dosyalar = status.get("files", [])
             if dosyalar and dosyalar[0].get("path"):
                 dosya_yolu = dosyalar[0]["path"]
-            elif dosyalar and status.get("dir"):
-                # Yol yoksa dir + title deneyelim
-                pass
         except Aria2Error:
             pass
-
         if not dosya_yolu:
             klasor = row.get("dest_dir") or self.current_download_dir()
             dosya_yolu = os.path.join(klasor, row["title"])
+        return dosya_yolu
+
+    def butunluk_tara(self, gid: str) -> dict:
+        from . import butunluk
+        row = self.store.by_gid(gid)
+        if not row:
+            return {"ok": False, "durum": "bulunamadi", "neden": "Kayıt bulunamadı."}
+
+        dosya_yolu = self._indirme_dosya_yolu(gid, row)
 
         if not os.path.exists(dosya_yolu):
             return {"ok": False, "durum": "bulunamadi", "neden": "Dosya diskte bulunamadı."}
@@ -2558,6 +2561,16 @@ class Manager:
                 except Exception: pass
             # Bozuksa otomasyona/kapatmaya vs gitmesin, direk don.
             return
+
+        if tara_sonuc.get("ok") and tara_sonuc.get("durum") == "saglam":
+            # --force-save yuzunden biten indirmenin yaninda kalan .aria2 dosyasi.
+            try:
+                from . import butunluk
+                dosya = self._indirme_dosya_yolu(gid)
+                if dosya:
+                    butunluk.artik_kontrol_dosyasini_sil(dosya)
+            except Exception:
+                pass
 
         self.automation.enqueue_download(gid, self.store.by_gid(gid))
         if self.store.get("windows_notifications") and callable(self.windows_notify):

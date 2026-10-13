@@ -3023,6 +3023,7 @@ document.addEventListener("keydown", (event) => {
 let surumBilgisi = null;
 let guncellemeBilgisi = null;
 let guncellemeIsliyor = false;
+let guncellemeZorla = false;
 
 async function guncellemeKontrol(sessiz = false) {
   try {
@@ -3090,27 +3091,39 @@ async function guncellemeBaslat(otomatik = false) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         continue;
       }
-      const out = await call("guncelleme_uygula", otomatik);
+      const out = await call("guncelleme_uygula", otomatik, guncellemeZorla);
       if (out.iptal) {
         $("guncellemeMesaj").textContent = t("upd.ready", { version: guncellemeBilgisi.yeni });
         dugme.disabled = false;
+        dugme.textContent = t("upd.button");
+        guncellemeZorla = false;
         guncellemeIsliyor = false;
         return;
       }
       if (!out.ok) throw new Error(out.hata || t("upd.error"));
       if (!out.bekle) break;
-      $("guncellemeMesaj").textContent = t("upd.waitIdle");
+      // Yalniz bekleyen bir onay varsa kullanici "Simdi guncelle" ile beklemeyi atlayabilir.
+      const onayBekliyor = out.neden === "bekleyen";
+      $("guncellemeMesaj").textContent = t(onayBekliyor ? "upd.waitPending" : "upd.waitIdle");
+      dugme.textContent = t(onayBekliyor ? "upd.now" : "upd.button");
+      dugme.disabled = !onayBekliyor;
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
     $("guncellemeMesaj").textContent = t("upd.restarting");
   } catch (err) {
     $("guncellemeMesaj").textContent = err.message || t("upd.error");
     dugme.disabled = false;
+    dugme.textContent = t("upd.button");
     guncellemeIsliyor = false;
+    guncellemeZorla = false;
   }
 }
 
-$("guncellemeBtn").onclick = () => guncellemeBaslat(false);
+$("guncellemeBtn").onclick = () => {
+  // Bekleme dongusu zaten calisiyorsa tiklama onu "zorla" kipine alir.
+  if (guncellemeIsliyor) { guncellemeZorla = true; $("guncellemeBtn").disabled = true; return; }
+  guncellemeBaslat(false);
+};
 $("guncellemeKontrolBtn").onclick = async () => {
   $("guncellemeAyarDurum").textContent = "";
   await guncellemeKontrol(false);

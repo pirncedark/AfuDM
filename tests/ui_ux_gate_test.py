@@ -149,6 +149,35 @@ class UIUXGateTest(unittest.TestCase):
         self.assertEqual(result, ['download:2.10.0', 'apply:true', 'apply:true'])
         self.assertEqual(self.errors, [])
 
+    def test_update_waiting_for_approval_can_be_skipped_with_button(self):
+        result = self.page.evaluate("""async () => {
+            const calls = [];
+            guncellemeBilgisi = {ok:true,var:true,yeni:'2.10.0'};
+            const api = window.pywebview.api;
+            api.guncelleme_indir = async () => ({ok:true});
+            api.guncelleme_durum = async () => ({durum:'bitti'});
+            api.guncelleme_uygula = async (automatic, force) => {
+                calls.push(!!force);
+                return force ? {ok:true} : {ok:true,bekle:true,neden:'bekleyen'};
+            };
+            const delay = window.setTimeout;
+            window.setTimeout = (f, ms, ...args) => delay(f, ms >= 2000 ? 20 : ms, ...args);
+            try {
+                const run = guncellemeBaslat(false);
+                await new Promise(resolve => delay(resolve, 150));
+                const button = document.getElementById('guncellemeBtn');
+                const waiting = {disabled: button.disabled, label: button.textContent.trim()};
+                button.click();
+                await run;
+                return {waiting, calls};
+            } finally { window.setTimeout = delay; }
+        }""")
+        self.assertFalse(result['waiting']['disabled'])
+        self.assertNotIn(result['waiting']['label'], ('Güncelle', 'Update'))
+        self.assertFalse(result['calls'][0])
+        self.assertTrue(result['calls'][-1])
+        self.assertEqual(self.errors, [])
+
     def test_auto_update_opt_out_does_not_download(self):
         result = self.page.evaluate("""async () => {
             let downloads = 0;

@@ -6,12 +6,61 @@ import threading
 BLOCK_SIZE = 4 * 1024 * 1024
 SIFIR_DOGAL = {".iso", ".img", ".vhd", ".vhdx", ".vmdk", ".bin", ".dat", ".raw"}
 
+def _metin_gibi(bas: bytes) -> bool:
+    """Blok basi okunur metin mi? Sikistirilmis/sifreli (rastgele) veri HTML ya da
+    JSON hata sayfasi DEGILDIR; yalniz '{' ile baslayan rastgele bir blok yuzunden
+    saglam arsivi "bozuk" saymayalim."""
+    bas = bas[:4096]
+    if not bas:
+        return False
+    okunur = sum(1 for b in bas if b in (9, 10, 13) or 32 <= b < 127)
+    return okunur / len(bas) >= 0.85
+
+
+def aria2_kontrol_tam_mi(aria2_yolu) -> bool:
+    """aria2 kontrol dosyasinda TUM parcalar inmis gorunuyor mu? Okunamayan ya da
+    bozuk dosya icin False doner (indirme yarim sayilir)."""
+    import struct
+    try:
+        with open(aria2_yolu, "rb") as f:
+            d = f.read()
+        o = 6
+        kimlik_uzunlugu = struct.unpack(">I", d[o:o + 4])[0]
+        o += 4 + kimlik_uzunlugu
+        parca, toplam = struct.unpack(">IQ", d[o:o + 12])
+        o += 20  # parca(4) + toplam(8) + yuklenen(8)
+        bit_uzunlugu = struct.unpack(">I", d[o:o + 4])[0]
+        o += 4
+        bit = d[o:o + bit_uzunlugu]
+        if parca <= 0 or toplam <= 0 or len(bit) != bit_uzunlugu:
+            return False
+        parca_sayisi = (toplam + parca - 1) // parca
+        if bit_uzunlugu * 8 < parca_sayisi:
+            return False
+        dolu = sum(bin(b).count("1") for b in bit)
+        return dolu >= parca_sayisi
+    except (OSError, struct.error, IndexError):
+        return False
+
+
+def artik_kontrol_dosyasini_sil(dosya_yolu) -> bool:
+    """Indirme TAM gorunuyorsa arta kalan .aria2 dosyasini siler; yarimsa dokunmaz."""
+    aria2_yolu = str(dosya_yolu) + ".aria2"
+    if os.path.exists(aria2_yolu) and aria2_kontrol_tam_mi(aria2_yolu):
+        try:
+            os.remove(aria2_yolu)
+            return True
+        except OSError:
+            return False
+    return False
+
+
 def tara(dosya_yolu, beklenen_boyut=None, checksum=None, checksum_tipi=None, uzanti=None):
     if not os.path.exists(dosya_yolu):
         return {"durum": "bulunamadi", "neden": "Dosya diskte bulunamadı."}
 
     aria2_yolu = dosya_yolu + ".aria2"
-    aria2_var = os.path.exists(aria2_yolu)
+    aria2_var = os.path.exists(aria2_yolu) and not aria2_kontrol_tam_mi(aria2_yolu)
 
     gercek_boyut = os.path.getsize(dosya_yolu)
     if beklenen_boyut is not None:
@@ -71,7 +120,7 @@ def tara(dosya_yolu, beklenen_boyut=None, checksum=None, checksum_tipi=None, uza
                             sebep = "imza yok"
 
                     # 3. HTML/Hata sayfası kontrolü (sadece izin verilmeyen uzantılar için)
-                    if uzanti not in izin_verilen_html_uzantilar:
+                    if uzanti not in izin_verilen_html_uzantilar and _metin_gibi(block):
                         baslik_str = block[:4096].decode('utf-8', errors='ignore').strip()
                         if baslik_str.lower().startswith('<!doctype') or baslik_str.lower().startswith('<html') or baslik_str.startswith('<?xml'):
                             is_bad = True
