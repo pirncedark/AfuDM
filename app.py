@@ -364,28 +364,37 @@ class Api:
     def guncelleme_durum(self) -> dict:
         return dict(self._guncelleme_durum)
 
-    def _guncelleme_mesgul(self) -> bool:
+    def _guncelleme_mesgul(self, zorla: bool = False) -> str:
+        """Bos ise "", degilse nedeni: "aktif" (indirme/motor) ya da "bekleyen" (onay).
+
+        Bekleyen onaylar diske kayitlidir ve yeniden baslatmada korunur; kullanici
+        isterse (zorla) onlar beklenmeden guncellenir. Surmekte olan indirme asla."""
         try:
             snap = self.manager.snapshot()
             stat = snap.get("stat", {})
-            mesgul = (not snap.get("engine_ok") or self._bekleyenler.ozet()
-                      or int(stat.get("numActive", 0)) or int(stat.get("numWaiting", 0))
-                      or any(item.get("status") in ("active", "waiting", "queued", "seeding")
-                             for item in snap.get("items", [])))
+            if (not snap.get("engine_ok")
+                    or int(stat.get("numActive", 0)) or int(stat.get("numWaiting", 0))
+                    or any(item.get("status") in ("active", "waiting", "queued", "seeding")
+                           for item in snap.get("items", []))):
+                return "aktif"
+            if not zorla and self._bekleyenler.ozet():
+                return "bekleyen"
         except Exception:
-            mesgul = True  # Unknown engine state must never interrupt a transfer.
-        return bool(mesgul)
+            return "aktif"  # Unknown engine state must never interrupt a transfer.
+        return ""
 
-    def guncelleme_uygula(self, otomatik: bool = False) -> dict:
+    def guncelleme_uygula(self, otomatik: bool = False, zorla: bool = False) -> dict:
+        zorla = bool(zorla) and not otomatik  # yalniz kullanicinin kendi tiklamasi
         with self._guncelleme_kilidi:
             if self._cikiliyor:
                 return {"ok": True, "zaten": True}
             if otomatik and self.manager.store.get("guncelleme_otomatik", True) is False:
                 return {"ok": True, "iptal": True}
-            if self._guncelleme_mesgul():
-                return {"ok": True, "bekle": True}
+            neden = self._guncelleme_mesgul(zorla)
+            if neden:
+                return {"ok": True, "bekle": True, "neden": neden}
             def son_kontrol() -> bool:
-                return (not self._guncelleme_mesgul()
+                return (not self._guncelleme_mesgul(zorla)
                         and (not otomatik or self.manager.store.get("guncelleme_otomatik", True) is not False))
             sonuc = guncelleme.uygula(son_kontrol=son_kontrol)
             if sonuc.get("ok") and not sonuc.get("bekle"):
