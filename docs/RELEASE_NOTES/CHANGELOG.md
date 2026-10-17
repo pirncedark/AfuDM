@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.9](https://github.com/pirncedark/AfuDM/compare/v2.9.8...v2.9.9) (2026-10-17)
+
+
+### Bug Fixes
+
+* **afutube:** download Instagram highlight stories ([#119](https://github.com/pirncedark/AfuDM/issues/119)) ([22e5184](https://github.com/pirncedark/AfuDM/commit/22e51847dea8b5fc717b53a56063de6600a3b123))
+
 ## [2.9.8](https://github.com/pirncedark/AfuDM/compare/v2.9.7...v2.9.8) (2026-10-17)
 
 
