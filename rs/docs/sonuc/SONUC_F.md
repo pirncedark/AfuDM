@@ -1,73 +1,66 @@
-# SONUC F: Tauri kabuğu (rs\app)
+# SONUC F: Tauri kabuğu (rs\app), 2. tur
 
-Durum: KISMİ. Kabuk derleniyor ve tepside çalışıyor. Motor (Manager), HTTP katmanı ve dosya/ayar uçları A/B/E/G/H bağımlılığı olduğu için henüz bağlı değil; bunlar aşağıda listelendi.
+Durum: KISMİ ama uçtan uca çalışıyor. Exe açılıyor, motor (aria2 + store + Manager + HTTP API) kalkıyor, gerçek indirme tamamlanıp doğrulanıyor. Pencere açma yolu, arayüz köprüsünün gerçek WebView'deki davranışı ve bazı Python-paritesi noktaları test edilmedi (aşağıda).
 
-## Yapılanlar
-- `app\Cargo.toml`: kendi `[workspace]` bloğuyla ayrı derleniyor (`cargo build --release --manifest-path app\Cargo.toml`). Bağımlılıklar: `afudm-types` (path), `tauri 2`, `tauri-plugin-single-instance 2`, `tauri-runtime 2` (yalnız `ResizeDirection` tipi için; `tauri` bunu dışa açmıyor), `serde_json`.
-- `app\tauri.conf.json`: `windows: []` (açılışta pencere YOK), `withGlobalTauri: true`, `frontendDist: ui`, `bundle.active: false`.
-- `app\src\main.rs`: tek süreç. Single-instance eklentisi (ikinci açılış yeni süreç açmaz, ilk örneğin penceresini öne getirir). Veri klasörü `exe\data` oluşturulur (Python `core/paths.py` DATA ile aynı). Son pencere kapanınca çıkılmaz (`ExitRequested` code=None engellenir).
-- `app\src\tray.rs`: tepsi simgesi; sol tık ve "Aç" pencereyi açar, "Çıkış" uygulamayı kapatır.
-- `app\src\window.rs`: pencere yalnız `goster()` ile açılır; kapanınca WebView yok edilir (gizlenmez). Boyut: Python `pencere_boyutu` mantığı (hedef 1600x980, min 1100x900, ekranın %92'si ile sınır). Not: Tauri'de monitör boyutu kullanılıyor, `work_area` değil (görev çubuğu farkı yok sayılıyor). Indirme penceresi (`download.html`, 520x540) ve kapanınca bekleyen isteklerin iptali burada.
-- `app\src\bridge.rs`: arayüz köprü komutu `api_call(name, args)`. Pencere ve indirme metotları yerelde karşılanıyor. Kalanı "henüz yok" döner. `TauriUi` (UiBridge) `show_window` ve `ask_save_location` uygular; `ask_save_location` bekleyen isteği tutup indirme penceresini açar, yanıt/iptal gelene dek bloklar.
-- `app\ui\` = `P\ui` kopyası. Eklenen: `tauri_kopru.js` (`window.pywebview.api.<ad>(...)` -> `invoke("api_call")`, `pywebviewready` olayı). `index.html` ve `download.html`'e yalnız bir `<script>` satırı eklendi. `P\ui` DOKUNULMADI (kontrol edildi: orada `tauri_kopru.js` yok).
-- `app\icons\icon.ico` ve `icon.png`: `P\ui\afudm.ico` ve `icon.png` kopyası.
+## Yapılanlar (2. tur)
+- `main.rs` / `boot.rs`: açılış sırası. Bekleyen geri yükleme (`restore_bekleyen.db` -> `afudm.db`, store açılmadan), çerez artığı temizliği (`g2::cerez::artiklari_temizle`), `SqliteStore` -> `Aria2Daemon` -> `IdleRpc` (boşta kapatan döngü, 30 sn) -> `Manager` (+ `start`, `tamamlandi_kancasi_ekle` ile otomasyon) -> `ApiCtx` -> `with_auth(api::router U g1::router U g2::router_with(ctx, servis) U h::router)` -> `serve(port)` -> `write_endpoint`. Port `AFUDM_PORT` (varsayılan 6811). Eklenti servisi tek örnek (`g2::servis_olustur`), HTTP ve köprü paylaşır.
+- `entegrasyon.rs` (yeni): başlangıç kısayolu (Baslangic klasöründe `AfuDM.lnk`, PowerShell + WScript.Shell, `CREATE_NO_WINDOW`), torrent + magnet ilişkilendirme (HKCU\Software\Classes; ilk değişimde eski değer yedeklenir), `afudm://` protokolü. Hepsi kullanıcı düzeyi.
+- `bridge.rs`: `api_call` artık async; motor çağrıları `spawn_blocking` içinde. Bağlanan komutlar:
+  - Pencere/yerel: pencere_durumu, pencere_buyut, pencere_kucult, pencere_kapat, pencere_kenar, pencere_surukle, kapat, bekleyen_listesi/onayla/iptal
+  - Kabuk: api_info, surum_bilgi (3.0.0), motor_durumu, sistem_durumu, baslangic_ayarla, varsayilan_uygulama_ekrani, torrent_iliskilendir, windows_integration_status/apply/remove/test (torrent, startup, protocol, notify, defender)
+  - Klasör: klasor_kisayollar, ag_konumu_ekle/sil, klasor_alt, klasor_yeni, klasor_gozat (native klasör diyaloğu, `tauri-plugin-dialog`), open_download_dir, open_item_folder
+  - Motor: snapshot, peers, seed_bilgi/tazele/dosyalari/dosya_ekle/dosya_sil, tracker_tara, torrent_on_ekle/on_iptal/dosyalari/secimi_ayarla/metrikleri, control (pause/resume/remove), retry
+  - Reliability (G1): integrity, backup, backups, diagnostics_preview, diagnostics_export, restore, health (rpc_alive, uyku)
+  - Güncelleme (G1): kontrol, durum, otomatik_ayarla, son_kontrol, indir, uygula (bekleyen = snapshot'ta status "active" var mı)
+  - Otomasyon (G1): automation_retry, automation_cancel
+  - Eklenti (G2): eklenti_listesi, eklenti_etkinlestir (HTTP ile aynı servis)
+- LinkGrabber: `UiBridge::open_linkgrabber` pencereyi açar, `afudm-linkgrabber` olayı yayar; `tauri_kopru.js` bunu DOM olayına çevirir.
+- Kabuk eksikleri: açılışta çalışma, magnet/.torrent ve afudm:// kaydı, klasör diyaloğu, özel başlık sürükleme (`tauri_kopru.js` mousedown/dblclick ile `pencere_surukle`/`pencere_buyut`; WebView2 CSS app-region desteklemediği için).
+- `tauri_kopru.js` ve `index.html`/`download.html` değişiklikleri yalnız `app\ui` kopyasında. `P\ui` dokunulmadı.
 
-## Köprü komutları
+## Köprü komutları: bağlı değil ("henüz yok")
+- `reliability_restart_engine`: IdleRpc içindeki daemon'a erişim/yeniden başlatma API'si yok (A ekibi gerekli).
+- `kaydet_bilgi`, `probe_link`: Python `manager.detect_kind` / `guess_name` / `probe_url_info`; afudm-core'da `pub(super)`, dışarı açılmadı.
+- G2 `linkgrabber_*`, `rules_*`, `cerez`; G1 `guncelleme` dışı kalan otomasyon listeleri (`automation_jobs`); G1 `chrome_*`; eklenti dışındaki eklenti uçları (kur, incele, ayar, günlük); sunucu/anahtar/profil uçları (`sunucu_*`, `sunucu_anahtar_*`); H `start_pairing`, paylaşım (`share_*`, `dosya_sec_ve_paylas`, `agda_paylas`), telefon (`telefon_*`); `add_links`, `link_yenile`, `clear_finished`, `settings_save`, `proxy_testi`, `port_durumu`, `ayar_rozetleri`, `loglar`, `defender_scan`, `dosya_ac`, `item_yolu`, `panoya_*`, `probe`.
+- Kapsam dışı bırakılanlar koordinatöre açık: bu uçların her biri Python'daki ilgili Api metodu okunup eşlenmeli.
 
-Bağlanan (yerel, çalışır):
-- pencere_durumu, pencere_buyut, pencere_kucult, pencere_kapat, pencere_kenar
-- kapat (indirme penceresi)
-- bekleyen_listesi, bekleyen_onayla, bekleyen_iptal
-
-"henüz yok" (`{"ok":false,"error":"henüz yok"}`): Python `Api`'nin geri kalanı. Başlıca gruplar:
-- Motor/Manager'a bağlı: snapshot, motor_durumu, motor_indir, api_info, surum_bilgi, peers, probe_link, kaydet_bilgi, start_pairing
-- reliability_* (7 metot), security_rotate_token
-- guncelleme_* (kontrol, otomatik_ayarla, son_kontrol, indir, durum, uygula)
-- rules_list, rules_save, rules_simulate, download_rules
-- linkgrabber_* (analiz, suz, iptal, onceki, probe, ekle)
-- klasor_kisayollar, klasor_alt, klasor_yeni, klasor_gozat, ag_konumu_ekle, ag_konumu_sil
-- yerelden_sor, tarayicidan_sor (Python tarafı, köprü dışı)
-
-## A/B/E/G/H'den beklenen eksikler
-- A (Aria2Daemon, IdleRpc): `Aria2` trait uygulaması yok. Manager kurulamıyor. `main.rs` boot sırasının 3-4. adımları bekliyor.
-- B (`afudm-db`): `SqliteStore` ve `Store` trait uygulaması yok (crate 1 satır).
-- E (`afudm-api`): HTTP router, `with_auth`, `serve(6811)`, `api_token.txt` ve `api_endpoint.json` yok (crate yalnız yorum satırı). Test portu için `AFUDM_PORT` henüz okunmuyor; `/ping` ve `/snapshot` testi bu yüzden yapılamadı.
-- G/H: ek ve paylaşım router'ları yok.
-- `afudm-core`: `queue.rs`, `torrent.rs`, `butunluk.rs`, `video.rs` içindeki tüm fonksiyonlar `todo!()`. Bağlanınca panik edebilir; A/B tamamlanınca doldurulmalı.
-- `afudm-engine`, `afudm-extras`: boş.
-- Kök `Cargo.toml`'a `app` üyesi eklenmedi (görev gereği; Claude ekleyecek). Tek sorun: `app` ayrı derleniyor.
-
-## Kabuk içinde eksik kalanlar (Ekip F kapsamı, yazılmadı)
-- Açılışta çalışma (`core/baslangic.py`) ve Windows entegrasyonu (`core/windows_integration.py`, magnet/.torrent ilişkilendirme, `afudm://` protokolü): yazılmadı.
-- `klasor_gozat` için klasör seçme diyaloğu: `tauri-plugin-dialog` eklenmedi.
-- `uyku.rs`: yazılmadı. Boşta uyku, WebView'in pencere kapanınca yok edilmesiyle sağlanıyor. Ayrı modüle gerek görülmedi.
-- Özel başlık çubuğunda sürükleme: `decorations(false)` ile açılıyor; sürükleme alanı (`data-tauri-drag-region` ya da CSS) arayüze eklenmedi. Python `basligi_kaldir` + WM_NCCALCSIZE yaklaşımıyla birebir değil; kenar boyutlandırma test edilmedi.
-- Tepsi menü metinleri ("Aç", "Çıkış") Python'un tepsi metinleriyle karşılaştırılmadı.
+## A/B/E/G/H'den beklenen eksikler / riskler
+- A: IdleRpc'den daemon'a yeniden başlatma API'si (reliability_restart_engine).
+- E: HTTP tarafı çalışıyor; `write_endpoint` çağrıldı.
+- G1: Güncelleme otomatik kontrol zamanlaması (Python'daki periyot) bulunamadı; kurulmadı. `Guncelleme::new(.., paketli=true)` sabit.
+- G2/H: LinkGrabber paneli arayüz tarafında (app.js) dinlenmiyor; olay DOM'a düşüyor, panel yok. Pencere açılmadan önce yayılan olay kaybolabilir.
+- Bağımlılık: `afudm-extras` ve `afudm-core` derleme uyarıları (video.rs, is.rs) başka ekiplerde; bu crate'lere yazılmadı.
 
 ## Python'dan sapmalar (📍)
-- `pencere_kapat`: Python X'i tepsiye gizler (`app.py:1607`). Görev gereği burada pencere yok edilir. Tepsi açık kalır.
-- `bekleyen_*` istek şekli (`ogeler` içindeki alanlar): Python `_bekleyenler.ozet()` ile karşılaştırılmadı; `download.js` beklediği alanlarla doğrulanmalı.
-- `bekleyen_onayla` secim birleştirme: istek ile secim birleştirilip gönderiliyor. Python'daki birebir karşılığı doğrulanmadı.
+- `pencere_kapat`: Python X'i tepsiye gizler; burada pencere yok edilir (görev gereği). Tepsi açık kalır.
+- Başlangıç kısayolu: Python `baslangic.ac` ile aynı yol ve argüman (`--tepside`); exe yolu `current_exe`.
+- Protokol kaydı (`afudm://`): Python kurulum öncesi değeri yedekleyip geri yükler; burada yedek alınmıyor, kaldırmada anahtar siliniyor. Torrent/magnet yedeklemesi Python ile aynı.
+- `torrent_dosyalari` / `torrent_metrikleri`: Python'daki `hazir_degil`/`neden` nesne öznitelikleri Rust Vec'te yok; `hazir_degil=false` varsayıldı (metrik için JSON'dan okunur).
+- `sistem_durumu.torrent`: Python `iliskilendir.durum()` alanları bire bir değil; `{kayitli, torrent, magnet}` döner.
+- `motor_durumu`: Python `engines.durum()` ayrıntısı yok; yalnız `kaynak` (paket/sistem/yok).
+- `bekleyen_listesi` istek alanları ve `bekleyen_onayla` birleştirme: Python `_bekleyenler` ile doğrulanmadı.
+- `api_info`: Python `local_api.port/token` yerine dosyadan (`api_token.txt`) ve `boot` portundan okunur.
+- `reliability_health`: Python'daki ayrıntılı sağlık alanları yerine rpc_alive ve uyku.
 
 ## Doğrulama
-- `cargo clippy --manifest-path app\Cargo.toml -- -D warnings`: çıkış 0, uyarı yok.
-- `cargo build --release --manifest-path app\Cargo.toml`: çıkış 0. Çıktı: `app\target\release\AfuDM.exe` (6,6 MB).
-- `node --check app\ui\tauri_kopru.js`: OK.
-- Headless tepsi testi (pencere açılmadı, port açılmadı):
-  - Süreç 8 sn ayakta, panik yok. Working set 14-32 MB (hedef ≤ 60 MB).
-  - Görünen tek pencere 16x16 `TOOLWINDOW` (single-instance eklentisinin gizli yardımcı penceresi). Ana pencere yok.
-  - WebView2 çocuk süreci yok.
-  - İkinci örnek hemen çıktı (single-instance çalışıyor).
-  - Test süreci kapatıldı. Kullanıcının çalışan Python AfuDM'ine (PID 34488 ailesi, 6811) dokunulmadı.
-- Pencere açma yolu test EDİLMEDİ (kullanıcı kuralı: pencere açma yok). `tauri_kopru.js`'in gerçek WebView'de çalışması da test edilmedi.
-
-Son `cargo build` çıktısı (`--release`, `app\`):
+- `cargo clippy --manifest-path app\Cargo.toml -- -D warnings`: çıkış 0 (2. tur kodu dahil).
+- `cargo build --release --manifest-path app\Cargo.toml`: çıkış 0. Çıktı kuyruğu:
 ```
-   Compiling afudm-types v3.0.0 (C:\Users\afuuu\Desktop\afuproject\AfuDM_rs\rs\crates\afudm-types)
    Compiling afudm-app v3.0.0 (C:\Users\afuuu\Desktop\afuproject\AfuDM_rs\rs\app)
-    Finished `release` profile [optimized] target(s) in 4m 17s
+   Compiling afudm-core v3.0.0 (C:\Users\afuuu\Desktop\afuproject\AfuDM_rs\rs\crates\afudm-core)
+    Finished `release` profile [optimized] target(s) in 4m 14s
 ```
-(Tam release derlemesi, ilk çalıştırmada bağımlılıklarla birlikte 12m 17s sürdü; tüm çıktı derleme günlüğünde.)
+  (Bir kez rustc `STATUS_DLL_INIT_FAILED` ile çöktü; yeniden çalıştırmada geçti.)
+- `node --check app\ui\tauri_kopru.js`: OK.
+- Headless uçtan uca test (gerçek aria2c 1.37, geçici klasör `scratchpad\hedef`, port 6851, yerel dosya sunucusu 6852; pencere açılmadı):
+  - `/ping` -> `{"app":"AfuDM","ok":true}`. Boot 20 sn içinde.
+  - `/snapshot` (token `X-AfuDM-Token`) -> `ok:true`, `engine_ok:true`, ayarlar dolu.
+  - `/add` -> `{"gid":"3027f6d7b4a262bc","kind":"http","ok":true}`.
+  - İndirme: `test.bin` 8388608 bayt. SHA-256 kaynak ve indirilen dosyada eşit: `3AFCB9D9EB68B2359B2E3FF520C90A5D7DDD0EAEDF0332943DB97D5E6E4E3DDA`.
+  - Otomasyon kancası: indirme bitince `automation` kuyruğunda `notify` işi oluştu (status complete).
+  - RAM (indirme sırasında): AfuDM.exe 29.1 MB (working set), aria2c 18.0 MB.
+  - Temizlik: test süreçleri kapatıldı, `alive_after=0`. Kullanıcının Python AfuDM'ine ve aria2'sine (6810, PID ailesi) dokunulmadı.
+- Test edilmedi: pencere açma, WebView'de `tauri_kopru.js` davranışı, klasör diyaloğu, LinkGrabber paneli, başlangıç kısayolu/protokol kaydının gerçek Windows'ta yazılması (kayıt defteri/Startup'a yazan çağrılar derlendi, çalıştırılmadı), restore_bekleyen geri yüklemesi, güncelleme uçları.
 
 ## Commit
-Commit yapılmadı (ekip kuralı: commit Claude'da). Değişen/eklenen dosyalar: `rs\app\` altında (src, ui, icons, Cargo.toml, Cargo.lock, build.rs, tauri.conf.json, gen\ üretilen şema). `target\` ve `gen\` `.gitignore` ile dışarıda.
+Commit yapılmadı (ekip kuralı: commit Claude'da). Değişen dosyalar: `rs\app\` altı (src: main, boot, bridge, window, tray, entegrasyon; ui: tauri_kopru.js + iki HTML'de tek script satırı; Cargo.toml, tauri.conf.json, build.rs, icons). `target\` ve `gen\` `.gitignore` ile dışarıda.

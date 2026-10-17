@@ -179,10 +179,11 @@ pub fn restore(store: &dyn Store, data: &Path, arsiv: &str) -> Result<Json> {
 }
 
 /// Python: Reliability.diagnostics_preview — tum veri maskelenmis halde.
-pub fn diagnostics_preview(store: &dyn Store) -> Result<Json> {
+pub fn diagnostics_preview(store: &dyn Store, app_dir: &Path) -> Result<Json> {
     let veri = json!({
         "generated_at": simdi(),
         "integrity": integrity(store)?,
+        "engines": afudm_engine::engines::durum(app_dir),
         "settings": store.all_settings()?,
         "events": store.recent_events(150, "")?,
     });
@@ -190,8 +191,8 @@ pub fn diagnostics_preview(store: &dyn Store) -> Result<Json> {
 }
 
 /// Python: Reliability.diagnostics_export — maskeli tanilamayi diske yazar.
-pub fn diagnostics_export(store: &dyn Store, data: &Path) -> Result<Json> {
-    let onizleme = diagnostics_preview(store)?["preview"].clone();
+pub fn diagnostics_export(store: &dyn Store, data: &Path, app_dir: &Path) -> Result<Json> {
+    let onizleme = diagnostics_preview(store, app_dir)?["preview"].clone();
     let klasor = data.join("diagnostics");
     fs::create_dir_all(&klasor)?;
     let hedef = klasor.join(format!("afudm-diagnostics-{}.json", zaman_damgasi()));
@@ -475,10 +476,14 @@ mod tests {
         let d = gecici("tani");
         let store = bellek_db();
         store.set("api_token", json!("cok-gizli")).expect("set");
-        let onizleme = diagnostics_preview(&store).expect("onizleme");
+        let onizleme = diagnostics_preview(&store, &d).expect("onizleme");
         assert_eq!(onizleme["masked"], true);
         assert_eq!(onizleme["preview"]["settings"]["api_token"], "***");
-        let disa = diagnostics_export(&store, &d).expect("disa");
+        assert!(
+            onizleme["preview"]["engines"].is_object(),
+            "engines anahtari Python diagnostics ile ayni olmali"
+        );
+        let disa = diagnostics_export(&store, &d, &d).expect("disa");
         let metin = fs::read_to_string(disa["path"].as_str().expect("yol")).expect("oku");
         assert!(!metin.contains("cok-gizli"));
     }

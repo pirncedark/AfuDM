@@ -2,6 +2,7 @@
 mod dosya_adi;
 mod files;
 mod models;
+pub(crate) mod netcheck;
 pub mod proxy;
 mod rules;
 mod settings;
@@ -14,7 +15,7 @@ use afudm_types::{AfuError, Json, JsonMap, Result};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, MutexGuard};
+use std::sync::MutexGuard;
 
 /// Shared queue state. D may use removed_hashes and register video snapshots/stop callbacks.
 #[derive(Default)]
@@ -23,8 +24,8 @@ pub struct State {
     pub removed_gids: HashSet<String>,
     pub preview_gids: HashSet<String>,
     pub auth_required_gids: HashSet<String>,
-    pub video_jobs: HashMap<String, Json>,
-    pub video_stoppers: HashMap<String, Arc<dyn Fn() + Send + Sync>>,
+    /// Python _known_complete: aria2 tamamlanmasi tamamlandi zincirine bir kez girer.
+    pub known_complete: HashSet<String>,
     pub cookies: HashMap<i64, Vec<Json>>,
     pub last_error: String,
     pub settings_errors: Vec<Json>,
@@ -109,23 +110,14 @@ pub fn start(m: &Manager) -> Result<()> {
         .collect();
     // Daemon/process ownership stays with the shell/engine. RPC is injected into Manager.
     settings::apply(m)?;
+    crate::video::yetimleri_duzelt(m)?;
     state(m)?.started = true;
     m.store.log("info", "AfuDM basladi", "");
     Ok(())
 }
 
 pub fn stop(m: &Manager) -> Result<()> {
-    let stoppers: Vec<_> = {
-        let s = state(m)?;
-        s.video_jobs
-            .iter()
-            .filter(|(_, j)| j["status"] == "active")
-            .filter_map(|(gid, _)| s.video_stoppers.get(gid).cloned())
-            .collect()
-    };
-    for stop in stoppers {
-        stop();
-    }
+    crate::video::aktif_isleri_kapat(m);
     let _ = m.rpc().save_session();
     let _ = m.rpc().shutdown(false);
     let mut s = state(m)?;
@@ -400,7 +392,7 @@ fn find_duplicate(m: &Manager, source: &str) -> Result<Option<Json>> {
             return Ok(Some(shaping::aria(m, status)?));
         }
     }
-    let video_gids: HashSet<_> = state(m)?.video_jobs.keys().cloned().collect();
+    let video_gids = crate::video::gidler(m);
     for row in m.store.list(None, 300)? {
         if !ACTIVE.contains(&text(&row["status"])) {
             continue;
@@ -573,20 +565,8 @@ fn launch(m: &Manager, row: &Json) -> Result<Json> {
 pub fn pause(m: &Manager, gid: &str) -> Result<bool> {
     required_row(m, gid)?;
     if gid.starts_with("yt:") {
-        let stopper = state(m)?.video_stoppers.get(gid).cloned();
-        let exists = state(m)?.video_jobs.contains_key(gid);
-        if !exists {
+        if !crate::video::durdur(m, gid) {
             return Ok(false);
-        }
-        if let Some(stop) = stopper {
-            stop();
-        } else {
-            return Err(AfuError::Unavailable(
-                "video durdurma koprusu hazir degil".into(),
-            ));
-        }
-        if let Some(job) = state(m)?.video_jobs.get_mut(gid) {
-            job["status"] = json!("paused");
         }
     } else if m.rpc().pause(gid, true).is_err() {
         return Ok(false);
@@ -628,15 +608,7 @@ pub fn resolve_item_path(m: &Manager, gid: &str) -> Result<Option<PathBuf>> {
 
 pub fn pause_all(m: &Manager) -> Result<()> {
     let _ = m.rpc().pause_all();
-    let gids: Vec<_> = state(m)?
-        .video_jobs
-        .iter()
-        .filter(|(_, j)| !["complete", "error", "removed"].contains(&text(&j["status"])))
-        .map(|(gid, _)| gid.clone())
-        .collect();
-    for gid in gids {
-        pause(m, &gid)?;
-    }
+    crate::video::tumunu_durdur(m);
     Ok(())
 }
 
@@ -874,15 +846,8 @@ pub fn can_release_ui(m: &Manager) -> Result<bool> {
     if !m.rpc().sleeping() {
         return Ok(false);
     }
-    {
-        let s = state(m)?;
-        if !s.preview_gids.is_empty()
-            || s.video_jobs
-                .values()
-                .any(|j| ["active", "waiting"].contains(&text(&j["status"])))
-        {
-            return Ok(false);
-        }
+    if !state(m)?.preview_gids.is_empty() || crate::video::calisan_veya_bekleyen_var(m) {
+        return Ok(false);
     }
     for status in [
         "active",
@@ -935,4 +900,76 @@ pub fn notify_telegram(m: &Manager, message: &str) -> Result<bool> {
             ("parse_mode", "HTML"),
         ])
         .is_ok_and(|r| r.status().as_u16() == 200))
+}
+
+/// Python human_size (manager.py): KB/MB birimleri, bir ondalik.
+fn insan_boyut(bayt: f64) -> String {
+    let mut n = bayt;
+    for birim in ["B", "KB", "MB", "GB", "TB"] {
+        if n.abs() < 1024.0 {
+            return if birim == "B" {
+                format!("{} B", n as i64)
+            } else {
+                format!("{n:.1} {birim}")
+            };
+        }
+        n /= 1024.0;
+    }
+    format!("{n:.1} PB")
+}
+
+/// Python _on_complete(): bitmis indirme icin butunluk denetimi, Telegram, UI bildirimi ve
+/// en sonda kabugun kancalari (otomasyon). Bozuk indirme kancalara gitmez.
+pub(crate) fn tamamlandi(m: &Manager, title: &str, size: u64, gid: &str) {
+    m.store.log(
+        "info",
+        &format!("tamamlandi: {title} ({})", insan_boyut(size as f64)),
+        gid,
+    );
+    let bildirim = setting(m, "windows_notifications", json!(true))
+        .map(|v| truthy(&v))
+        .unwrap_or(true);
+    let tara = crate::butunluk::butunluk_tara(m, gid).unwrap_or(Json::Null);
+    if tara["ok"] == true && tara["durum"] == "bozuk" {
+        m.store.log(
+            "warn",
+            &format!("Bozuk indi: {title} - {}", text(&tara["neden"])),
+            gid,
+        );
+        if bildirim {
+            m.ui.notify("AfuDM", "Bozuk indi: Yeniden indirmeniz gerekebilir.");
+        }
+        return;
+    }
+    if tara["ok"] == true && tara["durum"] == "saglam" {
+        if let Ok(Some(dosya)) = resolve_item_path(m, gid) {
+            crate::butunluk::artik_kontrol_dosyasini_sil(&dosya);
+        }
+    }
+    let telegram = setting(m, "notify_telegram", json!(false))
+        .map(|v| truthy(&v))
+        .unwrap_or(false);
+    if telegram {
+        let dil = shaping::language(text(
+            &setting(m, "language", json!("auto")).unwrap_or(json!("auto")),
+        ));
+        let baslik = if dil == "en" {
+            "✅ AfuDM download finished"
+        } else {
+            "✅ AfuDM indirme tamamlandı"
+        };
+        let _ = notify_telegram(
+            m,
+            &format!("{baslik}\n{title}\n{}", insan_boyut(size as f64)),
+        );
+    }
+    if bildirim {
+        m.ui.notify("AfuDM", &format!("Indirme tamamlandi: {title}"));
+    }
+    let yuk = json!({"title": title, "size": size, "gid": gid});
+    if let Ok(kancalar) = m.tamamlandi_kancalari.lock() {
+        for kanca in kancalar.iter() {
+            kanca(&yuk);
+        }
+    }
 }

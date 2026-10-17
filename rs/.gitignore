@@ -3,3 +3,5 @@ app/target/
 app/node_modules/
 app/gen/
 .cargo-home/
+/app/target/
+/app/node_modules/

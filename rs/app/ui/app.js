@@ -1,0 +1,4248 @@
+/* AfuDM arayuz mantigi. Python tarafina pywebview koprusuyle konusur. */
+
+// Recurring work owns no native timer while the window is hidden.
+const afudmIntervals = new Set();
+let afudmNativeHidden = false;
+let afudmVisibilitySequence = 0;
+function afudmHidden() { return afudmNativeHidden || document.hidden; }
+function afudmSetInterval(callback, delay) {
+  const timer = { callback, delay, id: null };
+  afudmIntervals.add(timer);
+  if (!afudmHidden()) timer.id = window.setInterval(callback, delay);
+  return timer;
+}
+function afudmClearInterval(timer) {
+  if (!timer) return;
+  window.clearInterval(timer.id);
+  afudmIntervals.delete(timer);
+}
+window.afudmVisibility = (visible, sequence) => {
+  if (sequence !== undefined) {
+    if (sequence < afudmVisibilitySequence) return;
+    afudmVisibilitySequence = sequence;
+  }
+  afudmNativeHidden = !visible;
+  afudmVisibilityChanged();
+};
+function afudmVisibilityChanged() {
+  const hidden = afudmHidden();
+  for (const timer of afudmIntervals) {
+    if (timer.id !== null) window.clearInterval(timer.id);
+    timer.id = hidden ? null : window.setInterval(timer.callback, timer.delay);
+  }
+  if (hidden) {
+    clearTimeout(tickTimer);
+    tickTimer = null;
+  } else {
+    tick();
+  }
+}
+document.addEventListener('visibilitychange', afudmVisibilityChanged);
+// End visibility scheduler.
+
+const $ = (id) => document.getElementById(id);
+const POLL_MS = 700;
+const TRACE_POINTS = 180;
+
+const state = {
+  filter: "all",
+  motorTimer: null,
+  winIntTimer: null,
+  seedTimer: null,
+  torTimer: null,
+  search: "",
+  selected: null,
+  selectedGids: new Set(),
+  controlPending: new Set(),
+  controlOverrides: new Map(),
+  activeDTab: "overview",
+  items: [],
+  settings: {},
+  trace: new Array(TRACE_POINTS).fill(0),
+  sessionBytes: 0,
+  lastDone: new Map(),
+  ready: false,
+};
+
+function updateBulkRemoveBtn() {
+  const btn = $("removeSelected");
+  const count = state.selectedGids.size;
+  if (btn) {
+    if (count > 0) {
+      btn.style.display = "inline-block";
+      btn.textContent = "🗑 " + t("bar.removeSelected", { n: count });
+    } else {
+      btn.style.display = "none";
+    }
+  }
+
+  const selAll = $("selectAllBtn");
+  if (selAll) {
+    const visibleItems = visible();
+    const visibleLen = visibleItems.length;
+    if (visibleLen > 0) {
+      selAll.style.display = "inline-block";
+      const allSelected = visibleItems.every(i => state.selectedGids.has(i.gid));
+      if (allSelected) {
+        selAll.textContent = t("bar.deselectAll");
+        selAll.dataset.all = "1";
+      } else {
+        selAll.textContent = t("bar.selectAll");
+        selAll.dataset.all = "0";
+      }
+    } else {
+      selAll.style.display = "none";
+    }
+  }
+}
+
+/* ---------- bicimleyiciler ---------- */
+function size(bytes) {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return n + " B";
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = n / 1024;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) { value /= 1024; i++; }
+  return value.toFixed(value < 10 ? 1 : 0) + " " + units[i];
+}
+function speed(bytes) {
+  return bytes > 0 ? size(bytes) + "/s" : "—";
+}
+function clock(seconds) {
+  const s = Number(seconds) || 0;
+  if (s <= 0) return "—";
+  if (s < 60) return s + " sn";
+  if (s < 3600) return Math.floor(s / 60) + " dk " + (s % 60) + " sn";
+  const h = Math.floor(s / 3600);
+  return h + " sa " + Math.floor((s % 3600) / 60) + " dk";
+}
+/* Kaba sure: gecen sure icin saniye gurmak gürültü ("2 dk 0 sn"). */
+function clockShort(seconds) {
+  const s = Number(seconds) || 0;
+  if (s <= 0) return "—";
+  if (s < 60) return s + " sn";
+  if (s < 3600) return Math.floor(s / 60) + " dk";
+  return Math.floor(s / 3600) + " sa " + Math.floor((s % 3600) / 60) + " dk";
+}
+/* Durum etiketi sozlukten gelir (ui/i18n.js); bilinmeyen durum oldugu gibi yazilir. */
+function stateLabel(status) {
+  const label = t("state." + status);
+  return label === "state." + status ? status : label;
+}
+
+function toast(message, bad = false) {
+  const el = $("toast");
+  el.textContent = message;
+  el.className = "toast show" + (bad ? " bad" : "");
+  clearTimeout(toast._t);
+  // Hata mesaji okunacak kadar kalsin; bilgi mesaji kisa gecsin.
+  toast._t = setTimeout(() => { el.className = "toast"; }, bad ? 9000 : 3400);
+}
+
+/* ---------- kopru ---------- */
+/* Kopru cagrisi zaman asimlari (ms). Uzun suren isler ayrica listelenir;
+   geri kalani varsayilani kullanir. Amac: hicbir cagri sonsuza kadar beklemesin. */
+const KOPRU_ZAMAN_ASIMI = {
+  _varsayilan: 15000,
+  snapshot: 30000,
+  ekle: 60000,
+  eklenti_kur: 300000,
+  eklenti_guncelle: 300000,
+  reliability_backup: 300000,
+  reliability_restore: 300000,
+  reliability_diagnostics_export: 120000,
+};
+
+async function call(method, ...args) {
+  if (!window.pywebview || !window.pywebview.api) throw new Error(t("err.bridge"));
+  let out;
+
+  // Zaman asimi HER cagri icin gecerlidir. Onceden yalniz "snapshot" korunuyordu;
+  // kopru yanit vermezse diger cagrilar SONSUZA kadar bekliyor ve arayuz sessizce
+  // kilitleniyordu (kullanicinin yasadigi arizanin sinifi buydu).
+  const sure = KOPRU_ZAMAN_ASIMI[method] || KOPRU_ZAMAN_ASIMI._varsayilan;
+  out = await Promise.race([
+    window.pywebview.api[method](...args),
+    new Promise((_, reddet) => setTimeout(
+      () => reddet(new Error(t("err.timeout"))), sure)),
+  ]);
+
+  if (out && out.ok === false && !out.hatalar) {
+    if (out.error_code) throw new Error(t("err." + out.error_code) || t("err.failed"));
+    throw new Error(out.error || t("err.failed"));
+  }
+  return out;
+}
+
+/* ---------- bant izi cizimi ---------- */
+const canvas = $("trace");
+const ctx = canvas.getContext("2d");
+function drawTrace() {
+  const ratio = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w * ratio || canvas.height !== h * ratio) {
+    canvas.width = w * ratio; canvas.height = h * ratio;
+  }
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  // Tepeye %25 boşluk: sabit hızda çizgi tavana yapışıp blok gibi görünmesin
+  let enb = 1024 * 512;                    // spread YOK: her karede 180 eleman yaymak pahaliydi
+  for (let i = 0; i < state.trace.length; i++) if (state.trace[i] > enb) enb = state.trace[i];
+  const peak = enb * 1.25;
+  const step = w / (TRACE_POINTS - 1);
+  const y = (v) => h - 6 - (v / peak) * (h - 16);
+
+  // zemin izgarasi: iki sessiz cizgi
+  ctx.strokeStyle = "#1f2733";
+  ctx.lineWidth = 1;
+  [0.34, 0.67].forEach((f) => {
+    ctx.beginPath();
+    ctx.moveTo(0, Math.round(h * f) + 0.5);
+    ctx.lineTo(w, Math.round(h * f) + 0.5);
+    ctx.stroke();
+  });
+
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  state.trace.forEach((v, i) => ctx.lineTo(i * step, y(v)));
+  ctx.lineTo(w, h);
+  ctx.closePath();
+  const fill = ctx.createLinearGradient(0, 0, 0, h);
+  fill.addColorStop(0, "#5b9dff3d");
+  fill.addColorStop(1, "#5b9dff00");
+  ctx.fillStyle = fill;
+  ctx.fill();
+
+  ctx.beginPath();
+  state.trace.forEach((v, i) => (i ? ctx.lineTo(i * step, y(v)) : ctx.moveTo(0, y(v))));
+  ctx.strokeStyle = "#5b9dff";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+window.addEventListener("resize", drawTrace);
+
+/* ---------- liste ---------- */
+function rowClass(item) {
+  if (item.status === "active" && item.kind === "torrent" && item.seeder) return "seeding";
+  return item.status;
+}
+function segbar(item) {
+  const cells = 24;
+  const filled = Math.floor((item.progress / 100) * cells);
+  const partial = item.progress > 0 && filled < cells;
+  let html = '<div class="segbar">';
+  for (let i = 0; i < cells; i++) {
+    const cls = i < filled ? "f" : (partial && i === filled ? "h" : "");
+    html += "<i" + (cls ? ' class="' + cls + '"' : "") + "></i>";
+  }
+  return html + "</div>";
+}
+function visible() {
+  const q = state.search.toLocaleLowerCase("tr-TR");
+  return state.items.filter((item) => {
+    if (item.status === "removed") return false;
+    const f = state.filter;
+    if (f === "active" && !(item.status === "active" || item.status === "waiting")) return false;
+    if (f === "paused" && item.status !== "paused" && item.status !== "scheduled") return false;
+    if (f === "video" && item.kind !== "video") return false;
+    if (f === "torrent" && item.kind !== "torrent") return false;
+    if (f === "complete" && item.status !== "complete") return false;
+    if (f === "error" && item.status !== "error") return false;
+    if (q && !(item.title || "").toLocaleLowerCase("tr-TR").includes(q)) return false;
+    return true;
+  });
+}
+function renderList() {
+  const rows = visible();
+  const list = $("list");
+  if (!rows.length) {
+    list.innerHTML =
+      '<div class="empty"><p>' + escapeHtml(t("empty.title")) + "</p>" +
+      escapeHtml(t("empty.hint")) + "</div>";
+    return;
+  }
+  list.innerHTML = rows.map((item) => {
+    const seeding = item.kind === "torrent" && item.status === "active";
+    let stateText = item.seeder ? t("state.seeding") : stateLabel(item.status);
+    if (item.status === "scheduled" && item.start_after) {
+      const when = new Date(item.start_after * 1000);
+      stateText += " " + String(when.getHours()).padStart(2, "0") + ":" +
+        String(when.getMinutes()).padStart(2, "0");
+    }
+    // Satir dugmesi: ikon + etiket; dar alanda etiket gizlenir, title ipucu kalir.
+    const btn = (act, attr, val, icon, label) => {
+      const pending = state.controlPending.has(item.gid) && (act === "pause" || act === "resume");
+      return '<button data-act="' + act + '" data-' + attr + '="' + val + '" title="' + escapeHtml(label) + '"' +
+        (pending ? ' disabled aria-busy="true"' : '') + '>' +
+        '<span class="ic">' + (pending ? '<span class="control-spinner" aria-hidden="true"></span>' : icon) +
+        '</span><span class="lbl">' + escapeHtml(label) + "</span></button>";
+    };
+    const kill = btn("remove", "gid", item.gid, "🗑", t("row.remove"));
+    let right;
+    if (item.status === "complete") {
+      right = btn("open", "gid", item.gid, "📂", t("row.folder"))
+          + btn("network-share", "gid", item.gid, "📲", t("row.share"))
+          + btn("scan", "gid", item.gid, "🔍", t("row.scan"))
+          + btn("remove", "gid", item.gid, "🗑", t("row.delete"));
+    } else if (item.status === "error") {
+      right = btn("retry", "id", item.id || "", "🔄", t("row.retry")) + kill;
+    } else if (item.status === "paused") {
+      right = btn("resume", "gid", item.gid, "▶", t("row.resume")) + kill;
+    } else if (item.status === "scheduled") {
+      right = kill;
+    } else {
+      right = btn("pause", "gid", item.gid, "⏸", t("row.pause")) + kill;
+    }
+    if (item.kind === "torrent") {
+      right = btn("files", "gid", item.gid, "📁", t("tor.files")) + right;
+    }
+    if (item.kind === "torrent" && item.status !== "complete" && item.status !== "error") {
+      right = btn("seed", "gid", item.gid, "🌱", t("row.seed")) + right;
+    }
+    return (
+      '<div class="row ' + rowClass(item) + (state.selected === item.gid ? " sel" : "") +
+        '" data-gid="' + item.gid + '">' +
+        '<div class="row-name">' +
+          '<div class="row-title">' +
+            '<label class="row-cb-label" onclick="event.stopPropagation()"><input type="checkbox" class="row-select-cb" data-gid="' + item.gid + '" ' + (state.selectedGids.has(item.gid) ? 'checked' : '') + '></label>' +
+            '<span class="kind ' + item.kind + '">' + item.kind + '</span><span class="row-title-text" title="' + escapeHtml(item.title || item.gid) + '">' +
+            escapeHtml(item.title || item.gid) + "</span></div>" +
+          segbar(item) +
+        "</div>" +
+        '<div class="num"><span class="big">' + item.progress.toFixed(1) + "%</span>" +
+          '<div class="size-line">' + size(item.completedLength) + " / " +
+            (item.totalLength ? size(item.totalLength) : "?") + "</div>" +
+          (item.totalLength && item.status !== "complete"
+            ? '<div class="size-line">' + t("row.left") + " " + size(item.remaining || 0) + "</div>"
+            : "") +
+        "</div>" +
+        '<div class="num big">' + (item.status === "complete" ? "" : speed(item.downloadSpeed)) +
+          (seeding ? '<div class="size-line">' + item.numSeeders + " " + t("row.seed") + "</div>" :
+            '<div class="size-line">' + (item.avgSpeed && item.avgSpeed !== item.downloadSpeed
+              ? t("row.avg") + " " + speed(item.avgSpeed)
+              : (item.connections ? item.connections + " " + t("row.conn") : "&nbsp;")) + "</div>") +
+        "</div>" +
+        '<div class="num eta">' + (item.status === "complete" ? "" : clock(item.eta)) +
+          (item.status !== "complete" && item.elapsed
+            ? '<div class="size-line">' + t("row.elapsed") + " " + clockShort(item.elapsed) + "</div>" : "") +
+        "</div>" +
+        '<div class="state">' +
+          '<span class="state-badge ' + rowClass(item) + '">' + stateText + '</span>' +
+          '<div class="acts">' + right + "</div>" +
+        '</div>' +
+      "</div>"
+    );
+  }).join("");
+
+  list.querySelectorAll(".row-select-cb").forEach((cb) => {
+    cb.onchange = (event) => {
+      event.stopPropagation();
+      const gid = cb.dataset.gid;
+      if (cb.checked) {
+        state.selectedGids.add(gid);
+      } else {
+        state.selectedGids.delete(gid);
+      }
+      updateBulkRemoveBtn();
+    };
+  });
+
+  updateBulkRemoveBtn();
+}
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function renderCounts() {
+  const counts = {
+    all: 0, active: 0, paused: 0, video: 0, torrent: 0, complete: 0, error: 0,
+  };
+  state.items.forEach((item) => {
+    if (item.status === "removed") return;
+    counts.all++;
+    if (item.status === "active" || item.status === "waiting") counts.active++;
+    if (item.status === "paused" || item.status === "scheduled") counts.paused++;
+    if (item.kind === "video") counts.video++;
+    if (item.kind === "torrent") counts.torrent++;
+    if (item.status === "complete") counts.complete++;
+    if (item.status === "error") counts.error++;
+  });
+  Object.entries(counts).forEach(([key, value]) => {
+    const el = document.querySelector('[data-c="' + key + '"]');
+    if (el) el.textContent = value;
+  });
+
+  const pauseAllBtn = $("pauseAll");
+  if (pauseAllBtn) pauseAllBtn.disabled = counts.active === 0;
+  const resumeAllBtn = $("resumeAll");
+  if (resumeAllBtn) resumeAllBtn.disabled = counts.paused === 0;
+  const clearDoneBtn = $("clearDone");
+  if (clearDoneBtn) clearDoneBtn.disabled = (counts.complete + counts.error) === 0;
+}
+
+/* ---------- detay cekmecesi ---------- */
+const DRAWER_DEFAULT_HEIGHT = 216;
+const DRAWER_HEIGHT_KEY = "afudm.drawerHeight";
+function clampDrawerHeight(value) {
+  return Math.round(Math.max(140, Math.min(Math.max(140, window.innerHeight * 0.75), value)));
+}
+function setDrawerHeight(value, persist = true) {
+  const drawer = $("drawer");
+  if (!drawer) return;
+  const height = clampDrawerHeight(value);
+  drawer.style.height = height + "px";
+  if (persist) {
+    try { localStorage.setItem(DRAWER_HEIGHT_KEY, String(height)); } catch (_) {}
+  }
+}
+function initDrawerResize() {
+  const drawer = $("drawer"), handle = $("drawerResize");
+  if (!drawer || !handle) return;
+  let saved = DRAWER_DEFAULT_HEIGHT;
+  try {
+    const value = Number(localStorage.getItem(DRAWER_HEIGHT_KEY));
+    if (Number.isFinite(value) && value >= 140) saved = value;
+  } catch (_) {}
+  setDrawerHeight(saved, false);
+  let startY = 0, startHeight = 0;
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    startY = event.clientY;
+    startHeight = drawer.getBoundingClientRect().height;
+    handle.classList.add("dragging");
+    handle.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  handle.addEventListener("pointermove", (event) => {
+    if (!handle.hasPointerCapture(event.pointerId)) return;
+    setDrawerHeight(startHeight + startY - event.clientY);
+  });
+  const endDrag = (event) => {
+    handle.classList.remove("dragging");
+    if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+  };
+  handle.addEventListener("pointerup", endDrag);
+  handle.addEventListener("pointercancel", endDrag);
+  handle.addEventListener("dblclick", () => setDrawerHeight(DRAWER_DEFAULT_HEIGHT));
+  handle.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    event.preventDefault();
+    setDrawerHeight(drawer.getBoundingClientRect().height + (event.key === "ArrowUp" ? 20 : -20));
+  });
+  window.addEventListener("resize", () => setDrawerHeight(drawer.getBoundingClientRect().height));
+}
+
+async function switchDetailTab(tabName) {
+  state.activeDTab = tabName;
+  document.querySelectorAll("#detailTabs .dtab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.dtab === tabName);
+  });
+  const panels = {
+    overview: $("dPanelOverview"),
+    files: $("dPanelFiles"),
+    trackers: $("dPanelTrackers"),
+    rules: $("dPanelRules"),
+    automation: $("dPanelAutomation"),
+    logs: $("dPanelLogs"),
+  };
+  Object.entries(panels).forEach(([k, panel]) => {
+    if (panel) panel.classList.toggle("active", k === tabName);
+  });
+  if (state.selected) {
+    await renderDetailTabContent(state.selected, tabName);
+  }
+}
+
+const detailTabErrorsShown = new Set();
+function writeDetailHtml(el, html) {
+  if (!el || el.dataset.sig === html) return;
+  el.dataset.sig = html;
+  el.innerHTML = html;
+}
+
+async function renderDetailTabContent(gid, tabName) {
+  const item = state.items.find((i) => i.gid === gid);
+  if (!item) return;
+  const current = () => state.selected === gid && (state.activeDTab || "overview") === tabName;
+  if (tabName === "files") {
+    const el = $("dFilesContent");
+    if (!el) return;
+    if (item.kind !== "torrent") {
+      if (current()) writeDetailHtml(el, '<div class="kv"><div>' + t("kv.file") + '<b>' + escapeHtml(item.filename || "—") + '</b></div><div>' + t("kv.folder") + '<b>' + escapeHtml(item.dir || "—") + '</b></div></div>');
+      return;
+    }
+    let res;
+    try { res = await call("torrent_dosyalari", gid); }
+    catch (err) {
+      if (current() && !detailTabErrorsShown.has(gid)) {
+        detailTabErrorsShown.add(gid);
+        toast(err && err.message ? err.message : t("tor.filesError"), true);
+      }
+      return;
+    }
+    if (!current()) return;
+    let summary;
+    if (res.hazir_degil) summary = '<div class="hint">' + escapeHtml(res.neden || t("tor.notReady")) + '</div>';
+    else {
+      const list = res.dosyalar || [], selected = list.filter((d) => d.secili).length;
+      summary = '<div class="kv"><div>' + t("tor.count", {secili:selected, toplam:list.length, seciliBoyut:size(list.reduce((a,d)=>a+(d.secili?d.boyut:0),0)), toplamBoyut:size(list.reduce((a,d)=>a+d.boyut,0))}) + '</div></div>' +
+        '<div style="max-height:140px;overflow:auto;font-size:11.5px;font-family:var(--mono);color:var(--muted);">' +
+        list.slice(0,30).map((d)=>'<div style="padding:2px 0;display:flex;justify-content:space-between;"><span>'+(d.secili?'✓ ':'✗ ')+escapeHtml(d.ad)+'</span><span>'+size(d.boyut)+'</span></div>').join("") +
+        (list.length>30?'<div class="hint">+'+(list.length-30)+'...</div>':"")+'</div>';
+    }
+    writeDetailHtml(el, '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;"><span class="hint">'+escapeHtml(item.title||item.gid)+'</span><button class="btn primary" id="dOpenTorVeil" style="margin-left:auto;">'+t("tor.btnFiles")+'</button></div><div id="dFilesSummary">'+summary+'</div>');
+    const btn = $("dOpenTorVeil"); if (btn) btn.onclick = () => torrentVeilAc(gid);
+  } else if (tabName === "trackers") {
+    const tc = $("dTrackersContent"), pw = $("dPeersWrap");
+    if (item.kind !== "torrent") { if(current()){writeDetailHtml(tc,'<div class="hint">'+t("tor.empty")+'</div>');writeDetailHtml(pw,"");} return; }
+    const [met, peerRes] = await Promise.all([call("torrent_metrikleri",gid).catch(()=>null),call("peers",gid).catch(()=>({peers:[]}))]);
+    if (!current()) return;
+    let mh = "";
+    if(met&&met.ok&&!met.hazir_degil){const m=met.metrikler||{};mh='<div class="tor-metrik-bar" style="margin-bottom:10px;"><div class="tor-metrik-kutu"><span class="tor-metrik-lbl">'+t("tor.seed")+'</span><b>'+(m.num_seeders||0)+'</b></div><div class="tor-metrik-kutu"><span class="tor-metrik-lbl">'+t("tor.peers")+'</span><b>'+(m.connections||0)+'</b></div><div class="tor-metrik-kutu"><span class="tor-metrik-lbl">'+t("tor.ratio")+'</span><b>'+(m.ratio||0)+'</b></div><div class="tor-metrik-kutu"><span class="tor-metrik-lbl">'+t("tor.trackers")+'</span><b>'+(m.tracker_sayisi||0)+' ('+(m.canli_tracker||0)+' '+t("eng.installed")+')</b></div></div>';}
+    else if(met) mh='<div class="hint">'+escapeHtml(met.neden||t("tor.metaNotReady"))+'</div>';
+    const peers=peerRes.peers||[]; peers.sort((a,b)=>b.downloadSpeed-a.downloadSpeed);
+    const ph=!peers.length?'<div class="hint">'+t("tor.noPeers")+'</div>':'<table class="peers"><thead><tr><th>'+t("peers.addr")+'</th><th>'+t("peers.type")+'</th><th>'+t("peers.down")+'</th><th>'+t("peers.up")+'</th><th>'+t("peers.client")+'</th></tr></thead><tbody>'+peers.slice(0,40).map(p=>'<tr><td>'+escapeHtml(p.ip)+':'+p.port+'</td><td class="'+(p.seeder?'s':'')+'">'+(p.seeder?'seed':'peer')+'</td><td>'+speed(p.downloadSpeed)+'</td><td>'+speed(p.uploadSpeed)+'</td><td>'+escapeHtml(p.client||"")+'</td></tr>').join("")+'</tbody></table>';
+    writeDetailHtml(tc,mh); writeDetailHtml(pw,ph);
+  } else if (tabName === "rules") {
+    const el=$("dRulesContent"); if(!el)return; let html;
+    try {const out=await call("download_rules",gid), rows=Object.entries(out.trace||{}).map(([k,v])=>'<div class="kv"><div>'+escapeHtml(k)+'<b>'+escapeHtml(t("rules.source",{name:v.source_name||"?"}))+'</b></div></div>'); html=rows.length?rows.join(""):'<div class="hint">'+escapeHtml(t("dtab.rulesEmpty"))+'</div>';}
+    catch(_){html='<div class="hint">'+escapeHtml(t("dtab.rulesEmpty"))+'</div>';}
+    if(current())writeDetailHtml(el,html);
+  } else if (tabName === "automation") {
+    const el=$("dAutomationContent"); if(!el)return; let html,jobs=[];
+    try {jobs=(await call("automation_jobs",gid)).jobs||[]; html=!jobs.length?'<div class="hint">'+t("auto.empty")+'</div>':jobs.map(job=>{const err=job.error?'<div class="err-note">'+escapeHtml(job.error)+'</div>':"";const actions=(job.status==="error"?'<button class="btn" data-auto-retry="'+job.id+'">'+t("auto.retry")+'</button>':"")+((job.status==="queued"||job.status==="running")?'<button class="btn ghost" data-auto-cancel="'+job.id+'">'+t("auto.cancel")+'</button>':"");return '<div class="automation-job"><b>'+escapeHtml(t("auto.step."+job.action))+'</b><span class="rozet">'+escapeHtml(t("auto.status."+job.status))+' · '+(job.progress||0)+'%</span>'+(job.action==="power"&&job.status==="running"?'<div class="hint">'+t("auto.countdown")+'</div>':"")+err+'<div>'+actions+'</div></div>';}).join("");}
+    catch(err){html='<div class="err-note">'+escapeHtml(err.message)+'</div>';}
+    if(!current())return; writeDetailHtml(el,html);
+    el.querySelectorAll("[data-auto-retry]").forEach(b=>b.onclick=async()=>{await call("automation_retry",Number(b.dataset.autoRetry));renderDetailTabContent(gid,"automation");});
+    el.querySelectorAll("[data-auto-cancel]").forEach(b=>b.onclick=async()=>{await call("automation_cancel",Number(b.dataset.autoCancel));renderDetailTabContent(gid,"automation");});
+  } else if (tabName === "logs") {
+    const el=$("dLogsContent"); if(!el)return; let html;
+    try {const res=await call("loglar",gid),evts=res&&res.events||[]; if(!evts.length&&!item.errorMessage)html='<div class="hint">'+t("dtab.noLogs")+'</div>';else{const lines=[];if(item.errorMessage)lines.push('<div class="log-row"><span class="log-level err">[ERROR]</span>'+escapeHtml(item.errorMessage)+'</div>');evts.slice(0,25).forEach(ev=>{const d=ev.at?new Date(ev.at*1000).toLocaleTimeString():"",lvl=(ev.level||"info").toLowerCase();lines.push('<div class="log-row"><span class="log-time">'+d+'</span><span class="log-level '+lvl+'">['+lvl.toUpperCase()+']</span>'+escapeHtml(ev.message||"")+'</div>');});html=lines.join("");}}
+    catch(_){html='<div class="hint">'+t("dtab.noLogs")+'</div>';}
+    if(current())writeDetailHtml(el,html);
+  }
+}
+
+async function renderDrawer() {
+  const drawer = $("drawer");
+  const dTorFiles = $("dTorFiles");
+  if (!state.selected) {
+    drawer.className = "drawer";
+    if (dTorFiles) dTorFiles.style.display = "none";
+    return;
+  }
+  const item = state.items.find((i) => i.gid === state.selected);
+  if (!item) {
+    drawer.className = "drawer";
+    if (dTorFiles) dTorFiles.style.display = "none";
+    return;
+  }
+  drawer.className = "drawer open";
+  $("dTitle").textContent = item.title || item.gid;
+  $("dGid").textContent = item.gid;
+  if (dTorFiles) {
+    dTorFiles.style.display = item.kind === "torrent" ? "inline-block" : "none";
+    dTorFiles.onclick = () => torrentVeilAc(item.gid);
+  }
+
+  // Tab butonlarini secili taba gore isaretle
+  const activeTab = state.activeDTab || "overview";
+  document.querySelectorAll("#detailTabs .dtab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.dtab === activeTab);
+    btn.onclick = () => switchDetailTab(btn.dataset.dtab);
+  });
+  const panels = {
+    overview: $("dPanelOverview"),
+    files: $("dPanelFiles"),
+    trackers: $("dPanelTrackers"),
+    rules: $("dPanelRules"),
+    automation: $("dPanelAutomation"),
+    logs: $("dPanelLogs"),
+  };
+  Object.entries(panels).forEach(([k, panel]) => {
+    if (panel) panel.classList.toggle("active", k === activeTab);
+  });
+
+  // Overview tabinin icerigini (dKv) doldur
+  const cells = [
+    [t("kv.status"), item.seeder ? t("state.seeding") : stateLabel(item.status)],
+    [t("kv.size"), (item.totalLength ? size(item.totalLength) : t("kv.unknown"))],
+    [t("kv.downloaded"), size(item.completedLength)],
+    [t("kv.speed"), speed(item.downloadSpeed)],
+    [t("kv.eta"), clock(item.eta)],
+    [t("kv.conn"), String(item.connections || 0)],
+  ];
+  if (item.kind === "torrent") {
+    cells.push([t("kv.seed"), String(item.numSeeders || 0)]);
+    cells.push([t("kv.sent"), size(item.uploadLength || 0)]);
+    cells.push([t("kv.upspeed"), speed(item.uploadSpeed || 0)]);
+    cells.push([t("kv.ratio"), String(item.ratio || 0)]);
+    if (item.infoHash) cells.push([t("kv.infohash"), item.infoHash]);
+  }
+  cells.push([t("kv.folder"), item.dir || "—"]);
+  if (item.filename) cells.push([t("kv.file"), item.filename]);
+  if (item.errorMessage) cells.push([t("kv.error"), item.errorMessage]);
+  $("dKv").innerHTML = cells
+    .map(([k, v]) => "<div>" + k + "<b>" + escapeHtml(v) + "</b></div>")
+    .join("");
+
+  // Aktif olan ozel tabin icerigini guncelle
+  await renderDetailTabContent(item.gid, activeTab);
+}
+
+/* ---------- veri dongusu ---------- */
+let offlineArdisik = 0;   // art arda basarisiz snapshot sayisi (tek yavaslık yanıp sönme yapmasın)
+let tickTimer = null;
+let tickInFlight = false;
+
+async function tick(isManual = false) {
+  if (afudmHidden()) return;
+  if (tickInFlight) return;
+  if (tickTimer) { clearTimeout(tickTimer); tickTimer = null; }
+  tickInFlight = true;
+  try {
+    const snap = await call("snapshot");
+    offlineArdisik = 0;
+    state.items = snap.items || [];
+    state.items.forEach((item) => {
+      const override = state.controlOverrides.get(item.gid);
+      if (!override) return;
+      if (item.status === override) state.controlOverrides.delete(item.gid);
+      else item.status = override;
+    });
+    state.settings = snap.settings || {};
+    const stat = snap.stat || {};
+
+    state.items.forEach((item) => {
+      const previous = state.lastDone.get(item.gid) || 0;
+      if (item.completedLength > previous) state.sessionBytes += item.completedLength - previous;
+      state.lastDone.set(item.gid, item.completedLength);
+    });
+
+    state.trace.push(stat.downloadSpeed || 0);
+    state.trace.shift();
+    const value = (stat.downloadSpeed || 0) / 1048576;
+    $("speed").textContent = value >= 10 ? value.toFixed(0) : value.toFixed(1);
+    $("mActive").textContent = stat.numActive || 0;
+    $("mWait").textContent = stat.numWaiting || 0;
+    $("mUp").textContent = speed(stat.uploadSpeed || 0);
+    $("mTotal").textContent = size(state.sessionBytes);
+    if (snap.lang && snap.lang !== currentLang()) {
+      // Dil degistiyse butun sabit metinleri yeniden yaz (ayarlardan aninda doner)
+      setLang(snap.lang);
+      applyStatic();
+    }
+    $("engineDot").className = "dot" + (snap.engine_ok ? " ok" : "");
+    $("engineText").textContent = snap.engine_ok ? t("engine.running") : t("engine.stopped");
+    // Motor asagi ama kopru ayakta: "Yeniden dene" ile gercekten yeniden baslat.
+    if ($("engineRetry")) $("engineRetry").style.display = snap.engine_ok ? "none" : "inline-block";
+    $("dirHint").textContent = snap.download_dir || "";
+    $("dirHint").title = snap.download_dir || "";
+
+    drawTrace();
+    renderCounts();
+    renderList();
+    await renderDrawer();
+    await bekleyenYokla();
+  } catch (err) {
+    console.warn("[AfuDM] tick:", err);
+    // Tek bir yavaslik/kisa takilma yuzunden surekli "baglanti yok" yanip
+    // somnesin: art arda 2 hatadan sonra offline say (ilk hata yok sayilir).
+    offlineArdisik++;
+    if (offlineArdisik >= 2) {
+      $("engineDot").className = "dot";
+      $("engineText").textContent = t("engine.offline");
+      if ($("engineText")) $("engineText").title = (err && err.message) || "";
+      if ($("engineRetry")) $("engineRetry").style.display = "inline-block";
+    }
+  }
+  tickInFlight = false;
+  if (!afudmHidden()) tickTimer = setTimeout(tick, POLL_MS);
+}
+
+if ($("engineRetry")) {
+  $("engineRetry").onclick = async () => {
+    $("engineRetry").style.display = "none";
+    $("engineText").textContent = t("engine.connecting");
+    try {
+      await call("reliability_restart_engine");
+    } catch (e) {
+      console.warn("[AfuDM] motor yeniden başlatılamadı:", e);
+    }
+    tick(true);
+  };
+}
+
+/* ---------- eylemler ---------- */
+async function agdaPaylas(gid) {
+  if (state.settings.internet_paylasim !== false) {
+    $("shareErr").textContent = t("share.internetPreparing");
+  }
+  let sonuc = await call("agda_paylas", gid);
+  if (sonuc.internet_error_key === "share.cloudflaredMissing") {
+    if (!confirm(t("share.downloadTunnelAsk"))) return sonuc;
+    await call("motor_indir", "cloudflared");
+    for (let i = 0; i < 120; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const durum = await call("motor_durumu");
+      if (durum.motorlar.cloudflared && durum.motorlar.cloudflared.var) break;
+    }
+    sonuc = await call("agda_paylas", gid);
+  }
+  return sonuc;
+}
+
+function paylasimModalDoldur(res) {
+  $("shareLink").value = res.local_url || res.url || "";
+  $("shareInternetLink").value = res.internet_url || "";
+  $("shareSmbPath").value = res.smb || "";
+  $("shareQrImg").src = res.qr || "";
+  $("shareQrImg").style.display = res.qr ? "inline-block" : "none";
+  $("shareErr").textContent = res.warning || (res.internet_error_key ? t(res.internet_error_key) : "");
+}
+
+$("list").addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-act]");
+  const row = event.target.closest(".row");
+  if (button) {
+    event.stopPropagation();
+    const { act, gid } = button.dataset;
+    try {
+      if (act === "files") { await torrentVeilAc(gid); return; }
+      if (act === "seed") { await seedAc(gid); return; }
+      if (act === "scan") { await call("defender_scan", gid); toast(t("toast.scanStarted")); return; }
+      if (act === "network-share") {
+        try {
+          const res = await agdaPaylas(gid);
+          if (res.ok) {
+            if (button.dataset.direct === "1") {
+              const a = document.createElement("a");
+              a.href = res.url;
+              a.download = res.filename || "download";
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              toast(t("share.downloadingToPhone"));
+              return;
+            }
+            paylasimModalDoldur(res);
+            openVeil("shareVeil");
+          }
+        } catch(e) {
+          toast(e.message, true);
+        }
+        return;
+      }
+      if (act === "open") await call("open_item_folder", gid);
+      else if (act === "retry") {
+        const rowId = Number(button.dataset.id);
+        if (!rowId) throw new Error(t("err.noRetry"));
+        await call("retry", rowId);
+      } else if (act === "pause" || act === "resume") {
+        const item = state.items.find((entry) => entry.gid === gid);
+        if (!item || state.controlPending.has(gid)) return;
+        const previous = item.status;
+        const target = act === "pause" ? "paused" : "active";
+        state.controlPending.add(gid);
+        state.controlOverrides.set(gid, target);
+        item.status = target;
+        renderCounts();
+        renderList();
+        try {
+          await call("control", act, gid, false);
+          state.controlPending.delete(gid);
+          renderList();
+          tick(true);
+        } catch (err) {
+          state.controlPending.delete(gid);
+          state.controlOverrides.delete(gid);
+          item.status = previous;
+          renderCounts();
+          renderList();
+          toast(act === "pause" ? "Duraklatılamadı. Yeniden deneyin." : "Başlatılamadı. Yeniden deneyin.", true);
+        }
+      } else if (act !== "remove") await call("control", act, gid, false);
+      else if (act === "remove") {
+        $("remFiles").checked = false;
+        $("remGo").dataset.mode = "single";
+        $("remGo").dataset.gid = gid;
+        if ($("remTitle")) $("remTitle").textContent = t("rem.title");
+        if ($("remDesc")) $("remDesc").textContent = t("rem.desc");
+        openVeil("removeVeil");
+      }
+    } catch (err) { toast(err.message, true); }
+    return;
+  }
+  if (row) {
+    state.selected = state.selected === row.dataset.gid ? null : row.dataset.gid;
+    renderList();
+    renderDrawer();
+  }
+});
+$("dClose").onclick = () => { state.selected = null; renderList(); renderDrawer(); };
+
+document.querySelectorAll(".filter").forEach((button) => {
+  button.onclick = () => {
+    document.querySelectorAll(".filter").forEach((b) => b.classList.remove("on"));
+    button.classList.add("on");
+    state.filter = button.dataset.f;
+    renderList();
+  };
+});
+$("search").oninput = (event) => { state.search = event.target.value; renderList(); };
+
+$("pauseAll").onclick = () => call("control", "pause_all", "", false).catch((e) => toast(e.message, true));
+$("resumeAll").onclick = () => call("control", "resume_all", "", false).catch((e) => toast(e.message, true));
+$("clearDone").onclick = async () => {
+  try {
+    const out = await call("clear_finished");
+    toast(t("toast.cleared", { n: out.removed || 0 }));
+  } catch (err) { toast(err.message, true); }
+};
+$("openFolder").onclick = () => call("open_download_dir").catch((e) => toast(e.message, true));
+
+const veilFocusMap = new Map();
+function openVeil(id) {
+  veilFocusMap.set(id, document.activeElement);
+  $(id).classList.add("open");
+}
+function closeVeil(id) {
+  $(id).classList.remove("open", "on");
+  const prev = veilFocusMap.get(id);
+  if (prev && typeof prev.focus === "function") prev.focus();
+  veilFocusMap.delete(id);
+
+  // Ayarlar kapaninca motor listesini bosuna sorgulamayi birak
+  if (id === "setVeil" && state.motorTimer) {
+    afudmClearInterval(state.motorTimer);
+    state.motorTimer = null;
+  }
+   if (id === "seedVeil" && state.seedTimer) {
+     afudmClearInterval(state.seedTimer);
+     state.seedTimer = null;
+   }
+  if (id === "torrentVeil") {
+    torState.acik = false;
+    torState.nonce = (torState.nonce || 0) + 1;
+    // Askida kalan metrik istegi bu pencereyle birlikte terk edilir; kilidi tasimazsak
+    // yeniden acilan pencere hic metrik cekemez
+    torState.metrikInFlight = false;
+    if (state.torTimer) {
+      afudmClearInterval(state.torTimer);
+      state.torTimer = null;
+    }
+  }
+  // LinkGrabber kapanirsa surunen probe'lari durdur (yeni is yok zaten)
+  if (id === "lgVeil") call("linkgrabber_iptal").catch(() => {});
+  // Eklenti paneli kapaninca canli durum yoklamasi da dursun
+  if (id === "pluginVeil" && plgState.timer) {
+    afudmClearInterval(plgState.timer);
+    plgState.timer = null;
+  }
+}
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-close]");
+  if (!button) return;
+  if (button.dataset.close === "srvVeil" && srvState.timer) {
+    afudmClearInterval(srvState.timer);
+    srvState.timer = null;
+  }
+  closeVeil(button.dataset.close);
+});
+document.querySelectorAll(".veil").forEach((veil) => {
+  veil.addEventListener("click", (event) => { if (event.target === veil) closeVeil(veil.id); });
+});
+const drawer = $("drawer");
+function closeDrawer() {
+  state.selected = null;
+  renderList();
+  renderDrawer();
+}
+if (drawer) drawer.addEventListener("click", (event) => {
+  if (event.target === drawer) closeDrawer();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    document.querySelectorAll(".veil.open, .veil.on").forEach((v) => {
+      if (v.id === "klasorVeil" && typeof klasorSoz !== "undefined" && klasorSoz) {
+        klasorKapat("");
+      } else {
+        closeVeil(v.id);
+      }
+    });
+    if ($("drawer").classList.contains("open")) closeDrawer();
+  }
+});
+
+$("addBtn").onclick = () => {
+  $("addErr").textContent = "";
+  $("quality").value = state.settings.video_quality || "best";
+  openVeil("addVeil");
+  $("urls").focus();
+};
+$("addModePC").onchange = $("addModeMobile").onchange = () => {
+  $("addPcOptions").style.display = $("addModeMobile").checked ? "none" : "block";
+};
+$("addGo").onclick = async () => {
+  const lines = $("urls").value.split("\n").map((s) => s.trim()).filter(Boolean);
+  if (!lines.length) { $("addErr").textContent = t("err.noLink"); return; }
+
+  if ($("addModeMobile").checked) {
+    lines.forEach(url => {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "";
+      a.target = "_blank";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    });
+    toast("Cihaza indirme tetiklendi (" + lines.length + " link)");
+    closeVeil("addVeil");
+    $("urls").value = "";
+    return;
+  }
+
+  const payload = {
+    urls: lines,
+    quality: $("quality").value,
+    audio_only: $("audioOnly").checked || $("quality").value === "audio",
+    playlist: $("playlist").checked,
+    dest_dir: $("dest").value.trim(),
+
+    start_at: $("startAt").value.trim(),
+  };
+  try {
+    const out = await call("add_links", payload);
+    closeVeil("addVeil");
+    $("urls").value = "";
+    let message = t("toast.started", { n: out.added });
+    if (out.scheduled) message = t("toast.scheduled", { n: out.scheduled });
+    if (out.failed && out.failed.length) {
+      message += t("toast.failed", { n: out.failed.length });
+      toast(message + ": " + out.failed[0], true);
+    } else {
+      toast(message);
+    }
+  } catch (err) { $("addErr").textContent = err.message; }
+};
+
+const selectAllBtn = $("selectAllBtn");
+if (selectAllBtn) {
+  selectAllBtn.onclick = () => {
+    const isAll = selectAllBtn.dataset.all === "1";
+    const visibleItems = visible();
+    if (isAll) {
+      state.selectedGids.clear();
+    } else {
+      visibleItems.forEach(i => state.selectedGids.add(i.gid));
+    }
+    updateBulkRemoveBtn();
+    renderList();
+  };
+}
+
+const removeSelBtn = $("removeSelected");
+if (removeSelBtn) {
+  removeSelBtn.onclick = () => {
+    if (state.selectedGids.size === 0) return;
+    $("remFiles").checked = false;
+    $("remGo").dataset.mode = "bulk";
+    if ($("remTitle")) $("remTitle").textContent = t("rem.bulkTitle");
+    if ($("remDesc")) $("remDesc").textContent = t("rem.bulkDesc", { n: state.selectedGids.size });
+    openVeil("removeVeil");
+  };
+}
+
+$("remGo").onclick = async () => {
+  const mode = $("remGo").dataset.mode || "single";
+  const delFiles = $("remFiles").checked;
+
+  if (mode === "bulk") {
+    const gids = Array.from(state.selectedGids);
+    if (!gids.length) return;
+    let removedCount = 0;
+    for (const gid of gids) {
+      try {
+        await call("control", "remove", gid, { delete_files: delFiles });
+        removedCount++;
+        state.items = state.items.filter((i) => i.gid !== gid);
+        state.lastDone.delete(gid);
+        if (state.selected === gid) state.selected = null;
+        state.selectedGids.delete(gid);
+      } catch (_) {}
+    }
+    closeVeil("removeVeil");
+    renderCounts();
+    renderList();
+    renderDrawer();
+    updateBulkRemoveBtn();
+    if (removedCount > 0) {
+      toast(t("toast.bulkRemoved", { n: removedCount }));
+    } else {
+      toast(t("err.failed"), true);
+    }
+    return;
+  }
+
+  const gid = $("remGo").dataset.gid;
+  if (!gid) return;
+  let isOrphan = false;
+  try {
+    const res = await call("control", "remove", gid, Boolean($("remFiles").checked));
+    if (res && res.orphan) isOrphan = true;
+  } catch (err) {
+    const msg = String(err.message || "").toLocaleLowerCase("tr-TR");
+    if (msg.includes("kayit bulunamadi") || msg.includes("not found") || msg.includes("404")) {
+      isOrphan = true;
+    } else {
+      toast(err.message, true);
+      return;
+    }
+  }
+
+  state.items = state.items.filter((i) => i.gid !== gid);
+  state.lastDone.delete(gid);
+  state.selectedGids.delete(gid);
+  if (state.selected === gid) state.selected = null;
+
+  closeVeil("removeVeil");
+  renderCounts();
+  renderList();
+  renderDrawer();
+  updateBulkRemoveBtn();
+
+  toast(isOrphan ? t("toast.orphanCleared") : t("toast.removed"));
+};
+
+
+/* ---------- LinkGrabber (v1.5) ----------
+   Akis: metin yapistir -> analiz (ayikla+normalize+tekil) ->
+   liste -> canli filtre (ara/joker + tur + domain + boyut) ->
+   "+ boyutlari tara" -> sec -> toplu ekle.
+   Filtre kurali YALNIZCA core'da (linkgrabber.ogeleri_filtrele); panel
+   yalnizca linkgrabber_suz'u cagirir ve gosterilen indeksleri cizer. */
+const lgState = { ogeler: [], gosterim: [], filtre: { sadece: [], domain: "", ara: "" } };
+
+function lgTurEtiketi(tur) {
+  const anahtar = "lg.tur." + tur;
+  const metin = t(anahtar);
+  return metin === anahtar ? escapeHtml(tur) : metin;
+}
+
+let lgSuzTimer = null;
+function lgSuzGecikmeli() {
+  clearTimeout(lgSuzTimer);
+  lgSuzTimer = setTimeout(lgSuz, 160);
+}
+
+async function lgSuz() {
+  if (!lgState.ogeler.length) { lgRender(); return; }
+  const filtre = {
+    sadece: Array.from($("lgSadece").selectedOptions)
+      .map((o) => o.value).filter((v) => v !== "all"),
+    domain: $("lgDomain").value || "",
+    ara: $("lgAra").value.trim(),
+    min_boyut: bsBoyutMin($("lgBoyut").value),
+    max_boyut: bsBoyutMax($("lgBoyut").value),
+  };
+  lgState.filtre = filtre;
+  const gosterilenler = lgState.ogeler.filter((o) => o.secili).length;
+  try {
+    const out = await call("linkgrabber_suz", lgState.ogeler, filtre);
+    if (out.ok) {
+      lgState.gosterim = out.indeks || [];
+      const secili = out.indeks.filter((i) => lgState.ogeler[i] && lgState.ogeler[i].secili).length;
+      $("lgDurum").textContent = t("lg.listCount", {
+        g: out.gosterilen,
+        n: out.toplam,
+      }) + " · " + t("lg.sonuc", { n: out.toplam, m: secili || gosterilenler });
+      $("lgGo").disabled = secili === 0;
+      $("lgGo").textContent = t("lg.go", { n: secili });
+      lgDomainDoldur(out.domainler || []);
+      lgRender();
+    }
+  } catch (err) { /* bridge yoksa liste eski haliyle kalsin */ }
+}
+
+function lgDomainDoldur(domainler) {
+  const guncel = $("lgDomain").value;
+  const hepsiBir = domainler.length === 0 || (domainler.length === 1 && domainler[0] === "");
+  $("lgDomain").innerHTML = '<option value="">' + t("lg.tum") + "</option>" +
+    domainler.filter(Boolean).map((d) =>
+      `<option value="${escapeHtml(d)}"${d === guncel ? " selected" : ""}>${escapeHtml(d)}</option>`).join("");
+  if (hepsiBir) $("lgDomain").value = "";
+}
+
+function bsBoyutMin(deger) {
+  if (deger === ">1GB") return 1 << 30;
+  if (deger === ">100MB") return 100 * (1 << 20);
+  if (deger === ">10MB") return 10 * (1 << 20);
+  return null;
+}
+
+function bsBoyutMax(deger) {
+  if (deger === "<10MB") return 10 * (1 << 20);
+  if (deger === "<100MB") return 100 * (1 << 20);
+  return null;
+}
+
+function lgRender() {
+  const liste = $("lgListe");
+  const durum = $("lgDurum");
+  if (!lgState.ogeler.length) {
+    liste.innerHTML = '<div class="lg-bos">' + t("lg.bos") + "</div>";
+    durum.textContent = t("lg.durumBos");
+    $("lgGo").disabled = true;
+    return;
+  }
+  const indeks = lgState.gosterim || lgState.ogeler.map((_, i) => i);
+  const secili = indeks.filter((i) => lgState.ogeler[i].secili).length;
+  durum.textContent = t("lg.listCount", { g: indeks.length, n: lgState.ogeler.length }) +
+    " · " + t("lg.sonuc", { n: lgState.ogeler.length, m: secili });
+  $("lgGo").disabled = secili === 0;
+  $("lgGo").textContent = t("lg.go", { n: secili });
+  liste.innerHTML = indeks.map((i) => {
+    const o = lgState.ogeler[i];
+    const boyut = o.probed ? (o.size ? size(Number(o.size)) : t("lg.boyutYok")) : "…";
+    const ad = o.filename || "—";
+    const onceki = o.oncekiIndirme ? ` <span class="lg-onceki">⚠ ${t("lg.uyariOnceki")}</span>` : "";
+    return `<label class="lg-satir${o.secili ? " secili" : ""}${o.oncekiIndirme ? " onceki" : ""}">
+      <input type="checkbox" data-i="${i}" ${o.secili ? "checked" : ""}>
+      <span class="lg-tur ${escapeHtml(o.tur)}">${lgTurEtiketi(o.tur)}</span>
+      <span class="lg-ad">${escapeHtml(ad)}${onceki}</span>
+      <span class="lg-boyut">${o.probed ? boyut : "…"}</span>
+      <span class="lg-url">${escapeHtml(o.url)}</span>
+    </label>`;
+  }).join("");
+  liste.querySelectorAll("input[type=checkbox]").forEach((cb) => {
+    cb.onchange = () => {
+      lgState.ogeler[Number(cb.dataset.i)].secili = cb.checked;
+      lgRender();
+    };
+  });
+  const eskiSayisi = lgState.ogeler.filter((o) => o.oncekiIndirme && o.secili).length;
+  if (eskiSayisi) {
+    durum.textContent += " · " + t("lg.oncekiKaldir");
+    durum.style.cursor = "pointer";
+    durum.onclick = () => {
+      for (const o of lgState.ogeler) if (o.oncekiIndirme) o.secili = false;
+      lgRender();
+    };
+  } else {
+    durum.style.cursor = "";
+    durum.onclick = null;
+  }
+}
+
+async function linkgrabberAnaliz() {
+  const metin = $("lgMetin").value || "";
+  if (!metin.trim()) { toast(t("err.noLink"), true); return; }
+  $("lgDurum").textContent = t("lg.analizDurum");
+  try {
+    const out = await call("linkgrabber_analiz", metin, {});
+    const ogeler = (out.ogeler || []).map((o) => ({
+      ...o, secili: true, probed: false, filename: "", size: null,
+    }));
+    const onceki = await call("linkgrabber_onceki", ogeler.map((o) => o.url));
+    if (onceki && onceki.ok && onceki.onceki) {
+      const set = new Set(onceki.onceki);
+      for (const o of ogeler) o.oncekiIndirme = set.has(o.url);
+    } else {
+      for (const o of ogeler) o.oncekiIndirme = false;
+    }
+    lgState.ogeler = ogeler;
+    lgState.gosterim = lgState.ogeler.map((_, i) => i);
+    lgSuz();
+    const eski = ogeler.filter((o) => o.oncekiIndirme).length;
+    toast(t("lg.bulundu", { n: lgState.ogeler.length })
+      + (eski ? " · " + t("lg.oncekiUyari", { n: eski }) : ""));
+  } catch (err) { toast(err.message, true); }
+}
+
+async function linkgrabberProbe() {
+  const secili = lgState.ogeler.filter((o) => o.secili);
+  if (!secili.length) { toast(t("err.noLink"), true); return; }
+  $("lgDurum").textContent = t("lg.probeDurum");
+  try {
+    const out = await call("linkgrabber_probe", secili.map((o) => o.url), 8);
+    if (out.ogeler) {
+      for (const bilgi of out.ogeler) {
+        const hedef = lgState.ogeler.find((o) => o.url === bilgi.url);
+        if (hedef) {
+          hedef.probed = true;
+          hedef.filename = bilgi.filename && bilgi.filename !== "download" ? bilgi.filename : "";
+          hedef.size = bilgi.size;
+          if (bilgi.kategori) hedef.kategori = bilgi.kategori;
+        }
+      }
+    }
+    lgSuz();
+    toast(t("lg.probeBitti"));
+  } catch (err) { toast(err.message, true); }
+}
+
+async function linkgrabberEkle() {
+  const indeks = lgState.gosterim || lgState.ogeler.map((_, i) => i);
+  const secili = indeks.map((i) => lgState.ogeler[i]).filter((o) => o.secili);
+  if (!secili.length) { toast(t("err.noLink"), true); return; }
+  const secim = {
+    dest_dir: $("lgDest").value.trim(),
+    quality: $("quality").value,
+  };
+  try {
+    const out = await call("linkgrabber_ekle", secili.map((o) => o.url), secim);
+    closeVeil("lgVeil");
+    $("lgMetin").value = "";
+    lgState.ogeler = [];
+    lgState.gosterim = [];
+    lgRender();
+    let message = t("toast.started", { n: out.added });
+    if (out.scheduled) message = t("toast.scheduled", { n: out.scheduled });
+    if (out.failed && out.failed.length) toast(message + ": " + out.failed[0], true);
+    else toast(message);
+  } catch (err) { toast(err.message, true); }
+}
+
+/* ---------- LinkGrabber paneli (browser handoff dahil) ----------
+   Paneli acip filtreleri sifirlayan ortak yardimci. `lgBtn` tiklamasi ve
+   uzantidan gelen handoff (`window.afudmLinkgrabber`) bunu kullanir. */
+function lgPanelAc() {
+  $("lgDomain").value = lgState.filtre.domain || "";
+  $("lgSadece").value = "all";
+  $("lgAra").value = "";
+  $("lgBoyut").value = "";
+  $("quality").value = state.settings.video_quality || "best";
+  openVeil("lgVeil");
+  lgRender();
+  $("lgMetin").focus();
+}
+
+$("lgBtn").onclick = lgPanelAc;
+$("lgAnaliz").onclick = linkgrabberAnaliz;
+$("lgProbe").onclick = linkgrabberProbe;
+$("lgGo").onclick = linkgrabberEkle;
+$("lgSadece").onchange = lgSuz;
+$("lgDomain").onchange = lgSuz;
+$("lgBoyut").onchange = lgSuz;
+$("lgAra").oninput = lgSuzGecikmeli;
+
+/* ---------- seed penceresi (core/manager.seed_tazele) ----------
+   aria2 CALISAN torrente tracker EKLEMEZ (olculdu); tazeleme, isi kaldirip
+   ayni dizine yeniden eklemekle olur — inen parcalar korunur. */
+let seedGid = "";
+
+function seedSatir(etiket, deger) {
+  return '<span class="k">' + escapeHtml(etiket) + '</span><span class="v">' +
+    escapeHtml(String(deger)) + "</span>";
+}
+
+async function seedCiz() {
+  const bilgi = await call("seed_bilgi", seedGid);
+  $("seedBaslik").textContent = bilgi.baslik || "";
+  $("seedKv").innerHTML = [
+    seedSatir(t("seed.seed"), bilgi.seed),
+    seedSatir(t("seed.conn"), bilgi.baglanti),
+    seedSatir(t("seed.tracker"), bilgi.tracker),
+    seedSatir(t("seed.havuz"), bilgi.havuz),
+    seedSatir(t("seed.yas"), bilgi.liste_yasi_saat === null
+      ? t("seed.hicyok") : t("seed.saat", { n: bilgi.liste_yasi_saat })),
+    seedSatir(t("seed.dht"), t(bilgi.dht ? "seed.on" : "seed.off")),
+    seedSatir(t("seed.ekSayi"), bilgi.ek_sayisi || 0),
+  ].join("");
+  // Tarama ozeti: olu tracker'lar elendigi icin liste kisa gorunur, sasirtmasin
+  const tarama = bilgi.tarama || {};
+  $("seedTarama").textContent = tarama.toplam
+    ? t("seed.taramaOzet", { canli: tarama.canli || 0, toplam: tarama.toplam,
+                             olu: tarama.olu || 0, tanyan: tarama.tanyan || 0 })
+    : t("seed.taramaYok");
+  // Kullanici yazarken ustune YAZMA: yalniz kutu bosken/degismemisken doldur.
+  if (document.activeElement !== $("seedEk") && !$("seedEk").dataset.kirli) {
+    $("seedEk").value = bilgi.ek_trackerlar || "";
+  }
+}
+
+async function seedAc(gid) {
+  seedGid = gid;
+  $("seedErr").textContent = "";
+  $("seedKv").innerHTML = "";
+  delete $("seedEk").dataset.kirli;
+  openVeil("seedVeil");
+  try {
+    await seedCiz();
+  } catch (err) { $("seedErr").textContent = err.message; }
+  // Canli tut: yeniden duyurudan sonra seed'in ARTTIGINI gormek gerekiyor.
+  if (state.seedTimer) afudmClearInterval(state.seedTimer);
+  state.seedTimer = afudmSetInterval(() => seedCiz().catch(() => {}), 2000);
+}
+
+$("seedGo").onclick = async () => {
+  $("seedErr").textContent = "";
+  $("seedGo").disabled = true;
+  const eskiYazi = $("seedGo").textContent;
+  $("seedGo").textContent = t("seed.calisiyor");
+  try {
+    const out = await call("seed_tazele", seedGid);
+    seedGid = out.gid || seedGid;      // yeniden eklenince GID DEGISIR
+    toast(t("seed.bitti", { n: out.tracker || 0 }));
+  } catch (err) { $("seedErr").textContent = err.message; }
+  $("seedGo").disabled = false;
+  $("seedGo").textContent = eskiYazi;
+};
+
+$("seedEk").oninput = () => { $("seedEk").dataset.kirli = "1"; };
+$("seedKaydet").onclick = async () => {
+  try {
+    const out = await call("seed_tracker_kaydet", $("seedEk").value);
+    $("seedEk").value = out.liste || "";
+    delete $("seedEk").dataset.kirli;
+    toast(t("seed.eklendi", { n: out.sayi || 0 }));
+  } catch (err) { $("seedErr").textContent = err.message; }
+};
+
+/* Tracker saglik taramasi (core/tracker_saglik.py): klasordeki butun listeleri
+   okur, her adrese GERCEKTEN sorar, cevap vermeyenleri eler. Olculdu: 192
+   adresin 151'i oluydu ve aria2 her duyuruda hepsini bekliyordu. */
+$("seedTara").onclick = async () => {
+  const dugme = $("seedTara");
+  const eskiYazi = dugme.textContent;
+  dugme.disabled = true;
+  dugme.textContent = t("seed.tariyor");
+  $("seedErr").textContent = "";
+  try {
+    const out = await call("tracker_tara", seedGid);
+    toast(t("seed.taramaBitti", { canli: out.canli || 0, olu: out.olu || 0 }));
+    await seedCiz();
+  } catch (err) { $("seedErr").textContent = err.message; }
+  dugme.disabled = false;
+  dugme.textContent = eskiYazi;
+};
+
+$("seedKlasor").onclick = () => {
+  call("tracker_klasoru_ac").catch((err) => { $("seedErr").textContent = err.message; });
+};
+
+/* ---------- Torrent dosya agaci (core/manager.torrent_dosyalari, torrent_secimi_ayarla) ---------- */
+const torState = {
+  gid: "",
+  baslik: "",
+  dosyalar: [],
+  filtre: "",
+  gosterimLimiti: 250,
+  hepsiniGoster: false,
+  secimler: new Set(),
+  katlanmislar: new Set(),
+  sonBasari: null,
+  acik: false,
+  nonce: 0,
+  metrikInFlight: false,
+};
+
+function torMetrikleriSifirla(hazirDegilMesaj) {
+  const bar = $("torMetrikBar");
+  if (bar) bar.style.display = "grid";
+  $("torSeedVal").textContent = "—";
+  $("torPeersVal").textContent = "—";
+  $("torRatioVal").textContent = "—";
+  $("torDownVal").textContent = "—";
+  $("torUpVal").textContent = "—";
+  $("torTrackersVal").textContent = "—";
+  if (hazirDegilMesaj) {
+    $("torSeedVal").textContent = t("tor.metaNotReady");
+  }
+}
+async function torMetrikleriGuncelle(gid) {
+  // Pencere kimligini cagri aninda yakala; await sonrasi degistiyse yanit BAYAT demektir
+  const pencereNonce = torState.nonce;
+  if (!gid || torState.gid !== gid || !torState.acik) return;
+  if (torState.metrikInFlight) return;
+  torState.metrikInFlight = true;
+  try {
+    const out = await call("torrent_metrikleri", gid);
+    if (!torState.acik || torState.gid !== gid || torState.nonce !== pencereNonce) return;
+    if (!out || !out.ok || out.hazir_degil) {
+      torMetrikleriSifirla(Boolean(out && out.hazir_degil));
+      if (out && !out.ok) {
+        const detay = out.error || out.neden || "";
+        $("torBilgi").textContent = detay
+          ? t("tor.metricsFailedDetail", { detay })
+          : t("tor.metricsFailed");
+        $("torBilgi").setAttribute("data-tur", "metrik-hata");
+        $("torBilgi").style.display = "block";
+      }
+      return;
+    }
+    const m = out.metrikler || {};
+    $("torSeedVal").textContent = (m.num_seeders || 0) + (m.seeder ? " (" + t("tor.seeding") + ")" : "");
+    $("torPeersVal").textContent = (m.connections || 0) + " (" + (m.peers_seeders || 0) + "S / " + (m.peers_leechers || 0) + "L)";
+    $("torRatioVal").textContent = String(m.ratio !== undefined ? m.ratio : 0);
+    $("torDownVal").textContent = speed(m.download_speed || 0);
+    $("torUpVal").textContent = speed(m.upload_speed || 0) + " [" + size(m.upload_length || 0) + "]";
+    $("torTrackersVal").textContent = (m.tracker_sayisi || 0) + " (" + (m.canli_tracker || 0) + " " + t("eng.installed") + ")";
+    torState.sonBasari = Date.now();
+    if ($("torBilgi").getAttribute("data-tur") === "metrik-hata" || $("torBilgi").textContent.includes("...")) {
+      $("torBilgi").style.display = "none";
+      $("torBilgi").removeAttribute("data-tur");
+    }
+  } catch (_) {
+    if (!torState.acik || torState.gid !== gid || torState.nonce !== pencereNonce) return;
+    // Ag veya RPC anlik yanitsiz kalirsa metrikleri bozma
+    if (torState.sonBasari) {
+      const sn = Math.floor((Date.now() - torState.sonBasari) / 1000);
+      $("torBilgi").textContent = t("tor.retryMetrics", { sn });
+    } else {
+      $("torBilgi").textContent = t("tor.metricsInitialError");
+    }
+    $("torBilgi").setAttribute("data-tur", "metrik-hata");
+    $("torBilgi").style.display = "block";
+  } finally {
+    // Yalniz KENDI penceremizin kilidini birak; bayat istek taze pencereyi serbest birakmasin
+    if (torState.nonce === pencereNonce) torState.metrikInFlight = false;
+  }
+}
+
+function torAgacKur(dosyalar) {
+  const kok = { ad: "", tamYol: "", klasor: true, cocuklar: Object.create(null), dosyalar: [] };
+  for (const d of dosyalar) {
+    const parcalar = d.yol_parcalari && d.yol_parcalari.length
+      ? d.yol_parcalari
+      : (d.ad ? [d.ad] : ["unnamed"]);
+    let cur = kok;
+    for (let i = 0; i < parcalar.length - 1; i++) {
+      const p = parcalar[i];
+      if (!cur.cocuklar[p]) {
+        const altYol = (cur.tamYol ? cur.tamYol + "/" : "") + p;
+        cur.cocuklar[p] = { ad: p, tamYol: altYol, klasor: true, cocuklar: Object.create(null), dosyalar: [] };
+      }
+      cur = cur.cocuklar[p];
+    }
+    cur.dosyalar.push(d);
+  }
+  return kok;
+}
+
+function torDugumDosyalari(dugum) {
+  const liste = [...dugum.dosyalar];
+  for (const k in dugum.cocuklar) {
+    liste.push(...torDugumDosyalari(dugum.cocuklar[k]));
+  }
+  return liste;
+}
+
+function torDugumSecimDurumu(dugum, secimler) {
+  const hepsi = torDugumDosyalari(dugum);
+  if (!hepsi.length) return "none";
+  let seciliSayisi = 0;
+  for (const d of hepsi) {
+    if (secimler.has(d.indeks)) seciliSayisi++;
+  }
+  if (seciliSayisi === 0) return "none";
+  if (seciliSayisi === hepsi.length) return "all";
+  return "some";
+}
+
+function torFiltrele(dosyalar, arama) {
+  if (!arama) return dosyalar;
+  const q = arama.trim().toLocaleLowerCase("tr-TR");
+  return dosyalar.filter((d) => {
+    const ad = (d.ad || "").toLocaleLowerCase("tr-TR");
+    const yol = (d.yol || "").toLocaleLowerCase("tr-TR");
+    return ad.includes(q) || yol.includes(q);
+  });
+}
+
+function torSecimSayaclari(dosyalar, secimler) {
+  let seciliSayi = 0;
+  let seciliBoyut = 0;
+  let toplamBoyut = 0;
+  for (const d of dosyalar) {
+    const b = Number(d.boyut || 0);
+    toplamBoyut += b;
+    if (secimler.has(d.indeks)) {
+      seciliSayi++;
+      seciliBoyut += b;
+    }
+  }
+  return {
+    toplam: dosyalar.length,
+    secili: seciliSayi,
+    toplamBoyut,
+    seciliBoyut,
+  };
+}
+
+function torSayacGuncelle(prefix = "tor") {
+  const s = torSecimSayaclari(torState.dosyalar, torState.secimler);
+  $(prefix + "Sayac").textContent = t("tor.count", {
+    secili: s.secili,
+    toplam: s.toplam,
+    seciliBoyut: size(s.seciliBoyut),
+    toplamBoyut: size(s.toplamBoyut),
+  });
+}
+
+function torAgacDugumleriCiz(dugum, derinlik, satirlar, ctx) {
+  const klasorAdlari = Object.keys(dugum.cocuklar).sort((a, b) => a.localeCompare(b));
+  for (const k of klasorAdlari) {
+    if (ctx.kalan <= 0) return;
+    const alt = dugum.cocuklar[k];
+    const altDosyalar = torDugumDosyalari(alt);
+    if (!altDosyalar.length) continue;
+    const katlanmis = torState.katlanmislar.has(alt.tamYol);
+    const secimDurum = torDugumSecimDurumu(alt, torState.secimler);
+    const pad = derinlik * 18;
+
+    let toplamAltBoyut = 0;
+    for (const d of altDosyalar) toplamAltBoyut += Number(d.boyut || 0);
+
+    satirlar.push(
+      '<div class="tor-satir klasor" style="padding-left:' + (10 + pad) + 'px" data-klasor="' + escapeHtml(alt.tamYol) + '">' +
+        '<span class="tor-ok" data-act="katla" data-yol="' + escapeHtml(alt.tamYol) + '">' + (katlanmis ? "▶" : "▼") + "</span>" +
+        '<input type="checkbox" data-act="klasor-sec" data-yol="' + escapeHtml(alt.tamYol) + '"' +
+          (secimDurum === "all" ? " checked" : "") + (secimDurum === "some" ? ' data-indeterminate="1"' : "") + ">" +
+        '<span class="tor-simge">📁</span>' +
+        '<span class="tor-ad" title="' + escapeHtml(alt.ad) + '">' + escapeHtml(alt.ad) + "</span>" +
+        '<span class="tor-boyut">' + size(toplamAltBoyut) + "</span>" +
+        '<span class="tor-yuzde-wrap"></span>' +
+      "</div>"
+    );
+
+    if (!katlanmis) {
+      torAgacDugumleriCiz(alt, derinlik + 1, satirlar, ctx);
+    }
+  }
+
+  const siraliDosyalar = [...dugum.dosyalar].sort((a, b) => (a.ad || "").localeCompare(b.ad || ""));
+  for (const d of siraliDosyalar) {
+    if (ctx.kalan <= 0) return;
+    const pad = derinlik * 18;
+    const secili = torState.secimler.has(d.indeks);
+    const yuzde = Number(d.yuzde || 0);
+    satirlar.push(
+      '<div class="tor-satir dosya" style="padding-left:' + (10 + pad) + 'px" data-indeks="' + d.indeks + '">' +
+        '<span class="tor-ok bos"></span>' +
+        '<input type="checkbox" data-act="dosya-sec" data-indeks="' + d.indeks + '"' + (secili ? " checked" : "") + ">" +
+        '<span class="tor-simge">📄</span>' +
+        '<span class="tor-ad" title="' + escapeHtml(d.ad) + '">' + escapeHtml(d.ad) + "</span>" +
+        '<span class="tor-boyut">' + (d.boyut_insan || size(d.boyut || 0)) + "</span>" +
+        '<div class="tor-yuzde-wrap">' +
+          '<div class="tor-yuzde-bar"><div class="tor-yuzde-dolgu" style="width:' + Math.min(100, Math.max(0, yuzde)) + '%"></div></div>' +
+          '<span class="tor-yuzde-metin">' + yuzde.toFixed(1) + "%</span>" +
+        "</div>" +
+      "</div>"
+    );
+    ctx.kalan--;
+  }
+}
+
+function torAgacCiz(prefix = "tor") {
+  const agacKutu = $(prefix + "Agac");
+  const limitBar = $(prefix + "LimitBar");
+  const limitNot = $(prefix + "LimitNot");
+  const bilgiKutu = $(prefix + "Bilgi");
+
+  if (!torState.dosyalar.length) {
+    agacKutu.innerHTML = "";
+    limitBar.style.display = "none";
+    return;
+  }
+
+  const filtrelenmis = torFiltrele(torState.dosyalar, torState.filtre);
+  if (!filtrelenmis.length) {
+    agacKutu.innerHTML = "";
+    bilgiKutu.textContent = t("tor.empty");
+    bilgiKutu.style.display = "block";
+    limitBar.style.display = "none";
+    return;
+  }
+  bilgiKutu.style.display = "none";
+
+  const kok = torAgacKur(filtrelenmis);
+  const sinir = torState.hepsiniGoster ? 100000 : torState.gosterimLimiti;
+  const ctx = { kalan: sinir };
+  const satirlar = [];
+  torAgacDugumleriCiz(kok, 0, satirlar, ctx);
+
+  agacKutu.innerHTML = satirlar.join("");
+
+  // Indeterminate checkbox'lari DOM'da aktiflestir
+  agacKutu.querySelectorAll('input[data-indeterminate="1"]').forEach((el) => {
+    el.indeterminate = true;
+  });
+
+  if (!torState.hepsiniGoster && filtrelenmis.length > torState.gosterimLimiti) {
+    limitBar.style.display = "flex";
+    limitNot.textContent = t("tor.limitNotice", {
+      gosterilen: Math.min(torState.gosterimLimiti, filtrelenmis.length),
+      toplam: filtrelenmis.length,
+    });
+    $(prefix + "LimitHepsi").textContent = t("tor.showAll", { n: filtrelenmis.length });
+  } else {
+    limitBar.style.display = "none";
+  }
+
+  torSayacGuncelle(prefix);
+}
+
+async function torrentVeilAc(gid) {
+  const pencereNonce = ++torState.nonce;
+  torState.acik = true;
+  torState.gid = gid;
+  torState.filtre = "";
+  torState.hepsiniGoster = false;
+  torState.katlanmislar.clear();
+  torState.sonBasari = null;
+  $("torErr").textContent = "";
+  $("torAra").value = "";
+  $("torGid").textContent = gid;
+  torMetrikleriSifirla(false);
+  if (state.torTimer) {
+    afudmClearInterval(state.torTimer);
+    state.torTimer = null;
+  }
+
+   const oge = state.items.find((i) => i.gid === gid);
+   torState.baslik = oge ? (oge.title || oge.filename || gid) : gid;
+   $("torBaslik").textContent = torState.baslik;
+
+   $("torBilgi").style.display = "none";
+   $("torAgac").innerHTML = "";
+   $("torLimitBar").style.display = "none";
+   $("torUygula").disabled = true;
+   openVeil("torrentVeil");
+  torMetrikleriGuncelle(gid).catch(() => {});
+  let retryCount = 0;
+  let agacHazir = false;
+  let inFlight = false;
+
+  async function dosyalariCek() {
+    if (inFlight) return false;
+    if (!torState.acik || torState.nonce !== pencereNonce) return false;
+    inFlight = true;
+    try {
+      const out = await call("torrent_dosyalari", torState.gid);
+      if (!torState.acik || torState.nonce !== pencereNonce) return false;
+
+      if (!out || !out.ok) throw new Error((out && out.error) || t("err.failed"));
+
+      if (out.hazir_degil) {
+        if (!torState.acik || torState.nonce !== pencereNonce) return false;
+        torState.dosyalar = [];
+        torState.secimler.clear();
+        $("torBilgi").textContent = out.neden || t("tor.notReady");
+        $("torBilgi").style.display = "block";
+        $("torSayac").textContent = "";
+        $("torUygula").disabled = true;
+        if (++retryCount > 30) {
+          $("torErr").textContent = t("tor.timeout");
+        }
+        return false;
+      }
+
+      if (!torState.acik || torState.nonce !== pencereNonce) return false;
+      torState.gid = out.gid || torState.gid; // resolved gid
+      $("torGid").textContent = torState.gid;
+      torState.dosyalar = out.dosyalar || [];
+      torState.secimler = new Set();
+      for (const d of torState.dosyalar) {
+        if (d.secili) torState.secimler.add(d.indeks);
+      }
+
+      $("torUygula").disabled = false;
+      torAgacCiz();
+      agacHazir = true;
+      return true;
+    } catch (err) {
+      if (!torState.acik || torState.nonce !== pencereNonce) return false;
+      $("torErr").textContent = err.message;
+      $("torBilgi").textContent = err.message;
+      $("torBilgi").style.display = "block";
+      agacHazir = true; // stop retrying on fatal error
+      return true;
+    } finally {
+      inFlight = false;
+    }
+  }
+
+  dosyalariCek();
+  state.torTimer = afudmSetInterval(() => {
+    if (torState.gid && torState.acik && torState.nonce === pencereNonce) {
+      torMetrikleriGuncelle(torState.gid).catch(() => {});
+      if (!agacHazir && retryCount <= 30 && !inFlight) dosyalariCek();
+    }
+  }, 2000);
+}
+
+/* Torrent dosya agaci etkilesimleri (tests/torrent_ui_test.py bekler: $("torSayac") $("torAra") $("torSecHepsi") $("torSecHicbiri") $("torSecTers") $("torLimitHepsi") $("torLimitBar") $("torLimitNot") $("torBilgi") $("torAgac")) */
+function torOlaylariBagla(prefix) {
+  $(prefix + "Agac").addEventListener("click", (event) => {
+    const hedef = event.target;
+    const ok = hedef.closest('[data-act="katla"]');
+    if (ok) {
+      const yol = ok.dataset.yol;
+      if (torState.katlanmislar.has(yol)) torState.katlanmislar.delete(yol);
+      else torState.katlanmislar.add(yol);
+      torAgacCiz(prefix);
+      return;
+    }
+    if (hedef.dataset.act === "klasor-sec") {
+      const yol = hedef.dataset.yol;
+      const durum = hedef.checked;
+      const altDosyalar = torState.dosyalar.filter((d) => {
+        return d.parent_yol === yol || (d.parent_yol && d.parent_yol.startsWith(yol + "/"));
+      });
+      for (const d of altDosyalar) {
+        if (durum) torState.secimler.add(d.indeks);
+        else torState.secimler.delete(d.indeks);
+      }
+      torAgacCiz(prefix);
+      return;
+    }
+    if (hedef.dataset.act === "dosya-sec") {
+      const indeks = Number(hedef.dataset.indeks);
+      if (hedef.checked) torState.secimler.add(indeks);
+      else torState.secimler.delete(indeks);
+      torAgacCiz(prefix);
+      return;
+    }
+  });
+  $(prefix + "Ara").oninput = () => {
+    torState.filtre = $(prefix + "Ara").value;
+    torAgacCiz(prefix);
+  };
+  $(prefix + "LimitHepsi").onclick = () => {
+    torState.hepsiniGoster = true;
+    torAgacCiz(prefix);
+  };
+  $(prefix + "SecHepsi").onclick = () => {
+    for (const d of torState.dosyalar) torState.secimler.add(d.indeks);
+    torAgacCiz(prefix);
+  };
+  $(prefix + "SecHicbiri").onclick = () => {
+    torState.secimler.clear();
+    torAgacCiz(prefix);
+  };
+  $(prefix + "SecTers").onclick = () => {
+    for (const d of torState.dosyalar) {
+      if (torState.secimler.has(d.indeks)) torState.secimler.delete(d.indeks);
+      else torState.secimler.add(d.indeks);
+    }
+    torAgacCiz(prefix);
+  };
+}
+
+torOlaylariBagla("tor");
+torOlaylariBagla("kayTor");
+
+
+$("torUygula").onclick = async () => {
+  if (!torState.gid) return;
+  $("torErr").textContent = "";
+  const dugme = $("torUygula");
+  const eskiYazi = dugme.textContent;
+  dugme.disabled = true;
+  dugme.textContent = t("tor.applying");
+
+  const seciliIndeksler = Array.from(torState.secimler).sort((a, b) => a - b);
+  // Tum dosyalar secildiyse bos liste gonderilir (aria2 select-file="" tum dosyalar demek)
+  const gonderilecek = seciliIndeksler.length === torState.dosyalar.length ? [] : seciliIndeksler;
+
+  try {
+    const out = await call("torrent_secimi_ayarla", torState.gid, gonderilecek);
+    if (!out.ok) throw new Error(out.error || t("err.failed"));
+    const msg = gonderilecek.length === 0
+      ? t("tor.appliedAll")
+      : t("tor.applied", { n: seciliIndeksler.length });
+    toast(msg);
+    if (state.torTimer) {
+      afudmClearInterval(state.torTimer);
+      state.torTimer = null;
+    }
+    closeVeil("torrentVeil");
+  } catch (err) {
+    $("torErr").textContent = err.message;
+  } finally {
+    dugme.disabled = false;
+    dugme.textContent = eskiYazi;
+  }
+};
+
+
+/* ---------- Ayarlar > Seed listeleri (core/tracker_saglik.py) ----------
+   Dosya eklemek icin trackers/ klasorune elle kopyalamak gerekiyordu; burasi
+   ayni klasoru arayuzden yonetir. Liste degisince Python tarafi taramayi
+   bayatlatip arka planda yeniden olcer — canli adresler torrentlere oradan
+   uygulanir. */
+async function seedListeCiz() {
+  let out;
+  try {
+    out = await call("seed_dosyalari");
+  } catch (err) {
+    $("sSeedOzet").textContent = err.message;
+    return;
+  }
+  const kutu = $("sSeedListe");
+  kutu.innerHTML = "";
+  const dosyalar = out.dosyalar || [];
+  if (!dosyalar.length) {
+    const bos = document.createElement("div");
+    bos.className = "hint";
+    bos.textContent = t("set.seedBos");
+    kutu.appendChild(bos);
+  }
+  for (const d of dosyalar) {
+    const satir = document.createElement("div");
+    satir.className = "seed-dosya";
+    const ad = document.createElement("span");
+    ad.className = "seed-ad";
+    ad.textContent = d.ad;                  // dosya adi kullanicidan gelir: metin olarak bas
+    ad.title = d.ad;
+    const sayi = document.createElement("span");
+    sayi.className = "seed-sayi";
+    sayi.textContent = t("set.seedAdres", { n: d.sayi });
+    const sil = document.createElement("button");
+    sil.className = "btn ghost seed-sil";
+    sil.textContent = t("set.seedSil");
+    sil.onclick = async () => {
+      if (!confirm(t("set.seedSilOnay") + "\n" + d.ad)) return;
+      try {
+        await call("seed_dosya_sil", d.ad);
+        toast(t("set.seedSilindi", { ad: d.ad }));
+        await seedListeCiz();
+      } catch (err) { toast(err.message, true); }
+    };
+    satir.append(ad, sayi, sil);
+    kutu.appendChild(satir);
+  }
+  const tarama = out.tarama || {};
+  $("sSeedOzet").textContent = tarama.toplam
+    ? t("set.seedOzet", {
+        adres: out.adres || 0, canli: tarama.canli || 0, olu: tarama.olu || 0,
+        saat: out.tarama_yasi_saat === null ? "?" : out.tarama_yasi_saat })
+    : t("set.seedOzetYok", { adres: out.adres || 0 });
+  $("sSeedOto").checked = !!out.otomatik;
+}
+
+$("sSeedEkle").onclick = async () => {
+  try {
+    const out = await call("seed_dosya_ekle", "");
+    if (out.iptal) return;                   // kullanici dosya secicisini kapatti
+    toast(out.zaten ? t("set.seedZaten", { ad: out.ad })
+                    : t("set.seedEklendi", { ad: out.ad, n: out.sayi || 0 }));
+    await seedListeCiz();
+  } catch (err) { toast(err.message, true); }
+};
+
+$("sSeedKlasor").onclick = () => {
+  call("tracker_klasoru_ac").catch((err) => toast(err.message, true));
+};
+
+$("sSeedTara").onclick = async () => {
+  const dugme = $("sSeedTara");
+  const eskiYazi = dugme.textContent;
+  dugme.disabled = true;
+  dugme.textContent = t("set.seedTariyor");
+  try {
+    const out = await call("tracker_tara", "");
+    toast(t("set.seedTaraBitti", { canli: out.canli || 0, olu: out.olu || 0 }));
+    await seedListeCiz();
+  } catch (err) { toast(err.message, true); }
+  dugme.disabled = false;
+  dugme.textContent = eskiYazi;
+};
+
+/* ---------- Chrome'a ekle (core/chrome_kurulum.py) ---------- */
+function chromeCiz(durum) {
+  const adimlar = durum.adimlar || {};
+  document.querySelectorAll("#chrAdimlar li").forEach((satir) => {
+    let hal = adimlar[satir.dataset.adim] || "";
+    if (satir.dataset.adim === "baglandi") {
+      hal = durum.baglandi ? "tamam" : (adimlar.dogrula === "tamam" ? "calisiyor" : "");
+    }
+    satir.className = hal === "bekliyor" ? "" : hal;
+  });
+  const sonuc = $("chrSonuc");
+  if (durum.baglandi) {
+    sonuc.textContent = t("chr.ok");
+    sonuc.className = "chr-sonuc iyi";
+  } else if (durum.sonuc === "hata") {
+    sonuc.textContent = t(durum.mesaj === "chrome_yok" ? "chr.noChrome" : "chr.fail");
+    sonuc.className = "chr-sonuc kotu";
+    $("chrElle").open = true;  // otomasyon takildiysa elle yol hemen gorunsun
+  } else if (durum.sonuc === "kuruldu") {
+    sonuc.textContent = t("chr.waitPair");
+    sonuc.className = "chr-sonuc";
+  } else {
+    sonuc.textContent = "";
+    sonuc.className = "chr-sonuc";
+  }
+  $("chrAuto").disabled = !!durum.calisiyor || !!durum.baglandi;
+}
+
+async function chromeIzle() {
+  if (!$("chromeVeil").classList.contains("open")) {
+    afudmClearInterval(state.chromeTimer);
+    state.chromeTimer = null;
+    return;
+  }
+  try { chromeCiz(await call("chrome_ilerleme")); } catch (_) { /* kopru yoksa sessiz */ }
+}
+
+$("openChrome").onclick = async () => {
+  try {
+    const bilgi = await call("chrome_hazirla");
+    $("chrKlasor").textContent = bilgi.klasor;
+    $("chrKlasor").title = bilgi.klasor;
+    if (!bilgi.chrome) {
+      chromeCiz({ sonuc: "hata", mesaj: "chrome_yok" });
+      $("chrAuto").disabled = true;
+    }
+  } catch (err) { toast(err.message, true); }
+  openVeil("chromeVeil");
+  chromeIzle();
+  afudmClearInterval(state.chromeTimer);
+  state.chromeTimer = afudmSetInterval(chromeIzle, 700);
+};
+$("chrAuto").onclick = async () => {
+  $("chrAuto").disabled = true;
+  try { await call("chrome_otomatik"); } catch (err) { toast(err.message, true); }
+  chromeIzle();
+};
+document.querySelectorAll("[data-kopya]").forEach((dugme) => {
+  dugme.onclick = async () => {
+    try {
+      await call("chrome_kopyala", dugme.dataset.kopya);
+      toast(t("chr.copied"));
+    } catch (err) { toast(err.message, true); }
+  };
+});
+
+$("openSettings").onclick = async () => {
+  const s = state.settings;
+  $("sLang").value = s.language || "auto";
+  $("sGuncellemeOto").checked = s.guncelleme_otomatik !== false;
+  $("sDir").value = s.download_dir || "";
+  $("sSplit").value = s.split ?? 64;
+  $("sConn").value = s.max_conn_per_server ?? 16;
+  $("sConc").value = s.max_concurrent ?? 5;
+  $("sSpeed").value = s.max_speed_kb ?? 0;
+  $("sMode").value = s.hiz_profili || "normal";
+  $("sRatio").value = s.seed_ratio ?? 1;
+  $("sChat").value = s.telegram_chat_id || "";
+  $("sToken").value = s.telegram_bot_token || "";
+  $("sClip").checked = !!s.clipboard_watch;
+  $("sClipExts").value = s.clipboard_exts ?? "zip,rar,7z,exe,msi,iso,pdf,mp4,mkv,mp3,apk,dmg,torrent";
+  $("sSnailSpeed").value = s.snail_speed_kb ?? 100;
+  // v1.7.5 Bolum 1-2: uzaktan erisim + ag (docs/v175_SOZLESME.md)
+  $("sLanAccess").checked = s.lan_erisimi ?? false;
+  $("sInternetShare").checked = s.internet_paylasim !== false;
+  $("sApiPort").value = s.api_listen_port ?? s.api_port ?? 6811;
+  $("sSystemProxy").checked = s.system_proxy ?? false;
+  $("sProxy").value = s.proxy ?? "";
+  $("sNetLocations").value = s.ag_konumlari ?? "";
+  uzaktanBagimlilik();
+  agBagimlilik();
+  trackerDurumuCiz();
+  $("sTrackers").checked = !!s.auto_update_trackers;
+  $("sNotify").checked = !!s.notify_telegram;
+  $("sWinNotify").checked = s.windows_notifications !== false;
+  $("sShutdown").checked = !!s.shutdown_when_done;
+  $("sSleep").checked = !!s.sleep_when_done;
+  gucDurumu();
+  $("sKaydet").checked = s.kaydetme_penceresi === false;
+  $("sKategori").checked = s.kategori_klasorleri !== false;
+  $("sTepsi").checked = s.tepsiye_kucult !== false;
+  $("sBasTepside").checked = s.baslangicta_tepside !== false;
+  sistemDurumu();
+  windowsIntegrationDurumu();
+  if (state.winIntTimer) afudmClearInterval(state.winIntTimer);
+  state.winIntTimer = afudmSetInterval(windowsIntegrationDurumu, 1500);
+  telefonDurumu();
+  seedListeCiz();
+  $("sSeedEk").value = s.ek_trackerlar || "";
+  $("sVideoAltyaziDiller").value = s.video_altyazi_diller || "";
+  $("sVideoOtoAltyazi").checked = !!s.video_oto_altyazi;
+  $("sVideoAltyaziGoem").checked = !!s.video_altyazi_goem;
+  $("sVideoKucukResim").value = s.video_kucuk_resim || "";
+  $("sVideoUstveriGoem").checked = !!s.video_ustveri_goem;
+  $("sVideoBolumler").value = s.video_bolumler || "";
+  $("sVideoSponsorblock").value = s.video_sponsorblock || "";
+  $("sVideoBolumAraligi").value = s.video_bolum_araligi || "";
+  $("sVideoKapsayici").value = s.video_kapsayici || "";
+  $("sVideoSesFormati").value = s.video_ses_formati || "";
+  $("sVideoDosyaSablonu").value = s.video_dosya_sablonu || "";
+  $("sVideoTarayiciCerezi").value = s.video_tarayici_cerezi || "";
+  $("sPlgMaxSize").value = s.eklenti_max_boyut_mb || "";
+  $("sPlgMaxRatio").value = s.eklenti_max_oran || "";
+  $("sPlgUnsigned").checked = !!s.eklenti_imzasiz_izin;
+  $("sAutoEnabled").checked = s.automation_enabled !== false;
+  $("sAutoSteps").value = (s.automation_steps || []).join(", ");
+  $("sAutoChecksum").checked = !!s.automation_checksum;
+  $("sAutoExtract").checked = !!s.automation_extract;
+  $("sAutoMove").value = s.automation_move_to || "";
+  $("sAutoRename").value = s.automation_rename_to || "";
+  $("sAutoScript").value = s.automation_script || "";
+  $("sAutoNotify").checked = s.automation_notify !== false;
+  $("sAutoPower").value = s.automation_power || "none";
+  $("sAutoSeconds").value = s.automation_power_seconds || 60;
+  $("sSeedEkOzet").textContent = "";
+  surumuCiz();
+  $("guncellemeAyarDurum").textContent = "";
+  ayarRozetleriCiz();
+  openVeil("setVeil");
+  try {
+    const port = await call("port_durumu");
+    $("sRunningPort").value = port.calisan || "-";
+    $("sPortRestart").textContent = port.yeniden_baslatma_gerekli ? t("set.remote.restart") : "";
+    const info = await call("api_info");
+    $("apiHint").textContent =
+      t("hint.api", { port: info.port });
+  } catch (_) { $("apiHint").textContent = ""; }
+  renderEngines();
+  reliabilityStatus();
+  if (state.motorTimer) afudmClearInterval(state.motorTimer);
+  state.motorTimer = afudmSetInterval(renderEngines, 1000);
+};
+
+function reliabilityShow(value) { $("relStatus").textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2); }
+async function reliabilityStatus() { try { reliabilityShow(await call("reliability_integrity")); } catch (_) { reliabilityShow(t("rel.offline")); } }
+$("relIntegrity").onclick = async () => { try { reliabilityShow(await call("reliability_integrity")); } catch (e) { toast(e.message, true); } };
+$("relBackup").onclick = async () => { try { reliabilityShow(await call("reliability_backup")); toast(t("rel.backupDone")); } catch (e) { toast(e.message, true); } };
+$("relHealth").onclick = async () => { try { reliabilityShow(await call("reliability_health")); } catch (e) { toast(e.message, true); } };
+$("relRestart").onclick = async () => { try { reliabilityShow(await call("reliability_restart_engine")); } catch (e) { toast(e.message, true); } };
+$("relDiagnostic").onclick = async () => { try { reliabilityShow(await call("reliability_diagnostics_preview")); } catch (e) { toast(e.message, true); } };
+$("relExport").onclick = async () => { try { reliabilityShow(await call("reliability_diagnostics_export")); } catch (e) { toast(e.message, true); } };
+$("relBackups").onclick = async () => { try { const out = await call("reliability_backups"), box = $("relBackupsList"); box.replaceChildren(); out.items.forEach((item) => { const b = document.createElement("button"); b.className = "btn ghost"; b.textContent = t("rel.restore") + ": " + item.name; b.onclick = async () => { if (!confirm(t("rel.restoreAsk"))) return; try { reliabilityShow(await call("reliability_restore", item.path)); } catch (e) { toast(e.message, true); } }; box.appendChild(b); }); if (!out.items.length) box.textContent = t("rel.noBackups"); } catch (e) { toast(e.message, true); } };
+$("relToken").onclick = async () => { try { reliabilityShow(await call("security_rotate_token")); toast(t("rel.rotateDone")); } catch (e) { toast(e.message, true); } };
+/* Rules Engine: editor state is local until the explicit save action. */
+let rulesDraft = [];
+const ruleFields = ["domain","extension","filename","size_mb","protocol","category"];
+const ruleOps = ["eq","neq","contains","ends_with","regex","in","gt","lt"];
+const ruleActions = ["dest_dir","proxy","max_speed_kb","split","start_after","automation_script"];
+const ruleId = () => "rule-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+function rulesRender() {
+  const root=$("rulesList"); if(!rulesDraft.length){root.innerHTML='<div class="empty">'+escapeHtml(t("rules.empty"))+'</div>';return;}
+  root.innerHTML=rulesDraft.map((r,i)=>{const cs=(r.conditions||[]).map((c,j)=>'<div class="rule-row"><select data-f="'+i+'" data-j="'+j+'">'+ruleFields.map(v=>'<option '+(c.field===v?'selected':'')+'>'+v+'</option>').join('')+'</select><select data-o="'+i+'" data-j="'+j+'">'+ruleOps.map(v=>'<option '+(c.op===v?'selected':'')+'>'+v+'</option>').join('')+'</select><input data-v="'+i+'" data-j="'+j+'" value="'+escapeHtml(Array.isArray(c.value)?c.value.join(','):c.value||'')+'"><button data-cdel="'+i+'" data-j="'+j+'">×</button></div>').join('');const as=Object.entries(r.actions||{}).map(([k,v])=>'<div class="rule-row"><select data-a="'+i+'" data-k="'+escapeHtml(k)+'">'+ruleActions.map(x=>'<option '+(x===k?'selected':'')+'>'+x+'</option>').join('')+'</select><input data-av="'+i+'" data-k="'+escapeHtml(k)+'" value="'+escapeHtml(v)+'"><button data-adel="'+i+'" data-k="'+escapeHtml(k)+'">×</button></div>').join('');return '<div class="rule-card"><div class="rule-head"><input type="checkbox" data-active="'+i+'" '+(r.active?'checked':'')+'><input data-name="'+i+'" value="'+escapeHtml(r.name||'')+'" placeholder="'+escapeHtml(t("rules.name"))+'"><select data-match="'+i+'"><option value="all">'+escapeHtml(t("rules.all"))+'</option><option value="any" '+(r.match_type==='any'?'selected':'')+'>'+escapeHtml(t("rules.any"))+'</option></select><button data-up="'+i+'">↑</button><button data-down="'+i+'">↓</button><button data-copy="'+i+'">'+escapeHtml(t("rules.copy"))+'</button><button data-del="'+i+'">'+escapeHtml(t("rules.delete"))+'</button></div><div class="rule-rows">'+cs+'<button data-addc="'+i+'">'+escapeHtml(t("rules.addCondition"))+'</button></div><div class="rule-rows">'+as+'<button data-adda="'+i+'">'+escapeHtml(t("rules.addAction"))+'</button></div></div>';}).join('');
+}
+$("rulesOpen").onclick=async()=>{
+    // Panel HER ZAMAN acilir; veri arkadan yuklenir. Kopru cagrisi dusse bile
+    // kullanici boş panel yerine hatayi icinde gorur (Ayarlar duzeltmesiyle
+    // ayni kalip: openVeil await'ten sonra degil once gelir).
+    rulesDraft=[];rulesRender();$("rulesErr").textContent="";openVeil("rulesVeil");
+    try{
+      const out=await call("rules_list");
+      rulesDraft=out.rules||[];
+      rulesRender();
+    }catch(e){
+      $("rulesErr").textContent=/not a function|undefined is not/.test(e.message||"")
+        ? t("rules.engineMissing") : (e.message||t("err.failed"));
+    }
+  };
+$("rulesNew").onclick=()=>{rulesDraft.push({id:ruleId(),name:"",active:true,match_type:"all",conditions:[],actions:{}});rulesRender();};
+$("rulesList").onchange=e=>{const x=e.target,i=Number(x.dataset.f??x.dataset.o??x.dataset.v??x.dataset.a??x.dataset.av??x.dataset.active??x.dataset.name??x.dataset.match),r=rulesDraft[i],j=Number(x.dataset.j);if(!r)return;if(x.dataset.active!==undefined)r.active=x.checked;else if(x.dataset.name!==undefined)r.name=x.value;else if(x.dataset.match!==undefined)r.match_type=x.value;else if(x.dataset.f!==undefined)r.conditions[j].field=x.value;else if(x.dataset.o!==undefined)r.conditions[j].op=x.value;else if(x.dataset.v!==undefined)r.conditions[j].value=x.value.includes(',')?x.value.split(',').map(v=>v.trim()):x.value;else if(x.dataset.a!==undefined){const v=r.actions[x.dataset.k];delete r.actions[x.dataset.k];r.actions[x.value]=v;rulesRender();}else if(x.dataset.av!==undefined)r.actions[x.dataset.k]=x.value;};
+$("rulesList").onclick=e=>{const x=e.target,i=Number(x.dataset.up??x.dataset.down??x.dataset.copy??x.dataset.del??x.dataset.addc??x.dataset.adda??x.dataset.cdel??x.dataset.adel),r=rulesDraft[i];if(!r)return;if(x.dataset.up!==undefined&&i)[rulesDraft[i-1],rulesDraft[i]]=[r,rulesDraft[i-1]];else if(x.dataset.down!==undefined&&i<rulesDraft.length-1)[rulesDraft[i+1],rulesDraft[i]]=[r,rulesDraft[i+1]];else if(x.dataset.copy!==undefined)rulesDraft.splice(i+1,0,{...r,id:ruleId(),conditions:r.conditions.map(c=>({...c})),actions:{...r.actions}});else if(x.dataset.del!==undefined)rulesDraft.splice(i,1);else if(x.dataset.addc!==undefined)r.conditions.push({field:"domain",op:"eq",value:""});else if(x.dataset.adda!==undefined)r.actions.max_speed_kb="";else if(x.dataset.cdel!==undefined)r.conditions.splice(Number(x.dataset.j),1);else if(x.dataset.adel!==undefined)delete r.actions[x.dataset.k];rulesRender();};
+$("rulesSave").onclick=async()=>{try{const out=await call("rules_save",rulesDraft);if(!out.ok)throw new Error(out.error);closeVeil("rulesVeil");toast(t("toast.saved"));}catch(e){$("rulesErr").textContent=e.message;}};
+$("rulesRun").onclick=async()=>{try{const out=await call("rules_simulate",$("rulesUrl").value.trim()),names=(out.matched_rules||[]).map(r=>r.name).join(', ');$("rulesResult").textContent=names?t("rules.match",{n:names}):t("rules.noMatch");if((out.conflicts||[]).length)$("rulesResult").textContent+=" · "+t("rules.conflict",{items:out.conflicts.join(', ')});}catch(e){$("rulesResult").textContent=e.message;}};
+
+/* ---------- sistem ayarlari: baslangic + .torrent/magnet (core/baslangic.py,
+   core/iliskilendir.py) ---------- */
+async function sistemDurumu() {
+  try {
+    const bilgi = await call("sistem_durumu");
+    $("sBaslangic").checked = !!bilgi.baslangic;
+    const torrent = (bilgi.torrent || {}).torrent || {};
+    const magnet = (bilgi.torrent || {}).magnet || {};
+    $("sTorrent").checked = !!(torrent.kayitli && magnet.kayitli);
+    // Windows'un varsayilan uygulama secimi (UserChoice) disaridan
+    // degistirilemez: kayit tamamsa bile kullaniciya dogruyu soyle.
+    $("torrentHint").textContent = !$("sTorrent").checked ? ""
+      : t(torrent.varsayilan ? "hint.torrentOk" : "hint.torrentDefault");
+  } catch (_) { /* Windows disi ya da erisim yok: kutular oldugu gibi kalir */ }
+}
+
+async function sistemAyarlariniUygula() {
+  const hatalar = [];
+  try {
+    // Kisayolun argumani da burada guncellenir (--tepside)
+    await call("baslangic_ayarla", $("sBaslangic").checked, $("sBasTepside").checked);
+  } catch (err) { hatalar.push(err.message); }
+  try {
+    await call("torrent_iliskilendir", $("sTorrent").checked);
+  } catch (err) { hatalar.push(err.message); }
+  if (hatalar.length) toast(hatalar[0], true);
+}
+
+/* Windows Integration: UI gercek kaydi RPC uzerinden yeniden OKUR; rozetler
+   varsayimla degil Windows kayit defterindeki mevcut degerle cizilir. */
+const winIntNames = { context: "winint.context", protocol: "winint.protocol", afup: "winint.afup", torrent: "winint.torrent", startup: "winint.startup", notify: "winint.notify", defender: "winint.defender" };
+async function windowsIntegrationDurumu() {
+  const root = $("winIntRows");
+  if (!root) return;
+  if (!root.children.length) root.textContent = t("winint.loading");
+  try {
+    const out = await call("windows_integration_status");
+    const entries = out.integrations || {};
+    const newHtml = Object.keys(winIntNames).map((id) => {
+      const row = entries[id] || {};
+      const registered = !!row.registered;
+      return '<div class="winint-row"><div><div class="winint-name">' + escapeHtml(t(winIntNames[id])) +
+        ' <span class="winint-state ' + (registered ? "" : "off") + '">' + escapeHtml(t(registered ? "winint.registered" : "winint.notRegistered")) +
+        '</span></div><div class="winint-meta">' + escapeHtml(t("winint.whenNow")) + '</div></div><div class="winint-actions">' +
+        '<button class="btn" data-winint="apply" data-id="' + id + '">' + escapeHtml(t("winint.apply")) + '</button>' +
+        '<button class="btn" data-winint="test" data-id="' + id + '">' + escapeHtml(t("winint.test")) + '</button>' +
+        '<button class="btn ghost" data-winint="remove" data-id="' + id + '">' + escapeHtml(t("winint.remove")) + '</button></div></div>';
+    }).join("");
+    if (root.innerHTML !== newHtml) {
+      root.innerHTML = newHtml;
+    }
+    const scan = out.scan || {};
+    $("winIntError").textContent = scan.state && scan.state !== "idle"
+      ? t("winint.scanStatus", { state: scan.state, detail: scan.detail || "" }) : "";
+  } catch (err) { root.textContent = t("winint.offline"); $("winIntError").textContent = err.message; }
+}
+
+$("winIntRows").addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-winint]");
+  if (!button) return;
+  button.disabled = true;
+  $("winIntError").textContent = "";
+  try {
+    const out = await call("windows_integration_" + button.dataset.winint, button.dataset.id);
+    if (button.dataset.winint === "test") toast(out.registered ? t("winint.testOk") : t("winint.testNo"), !out.registered);
+    else toast(t("winint.updated"));
+    await windowsIntegrationDurumu();
+  } catch (err) { $("winIntError").textContent = err.message; toast(err.message, true); button.disabled = false; }
+});
+
+/* Windows'un varsayilan uygulama ekrani: .torrent secimini YALNIZ kullanici
+   yapabilir (UserChoice hash korumali), en fazla dogru ekrani acabiliriz. */
+$("sVarsayilan").onclick = async () => {
+  try {
+    await call("varsayilan_uygulama_ekrani");
+    toast(t("hint.varsayilan"));
+  } catch (err) { toast(err.message, true); }
+};
+
+/* ---------- v1.7.5 ayar yardimcilari (docs/v175_SOZLESME.md) ----------
+   Port araligi tek yerde: hem kaydetmede hem alan degisince ayni kural. */
+function portSayisi(deger) {
+  const n = Number(deger);
+  return Number.isInteger(n) && n >= 1024 && n <= 65535 ? n : 6811;
+}
+
+/* sApiPort yalnizca LAN acikken duzenlenebilir; kapaliyken adres bos kalir. */
+function uzaktanBagimlilik() {
+  const acik = $("sLanAccess").checked;
+  $("sApiPort").disabled = !acik;
+  if (!acik) $("sLanAddr").value = "";
+}
+
+/* Sistem proxy'si onceliklidir: aciksa elle adres girilemez. */
+function agBagimlilik() {
+  $("sProxy").disabled = $("sSystemProxy").checked;
+}
+
+$("sSystemProxy").onchange = agBagimlilik;
+
+$("sApiPort").onchange = () => { $("sApiPort").value = portSayisi($("sApiPort").value); };
+
+/* Tracker durumu SALT-OKUNUR: kaydetme nesnesine girmez, yalnizca gosterilir. */
+function trackerDurumuCiz() {
+  const s = state.settings || {};
+  const zaman = Number(s.tracker_tarama_zamani || 0);
+  $("sTrackerScanTime").value = zaman > 0
+    ? new Date(zaman * 1000).toLocaleString()
+    : t("set.tracker.never");
+  const tarama = s.tracker_tarama_ozeti || {};
+  const canli = tarama.canli ?? (s.canli_trackerlar || "").split(String.fromCharCode(10)).map((x) => x.trim()).filter(Boolean).length;
+  const toplam = tarama.toplam ?? canli;
+  $("sTrackerSummary").value = zaman > 0 ? canli + " / " + toplam : t("set.tracker.never");
+}
+
+/* ---------- telefon arayuzu (ui/mobil.html) ----------
+   Kutu acilinca yerel API 0.0.0.0'a gecer ve adres burada gorunur. Ayar
+   ANINDA uygulanir (sunucu yeniden kurulur), yeniden baslatma gerekmez. */
+async function telefonDurumu() {
+  try {
+    const bilgi = await call("telefon_durumu");
+    $("sLanAccess").checked = !!bilgi.acik;
+    $("telefonKutu").style.display = bilgi.acik ? "" : "none";
+    $("sTelefonAdres").value = bilgi.adres || "";
+    $("sLanAddr").value = bilgi.adres || "";
+    if (bilgi.port) $("sApiPort").value = bilgi.port;
+    uzaktanBagimlilik();
+    $("sTelefonQr").src = bilgi.qr || "";
+    if (bilgi.acik && !bilgi.adres) toast(t("err.agYok"), true);
+  } catch (_) { /* kopru hazir degil */ }
+}
+
+$("sLanAccess").onchange = async () => {
+  uzaktanBagimlilik();          // RPC yanitini bekleme: alan ANINDA acilsin/kapansin
+  try {
+    const bilgi = await call("telefon_ayarla", $("sLanAccess").checked);
+    $("telefonKutu").style.display = bilgi.acik ? "" : "none";
+    $("sTelefonAdres").value = bilgi.adres || "";
+    $("sLanAddr").value = bilgi.adres || "";
+    if (bilgi.port) $("sApiPort").value = bilgi.port;
+    uzaktanBagimlilik();
+    $("sTelefonQr").src = bilgi.qr || "";
+    if (bilgi.acik && !bilgi.adres) toast(t("err.agYok"), true);
+  } catch (err) { toast(err.message, true); }
+};
+
+$("sTelefonKopya").onclick = async () => {
+  const adres = $("sTelefonAdres").value;
+  if (!adres) return;
+  try {
+    await navigator.clipboard.writeText(adres);
+    toast(t("toast.kopyalandi"));
+  } catch (_) {
+    $("sTelefonAdres").select();       // pano kapaliysa: secili birak, elle kopyalasin
+    document.execCommand("copy");
+    toast(t("toast.kopyalandi"));
+  }
+};
+
+/* Telefondan uyandirma: tarayici UDP gonderemez, bu yuzden uyandirmayi
+   telefondaki bir WoL uygulamasi yapar — burada MAC'i ve kartin hazir olup
+   olmadigini gosteriyoruz (bkz. core/guc.py). */
+async function gucDurumu() {
+  try {
+    const bilgi = await call("guc_durumu");
+    $("sMac").value = bilgi.mac || "";
+    const anahtar = bilgi.wol === true ? "wol.acik"
+      : bilgi.wol === false ? "wol.kapali" : "wol.bilinmiyor";
+    let metin = t(anahtar, { kart: bilgi.kart || "?" });
+    if (!bilgi.hazir) metin += t("wol.hazirDegil");
+    $("wolDurum").textContent = metin;
+  } catch (_) { $("wolDurum").textContent = ""; }
+}
+
+$("sMacKopya").onclick = async () => {
+  if (!$("sMac").value) return;
+  try {
+    await navigator.clipboard.writeText($("sMac").value);
+    toast(t("toast.kopyalandi"));
+  } catch (_) {
+    $("sMac").select();
+    document.execCommand("copy");
+    toast(t("toast.kopyalandi"));
+  }
+};
+
+/* ---------- motorlar (Ayarlar icinde) ---------- */
+async function renderEngines() {
+  const kutu = $("engines");
+  if (!kutu) return;
+  let bilgi;
+  try {
+    bilgi = await call("motor_durumu");
+  } catch (_) {
+    return;
+  }
+  const satirlar = [];
+  for (const ad of Object.keys(bilgi.motorlar)) {
+    const m = bilgi.motorlar[ad];
+    const ilerleme = bilgi.ilerleme[ad] || {};
+    let rozet;
+    let dugme = "";
+    if (ilerleme.durum === "iniyor") {
+      const yuzde = ilerleme.toplam
+        ? Math.round((ilerleme.inen / ilerleme.toplam) * 100) : 0;
+      rozet = '<span class="rozet">' + escapeHtml(t("eng.downloading", { yuzde: yuzde })) + "</span>";
+    } else if (ilerleme.durum === "hata") {
+      rozet = '<span class="rozet hata" title="' + escapeHtml(ilerleme.hata || "") + '">'
+        + escapeHtml(t("eng.failed")) + "</span>";
+      dugme = '<button data-motor="' + ad + '">'
+        + escapeHtml(t("eng.download", { mb: m.indirme_boyutu_mb })) + "</button>";
+    } else if (m.var) {
+      rozet = '<span class="rozet">' + escapeHtml(t("eng.installed")) + " · " + m.boyut_mb + " MB</span>";
+    } else if (m.kaynak === "sistem") {
+      // Klasorde yok ama Windows'ta kurulu: gizlemek yerine acikca soyle.
+      rozet = '<span class="rozet sistem" title="' + escapeHtml(t("eng.fromSystemTip")) + '">'
+        + escapeHtml(t("eng.fromSystem")) + "</span>";
+      dugme = '<button data-motor="' + ad + '">'
+        + escapeHtml(t("eng.download", { mb: m.indirme_boyutu_mb })) + "</button>";
+    } else {
+      rozet = '<span class="rozet eksik">' + escapeHtml(m.zorunlu ? t("eng.required") : "—") + "</span>";
+      dugme = '<button data-motor="' + ad + '">'
+        + escapeHtml(t("eng.download", { mb: m.indirme_boyutu_mb })) + "</button>";
+    }
+    satirlar.push(
+      '<div class="engine-row"><span class="ad">' + escapeHtml(ad) + "</span>" +
+      '<span class="ne">' + escapeHtml(t("eng." + ad)) + "</span>" +
+      rozet + dugme + "</div>"
+    );
+  }
+  kutu.innerHTML = satirlar.join("");
+}
+
+$("engines").addEventListener("click", async (event) => {
+  const dugme = event.target.closest("button[data-motor]");
+  if (!dugme) return;
+  dugme.disabled = true;
+  try {
+    await call("motor_indir", dugme.dataset.motor);
+    renderEngines();
+  } catch (err) {
+    toast(err.message, true);
+    dugme.disabled = false;
+  }
+});
+$("pairBtn").onclick = async () => {
+  try {
+    const out = await call("start_pairing", 120);
+    toast(t("toast.pairing", { port: out.port }));
+  } catch (err) { toast(err.message, true); }
+};
+
+$("setGo").onclick = async () => {
+  const payload = {
+    language: $("sLang").value,
+    download_dir: $("sDir").value.trim(),
+    split: Number($("sSplit").value) || 64,
+    max_conn_per_server: Number($("sConn").value) || 16,
+    max_concurrent: Number($("sConc").value) || 5,
+    max_speed_kb: Number($("sSpeed").value) || 0,
+    hiz_profili: $("sMode").value || "normal",
+    seed_ratio: Number($("sRatio").value) || 0,
+    telegram_chat_id: $("sChat").value.trim(),
+    telegram_bot_token: $("sToken").value.trim(),
+    clipboard_watch: $("sClip").checked,
+    clipboard_exts: $("sClipExts").value.trim(),
+    snail_speed_kb: Number($("sSnailSpeed").value) || 100,
+    // v1.7.5: uzaktan erisim + ag. api_port araligi disindaysa varsayilana duser.
+    lan_erisimi: $("sLanAccess").checked,
+    internet_paylasim: $("sInternetShare").checked,
+    api_listen_port: portSayisi($("sApiPort").value),
+    system_proxy: $("sSystemProxy").checked,
+    proxy: $("sProxy").value.trim(),
+    ag_konumlari: $("sNetLocations").value.trim(),
+    auto_update_trackers: $("sTrackers").checked,
+    notify_telegram: $("sNotify").checked,
+    windows_notifications: $("sWinNotify").checked,
+    shutdown_when_done: $("sShutdown").checked,
+    sleep_when_done: $("sSleep").checked,
+    kaydetme_penceresi: !$("sKaydet").checked,
+    kategori_klasorleri: $("sKategori").checked,
+    tepsiye_kucult: $("sTepsi").checked,
+    baslangicta_tepside: $("sBasTepside").checked,
+    tracker_otomatik_tara: $("sSeedOto").checked,
+    video_altyazi_diller: $("sVideoAltyaziDiller").value.trim(),
+    video_oto_altyazi: $("sVideoOtoAltyazi").checked,
+    video_altyazi_goem: $("sVideoAltyaziGoem").checked,
+    video_kucuk_resim: $("sVideoKucukResim").value,
+    video_ustveri_goem: $("sVideoUstveriGoem").checked,
+    video_bolumler: $("sVideoBolumler").value,
+    video_sponsorblock: $("sVideoSponsorblock").value.trim(),
+    video_bolum_araligi: $("sVideoBolumAraligi").value.trim(),
+    video_kapsayici: $("sVideoKapsayici").value,
+    video_ses_formati: $("sVideoSesFormati").value,
+    video_dosya_sablonu: $("sVideoDosyaSablonu").value.trim(),
+    video_tarayici_cerezi: $("sVideoTarayiciCerezi").value,
+    automation_enabled: $("sAutoEnabled").checked,
+    automation_steps: $("sAutoSteps").value.split(",").map((x) => x.trim()).filter((x) => ["checksum", "extract", "move", "rename", "script", "notify", "power"].includes(x)),
+    automation_checksum: $("sAutoChecksum").checked,
+    eklenti_max_boyut_mb: Number($("sPlgMaxSize").value) || 200,
+    eklenti_max_oran: Number($("sPlgMaxRatio").value) || 100,
+    eklenti_imzasiz_izin: $("sPlgUnsigned").checked,
+    automation_extract: $("sAutoExtract").checked,
+    automation_move_to: $("sAutoMove").value.trim(),
+    automation_rename_to: $("sAutoRename").value.trim(),
+    automation_script: $("sAutoScript").value.trim(),
+    automation_notify: $("sAutoNotify").checked,
+    automation_power: $("sAutoPower").value,
+    automation_power_seconds: Math.max(5, Number($("sAutoSeconds").value) || 60),
+  };
+  try {
+    $("setGo").disabled = true;
+    const sonuc = await call("ayarlari_dogrula_kaydet", payload);
+    if (!sonuc.ok) {
+      const ilk = (sonuc.hatalar || [])[0];
+      const alan = ilk && ilk.alan;
+      const map = {api_port:"sApiPort", api_listen_port:"sApiPort", snail_speed_kb:"sSnailSpeed", proxy:"sProxy", clipboard_exts:"sClipExts", ag_konumlari:"sNetLocations"};
+      const hedef = $(map[alan]);
+      if (hedef) { hedef.focus(); toast(t(ilk.mesaj_anahtari), true); }
+      return;
+    }
+    state.settings = sonuc.ayarlar || state.settings;
+    // Windows'a dokunan iki ayar (Baslangic klasoru / kayit defteri) ayri
+    // gider: biri patlarsa digerleri ve ayarlar yine de kaydedilmis olsun.
+    await sistemAyarlariniUygula();
+    closeVeil("setVeil");
+    toast(t("toast.saved"));
+  } catch (err) { toast(err.message, true); } finally { $("setGo").disabled = false; }
+};
+
+$("settingsSearch").oninput = () => {
+  const q = $("settingsSearch").value.trim().toLocaleLowerCase();
+
+  const fields = [...$("settingsBody").querySelectorAll("label, .hint")];
+  const match = !q || fields.some((x) => (x.textContent || "").toLocaleLowerCase().includes(q));
+  $("settingsSearchResult").textContent = q ? (match ? t("set.searchFound") : t("set.searchNone")) : "";
+};
+
+/* ---------- klasor agaci (core/kaydet.py) ----------
+   Tek bir pencere; klasorSec() cagrilinca acilir ve secilen yolu dondurur.
+   Alt klasorler ISTENDIKCE okunur: tum disk hicbir zaman taranmaz. */
+let klasorSoz = null;   // acik secimin cozucusu
+
+
+
+
+document.querySelectorAll('.set-tab-btn').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const targetId = 'sPane' + tab.getAttribute('data-stab').charAt(0).toUpperCase() + tab.getAttribute('data-stab').slice(1);
+    document.querySelectorAll('.set-tab-btn').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    document.querySelectorAll('.set-pane').forEach(p => p.classList.remove('active'));
+    const targetPane = document.getElementById(targetId);
+    if (targetPane) targetPane.classList.add('active');
+  });
+});
+function agacSatiri(oge, derinlik) {
+  const satir = document.createElement("div");
+  satir.className = "dugum";
+  satir.style.paddingLeft = 6 + derinlik * 14 + "px";
+  satir.dataset.yol = oge.yol;
+  satir.dataset.derinlik = String(derinlik);
+  const ok = document.createElement("span");
+  ok.className = "ok" + (oge.alt ? "" : " bos");
+  ok.textContent = oge.alt ? "▸" : "";
+  const ad = document.createElement("span");
+  ad.className = "ad";
+  // Kisayolun adi dile gore yazilir; disk ve alt klasorler kendi adiyla kalir.
+  const anahtar = oge.anahtar && oge.anahtar !== "disk" ? "klas." + oge.anahtar : "";
+  ad.textContent = anahtar ? t(anahtar) : oge.ad;
+  ad.title = oge.yol;
+  satir.append(ok, ad);
+  return satir;
+}
+
+function agacSec(satir) {
+  document.querySelectorAll("#agac .dugum.on").forEach((d) => d.classList.remove("on"));
+  satir.classList.add("on");
+  $("klasYol").value = satir.dataset.yol;
+}
+
+async function agacAc(satir) {
+  const derinlik = Number(satir.dataset.derinlik) + 1;
+  if (satir.classList.contains("acik")) {          // kapat: alt satirlari sil
+    satir.classList.remove("acik");
+    satir.querySelector(".ok").textContent = "▸";
+    let sonraki = satir.nextSibling;
+    while (sonraki && Number(sonraki.dataset.derinlik) >= derinlik) {
+      const silinecek = sonraki;
+      sonraki = sonraki.nextSibling;
+      silinecek.remove();
+    }
+    return;
+  }
+  const out = await call("klasor_alt", satir.dataset.yol);
+  satir.classList.add("acik");
+  satir.querySelector(".ok").textContent = "▾";
+  let imlec = satir;
+  (out.ogeler || []).forEach((alt) => {
+    const yeni = agacSatiri(alt, derinlik);
+    imlec.after(yeni);
+    imlec = yeni;
+  });
+}
+
+$("agac").addEventListener("click", async (event) => {
+  const satir = event.target.closest(".dugum");
+  if (!satir) return;
+  agacSec(satir);
+  if (event.target.classList.contains("ok") && !event.target.classList.contains("bos")) {
+    try { await agacAc(satir); } catch (err) { $("klasErr").textContent = err.message; }
+  }
+});
+/* Ag konumunu listeden kaldirma: uzerine SAG TIK. Silme degil, yalniz
+   kisayolu listeden cikarir — paylasimdaki dosyalara DOKUNULMAZ. */
+$("agac").addEventListener("contextmenu", async (event) => {
+  const satir = event.target.closest(".dugum");
+  if (!satir || Number(satir.dataset.derinlik) !== 0) return;
+  if (!satir.dataset.yol.startsWith("\\\\")) return;
+  event.preventDefault();
+  if (!confirm(t("klas.agSil") + "\n" + satir.dataset.yol)) return;
+  try {
+    await call("ag_konumu_sil", satir.dataset.yol);
+    await agaciYenile();
+  } catch (err) { $("klasErr").textContent = err.message; }
+});
+
+$("agac").addEventListener("dblclick", async (event) => {
+  const satir = event.target.closest(".dugum");
+  if (satir && satir.querySelector(".ok").textContent) {
+    try { await agacAc(satir); } catch (err) { $("klasErr").textContent = err.message; }
+  }
+});
+
+async function klasorSec(baslangic) {
+  $("klasErr").textContent = "";
+  $("klasYol").value = baslangic || "";
+  await agaciYenile();
+  openVeil("klasorVeil");
+  return new Promise((coz) => { klasorSoz = coz; });
+}
+
+function klasorKapat(yol) {
+  closeVeil("klasorVeil");
+  const coz = klasorSoz;
+  klasorSoz = null;
+  if (coz) coz(yol);
+}
+
+$("klasCancel").onclick = () => klasorKapat("");
+$("klasOk").onclick = () => {
+  const yol = $("klasYol").value.trim();
+  if (!yol) { $("klasErr").textContent = t("err.noFolder"); return; }
+  klasorKapat(yol);
+};
+$("klasYeni").onclick = async () => {
+  const ust = $("klasYol").value.trim();
+  if (!ust) { $("klasErr").textContent = t("err.noFolder"); return; }
+  const ad = prompt(t("klas.newAsk"), "");
+  if (!ad) return;
+  try {
+    const out = await call("klasor_yeni", ust, ad);
+    $("klasYol").value = out.yol;
+    $("klasErr").textContent = "";
+  } catch (err) { $("klasErr").textContent = err.message; }
+};
+$("klasSistem").onclick = async () => {
+  // Windows'un kendi klasor secicisi: agactan bulunamayan yerler icin kacis yolu
+  try {
+    const out = await call("klasor_gozat", $("klasYol").value.trim());
+    if (out.yol) klasorKapat(out.yol);
+  } catch (err) { $("klasErr").textContent = err.message; }
+};
+/* Ortulunun disina tiklamak ve ESC de secimi BITIRMELI: yoksa klasorSec()'in
+   sozu asili kalir ve kaydetme penceresi bir daha yanit vermez. */
+$("klasorVeil").addEventListener("click", (event) => {
+  if (event.target === $("klasorVeil") && klasorSoz) klasorKapat("");
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && klasorSoz) klasorKapat("");
+});
+
+/* Modem/NAS paylasimi: UNC yolu eklenir, dogrulanir ve agacta kisayol olur.
+   OLCULDU: aria2 UNC yoluna sorunsuz iniyor, ek ayar gerekmiyor. */
+$("klasAg").onclick = async () => {
+  const yol = prompt(t("klas.agSor"), "\\\\");
+  if (!yol) return;
+  try {
+    const out = await call("ag_konumu_ekle", yol);
+    $("klasErr").textContent = "";
+    $("klasYol").value = out.yol;
+    await agaciYenile();
+    toast(t("klas.agEklendi"));
+  } catch (err) { $("klasErr").textContent = err.message; }
+};
+
+async function agaciYenile() {
+  const govde = $("agac");
+  govde.innerHTML = "";
+  const out = await call("klasor_kisayollar");
+  (out.ogeler || []).forEach((oge) => govde.append(agacSatiri(oge, 0)));
+}
+
+$("destPick").onclick = async () => {
+  const yol = await klasorSec($("dest").value.trim() || state.settings.download_dir || "");
+  if (yol) $("dest").value = yol;
+};
+
+/* ---------- kaydetme penceresi (IDM'in "indirme bilgisi" penceresi) ----------
+   Link nereden gelirse gelsin (pano, uzanti) once burada durur: dosya adi,
+   klasor, kategori ve ne zaman baslayacagi secilir. */
+const kayit = { kimlik: null, url: "", kind: "", klasorler: {}, ana: "" };
+
+function kategoriDoldur(bilgi) {
+  const secici = $("kayCat");
+  secici.innerHTML = "";
+  Object.keys(bilgi.klasorler || {}).forEach((anahtar) => {
+    const secenek = document.createElement("option");
+    secenek.value = anahtar;
+    secenek.textContent = t("kay.c." + anahtar);
+    secici.append(secenek);
+  });
+  secici.value = bilgi.kategori;
+}
+
+function kayHedefYaz() {
+  // Kategori klasorleri kapaliysa hepsi ana klasore iner.
+  $("kayDest").value = kayit.klasorler[$("kayCat").value] || kayit.ana;
+}
+
+async function kaydetAc(istek) {
+  const bilgi = await call("kaydet_bilgi", istek.url || "");
+  kayit.kimlik = istek.id === undefined ? null : istek.id;
+  kayit.url = istek.url || "";
+  kayit.kind = istek.kind || bilgi.kind;
+  kayit.klasorler = bilgi.kategori_klasorleri ? bilgi.klasorler : {};
+  kayit.ana = bilgi.ana;
+  kayit.preGid = null;
+  torState.dosyalar = [];
+  $("kayTorWrap").style.display = kayit.kind === "torrent" ? "block" : "none";
+
+  $("kayUrl").textContent = kayit.url;
+  $("kayUrl").title = kayit.url;
+  $("kayName").value = istek.filename || istek.title || bilgi.dosya_adi || "";
+  kategoriDoldur(bilgi);
+  kayHedefYaz();
+  $("kayQualityWrap").style.display = kayit.kind === "video" ? "" : "none";
+  $("kayVideoGelismisWrap").style.display = kayit.kind === "video" ? "" : "none";
+  $("kayVideoGelismisWrap").open = false;
+  ["AltyaziDiller", "Sponsorblock", "BolumAraligi", "DosyaSablonu"].forEach((ad) => { $("kayVideo" + ad).value = ""; });
+  ["KucukResim", "Bolumler", "Kapsayici", "SesFormati", "TarayiciCerezi"].forEach((ad) => { $("kayVideo" + ad).value = ""; });
+  ["OtoAltyazi", "AltyaziGoem", "UstveriGoem"].forEach((ad) => { $("kayVideo" + ad).checked = false; });
+  $("kayQuality").value = istek.quality || state.settings.video_quality || "best";
+  $("kayNow").checked = true;
+  $("kayAt").value = "";
+  $("kayErr").textContent = "";
+  $("kayQueue").textContent = "";
+  openVeil("kaydetVeil");
+  $("kayName").focus();
+
+  if (kayit.kind === "torrent" && kayit.url) {
+    $("kayTorBilgi").style.display = "block";
+    $("kayTorBilgi").textContent = t("tor.fetchingMeta", "Torrent bilgisi alınıyor...");
+    $("kayTorAgac").innerHTML = "";
+    $("kayTorLimitBar").style.display = "none";
+    $("kayTorSayac").textContent = "";
+
+    call("torrent_on_ekle", kayit.url).then(out => {
+      if (out.ok) {
+        kayit.preGid = out.gid;
+        torState.gid = out.gid;
+        torState.filtre = "";
+        torState.hepsiniGoster = false;
+        torState.katlanmislar.clear();
+        torState.secimler.clear();
+        kayTorYokla(out.gid);
+      } else {
+        $("kayTorBilgi").textContent = out.error;
+      }
+    }).catch(e => {
+        $("kayTorBilgi").textContent = e.message;
+    });
+  }
+
+
+  // dlman v1.12.0 yaklasimi: pencere aninda acilir, arka planda Content-Disposition
+  // ve MIME turu yoklanir; kullanici adi degistirmediyse otomatik guncellenir.
+  if (kayit.kind === "http" && kayit.url && /^https?:\/\//i.test(kayit.url)) {
+    const baslangicAd = $("kayName").value;
+    call("probe_link", kayit.url).then((probe) => {
+      if (!probe || !probe.ok) return;
+      if ($("kayName").value === baslangicAd && probe.filename) {
+        $("kayName").value = probe.filename;
+        if (probe.kategori && probe.kategori !== "genel") {
+          $("kayCat").value = probe.kategori;
+          kayHedefYaz();
+        }
+      }
+      if (probe.size) {
+        const devam = probe.resumable ? " · devam edebilir" : "";
+        $("kayQueue").textContent = size(probe.size) + devam;
+      }
+    }).catch(() => {});
+  }
+}
+
+$("kayCat").onchange = kayHedefYaz;
+$("kayPick").onclick = async () => {
+  const yol = await klasorSec($("kayDest").value.trim() || kayit.ana);
+  if (yol) $("kayDest").value = yol;
+};
+$("kayAt").onfocus = () => { $("kayLater").checked = true; };
+
+const observer = new MutationObserver((mutations) => {
+  mutations.forEach((m) => {
+    if (m.attributeName === "class" && !$("kaydetVeil").classList.contains("open")) {
+      if (kayit.preGid) {
+        call("torrent_on_iptal", kayit.preGid).catch(()=>{});
+        kayit.preGid = null;
+      }
+      const kimlik = kayit.kimlik;
+      kayit.kimlik = null;
+      if (kimlik !== null) {
+        call("bekleyen_iptal", kimlik).catch(()=>{});
+        bekleyenYokla();
+      }
+    }
+  });
+});
+observer.observe($("kaydetVeil"), { attributes: true });
+
+$("kayCancel").onclick = () => { closeVeil("kaydetVeil"); };
+
+let kayTorTimer = null;
+async function kayTorYokla(gid) {
+  afudmClearInterval(kayTorTimer);
+  kayTorTimer = null;
+  if (kayit.preGid !== gid || !$("kaydetVeil").classList.contains("open")) return;
+  if (afudmHidden()) {
+    kayTorTimer = afudmSetInterval(() => kayTorYokla(gid), 1500);
+    return;
+  }
+  try {
+    const out = await call("torrent_dosyalari", gid);
+    if (!out.ok) throw new Error(out.error || t("err.failed"));
+    if (out.hazir_degil) {
+      kayTorTimer = afudmSetInterval(() => kayTorYokla(gid), 1500);
+      return;
+    }
+    $("kayTorBilgi").style.display = "none";
+    torState.dosyalar = out.dosyalar || [];
+    torState.secimler = new Set();
+    for (const d of torState.dosyalar) {
+      if (d.secili) torState.secimler.add(d.indeks);
+    }
+    if (torState.secimler.size === 0 && torState.dosyalar.length > 0) {
+       for (const d of torState.dosyalar) torState.secimler.add(d.indeks);
+    }
+    torAgacCiz("kayTor");
+  } catch (err) {
+    $("kayTorBilgi").textContent = err.message;
+  }
+}
+
+$("kayGo").onclick = async () => {
+  const secim = {
+    filename: $("kayName").value.trim(),
+    dest_dir: $("kayDest").value.trim(),
+    kategori: $("kayCat").value,
+    quality: kayit.kind === "video" ? $("kayQuality").value : "",
+    audio_only: kayit.kind === "video" && $("kayQuality").value === "audio",
+    start_at: $("kayLater").checked ? $("kayAt").value.trim() : "",
+    altyazi_diller: $("kayVideoAltyaziDiller").value.trim(),
+    oto_altyazi: $("kayVideoOtoAltyazi").checked ? true : "",
+    altyazi_goem: $("kayVideoAltyaziGoem").checked ? true : "",
+    kucuk_resim: $("kayVideoKucukResim").value.trim(),
+    ustveri_goem: $("kayVideoUstveriGoem").checked ? true : "",
+    bolumler: $("kayVideoBolumler").value.trim(),
+    sponsorblock: $("kayVideoSponsorblock").value.trim(),
+    bolum_araligi: $("kayVideoBolumAraligi").value.trim(),
+    kapsayici: $("kayVideoKapsayici").value.trim(),
+    ses_formati: $("kayVideoSesFormati").value.trim(),
+    dosya_sablonu: $("kayVideoDosyaSablonu").value.trim(),
+    tarayici_cerezi: $("kayVideoTarayiciCerezi").value.trim(),
+  };
+
+  if (kayit.kind === "torrent" && kayit.preGid && torState.dosyalar.length > 0) {
+    secim.adopt_gid = kayit.preGid;
+    const secili = Array.from(torState.secimler).sort((a, b) => a - b);
+    secim.selected_files = secili.length === torState.dosyalar.length ? [] : secili;
+  } else if (kayit.kind === "torrent" && kayit.preGid) {
+    secim.adopt_gid = kayit.preGid;
+  }
+
+  const btn = $("kayGo");
+  btn.disabled = true;
+
+  try {
+    if (kayit.kimlik !== null) {
+      await call("bekleyen_onayla", kayit.kimlik, secim);
+    } else {
+      await call("add_links", { urls: [kayit.url], ...secim });
+    }
+    kayit.preGid = null;
+    kayit.kimlik = null;
+    closeVeil("kaydetVeil");
+    toast(secim.start_at ? t("toast.scheduled", { n: 1 }) : t("toast.started", { n: 1 }));
+    bekleyenYokla();
+  } catch (err) {
+    $("kayErr").textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+/* Tarayicidan gelen istek: Python pencereyi one getirip afudmBekleyen() cagirir.
+   Cagri kaybolursa (sayfa henuz hazir degildi) tick yine de bulur. */
+async function bekleyenYokla() {
+  let ogeler = [];
+  try {
+    ogeler = ((await call("bekleyen_listesi")).ogeler || []).filter((item) => item.source !== "browser");
+  } catch (_) { return; }
+  // Gosterilen istek listeden DUSMEZ (onay/iptalde duser): sayarken cikarilir.
+  const kalan = ogeler.length - (kayit.kimlik === null ? 0 : 1);
+  if ($("kaydetVeil").classList.contains("open")) {
+    // Pencere acikken de sayac islesin: arkada biriken istekler gorulsun.
+    $("kayQueue").textContent = kalan > 0 ? t("kay.queue", { n: kalan }) : "";
+    return;
+  }
+  if (!ogeler.length) return;
+  try {
+    await kaydetAc(ogeler[0]);
+    $("kayQueue").textContent = ogeler.length > 1 ? t("kay.queue", { n: ogeler.length - 1 }) : "";
+  } catch (err) { toast(err.message, true); }
+}
+
+window.afudmBekleyen = () => { bekleyenYokla(); };
+
+/* ---------- pano yakalama teklifi (Python cagirir) ---------- */
+window.afudmClipboard = async (url) => {
+  // Kaydetme penceresi kapaliysa (ayar) eski davranis: link ekleme penceresi.
+  if (state.settings.kaydetme_penceresi === false) {
+    $("urls").value = url;
+    openVeil("addVeil");
+    return;
+  }
+  try {
+    await kaydetAc({ url });
+  } catch (err) { toast(err.message, true); }
+};
+
+/* ---------- browser handoff (Python cagirir) ----------
+   Uzanti "Sayfadaki linkleri LinkGrabber'a gönder" dediginde buraya ham metin
+   duser: panel acilir, metin analiz kutusuna konur ve analiz hemen calisir. */
+window.afudmLinkgrabber = async (metin, dosya) => {
+  lgPanelAc();
+  $("lgMetin").value = metin || "";
+  lgRender();
+  await linkgrabberAnaliz();
+};
+
+/* ---------- ozel baslik cubugu (core/pencere.py) ---------- */
+if (document.documentElement) document.documentElement.classList.add("ozel-baslik");
+
+window.afudmPencere = async () => {
+  if (!window.pywebview || !window.pywebview.api || !window.pywebview.api.pencere_durumu) return;
+  try {
+    const durum = await window.pywebview.api.pencere_durumu();
+    document.documentElement.classList.toggle("ozel-baslik", !!durum.ozel);
+    document.documentElement.classList.toggle("buyuk", !!durum.buyuk);
+    if ($("wcMax")) $("wcMax").title = t(durum.buyuk ? "win.restore" : "win.max");
+  } catch (err) { /* ignore */ }
+};
+if ($("wcMin")) {
+  $("wcMin").onclick = () => window.pywebview?.api?.pencere_kucult?.();
+}
+if ($("wcMax")) {
+  $("wcMax").onclick = async () => {
+    if (window.pywebview?.api?.pencere_buyut) {
+      await window.pywebview.api.pencere_buyut();
+      window.afudmPencere();
+    }
+  };
+}
+if ($("wcClose")) {
+  $("wcClose").onclick = () => window.pywebview?.api?.pencere_kapat?.();
+}
+document.querySelectorAll(".wc-edge").forEach((kenar) => {
+  kenar.addEventListener("mousedown", (event) => {
+    if (event.button === 0) window.pywebview?.api?.pencere_kenar?.(kenar.dataset.edge);
+  });
+});
+// Buyut/geri al Windows'tan da gelebilir (cift tik, Snap, Win+Yukari): simgeyi esitle.
+let pencereZamanlayici;
+window.addEventListener("resize", () => {
+  clearTimeout(pencereZamanlayici);
+  pencereZamanlayici = setTimeout(() => window.afudmPencere(), 120);
+});
+
+window.addEventListener("pywebviewready", () => {
+  state.ready = true;
+  window.afudmPencere();
+  surumuYukle();
+  setTimeout(() => { if (!afudmHidden()) guncellemeOtomatikKontrol(); }, 1200);
+});
+afudmSetInterval(() => { if (state.ready) guncellemeOtomatikKontrol(); }, 3600000);
+initDrawerResize();
+tick();
+drawTrace();
+
+/* ---------- Sag tik menusu + pano ------------------------------------
+   WebView2'de pywebview varsayilan sag tik menusunu ve tarayici kisayollarini
+   DEBUG bayragina bagli aciyor (edgechromium.py): surumde ikisi de kapaliydi,
+   yani ne "bagliyi kopyala" vardi ne de Ctrl+C. Kisayollari core/pencere.py
+   geri actik; menuyu burada kendimiz ciziyoruz.
+
+   Pano islemleri Python uzerinden (Windows `clip` + panoyu dogrudan okuma):
+   navigator.clipboard gomulu pencerede izin isteyip sessizce dusuyor. */
+const ctxKutu = $("ctx");  // canvas baglami (ctx) ile karismasin
+
+async function panoyaYaz(metin) {
+  if (!metin) return false;
+  try {
+    const out = await call("panoya_kopyala", metin);
+    return !!out.ok;
+  } catch (_) { return false; }
+}
+
+async function panodanOku() {
+  try {
+    const out = await call("panodan_oku");
+    return out.metin || "";
+  } catch (_) { return ""; }
+}
+
+function ctxKapat() { ctxKutu.hidden = true; ctxKutu.innerHTML = ""; }
+
+/* ogeler: {etiket, calis, pasif} | "ayrac" | {baslik: "..."} */
+function ctxAc(x, y, ogeler) {
+  ctxKutu.innerHTML = "";
+  for (const oge of ogeler) {
+    if (oge === "ayrac") { ctxKutu.appendChild(document.createElement("hr")); continue; }
+    if (oge.baslik !== undefined) {
+      const ust = document.createElement("div");
+      ust.className = "ctx-url";
+      ust.textContent = oge.baslik;         // adres kullanicidan gelir: metin olarak bas
+      ust.title = oge.baslik;
+      ctxKutu.appendChild(ust);
+      continue;
+    }
+    const dugme = document.createElement("button");
+    dugme.type = "button";
+    dugme.textContent = oge.etiket;
+    dugme.disabled = !!oge.pasif;
+    dugme.onclick = async () => {
+      ctxKapat();
+      try { await oge.calis(); } catch (err) { toast(err.message, true); }
+    };
+    ctxKutu.appendChild(dugme);
+  }
+  ctxKutu.hidden = false;
+  // Once goster, SONRA olc: gizliyken genislik/yukseklik 0 gelir ve menu
+  // ekranin disina tasardi.
+  const kutu = ctxKutu.getBoundingClientRect();
+  ctxKutu.style.left = Math.max(4, Math.min(x, innerWidth - kutu.width - 6)) + "px";
+  ctxKutu.style.top = Math.max(4, Math.min(y, innerHeight - kutu.height - 6)) + "px";
+}
+
+addEventListener("click", (event) => { if (!ctxKutu.contains(event.target)) ctxKapat(); }, true);
+addEventListener("blur", ctxKapat);
+addEventListener("resize", ctxKapat);
+document.addEventListener("keydown", (event) => { if (event.key === "Escape") ctxKapat(); });
+
+/* Metin kutulari: kes/kopyala/yapistir/tumunu sec.
+   Yapistirma Python'dan gelir, boylece izin penceresi cikmaz. */
+function metinMenusu(alan) {
+  const secili = alan.value.slice(alan.selectionStart, alan.selectionEnd);
+  const yaz = (metin) => {
+    const bas = alan.selectionStart;
+    const son = alan.selectionEnd;
+    alan.value = alan.value.slice(0, bas) + metin + alan.value.slice(son);
+    alan.selectionStart = alan.selectionEnd = bas + metin.length;
+    // oninput dinleyicileri (ornegin "kirli" isareti) calissin
+    alan.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+  return [
+    { etiket: t("ctx.cut"), pasif: !secili || alan.readOnly,
+      calis: async () => { if (await panoyaYaz(secili)) yaz(""); } },
+    { etiket: t("ctx.copy"), pasif: !secili,
+      calis: async () => { if (await panoyaYaz(secili)) toast(t("ctx.copied")); } },
+    { etiket: t("ctx.paste"), pasif: alan.readOnly,
+      calis: async () => { const m = await panodanOku(); if (m) yaz(m); } },
+    "ayrac",
+    { etiket: t("ctx.selectAll"), calis: async () => alan.select() },
+  ];
+}
+
+let renewGid = "";
+$("renewGo").onclick = async () => {
+  const url = $("renewUrl").value.trim();
+  if (!/^(https?|ftp):\/\//i.test(url)) { $("renewErr").textContent = t("renew.bad"); return; }
+  try {
+    const out = await call("link_yenile", renewGid, url);
+    if (out && out.ok === false) { $("renewErr").textContent = out.error || t("renew.bad"); return; }
+    closeVeil("renewVeil");
+    toast(t("renew.done"));
+  } catch (err) { $("renewErr").textContent = err.message; }
+};
+let fixGid = "";
+$("fixGo").onclick = async () => {
+  const url = $("fixUrl").value.trim();
+  if (!/^(https?|ftp):\/\//i.test(url)) { $("fixErr").textContent = t("renew.bad"); return; }
+  try {
+    const out = await call("butunluk_onar", fixGid, url);
+    if (out && out.ok === false) { $("fixErr").textContent = out.neden || t("renew.bad"); return; }
+    closeVeil("fixVeil");
+    toast(t("fix.done") || "Onarım başlatıldı.");
+    updateRowCache(fixGid, { status: "repairing", errorMessage: "" });
+    renderList();
+  } catch (err) { $("fixErr").textContent = err.message || err.toString(); }
+};
+
+$("scanAllBtn").onclick = async () => {
+  const out = await call("butunluk_hepsini_tara");
+  if (out && out.ok) {
+    toast(t("bar.scanAllDone").replace("{n}", out.taranan));
+  } else {
+    toast(t("bar.scanAllErr") + (out ? out.error : ""));
+  }
+};
+
+
+document.addEventListener("contextmenu", async (event) => {
+  const alan = event.target.closest("input[type=text], input:not([type]), input[type=search], textarea");
+  if (alan) {
+    event.preventDefault();
+    ctxAc(event.clientX, event.clientY, metinMenusu(alan));
+    return;
+  }
+  const satir = event.target.closest("#list .row");
+  if (!satir) return;
+  event.preventDefault();
+  const gid = satir.dataset.gid;
+  const oge = state.items.find((i) => i.gid === gid);
+  if (!oge) return;
+  const adres = oge.source || "";
+  const ad = oge.filename || "";
+  const yol = ad ? (oge.dir ? oge.dir.replace(/[\/]+$/, "") + "\\" + ad : ad) : (oge.dir || "");
+  ctxAc(event.clientX, event.clientY, [
+    { baslik: adres || oge.title || gid },
+    { etiket: t("ctx.copyLink"), pasif: !adres,
+      calis: async () => { if (await panoyaYaz(adres)) toast(t("ctx.copied")); } },
+    { etiket: t("ctx.copyPath"), pasif: !yol,
+      calis: async () => { if (await panoyaYaz(yol)) toast(t("ctx.copied")); } },
+    { etiket: t("ctx.copyName"), pasif: !ad,
+      calis: async () => { if (await panoyaYaz(ad)) toast(t("ctx.copied")); } },
+    "ayrac",
+    { etiket: t("ctx.openFile"), pasif: oge.status !== "complete",
+      calis: () => call("dosya_ac", gid) },
+    { etiket: t("ctx.openFolder"), calis: () => call("open_item_folder", gid) },
+    "ayrac",
+    { etiket: t("row.share"), pasif: oge.status !== "complete",
+      calis: async () => {
+        const res = await agdaPaylas(gid);
+        paylasimModalDoldur(res);
+        openVeil("shareVeil");
+      } },
+    "ayrac",
+    { etiket: t("ctx.scanFile"), pasif: oge.status !== "complete",
+      calis: async () => {
+        const out = await call("butunluk_tara", gid);
+        if (out && out.ok) {
+           if (out.durum === "saglam") toast(t("ctx.scanOk"));
+           else toast(t("ctx.scanBad") + out.neden);
+        } else {
+           toast(t("ctx.scanErr"));
+        }
+      } },
+    { etiket: t("ctx.repairFile") || "Yeni linkle onar",
+      pasif: oge.status !== "complete" || !["http", "ftp"].includes(oge.kind),
+      calis: async () => {
+        fixGid = gid;
+        $("fixUrl").value = "";
+        $("fixErr").textContent = "";
+        openVeil("fixVeil");
+        $("fixUrl").focus();
+      } },
+    { etiket: t("ctx.renew"),
+      pasif: !["http", "ftp"].includes(oge.kind) || (oge.status === "complete" && !oge.error),
+      calis: async () => {
+        renewGid = gid;
+        $("renewUrl").value = "";
+        $("renewErr").textContent = "";
+        openVeil("renewVeil");
+        $("renewUrl").focus();
+      } },
+
+    { etiket: t("ctx.again"), pasif: !adres,
+      calis: async () => {
+        $("urls").value = adres;
+        $("addErr").textContent = "";
+        $("quality").value = state.settings.video_quality || "best";
+        openVeil("addVeil");
+        $("urls").focus();
+      } },
+  ]);
+});
+
+/* Kisayollar acilinca Ctrl+R / F5 / Ctrl+P de geliyor: yeniden yukleme
+   arayuzu sifirlar, yazdirma anlamsiz. Kopyala/yapistir kalsin, bunlar gitsin. */
+document.addEventListener("keydown", (event) => {
+  const k = (event.key || "").toLowerCase();
+  if (event.key === "F5" || ((event.ctrlKey || event.metaKey) && (k === "r" || k === "p"))) {
+    event.preventDefault();
+  }
+});
+
+/* ---------- Surum (core/surum.py) ----------------------------------
+   Kullanici hangi kopyayi calistirdigini gorebilmeli: sol seritte kisa,
+   Ayarlar'da uzanti surumuyle birlikte. Kopru hazir olmadan cagrilirsa
+   sessizce bos kalir — surum gostergesi yuzunden arayuz patlamasin. */
+let surumBilgisi = null;
+let guncellemeBilgisi = null;
+let guncellemeIsliyor = false;
+let guncellemeZorla = false;
+
+async function guncellemeKontrol(sessiz = false) {
+  try {
+    const bilgi = await call("guncelleme_kontrol");
+    if (!bilgi.ok) {
+      if (!sessiz) $("guncellemeAyarDurum").textContent = bilgi.hata || t("upd.error");
+      return bilgi;
+    }
+    if (bilgi.var) {
+      guncellemeBilgisi = bilgi;
+      $("guncellemeMesaj").textContent = t("upd.ready", { version: bilgi.yeni });
+      $("guncellemeSerit").hidden = false;
+    } else if (!sessiz) {
+      $("guncellemeAyarDurum").textContent = t("upd.current");
+    }
+    return bilgi;
+  } catch (_) {
+    if (!sessiz) $("guncellemeAyarDurum").textContent = t("upd.error");
+    return { ok: false };
+  }
+}
+
+async function guncellemeOtomatikKontrol() {
+  if (guncellemeIsliyor) return;
+  try {
+    const once = await call("guncelleme_son_kontrol");
+    if (once.aktif === false) return;
+    const bilgi = Date.now() / 1000 - (once.zaman || 0) < 86400
+      ? once.bilgi : await guncellemeKontrol(true);
+    if (bilgi?.ok && bilgi.var) {
+      guncellemeBilgisi = bilgi;
+      $("guncellemeMesaj").textContent = t("upd.ready", { version: bilgi.yeni });
+      $("guncellemeSerit").hidden = false;
+      if (once.paketli !== false) await guncellemeBaslat(true);
+    }
+  } catch (_) { /* Sessiz acilis kontrolu. */ }
+}
+
+async function guncellemeBaslat(otomatik = false) {
+  if (guncellemeIsliyor || !guncellemeBilgisi) return;
+  guncellemeIsliyor = true;
+  const dugme = $("guncellemeBtn");
+  dugme.disabled = true;
+  $("guncellemeMesaj").textContent = t("upd.downloading");
+  try {
+    await call("guncelleme_indir", guncellemeBilgisi);
+    while (true) {
+      const durum = await call("guncelleme_durum");
+      if (durum.durum === "hata") throw new Error(durum.hata || t("upd.error"));
+      if (durum.durum === "bitti") break;
+      if (durum.toplam > 0) {
+        $("guncellemeMesaj").textContent = t("upd.progress", {
+          percent: Math.min(99, Math.floor(durum.inen * 100 / durum.toplam))
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    // Give notice before restarting; never close a modal the user is editing.
+    if (otomatik) {
+      $("guncellemeMesaj").textContent = t("upd.idleReady");
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+    }
+    while (true) {
+      if (otomatik && document.querySelector(".veil.open, .veil.on")) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        continue;
+      }
+      const out = await call("guncelleme_uygula", otomatik, guncellemeZorla);
+      if (out.iptal) {
+        $("guncellemeMesaj").textContent = t("upd.ready", { version: guncellemeBilgisi.yeni });
+        dugme.disabled = false;
+        dugme.textContent = t("upd.button");
+        guncellemeZorla = false;
+        guncellemeIsliyor = false;
+        return;
+      }
+      if (!out.ok) throw new Error(out.hata || t("upd.error"));
+      if (!out.bekle) break;
+      // Yalniz bekleyen bir onay varsa kullanici "Simdi guncelle" ile beklemeyi atlayabilir.
+      const onayBekliyor = out.neden === "bekleyen";
+      $("guncellemeMesaj").textContent = t(onayBekliyor ? "upd.waitPending" : "upd.waitIdle");
+      dugme.textContent = t(onayBekliyor ? "upd.now" : "upd.button");
+      dugme.disabled = !onayBekliyor;
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    $("guncellemeMesaj").textContent = t("upd.restarting");
+  } catch (err) {
+    $("guncellemeMesaj").textContent = err.message || t("upd.error");
+    dugme.disabled = false;
+    dugme.textContent = t("upd.button");
+    guncellemeIsliyor = false;
+    guncellemeZorla = false;
+  }
+}
+
+$("guncellemeBtn").onclick = () => {
+  // Bekleme dongusu zaten calisiyorsa tiklama onu "zorla" kipine alir.
+  if (guncellemeIsliyor) { guncellemeZorla = true; $("guncellemeBtn").disabled = true; return; }
+  guncellemeBaslat(false);
+};
+$("guncellemeKontrolBtn").onclick = async () => {
+  $("guncellemeAyarDurum").textContent = "";
+  await guncellemeKontrol(false);
+};
+$("sGuncellemeOto").onchange = async () => {
+  try {
+    await call("guncelleme_otomatik_ayarla", $("sGuncellemeOto").checked);
+    state.settings.guncelleme_otomatik = $("sGuncellemeOto").checked;
+    if ($("sGuncellemeOto").checked) guncellemeOtomatikKontrol();
+  } catch (_) {
+    $("sGuncellemeOto").checked = state.settings.guncelleme_otomatik !== false;
+  }
+};
+
+async function surumuYukle() {
+  if (surumBilgisi) return surumBilgisi;
+  try {
+    surumBilgisi = await call("surum_bilgi");
+  } catch (_) { return null; }
+  $("brandSurum").textContent = "v" + surumBilgisi.surum;
+  if ($("globalModel")) $("globalModel").textContent = "AfuDM v" + surumBilgisi.surum;
+  return surumBilgisi;
+}
+
+async function surumuCiz() {
+  const bilgi = await surumuYukle();
+  const kutu = $("sSurum");
+  kutu.innerHTML = "";
+  if (!bilgi) { kutu.textContent = t("set.surumYok"); return; }
+  const satir = (etiket, deger) => {
+    const d = document.createElement("div");
+    d.textContent = etiket + " ";
+    const b = document.createElement("b");
+    b.textContent = deger;
+    d.appendChild(b);
+    kutu.appendChild(d);
+  };
+  satir(t("set.surumUygulama"), bilgi.surum);
+  if (bilgi.uzanti) satir(t("set.surumUzanti"), bilgi.uzanti);
+}
+
+/* ---------- Ayarlar > kendi tracker'larin (elle yapistirma) ---------- */
+$("sSeedEkYapistir").onclick = async () => {
+  const metin = await panodanOku();
+  if (!metin) { $("sSeedEkOzet").textContent = t("set.seedEkPanoBos"); return; }
+  const alan = $("sSeedEk");
+  alan.value = (alan.value.trim() ? alan.value.replace(/\s*$/, "") + "\n" : "") + metin.trim();
+  $("sSeedEkOzet").textContent = "";
+};
+
+$("sSeedEkKaydet").onclick = async () => {
+  try {
+    // seed_tracker_kaydet gecersiz satirlari ayiklar ve TEMIZ listeyi geri verir
+    const out = await call("seed_tracker_kaydet", $("sSeedEk").value);
+    $("sSeedEk").value = out.liste || "";
+    state.settings.ek_trackerlar = out.liste || "";
+    $("sSeedEkOzet").textContent = t("set.seedEkKayitli", { n: out.sayi || 0 });
+    toast(t("set.seedEkKayitli", { n: out.sayi || 0 }));
+  } catch (err) { $("sSeedEkOzet").textContent = err.message; }
+};
+
+/* ---------- Eklentiler (v2.0 Plugin Platform) ------------------------
+   Backend: core/eklenti.py (EklentiServisi) — pywebview koprusu ve HTTP API
+   AYNI servisi kullanir. Panel yalnizca servisin bildirdigini cizer:
+   burada "calisir gorunumlu" hicbir dugme yoktur.
+
+   DURUSTLUK: sandbox YOK. Izin/domain listesi eklentinin BEYANIDIR ve
+   teknik olarak zorlanmaz; panel bunu her iki ekranda da acikca yazar.
+
+   Durumlar: yukleniyor / bos / dolu / hata / baglantisiz. */
+const plgState = {
+  veri: null, timer: null, acikAyar: {}, acikGunluk: {},
+  onay: null, yukleniyor: false,
+};
+
+function plgEl(etiket, sinif, metin) {
+  const d = document.createElement(etiket);
+  if (sinif) d.className = sinif;
+  if (metin !== undefined && metin !== null) d.textContent = String(metin);
+  return d;
+}
+
+function plgDurumEtiketi(durum) {
+  const metin = t("plg.st." + durum);
+  return metin === "plg.st." + durum ? durum : metin;
+}
+
+function plgAdimEtiketi(adim) {
+  const metin = t("plg.step." + adim);
+  return metin === "plg.step." + adim ? adim : metin;
+}
+
+function plgTurEtiketi(tur) {
+  const metin = t("plg.op." + tur);
+  return metin === "plg.op." + tur ? tur : metin;
+}
+
+function plgIzinMetni(izin) {
+  const metin = t("plg.perm." + izin);
+  return metin === "plg.perm." + izin ? t("plg.perm.unknown", { ad: izin }) : metin;
+}
+
+function plgRozet(uygulama) {
+  const metin = t("plg.badge." + uygulama);
+  return plgEl("span", "plg-rozet", metin === "plg.badge." + uygulama ? uygulama : metin);
+}
+
+function plgHata(mesaj) {
+  const kutu = $("plgErr");
+  kutu.textContent = mesaj || "";
+  kutu.style.display = mesaj ? "" : "none";
+}
+
+/* --- listeyi cek + ciz ------------------------------------------------ */
+async function plgYukle(sessiz) {
+  if (!sessiz) {
+    plgState.yukleniyor = true;
+    plgCiz();
+  }
+  try {
+    const out = await call("eklenti_listesi");
+    plgState.veri = out;
+    plgHata("");
+  } catch (err) {
+    plgState.veri = null;
+    plgHata(t("plg.bridgeOff") + " (" + err.message + ")");
+  } finally {
+    plgState.yukleniyor = false;
+    plgCiz();
+  }
+}
+
+function plgIslemCiz(islem) {
+  const kutu = $("plgIslem");
+  const metin = $("plgIslemMetin");
+  const iptal = $("plgIslemIptal");
+  if (!islem) { kutu.style.display = "none"; return; }
+  kutu.style.display = "";
+  const tur = plgTurEtiketi(islem.tur);
+  if (islem.durum === "calisiyor") {
+    metin.textContent = t("plg.op.running", { tur: tur, adim: plgAdimEtiketi(islem.adim) });
+    iptal.style.display = "";
+    iptal.disabled = !islem.iptal_edilebilir;
+  } else {
+    iptal.style.display = "none";
+    if (islem.durum === "bitti") metin.textContent = islem.mesaj || t("plg.op.done", { tur: tur });
+    else if (islem.durum === "iptal") metin.textContent = t("plg.op.cancelled", { tur: tur });
+    else metin.textContent = t("plg.op.error", { tur: tur, mesaj: islem.mesaj || "" });
+  }
+  kutu.dataset.durum = islem.durum;
+}
+
+function plgCiz() {
+  const liste = $("plgListe");
+  const veri = plgState.veri;
+  liste.innerHTML = "";
+  $("plgKlasorYol").textContent = veri ? veri.klasor : "";
+  plgIslemCiz(veri ? veri.islem : null);
+  const mesgul = !!(veri && veri.islem && veri.islem.durum === "calisiyor");
+  $("plgKur").disabled = mesgul;
+
+  if (plgState.yukleniyor) { liste.appendChild(plgEl("div", "plg-bos", t("plg.loading"))); return; }
+  if (!veri) { liste.appendChild(plgEl("div", "plg-bos", t("plg.bridgeOff"))); return; }
+  if (!veri.eklentiler.length) { liste.appendChild(plgEl("div", "plg-bos", t("plg.empty"))); return; }
+
+  veri.eklentiler.forEach((e) => {
+    const kart = plgEl("div", "plg-kart");
+    kart.dataset.durum = e.durum;
+
+    const bas = plgEl("div", "plg-bas");
+    bas.appendChild(plgEl("span", "plg-nokta"));
+    bas.appendChild(plgEl("strong", "", e.baslik));
+    bas.appendChild(plgEl("span", "plg-surum", "v" + e.surum));
+    bas.appendChild(plgEl("span", "plg-durum", plgDurumEtiketi(e.durum)));
+    if (!e.uyumlu) {
+      bas.appendChild(plgEl("span", "plg-uyari",
+        t("plg.incompatible", { surum: veri.afudm_surum })));
+    }
+    kart.appendChild(bas);
+
+    if (e.aciklama) kart.appendChild(plgEl("div", "hint", e.aciklama));
+    const bilgi = plgEl("div", "plg-bilgi");
+    if (e.yazar) bilgi.appendChild(plgEl("span", "", t("plg.author") + ": " + e.yazar));
+    if (e.calisiyor && e.pid) bilgi.appendChild(plgEl("span", "", t("plg.pid") + ": " + e.pid));
+    if (e.calisiyor && e.baslama_at) {
+      bilgi.appendChild(plgEl("span", "",
+        t("plg.uptime") + ": " + clock(Math.round(Math.max(0, Date.now() / 1000 - e.baslama_at)))));
+    }
+    if (e.afudm_min || e.afudm_max) {
+      bilgi.appendChild(plgEl("span", "",
+        t("plg.needs") + ": " + (e.afudm_min || "*") + " - " + (e.afudm_max || "*")));
+    }
+    if (e.kaynak) bilgi.appendChild(plgEl("span", "plg-kaynak", t("plg.source") + ": " + e.kaynak));
+    kart.appendChild(bilgi);
+
+    // Beyan edilen izinler/domainler — kurulumdan sonra da GORUNUR kalir
+    const izinKutu = plgEl("div", "plg-izinler");
+    if (e.izinler.length) {
+      e.izinler.forEach((izin) => izinKutu.appendChild(plgEl("span", "plg-izin", plgIzinMetni(izin))));
+    } else {
+      izinKutu.appendChild(plgEl("span", "hint", t("plg.noPerms")));
+    }
+    kart.appendChild(izinKutu);
+    const domKutu = plgEl("div", "plg-domainler");
+    if (e.domainler.length) {
+      e.domainler.forEach((d) => domKutu.appendChild(plgEl("span", "plg-domain", d)));
+    } else {
+      domKutu.appendChild(plgEl("span", "hint", t("plg.noDomains")));
+    }
+    kart.appendChild(domKutu);
+
+    if (e.son_hata) {
+      kart.appendChild(plgEl("div", "err-note", t("plg.lastError") + ": " + e.son_hata));
+    }
+
+    const dugmeler = plgEl("div", "yol-satir plg-dugmeler");
+    const dugme = (metin, sinif, isle, kapali) => {
+      const b = plgEl("button", "btn " + (sinif || ""), metin);
+      b.disabled = !!kapali || mesgul;
+      b.onclick = isle;
+      dugmeler.appendChild(b);
+      return b;
+    };
+    dugme(e.etkin ? t("plg.disable") : t("plg.enable"), e.etkin ? "" : "primary",
+      () => plgEtkinlestir(e.ad, !e.etkin), !e.etkin && !e.uyumlu);
+    dugme(t("plg.restart"), "", () => plgYenidenBaslat(e.ad), !e.etkin);
+    dugme(t("plg.settings"), "ghost", () => {
+      plgState.acikAyar[e.ad] = !plgState.acikAyar[e.ad];
+      plgCiz();
+    });
+    dugme(t("plg.logs"), "ghost", () => {
+      plgState.acikGunluk[e.ad] = !plgState.acikGunluk[e.ad];
+      plgCiz();
+    });
+    dugme(t("plg.update"), "", () => plgGuncelle(e.ad));
+    if (e.onceki_surum) {
+      const b = dugme(t("plg.rollback") + " (" + e.onceki_surum + ")", "ghost", () => {}, true);
+      b.title = t("plg.rollbackNoSupport");
+    }
+    dugme(t("plg.remove"), "ghost", () => plgKaldir(e.ad, e.baslik));
+    kart.appendChild(dugmeler);
+
+    if (plgState.acikAyar[e.ad]) kart.appendChild(plgAyarFormu(e, mesgul));
+    if (plgState.acikGunluk[e.ad]) {
+      const g = plgEl("pre", "plg-gunluk");
+      g.textContent = t("plg.loading");
+      call("eklenti_gunluk", e.ad)
+        .then((out) => { g.textContent = (out.satirlar || []).join("\n") || t("plg.noLog"); })
+        .catch((err) => { g.textContent = err.message; });
+      kart.appendChild(g);
+    }
+    liste.appendChild(kart);
+  });
+}
+
+/* --- eklentinin KENDI ayar semasindan form uretimi -------------------- */
+function plgAyarFormu(e, mesgul) {
+  const kutu = plgEl("div", "plg-ayar");
+  if (!e.ayar_semasi.length) {
+    kutu.appendChild(plgEl("div", "hint", t("plg.noSettings")));
+    return kutu;
+  }
+  const girdiler = {};
+  e.ayar_semasi.forEach((alan) => {
+    const satir = plgEl("div", "plg-ayar-satir");
+    const etiket = plgEl("label", "", alan.etiket || alan.anahtar);
+    etiket.appendChild(plgRozet(alan.uygulama));
+    satir.appendChild(etiket);
+    const mevcut = Object.prototype.hasOwnProperty.call(e.ayarlar, alan.anahtar)
+      ? e.ayarlar[alan.anahtar] : alan.varsayilan;
+    let girdi;
+    if (alan.tur === "anahtar") {
+      girdi = document.createElement("input");
+      girdi.type = "checkbox";
+      girdi.checked = !!mevcut;
+    } else if (alan.tur === "sayi") {
+      girdi = document.createElement("input");
+      girdi.type = "number";
+      // Sinirlar manifestten gelir (core/eklenti.py); son soz yine backend'de
+      if (alan.en_az !== undefined) girdi.min = alan.en_az;
+      if (alan.en_cok !== undefined) girdi.max = alan.en_cok;
+      girdi.value = mevcut === undefined || mevcut === null ? "" : mevcut;
+    } else if (alan.tur === "secim") {
+      girdi = document.createElement("select");
+      (alan.secenekler || []).forEach((s) => {
+        const o = document.createElement("option");
+        o.value = s; o.textContent = s;
+        girdi.appendChild(o);
+      });
+      girdi.value = mevcut;
+    } else {
+      girdi = document.createElement("input");
+      girdi.type = "text";
+      girdi.spellcheck = false;
+      girdi.value = mevcut === undefined || mevcut === null ? "" : String(mevcut);
+    }
+    girdi.disabled = mesgul;
+    girdiler[alan.anahtar] = { girdi: girdi, tur: alan.tur };
+    satir.appendChild(girdi);
+    if (alan.aciklama) satir.appendChild(plgEl("div", "hint", alan.aciklama));
+    kutu.appendChild(satir);
+  });
+  const hataKutu = plgEl("div", "err-note");
+  hataKutu.style.display = "none";
+  kutu.appendChild(hataKutu);
+  const alt = plgEl("div", "yol-satir");
+  const kaydet = plgEl("button", "btn primary", t("plg.save"));
+  kaydet.disabled = mesgul;
+  kaydet.onclick = async () => {
+    const govde = {};
+    for (const anahtar in girdiler) {
+      const alanGirdi = girdiler[anahtar];
+      govde[anahtar] = alanGirdi.tur === "anahtar" ? alanGirdi.girdi.checked
+        : (alanGirdi.tur === "sayi" ? Number(alanGirdi.girdi.value || 0) : alanGirdi.girdi.value);
+    }
+    kaydet.disabled = true;
+    try {
+      const out = await call("eklenti_ayar_kaydet", e.ad, govde);
+      hataKutu.style.display = "none";
+      toast(out.canli_uygulandi ? t("plg.savedLive") : t("plg.saved"));
+      await plgYukle(true);
+    } catch (err) {
+      hataKutu.textContent = err.message;
+      hataKutu.style.display = "";
+      kaydet.disabled = false;
+    }
+  };
+  alt.appendChild(kaydet);
+  kutu.appendChild(alt);
+  return kutu;
+}
+
+/* --- islem yoklama: uzun isler backend'de, panel yalniz izler --------- */
+async function plgIslemiIzle(basariMesaji) {
+  for (let i = 0; i < 900; i++) {
+    const out = await call("eklenti_islem");
+    const islem = out.islem;
+    plgIslemCiz(islem);
+    if (!islem || islem.durum !== "calisiyor") {
+      await plgYukle(true);
+      if (islem && islem.durum === "hata") throw new Error(islem.mesaj || t("err.failed"));
+      if (islem && islem.durum === "iptal") {
+        toast(t("plg.op.cancelled", { tur: plgTurEtiketi(islem.tur) }));
+        return false;
+      }
+      if (basariMesaji) toast(basariMesaji);
+      return true;
+    }
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  return false;
+}
+
+
+/* --- eylemler --------------------------------------------------------- */
+async function plgEtkinlestir(ad, acik) {
+  try {
+    await call("eklenti_etkinlestir", ad, acik);
+    plgHata("");
+    toast(acik ? t("plg.enabled", { ad: ad }) : t("plg.disabled", { ad: ad }));
+  } catch (err) { plgHata(err.message); }
+  await plgYukle(true);
+}
+
+async function plgYenidenBaslat(ad) {
+  try {
+    await call("eklenti_yeniden_baslat", ad);
+    toast(t("plg.restarted", { ad: ad }));
+    plgHata("");
+  } catch (err) { plgHata(err.message); }
+  await plgYukle(true);
+}
+
+async function plgKaldir(ad, baslik) {
+  if (!window.confirm(t("plg.confirmRemove", { ad: baslik || ad }))) return;
+  try {
+    await call("eklenti_kaldir", ad);
+    plgHata("");
+    await plgIslemiIzle(t("plg.removed", { ad: baslik || ad }));
+  } catch (err) { plgHata(err.message); }
+  await plgYukle(true);
+}
+
+async function plgGuncelle(ad) {
+  let inceleme;
+  try {
+    inceleme = await call("eklenti_incele");
+  } catch (err) { plgHata(err.message); return; }
+  if (inceleme.iptal) return;
+  const m = inceleme.manifest;
+  if (m.ad !== ad) {
+    plgHata(t("plg.op.error", { tur: plgTurEtiketi("guncelle"), mesaj: m.ad + " / " + ad }));
+    return;
+  }
+  try {
+    await call("eklenti_guncelle", ad, m.kaynak);
+    plgHata("");
+    await plgIslemiIzle(t("plg.updated", { ad: m.baslik }));
+  } catch (err) { plgHata(err.message); }
+  await plgYukle(true);
+}
+
+/* --- kurulum: ONCE izin/domain ekrani --------------------------------- */
+async function plgKurAkisi() {
+  let inceleme;
+  try {
+    inceleme = await call("eklenti_incele");
+  } catch (err) { plgHata(err.message); return; }
+  if (inceleme.iptal) return;
+  const m = inceleme.manifest;
+  plgState.onay = m;
+  $("plgOnayBaslik").textContent = m.baslik + "  v" + m.surum + (m.yazar ? " - " + m.yazar : "");
+  $("plgOnayKaynak").textContent = t("plg.source") + ": " + m.kaynak
+    + (m.kurulu ? "  |  " + t("plg.alreadyInstalled", { surum: m.kurulu_surum }) : "");
+  const izinKutu = $("plgOnayIzinler");
+  izinKutu.innerHTML = "";
+  if (m.izinler.length) {
+    m.izinler.forEach((izin) => izinKutu.appendChild(plgEl("div", "plg-izin", plgIzinMetni(izin))));
+  } else {
+    izinKutu.appendChild(plgEl("div", "hint", t("plg.noPerms")));
+  }
+  const domKutu = $("plgOnayDomainler");
+  domKutu.innerHTML = "";
+  if (m.domainler.length) {
+    m.domainler.forEach((d) => domKutu.appendChild(plgEl("div", "plg-domain", d)));
+  } else {
+    domKutu.appendChild(plgEl("div", "hint", t("plg.noDomains")));
+  }
+  const err = $("plgOnayErr");
+  const go = $("plgOnayGo");
+  err.style.display = "none";
+  go.disabled = false;
+  let msg = "";
+  if (!m.sha256) msg = t("plg.unsignedWarn");
+
+  if (!m.uyumlu) {
+    msg = (msg ? msg + "\n" : "") + t("plg.incompatible", { surum: m.afudm_surum })
+      + " (" + t("plg.needs") + ": " + (m.afudm_min || "*") + " - " + (m.afudm_max || "*") + ")";
+    go.disabled = true;
+  } else if (m.kurulu) {
+    msg = (msg ? msg + "\n" : "") + t("plg.updateHint");
+    go.textContent = t("plg.update");
+  } else {
+    go.textContent = t("plg.confirmInstall");
+  }
+  if (msg) {
+    err.textContent = msg;
+    err.style.display = "";
+  }
+  openVeil("pluginOnayVeil");
+}
+
+$("plgOnayGo").onclick = async () => {
+  const m = plgState.onay;
+  if (!m) return;
+  const err = $("plgOnayErr");
+  $("plgOnayGo").disabled = true;
+  try {
+    if (m.kurulu) await call("eklenti_guncelle", m.ad, m.kaynak);
+    else await call("eklenti_kur", m.kaynak, m.izinler);
+    closeVeil("pluginOnayVeil");
+    plgHata("");
+    await plgIslemiIzle(m.kurulu ? t("plg.updated", { ad: m.baslik })
+                                 : t("plg.installed", { ad: m.baslik }));
+  } catch (err2) {
+    err.textContent = err2.message;
+    err.style.display = "";
+  } finally {
+    $("plgOnayGo").disabled = false;
+    await plgYukle(true);
+  }
+};
+
+$("plgKur").onclick = () => plgKurAkisi();
+$("plgYenile").onclick = () => plgYukle(false);
+$("plgKlasor").onclick = () => call("eklenti_klasoru_ac").catch((e) => plgHata(e.message));
+$("plgIslemIptal").onclick = async () => {
+  try { await call("eklenti_islem_iptal"); } catch (e) { plgHata(e.message); }
+};
+$("openPlugins").onclick = async () => {
+  plgHata("");
+  openVeil("pluginVeil");
+  await plgYukle(false);
+  if (plgState.timer) afudmClearInterval(plgState.timer);
+  // Canli durum: surec coker/takilirsa panel bunu kendi gosterir
+  plgState.timer = afudmSetInterval(() => {
+    if (!$("pluginVeil").classList.contains("open")) return;
+    plgYukle(true);
+  }, 4000);
+};
+/* ======================================================================
+   Sunucu (v2.1 Headless Server)
+
+   Masaustu arayuzu, web paneli ve CLI AYNI servis katmanini (core/servis.py)
+   cagirir. Buradaki her dugmenin arkasinda gercek bir backend vardir;
+   calismayan hicbir sey etkin BIRAKILMAZ. Durumlar tasarlanmistir:
+   yukleniyor / bos / basarili / hatali / baglantisiz.
+   ====================================================================== */
+const srvState = { timer: null, profiller: [], acik: false };
+
+function srvRozetYaz(kod) {
+  const ad = { hemen: "apply.now", yeni_indirmelerde: "apply.newDownloads",
+               sonraki_baslatmada: "apply.nextStart",
+               servis_yeniden: "apply.serviceRestart" }[kod] || "apply.unknown";
+  return t("apply.label") + ": " + t(ad);
+}
+
+function srvBosSatir(kutu, metin) {
+  kutu.textContent = "";
+  const d = document.createElement("div");
+  d.className = "hint";
+  d.textContent = metin;
+  kutu.appendChild(d);
+}
+
+function srvZaman(ts) {
+  if (!ts) return "—";
+  try { return new Date(Number(ts) * 1000).toLocaleString(); } catch (_) { return "—"; }
+}
+
+function srvRolAdi(rol) {
+  return rol === "yonetici" ? t("srv.roleAdmin") : t("srv.roleReader");
+}
+
+/* ---------- durum ---------- */
+async function srvDurumCiz() {
+  let out;
+  try {
+    out = await call("sunucu_durumu");
+  } catch (err) {
+    $("srvRozet").textContent = t("err.bridge");
+    $("srvHata").textContent = err.message;
+    return;
+  }
+  const s = out.sunucu || {}, l = out.limit || {};
+  srvState.acik = !!s.calisiyor;
+  $("srvAcik").checked = !!s.calisiyor;
+  $("srvRozet").textContent = s.calisiyor ? t("srv.on") : t("srv.off");
+  $("srvUygulama").textContent = srvRozetYaz("servis_yeniden");
+  $("srvHata").textContent = s.hata || "";
+  $("srvUrl").value = s.url || "";
+  $("srvLanUrl").textContent = s.lan_url ? t("srv.lanUrl") + ": " + s.lan_url : "";
+  $("srvPanelAc").disabled = !s.calisiyor;
+  $("srvUrlKopya").disabled = !s.url;
+  $("srvYeniden").disabled = !s.calisiyor;
+
+  const kutu = $("srvKv");
+  kutu.textContent = "";
+  const satir = (etiket, deger) => {
+    const d = document.createElement("div");
+    d.textContent = etiket + " ";
+    const b = document.createElement("b");
+    b.textContent = deger === undefined || deger === null || deger === "" ? "—" : deger;
+    d.appendChild(b);
+    kutu.appendChild(d);
+  };
+  satir(t("srv.port"), s.port);
+  satir(t("srv.requests"), s.istek_sayisi);
+  satir(t("srv.rejected"), s.reddedilen);
+  satir(t("srv.rateLimit"), l.limit);
+  satir(t("srv.rateWatched"), l.izlenen_ip);
+  satir(t("srv.rateLocked"), l.kilitli_ip);
+  satir(t("srv.profiles"), s.profil_ad || t("srv.profileNone"));
+}
+
+/* ---------- erisim anahtarlari ---------- */
+async function srvAnahtarCiz() {
+  const kutu = $("srvKListe");
+  try {
+    const out = await call("sunucu_anahtarlar");
+    const liste = out.anahtarlar || [];
+    if (!liste.length) { srvBosSatir(kutu, t("srv.keyEmpty")); return; }
+    kutu.textContent = "";
+    liste.forEach((k) => {
+      const satir = document.createElement("div");
+      satir.className = "yol-satir";
+      const ad = document.createElement("span");
+      ad.style.flex = "1";
+      ad.textContent = k.ad + " · " + srvRolAdi(k.rol) + " · " + k.onek + "… · " +
+        t("srv.keyLastUsed") + ": " +
+        (k.son_kullanim ? srvZaman(k.son_kullanim) : t("srv.keyNever")) +
+        (k.iptal ? " · " + t("srv.keyRevokedTag") : "");
+      satir.appendChild(ad);
+      if (k.iptal) {
+        const sil = document.createElement("button");
+        sil.className = "btn ghost";
+        sil.textContent = t("srv.keyDelete");
+        sil.onclick = async () => {
+          try {
+            await call("sunucu_anahtar_sil", k.id);
+            toast(t("srv.keyDeleted"));
+            srvAnahtarCiz();
+          } catch (err) { toast(err.message, true); }
+        };
+        satir.appendChild(sil);
+      } else {
+        const rot = document.createElement("button");
+        rot.className = "btn";
+        rot.textContent = t("srv.keyRotate");
+        rot.onclick = async () => {
+          if (!confirm(t("srv.keyConfirmRotate"))) return;
+          try {
+            const yeni = await call("sunucu_anahtar_rotasyon", k.id);
+            srvGizliGoster(yeni.gizli);
+            toast(t("srv.keyRotated"));
+            srvAnahtarCiz();
+            srvIstemciCiz();
+          } catch (err) { toast(err.message, true); }
+        };
+        const ipt = document.createElement("button");
+        ipt.className = "btn ghost";
+        ipt.textContent = t("srv.keyRevoke");
+        ipt.onclick = async () => {
+          if (!confirm(t("srv.keyConfirmRevoke"))) return;
+          try {
+            await call("sunucu_anahtar_iptal", k.id);
+            toast(t("srv.keyRevoked"));
+            srvAnahtarCiz();
+            srvIstemciCiz();
+          } catch (err) { toast(err.message, true); }
+        };
+        satir.appendChild(rot);
+        satir.appendChild(ipt);
+      }
+      kutu.appendChild(satir);
+    });
+  } catch (err) {
+    srvBosSatir(kutu, err.message);
+  }
+}
+
+/* Gizli deger YALNIZCA bir kez gosterilir; hicbir yerde saklanmaz. */
+function srvGizliGoster(gizli) {
+  $("srvGizliKutu").style.display = "";
+  $("srvGizli").value = gizli;
+}
+
+/* ---------- aktif istemciler ---------- */
+async function srvIstemciCiz() {
+  const kutu = $("srvIListe");
+  try {
+    const out = await call("sunucu_istemciler", 0);
+    const liste = (out.istemciler || []).filter((c) => !c.iptal);
+    if (!liste.length) { srvBosSatir(kutu, t("srv.clientsEmpty")); return; }
+    kutu.textContent = "";
+    liste.forEach((c) => {
+      const satir = document.createElement("div");
+      satir.className = "yol-satir";
+      const bilgi = document.createElement("span");
+      bilgi.style.flex = "1";
+      bilgi.textContent = (c.anahtar_adi || "—") + " · " + srvRolAdi(c.rol) + " · " +
+        c.ip + " · " + t("srv.clientLastSeen") + ": " + srvZaman(c.son_gorulme) +
+        " · " + t("srv.clientRequests") + ": " + c.istek_sayisi;
+      const kes = document.createElement("button");
+      kes.className = "btn ghost";
+      kes.textContent = t("srv.clientRevoke");
+      kes.onclick = async () => {
+        try {
+          await call("sunucu_istemci_iptal", c.id);
+          toast(t("srv.clientRevoked"));
+          srvIstemciCiz();
+        } catch (err) { toast(err.message, true); }
+      };
+      satir.appendChild(bilgi);
+      satir.appendChild(kes);
+      kutu.appendChild(satir);
+    });
+  } catch (err) {
+    srvBosSatir(kutu, err.message);
+  }
+}
+
+/* ---------- sunucu profilleri ---------- */
+async function srvProfilCiz() {
+  const kutu = $("srvPListe");
+  try {
+    const out = await call("sunucu_profiller");
+    srvState.profiller = out.profiller || [];
+    if (!srvState.profiller.length) { srvBosSatir(kutu, t("srv.profilesEmpty")); return; }
+    kutu.textContent = "";
+    srvState.profiller.forEach((p) => {
+      const satir = document.createElement("div");
+      satir.className = "yol-satir";
+      const bilgi = document.createElement("span");
+      bilgi.style.flex = "1";
+      bilgi.textContent = p.ad + " · " +
+        (p.adres === "lan" ? t("srv.addrLan") : t("srv.addrLocal")) + " · " +
+        t("srv.port") + " " + p.port + " · " + t("srv.profileLimit") + " " +
+        p.istek_limiti + (p.etkin ? " · " + t("srv.profileActive") : "");
+      const etkin = document.createElement("button");
+      etkin.className = "btn";
+      etkin.textContent = t("srv.profileActivate");
+      etkin.disabled = !!p.etkin;
+      etkin.onclick = async () => {
+        try {
+          await call("sunucu_profil_etkinlestir", p.id);
+          $("srvNot").textContent = t("srv.restartNeeded");
+          toast(t("srv.profileSaved"));
+          srvProfilCiz();
+          srvDurumCiz();
+        } catch (err) { toast(err.message, true); }
+      };
+      const sil = document.createElement("button");
+      sil.className = "btn ghost";
+      sil.textContent = t("srv.profileDelete");
+      sil.onclick = async () => {
+        try {
+          await call("sunucu_profil_sil", p.id);
+          toast(t("srv.profileDeleted"));
+          srvProfilCiz();
+          srvDurumCiz();
+        } catch (err) { toast(err.message, true); }
+      };
+      satir.appendChild(bilgi);
+      satir.appendChild(etkin);
+      satir.appendChild(sil);
+      kutu.appendChild(satir);
+    });
+  } catch (err) {
+    srvBosSatir(kutu, err.message);
+  }
+}
+
+/* ---------- panel acilis / kapanis ---------- */
+async function srvTumunuCiz() {
+  await srvDurumCiz();
+  await srvAnahtarCiz();
+  await srvIstemciCiz();
+  await srvProfilCiz();
+}
+
+$("openServer").onclick = async () => {
+  $("srvGizliKutu").style.display = "none";
+  $("srvGizli").value = "";
+  $("srvNot").textContent = "";
+  const ayar = state.settings || {};
+  $("srvAdres").value = ayar.sunucu_adres || "yerel";
+  $("srvPort").value = ayar.sunucu_port || 6821;
+  $("srvIstekLimiti").value = ayar.sunucu_istek_limiti !== undefined ? ayar.sunucu_istek_limiti : 120;
+  $("srvHataliLimit").value = ayar.sunucu_hatali_limit !== undefined ? ayar.sunucu_hatali_limit : 10;
+  $("srvKilitSaniye").value = ayar.sunucu_kilit_saniye !== undefined ? ayar.sunucu_kilit_saniye : 1800;
+  $("srvIstemciKaydi").checked = !!ayar.sunucu_istemci_kaydi;
+  $("srvIzinliOriginler").value = ayar.sunucu_izinli_originler || "";
+  srvBosSatir($("srvKListe"), t("pnl.loading"));
+  srvBosSatir($("srvIListe"), t("pnl.loading"));
+  srvBosSatir($("srvPListe"), t("pnl.loading"));
+  openVeil("srvVeil");
+  await srvTumunuCiz();
+  if (srvState.timer) afudmClearInterval(srvState.timer);
+  srvState.timer = afudmSetInterval(() => {
+    srvDurumCiz();
+    srvIstemciCiz();
+  }, 3000);
+};
+
+/* ---------- ac / kapa ---------- */
+$("srvAcik").onchange = async (ev) => {
+  const acik = !!ev.target.checked;
+  ev.target.disabled = true;
+  $("srvRozet").textContent = acik ? t("srv.starting") : t("srv.off");
+  try {
+    /* Adres/port ONCE yazilir; sunucu bu degerlerle acilir. */
+    await call("settings_save", {
+      sunucu_adres: $("srvAdres").value,
+      sunucu_port: parseInt($("srvPort").value, 10) || 6821,
+      sunucu_istek_limiti: parseInt($("srvIstekLimiti").value, 10) || 0,
+      sunucu_hatali_limit: parseInt($("srvHataliLimit").value, 10) || 0,
+      sunucu_kilit_saniye: parseInt($("srvKilitSaniye").value, 10) || 0,
+      sunucu_istemci_kaydi: $("srvIstemciKaydi").checked,
+      sunucu_izinli_originler: $("srvIzinliOriginler").value,
+    });
+    const out = await call("sunucu_ayarla", acik);
+    toast(acik ? t("srv.started") : t("srv.stopped"));
+    if (out && out.zaten) $("srvNot").textContent = "";
+  } catch (err) {
+    ev.target.checked = !acik;
+    $("srvHata").textContent = err.message;
+    toast(acik ? t("srv.startFailed") + ": " + err.message : err.message, true);
+  } finally {
+    ev.target.disabled = false;
+    srvDurumCiz();
+  }
+};
+
+$("srvYeniden").onclick = async () => {
+  try {
+    await call("settings_save", {
+      sunucu_adres: $("srvAdres").value,
+      sunucu_port: parseInt($("srvPort").value, 10) || 6821,
+      sunucu_istek_limiti: parseInt($("srvIstekLimiti").value, 10) || 0,
+      sunucu_hatali_limit: parseInt($("srvHataliLimit").value, 10) || 0,
+      sunucu_kilit_saniye: parseInt($("srvKilitSaniye").value, 10) || 0,
+      sunucu_istemci_kaydi: $("srvIstemciKaydi").checked,
+      sunucu_izinli_originler: $("srvIzinliOriginler").value,
+    });
+    await call("sunucu_yeniden");
+    toast(t("srv.started"));
+    $("srvNot").textContent = "";
+    srvDurumCiz();
+  } catch (err) {
+    $("srvHata").textContent = err.message;
+    toast(err.message, true);
+  }
+};
+
+$("srvYenile").onclick = () => srvTumunuCiz();
+
+$("srvAdres").onchange = () => { $("srvNot").textContent = t("srv.restartNeeded"); };
+$("srvPort").oninput = () => { $("srvNot").textContent = t("srv.restartNeeded"); };
+
+$("srvPanelAc").onclick = async () => {
+  try { await call("sunucu_panel_ac"); } catch (err) { toast(err.message, true); }
+};
+$("srvIstekLimiti").oninput = () => { $("srvNot").textContent = t("srv.restartNeeded"); };
+$("srvHataliLimit").oninput = () => { $("srvNot").textContent = t("srv.restartNeeded"); };
+$("srvKilitSaniye").oninput = () => { $("srvNot").textContent = t("srv.restartNeeded"); };
+$("srvIstemciKaydi").onchange = () => { $("srvNot").textContent = t("srv.restartNeeded"); };
+$("srvIzinliOriginler").oninput = () => { $("srvNot").textContent = t("srv.restartNeeded"); };
+$("srvUrlKopya").onclick = async () => {
+  if (!$("srvUrl").value) return;
+  try {
+    await call("panoya_kopyala", $("srvUrl").value);
+    toast(t("srv.copied"));
+  } catch (err) { toast(err.message, true); }
+};
+
+$("shareCopy").onclick = async () => {
+  if (!$("shareLink").value) return;
+  try {
+    await call("panoya_kopyala", $("shareLink").value);
+    toast(t("srv.copied") || "Kopyalandı");
+  } catch (err) { toast(err.message, true); }
+};
+
+$("shareInternetCopy").onclick = async () => {
+  if (!$("shareInternetLink").value) return;
+  try {
+    await call("panoya_kopyala", $("shareInternetLink").value);
+    toast(t("srv.copied"));
+  } catch (err) { toast(err.message, true); }
+};
+
+$("srvGizliKopya").onclick = async () => {
+  if (!$("srvGizli").value) return;
+  try {
+    await call("panoya_kopyala", $("srvGizli").value);
+    toast(t("srv.copied"));
+  } catch (err) { toast(err.message, true); }
+};
+
+$("srvKilitTemizle").onclick = async () => {
+  try {
+    const out = await call("sunucu_kilit_temizle");
+    toast(t("srv.rateCleared", { n: out.temizlenen || 0 }));
+    srvDurumCiz();
+  } catch (err) { toast(err.message, true); }
+};
+
+$("srvKOlustur").onclick = async () => {
+  const ad = $("srvKAd").value.trim();
+  if (!ad) { toast(t("srv.keyName"), true); return; }
+  $("srvKOlustur").disabled = true;
+  try {
+    const out = await call("sunucu_anahtar_olustur", ad, $("srvKRol").value, "");
+    $("srvKAd").value = "";
+    srvGizliGoster(out.gizli);
+    toast(t("srv.keyCreated"));
+    srvAnahtarCiz();
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    $("srvKOlustur").disabled = false;
+  }
+};
+
+$("srvPKaydet").onclick = async () => {
+  try {
+    const out = await call("sunucu_profil_kaydet", {
+      id: 0,
+      ad: $("srvPAd").value.trim(),
+      adres: $("srvPAdres").value,
+      port: parseInt($("srvPPort").value, 10) || 0,
+      istek_limiti: parseInt($("srvPLimit").value, 10) || 120,
+      originler: "",
+    });
+    $("srvPAd").value = "";
+    toast(t("srv.profileSaved"));
+    if (out && out.sunucu_yeniden_gerekli) $("srvNot").textContent = t("srv.restartNeeded");
+    srvProfilCiz();
+  } catch (err) { toast(err.message, true); }
+};
+
+/* ---------- Ayarlar: uygulanma zamani rozetleri ----------------------
+   "Bu ayari degistirirsem NE ZAMAN etkili olur?" sorusunu arayuz cevaplar.
+   Kaynak TEK yerdedir (core/servis.py UYGULAMA_ZAMANI); burada tahmin
+   yurutulmez, sunucunun bildirdigi kod rozete cevrilir. Bilinmeyen ayar
+   icin "bilinmiyor" yazilir — uydurma "hemen" YAZILMAZ. */
+const AYAR_ROZET_ALANI = {
+  sLang: "language",
+  sDir: "download_dir",
+  sSplit: "split",
+  sConn: "max_conn_per_server",
+  sConc: "max_concurrent",
+  sSpeed: "max_speed_kb",
+  sMode: "hiz_profili",
+  sRatio: "seed_ratio",
+  sChat: "telegram_chat_id",
+  sToken: "telegram_bot_token",
+  sClip: "clipboard_watch",
+  sTrackers: "auto_update_trackers",
+  sNotify: "notify_telegram",
+  sShutdown: "shutdown_when_done",
+  sSleep: "sleep_when_done",
+  sKaydet: "kaydetme_penceresi",
+  sKategori: "kategori_klasorleri",
+  sTepsi: "tepsiye_kucult",
+  sBasTepside: "baslangicta_tepside",
+  sTelefon: "lan_erisimi",
+  sSeedOto: "tracker_otomatik_tara",
+};
+
+async function ayarRozetleriCiz() {
+  let uygulama = {};
+  try {
+    const out = await call("ayar_rozetleri");
+    uygulama = out.uygulama || {};
+  } catch (_) {
+    return;                 /* kopru yoksa rozet yok; sahte rozet BASILMAZ */
+  }
+  Object.keys(AYAR_ROZET_ALANI).forEach((elemanId) => {
+    const alan = $(elemanId);
+    if (!alan) return;
+    /* Onay kutusu <label> icindedir: rozet label'in sonuna gider.
+       Digerleri icin alanin hemen ardina konur. */
+    const kap = alan.type === "checkbox" ? alan.closest("label") : alan.parentNode;
+    if (!kap) return;
+    let rozet = kap.querySelector(".ayar-rozet");
+    if (!rozet) {
+      rozet = document.createElement("span");
+      rozet.className = "num ayar-rozet";
+      rozet.style.marginLeft = "8px";
+      kap.appendChild(rozet);
+    }
+    rozet.textContent = srvRozetYaz(uygulama[AYAR_ROZET_ALANI[elemanId]]);
+  });
+}
+
+/* PWA (Progressive Web App) Kurulum Olayi */
+let pwaPrompt = null;
+const installPwaBtnElem = document.getElementById('installPwaBtn');
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  pwaPrompt = e;
+  if (installPwaBtnElem) {
+    installPwaBtnElem.style.display = 'block';
+  }
+});
+
+if (installPwaBtnElem) {
+  installPwaBtnElem.onclick = async () => {
+    if (!pwaPrompt) return;
+    pwaPrompt.prompt();
+    const { outcome } = await pwaPrompt.userChoice;
+    if (outcome === 'accepted') {
+      installPwaBtnElem.style.display = 'none';
+    }
+    pwaPrompt = null;
+  };
+}
+
+/* --- WeTransfer Share UI Logic --- */
+const shareCenterVeil = document.getElementById("shareCenterVeil");
+const openShare = document.getElementById("openShare");
+const shareSelectBtn = document.getElementById("shareSelectBtn");
+const shareList = document.getElementById("shareList");
+
+if (openShare) {
+  openShare.onclick = () => {
+    if (shareCenterVeil) shareCenterVeil.classList.add("on");
+    renderShareList();
+  };
+}
+
+async function renderShareList() {
+  if (!shareList) return;
+  const res = await call("share_list");
+  shareList.replaceChildren();
+  if (!res || !res.ok) {
+    const message = document.createElement("div");
+    message.style.cssText = "text-align:center;padding:20px;color:var(--error)";
+    message.textContent = t("err.unknownAction");
+    shareList.appendChild(message);
+    return;
+  }
+  if (!res.shares || res.shares.length === 0) {
+    const message = document.createElement("div");
+    message.style.cssText = "text-align:center;padding:20px;color:var(--text-muted)";
+    message.textContent = t("share.empty");
+    shareList.appendChild(message);
+    return;
+  }
+  res.shares.forEach((share) => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--surface);margin-bottom:5px;border-radius:4px";
+    const details = document.createElement("div");
+    details.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;margin-right:10px";
+    const filename = document.createElement("strong");
+    filename.style.cssText = "display:block;margin-bottom:2px";
+    filename.textContent = String(share.filename || "");
+    details.appendChild(filename);
+    const urlText = String(share.url || "");
+    let parsedUrl;
+    try { parsedUrl = new URL(urlText, window.location.href); } catch (_) { parsedUrl = null; }
+    if (parsedUrl && (parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:")) {
+      const link = document.createElement("a");
+      link.href = parsedUrl.href;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.style.cssText = "font-size:11px;color:var(--accent);text-decoration:none";
+      link.textContent = urlText;
+      details.appendChild(link);
+    } else {
+      const linkText = document.createElement("span");
+      linkText.style.cssText = "font-size:11px;color:var(--accent)";
+      linkText.textContent = urlText;
+      details.appendChild(linkText);
+    }
+    row.appendChild(details);
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;gap:4px";
+    const copy = document.createElement("button");
+    copy.className = "btn";
+    copy.title = t("share.copyLink");
+    copy.textContent = "??";
+    copy.addEventListener("click", () => navigator.clipboard.writeText(urlText).then(() => toast(t("share.copyLink"))));
+    const remove = document.createElement("button");
+    remove.className = "btn";
+    remove.style.color = "var(--error)";
+    remove.title = t("share.delete");
+    remove.textContent = "??";
+    remove.addEventListener("click", () => window.deleteShare(String(share.token || "")));
+    actions.append(copy, remove);
+    row.appendChild(actions);
+    shareList.appendChild(row);
+  });
+}
+
+window.deleteShare = async function(token) {
+  const res = await call("share_delete", token);
+  if (res && res.ok) {
+    renderShareList();
+  } else if (res && res.error) {
+    toast(res.error, "error");
+  }
+};
+
+if (shareSelectBtn) {
+  shareSelectBtn.onclick = async () => {
+    const btnText = shareSelectBtn.innerText;
+    shareSelectBtn.innerText = "...";
+    try {
+      const res = await call("dosya_sec_ve_paylas");
+      if (res && res.ok) {
+        renderShareList();
+      } else if (res && res.error) {
+        toast(res.error, true);
+      }
+    } catch (err) {
+      toast(err && err.message ? err.message : t("share.selectError"), true);
+    } finally {
+      shareSelectBtn.innerText = btnText;
+    }
+  };
+}

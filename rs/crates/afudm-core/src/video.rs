@@ -33,6 +33,8 @@ pub struct State {
     isler: HashMap<String, Arc<Mutex<VideoJob>>>,
     /// Python _known_complete: tamamlanma bildirimi bir kez gider.
     bildirilen: Arc<Mutex<HashSet<String>>>,
+    /// Tamamlanan isler (baslik, boyut, gid); queue::snapshot bosaltip tamamlandi zincirini calistirir.
+    bitenler: Arc<Mutex<Vec<(String, u64, String)>>>,
 }
 
 #[cfg(windows)]
@@ -226,9 +228,12 @@ fn kilit_durum(m: &Manager) -> std::sync::MutexGuard<'_, State> {
 }
 
 /// Python _on_video_update(): is alanlarini store'a yazar; tamamlanmada bildirim verir.
-fn gozlemci(m: &Manager, bildirilen: Arc<Mutex<HashSet<String>>>) -> Gozlemci {
+fn gozlemci(
+    m: &Manager,
+    bildirilen: Arc<Mutex<HashSet<String>>>,
+    bitenler: Arc<Mutex<Vec<(String, u64, String)>>>,
+) -> Gozlemci {
     let store: Arc<dyn Store> = Arc::clone(&m.store);
-    let ui = Arc::clone(&m.ui);
     let veri_dizini: PathBuf = m.data_dir.clone();
     Arc::new(move |job: &VideoJob| {
         let mut alanlar = JsonMap::new();
@@ -259,16 +264,10 @@ fn gozlemci(m: &Manager, bildirilen: Arc<Mutex<HashSet<String>>>) -> Gozlemci {
                 .lock()
                 .map(|mut kume| kume.insert(job.job_id.clone()))
                 .unwrap_or(false);
+            // Python _on_complete zinciri (butunluk, bildirim, kancalar) queue tarafinda kosar.
             if ilk {
-                let baslik = job.display_title();
-                store.log("info", &format!("tamamlandi: {baslik}"), &job.job_id);
-                let bildirim_acik = store
-                    .get("windows_notifications")
-                    .ok()
-                    .flatten()
-                    .is_none_or(|v| dogru_mu(&v));
-                if bildirim_acik {
-                    ui.notify("AfuDM", &format!("Indirme tamamlandi: {baslik}"));
+                if let Ok(mut kuyruk) = bitenler.lock() {
+                    kuyruk.push((job.display_title(), job.total, job.job_id.clone()));
                 }
             }
         }
@@ -349,8 +348,9 @@ pub(crate) fn video_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
 
     let is = Arc::new(Mutex::new(job));
     let bildirilen = Arc::clone(&kilit_durum(m).bildirilen);
+    let bitenler = Arc::clone(&kilit_durum(m).bitenler);
     kilit_durum(m).isler.insert(job_id.clone(), Arc::clone(&is));
-    if let Err(hata) = is::baslat(&is, Some(gozlemci(m, bildirilen))) {
+    if let Err(hata) = is::baslat(&is, Some(gozlemci(m, bildirilen, bitenler))) {
         kilit_durum(m).isler.remove(&job_id);
         return Err(hata);
     }
@@ -358,7 +358,6 @@ pub(crate) fn video_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
 }
 
 /// Python snapshot/video satirlari: kaldirilmamis video islerinin kayit sekli.
-#[allow(dead_code)] // queue.rs (C) snapshot'a baglayana kadar
 pub(crate) fn video_satirlari(m: &Manager) -> Vec<Json> {
     let isler: Vec<Arc<Mutex<VideoJob>>> = kilit_durum(m).isler.values().cloned().collect();
     isler
@@ -374,7 +373,6 @@ fn is_bul(m: &Manager, gid: &str) -> Option<Arc<Mutex<VideoJob>>> {
 }
 
 /// Python pause() yt dali: isi durdurur, kaydi "paused" yapar. Video kimligi yoksa false.
-#[allow(dead_code)] // queue.rs (C) pause'a baglayana kadar
 pub(crate) fn durdur(m: &Manager, gid: &str) -> bool {
     let Some(is) = is_bul(m, gid) else {
         return false;
@@ -388,7 +386,6 @@ pub(crate) fn durdur(m: &Manager, gid: &str) -> bool {
 }
 
 /// Python pause_all() yt dali: bitmemis video islerini durdurur.
-#[allow(dead_code)] // queue.rs (C) pause_all'a baglayana kadar
 pub(crate) fn tumunu_durdur(m: &Manager) {
     let gidler: Vec<String> = kilit_durum(m).isler.keys().cloned().collect();
     for gid in gidler {
@@ -406,11 +403,15 @@ pub(crate) fn tumunu_durdur(m: &Manager) {
 
 /// Python remove() yt dali: isi durdurur ve listeden atar. Silinecek dosya yolunu doner
 /// (yalniz dosya adi guvenliyse; yol kacisina karsi kontrol).
-#[allow(dead_code)] // queue.rs (C) remove'a baglayana kadar
 pub(crate) fn kaldir(m: &Manager, gid: &str) -> Option<PathBuf> {
     let is = kilit_durum(m).isler.remove(gid)?;
     is::durdur(&is);
     let j = is::kilitle(&is);
+    guvenli_hedef(&j)
+}
+
+/// Video isinin hedef dosyasi (dest_dir + filename). Ad yol kacisi iceriyorsa None.
+fn guvenli_hedef(j: &VideoJob) -> Option<PathBuf> {
     let ad = j.filename.as_str();
     if ad.is_empty() || ad == ".." || ad.contains(['/', '\\']) {
         return None;
@@ -418,8 +419,73 @@ pub(crate) fn kaldir(m: &Manager, gid: &str) -> Option<PathBuf> {
     Some(Path::new(&j.dest_dir).join(ad))
 }
 
+/// Python pause/resume icin aktif ya da bekleyen video isi var mi (can_release_ui).
+pub(crate) fn calisan_veya_bekleyen_var(m: &Manager) -> bool {
+    kilit_durum(m)
+        .isler
+        .values()
+        .any(|is| matches!(is::kilitle(is).status.as_str(), "active" | "waiting"))
+}
+
+/// Python stop(): aktif video islerinin surecini kapatir (durum alanina dokunmaz).
+pub(crate) fn aktif_isleri_kapat(m: &Manager) {
+    let isler: Vec<Arc<Mutex<VideoJob>>> = kilit_durum(m).isler.values().cloned().collect();
+    for is in isler {
+        let durum = is::kilitle(&is).status.clone();
+        if durum == "active" {
+            is::durdur(&is);
+            // is::durdur kaydi "removed" yapar; kapanista kayit durumu korunur (acilista yetim olarak duzelir).
+            is::kilitle(&is).status = durum;
+        }
+    }
+}
+
+/// Test icin: sahte bir video isi ekler (yt-dlp calistirmadan).
+#[cfg(test)]
+pub(crate) fn test_is_ekle(m: &Manager, gid: &str, dest_dir: &str, filename: &str, status: &str) {
+    let ortam = is::Ortam {
+        ytdlp: "yt-dlp".into(),
+        ffmpeg: None,
+        aria2c: None,
+    };
+    let mut job = VideoJob::yeni(
+        gid.into(),
+        "https://ornek.test/v".into(),
+        dest_dir.into(),
+        ortam,
+    );
+    job.filename = filename.into();
+    job.status = status.into();
+    kilit_durum(m)
+        .isler
+        .insert(gid.into(), Arc::new(Mutex::new(job)));
+}
+
+/// Test icin: tamamlanmis bir video isini kuyruga ekler (gozlemcinin yaptigi gibi).
+#[cfg(test)]
+pub(crate) fn test_tamamlandi_ekle(m: &Manager, title: &str, size: u64, gid: &str) {
+    let kuyruk = Arc::clone(&kilit_durum(m).bitenler);
+    kuyruk
+        .lock()
+        .unwrap()
+        .push((title.into(), size, gid.into()));
+}
+
+/// Python resolve_item_path() yt dali: video isinin hedef dosya yolu.
+pub(crate) fn dosya_yolu(m: &Manager, gid: &str) -> Option<PathBuf> {
+    let is = is_bul(m, gid)?;
+    let j = is::kilitle(&is);
+    guvenli_hedef(&j)
+}
+
+/// Bu cagrida biten video isleri (baslik, boyut, gid). Liste bosaltilir.
+pub(crate) fn tamamlananlari_al(m: &Manager) -> Vec<(String, u64, String)> {
+    let kuyruk = Arc::clone(&kilit_durum(m).bitenler);
+    let mut liste = kuyruk.lock().unwrap_or_else(|p| p.into_inner());
+    std::mem::take(&mut *liste)
+}
+
 /// Python: aktif (status == active) video isi sayisi.
-#[allow(dead_code)] // queue.rs (C) idle/istatistik kontrollerine baglayana kadar
 pub(crate) fn aktif_sayisi(m: &Manager) -> usize {
     kilit_durum(m)
         .isler
@@ -429,7 +495,6 @@ pub(crate) fn aktif_sayisi(m: &Manager) -> usize {
 }
 
 /// Aktif video islerinin toplam anlik hizi (bayt/sn).
-#[allow(dead_code)] // queue.rs (C) istatistik toplamina baglayana kadar
 pub(crate) fn hiz_toplami(m: &Manager) -> u64 {
     kilit_durum(m)
         .isler
@@ -448,7 +513,6 @@ pub(crate) fn hiz_toplami(m: &Manager) -> u64 {
 /// Python _recover_orphan_video_jobs(): onceki oturumdan kalan calismayan video kayitlarini duzeltir.
 /// Tamamlanmis kardesi olan (ayni kaynak+klasor ya da ayni baslik+klasor) kayit "removed" olur,
 /// digerleri "paused" (kaldigi yerden devam edilebilir). Dosyalara dokunulmaz.
-#[allow(dead_code)] // queue.rs (C) acilista cagirana kadar
 pub(crate) fn yetimleri_duzelt(m: &Manager) -> Result<()> {
     let satirlar = m.store.list(None, 100_000)?;
     let secenek = |row: &Json| -> JsonMap {
@@ -503,6 +567,11 @@ pub(crate) fn yetimleri_duzelt(m: &Manager) -> Result<()> {
         m.store.update_by_id(id, &alanlar)?;
     }
     Ok(())
+}
+
+/// Python find_duplicate(): bellekteki video is kimlikleri (canli sayilir).
+pub(crate) fn gidler(m: &Manager) -> HashSet<String> {
+    kilit_durum(m).isler.keys().cloned().collect()
 }
 
 #[cfg(test)]

@@ -134,6 +134,10 @@ pub(super) fn snapshot(m: &Manager) -> Result<Json> {
             }
         }
     };
+    // Video isleri biterken kuyruga yazilir; burada (Python _on_video_update) tamamlandi zincirine girer.
+    for (title, size, gid) in crate::video::tamamlananlari_al(m) {
+        tamamlandi(m, &title, size, &gid);
+    }
     let mut items = Vec::new();
     let mut gids = HashSet::new();
     let mut ids = HashSet::new();
@@ -169,14 +173,27 @@ pub(super) fn snapshot(m: &Manager) -> Result<Json> {
         if let Some(r) = row {
             ids.insert(row_id(&r));
         }
-        items.push(aria(m, &status)?);
+        let shaped = aria(m, &status)?;
+        // Python _sync_aria2: tamamlanma, followedBy yoksa ve gid daha once bildirilmediyse bir kez.
+        let bitti = status["status"] == "complete"
+            && !truthy(&status["followedBy"])
+            && state(m)?.known_complete.insert(gid.to_owned());
+        if bitti {
+            let baslik = match text(&shaped["title"]) {
+                "" => gid,
+                b => b,
+            };
+            tamamlandi(m, baslik, number(&status["totalLength"]) as u64, gid);
+        }
+        items.push(shaped);
     }
-    let jobs = state(m)?.video_jobs.clone();
-    for (gid, job) in &jobs {
-        if state(m)?.removed_gids.contains(gid) || job["status"] == "removed" {
+    let jobs = crate::video::video_satirlari(m);
+    for job in &jobs {
+        let gid = text(&job["gid"]).to_owned();
+        if state(m)?.removed_gids.contains(&gid) || job["status"] == "removed" {
             continue;
         }
-        let row = m.store.by_gid(gid)?;
+        let row = m.store.by_gid(&gid)?;
         if row.as_ref().is_some_and(|r| r["status"] == "removed") {
             state(m)?.removed_gids.insert(gid.clone());
             continue;
@@ -219,10 +236,9 @@ pub(super) fn snapshot(m: &Manager) -> Result<Json> {
         }
     }
     let stat = m.rpc().global_stat().unwrap_or(json!({}));
-    let active: Vec<_> = jobs.values().filter(|j| j["status"] == "active").collect();
     let lang = language(text(&setting(m, "language", json!("auto"))?));
     Ok(
-        json!({"items":items,"stat":{"downloadSpeed":number(&stat["downloadSpeed"])+active.iter().map(|j|number(&j["downloadSpeed"])).sum::<i64>(),"uploadSpeed":number(&stat["uploadSpeed"]),"numActive":number(&stat["numActive"])+active.len() as i64,"numWaiting":number(&stat["numWaiting"]),"numStopped":number(&stat["numStopped"])},"settings":m.store.all_settings()?,"engine_ok":m.rpc().alive(),"download_dir":current_download_dir(m)?,"lang":lang,"last_error":state(m)?.last_error,"automation":m.store.automation_jobs("",200)?}),
+        json!({"items":items,"stat":{"downloadSpeed":number(&stat["downloadSpeed"])+crate::video::hiz_toplami(m) as i64,"uploadSpeed":number(&stat["uploadSpeed"]),"numActive":number(&stat["numActive"])+crate::video::aktif_sayisi(m) as i64,"numWaiting":number(&stat["numWaiting"]),"numStopped":number(&stat["numStopped"])},"settings":m.store.all_settings()?,"engine_ok":m.rpc().alive(),"download_dir":current_download_dir(m)?,"lang":lang,"last_error":state(m)?.last_error,"automation":m.store.automation_jobs("",200)?}),
     )
 }
 
@@ -247,7 +263,7 @@ fn track_previews(m: &Manager, live: &[Json]) -> Result<()> {
     Ok(())
 }
 
-fn language(selected: &str) -> String {
+pub(super) fn language(selected: &str) -> String {
     let selected = selected.trim().to_lowercase();
     if ["en", "tr"].contains(&selected.as_str()) {
         return selected;

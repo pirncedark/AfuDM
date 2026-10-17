@@ -104,26 +104,16 @@ fn bildir(g: Option<&Gozlemci>, job: &VideoJob) {
     }
 }
 
+/// Python core/proxy.komut_secenekleri: proxy adresi queue::proxy ile normalize edilip aria2
+/// secenekleri olarak doner. Gecersiz adres None (indirici proxysiz calisir, yt-dlp hatayi verir).
 fn proxy_ayrimi(url: &str) -> Option<Vec<(String, String)>> {
-    let (tip, geri) = url.split_once("://")?;
-    let (kimlik, adres) = match geri.rsplit_once('@') {
-        Some((k, a)) => (Some(k), a),
-        None => (None, geri),
-    };
-    let mut secenek = vec![
-        ("all-proxy".to_string(), adres.to_string()),
-        ("all-proxy-type".to_string(), tip.to_string()),
-    ];
-    if let Some(k) = kimlik {
-        let (kullanici, sifre) = k.split_once(':').unwrap_or((k, ""));
-        if !kullanici.is_empty() {
-            secenek.push(("all-proxy-user".to_string(), kullanici.to_string()));
-        }
-        if !sifre.is_empty() {
-            secenek.push(("all-proxy-passwd".to_string(), sifre.to_string()));
-        }
-    }
-    Some(secenek)
+    let p = crate::queue::proxy::parcala(url).ok()?;
+    Some(
+        crate::queue::proxy::aria2_secenekleri(&p)
+            .into_iter()
+            .map(|(anahtar, deger)| (anahtar, deger.as_str().unwrap_or_default().to_string()))
+            .collect(),
+    )
 }
 
 /// Python dayanak: _DEST_RE ile yakalanan parca adinin yalniz dosya adi kismi.
@@ -342,10 +332,14 @@ impl VideoJob {
 
         if dis_indirici {
             if let Some(aria) = self.ortam.aria2c.clone() {
-                // IPv6 kontrolu (Python netcheck.aria2_ipv6_args) bu crate'te yok; bkz. SONUC.
                 let mut args =
                     "aria2c:-x16 -s16 -k1M --file-allocation=none --console-log-level=error"
                         .to_string();
+                // IPv6 yoksa AAAA denemesi indirmeyi iptal eder (Python netcheck.aria2_ipv6_args).
+                for bayrak in crate::queue::netcheck::aria2_ipv6_args() {
+                    args.push(' ');
+                    args.push_str(&bayrak);
+                }
                 if let Some(secenek) = proxy_ayrimi(&self.proxy) {
                     for (anahtar, deger) in secenek {
                         args.push_str(&format!(" --{anahtar}={deger}"));
@@ -984,6 +978,23 @@ mod testler {
         assert!(s.contains(&("all-proxy-user".into(), "kul".into())));
         assert!(s.contains(&("all-proxy-passwd".into(), "sif".into())));
         assert!(proxy_ayrimi("gecersiz").is_none());
+    }
+
+    #[test]
+    fn dis_indirici_ipv6_ve_proxy_argumanlari() {
+        let mut job = is(false);
+        job.ortam.aria2c = Some(std::path::PathBuf::from("C:\\aria2c.exe"));
+        job.proxy = "socks5://kul:sif@10.0.0.1:1080".into();
+        let komut = job.komut(true, false);
+        let konum = komut
+            .iter()
+            .position(|s| s == "--downloader-args")
+            .expect("dis indirici argumanlari olmali");
+        let args = &komut[konum + 1];
+        assert!(args.starts_with("aria2c:"));
+        assert!(args.contains(" --all-proxy=10.0.0.1:1080"));
+        let ipv6_var = crate::queue::netcheck::ipv6_usable();
+        assert_eq!(args.contains("--disable-ipv6=true"), !ipv6_var);
     }
 
     /// Gercek yt-dlp + yerel HTTP ile uctan uca indirme. Varsayilan olarak atlanir.

@@ -1,0 +1,39 @@
+[workspace]
+# Ekip F: kabuk ayri derlenir (cargo build --manifest-path app\Cargo.toml).
+# Kok Cargo.toml'a uye olarak eklenmesi Claude'un isi.
+
+[package]
+name = "afudm-app"
+version = "3.0.0"
+edition = "2021"
+license = "MIT"
+description = "AfuDM masaustu kabugu (Tauri 2)"
+
+[[bin]]
+name = "AfuDM"
+path = "src/main.rs"
+
+[dependencies]
+afudm-types = { path = "../crates/afudm-types" }
+afudm-core = { path = "../crates/afudm-core" }
+afudm-db = { path = "../crates/afudm-db" }
+afudm-engine = { path = "../crates/afudm-engine" }
+afudm-api = { path = "../crates/afudm-api" }
+afudm-extras = { path = "../crates/afudm-extras" }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-dialog = "2"
+# Yalniz ResizeDirection tipi icin (tauri bunu disa acmiyor); tauri ile ayni surum hatti.
+tauri-runtime = "2"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
+winreg = "0.55"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

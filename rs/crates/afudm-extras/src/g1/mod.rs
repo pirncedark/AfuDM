@@ -40,11 +40,15 @@ async fn backup_rota(State(ctx): State<ApiCtx>) -> Response {
 }
 
 async fn tani_onizleme_rota(State(ctx): State<ApiCtx>) -> Response {
-    yanit(reliability::diagnostics_preview(&*ctx.store))
+    yanit(reliability::diagnostics_preview(&*ctx.store, &ctx.app_dir))
 }
 
 async fn tani_disa_aktar_rota(State(ctx): State<ApiCtx>) -> Response {
-    yanit(reliability::diagnostics_export(&*ctx.store, &ctx.data_dir))
+    yanit(reliability::diagnostics_export(
+        &*ctx.store,
+        &ctx.data_dir,
+        &ctx.app_dir,
+    ))
 }
 
 fn yanit(sonuc: afudm_types::Result<Json>) -> Response {

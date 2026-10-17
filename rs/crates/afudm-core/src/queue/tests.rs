@@ -682,3 +682,170 @@ impl Aria2 for MemoryRpc {
         Ok("OK".into())
     }
 }
+
+/// Tamamlanma kancasi: her cagrida {"title","size","gid"} yukunu kaydeder.
+fn kanca_kaydi(m: &Manager) -> Arc<Mutex<Vec<Json>>> {
+    let kayit = Arc::new(Mutex::new(Vec::new()));
+    let hedef = Arc::clone(&kayit);
+    m.tamamlandi_kancasi_ekle(Box::new(move |yuk: &Json| {
+        hedef.lock().unwrap().push(yuk.clone());
+    }));
+    kayit
+}
+
+#[test]
+fn tamamlandi_kancalari_dogru_yukle_calisir() {
+    let f = Fixture::new();
+    let kayit = kanca_kaydi(&f.m);
+    tamamlandi(&f.m, "Ornek", 2048, "gid-x");
+    let kayit = kayit.lock().unwrap();
+    assert_eq!(kayit.len(), 1);
+    assert_eq!(kayit[0], json!({"title":"Ornek","size":2048,"gid":"gid-x"}));
+}
+
+#[test]
+fn aria2_tamamlanmasi_snapshotta_bir_kez_zincire_girer() {
+    let f = Fixture::new();
+    let gid = f.add("tamam")["gid"].as_str().unwrap().to_string();
+    f.rpc.statuses.lock().unwrap().get_mut(&gid).unwrap()["status"] = json!("complete");
+    let kayit = kanca_kaydi(&f.m);
+    snapshot(&f.m).unwrap();
+    snapshot(&f.m).unwrap();
+    let kayit = kayit.lock().unwrap();
+    assert_eq!(
+        kayit.len(),
+        1,
+        "known_complete ikinci tur bildirimi engeller"
+    );
+    assert_eq!(kayit[0]["gid"], gid.as_str());
+}
+
+#[test]
+fn video_tamamlanmasi_snapshotta_bir_kez_zincire_girer() {
+    let f = Fixture::new();
+    let kayit = kanca_kaydi(&f.m);
+    crate::video::test_tamamlandi_ekle(&f.m, "Klip", 4096, "yt:9");
+    snapshot(&f.m).unwrap();
+    snapshot(&f.m).unwrap();
+    let kayit = kayit.lock().unwrap();
+    assert_eq!(kayit.len(), 1);
+    assert_eq!(kayit[0], json!({"title":"Klip","size":4096,"gid":"yt:9"}));
+}
+
+#[test]
+fn video_duraklat_ve_kaldir_kayitlari_gunceller() {
+    let f = Fixture::new();
+    let dir = f.root.to_string_lossy().to_string();
+    f.m.store
+        .add(
+            "video",
+            "https://ornek.test/v",
+            None,
+            Some(&dir),
+            None,
+            None,
+            Some("yt:1"),
+        )
+        .unwrap();
+    crate::video::test_is_ekle(&f.m, "yt:1", &dir, "klip.mp4", "active");
+    assert!(pause(&f.m, "yt:1").unwrap());
+    assert_eq!(
+        f.m.store.by_gid("yt:1").unwrap().unwrap()["status"],
+        "paused"
+    );
+    assert_eq!(crate::video::video_satirlari(&f.m)[0]["status"], "paused");
+    assert!(remove(&f.m, "yt:1", false).unwrap());
+    assert!(crate::video::video_satirlari(&f.m).is_empty());
+}
+
+#[test]
+fn video_tumunu_durdur_yalniz_bitmemis_isleri_durdurur() {
+    let f = Fixture::new();
+    let dir = f.root.to_string_lossy().to_string();
+    for (gid, durum) in [
+        ("yt:1", "active"),
+        ("yt:2", "waiting"),
+        ("yt:3", "complete"),
+    ] {
+        f.m.store
+            .add(
+                "video",
+                "https://ornek.test/v",
+                None,
+                Some(&dir),
+                None,
+                None,
+                Some(gid),
+            )
+            .unwrap();
+        crate::video::test_is_ekle(&f.m, gid, &dir, "a.mp4", durum);
+    }
+    pause_all(&f.m).unwrap();
+    let durum_of = |gid: &str| {
+        crate::video::video_satirlari(&f.m)
+            .into_iter()
+            .find(|s| s["gid"].as_str() == Some(gid))
+            .unwrap()["status"]
+            .clone()
+    };
+    assert_eq!(durum_of("yt:1"), "paused");
+    assert_eq!(durum_of("yt:2"), "paused");
+    assert_eq!(durum_of("yt:3"), "complete");
+}
+
+#[test]
+fn video_yetim_kayitlari_acilista_duraklatilir() {
+    let f = Fixture::new();
+    let dir = f.root.to_string_lossy().to_string();
+    f.m.store
+        .add(
+            "video",
+            "https://ornek.test/v",
+            None,
+            Some(&dir),
+            None,
+            None,
+            Some("yt:7"),
+        )
+        .unwrap();
+    f.m.store
+        .update_by_gid("yt:7", &map(json!({"status":"active"})))
+        .unwrap();
+    start(&f.m).unwrap();
+    assert_eq!(
+        f.m.store.by_gid("yt:7").unwrap().unwrap()["status"],
+        "paused"
+    );
+}
+
+#[test]
+fn video_kapanista_kayit_durumu_korunur() {
+    let f = Fixture::new();
+    let dir = f.root.to_string_lossy().to_string();
+    crate::video::test_is_ekle(&f.m, "yt:5", &dir, "b.mp4", "active");
+    stop(&f.m).unwrap();
+    assert_eq!(crate::video::video_satirlari(&f.m)[0]["status"], "active");
+}
+
+#[test]
+fn video_isi_yinelenen_kontrolunde_canli_sayilir() {
+    let f = Fixture::new();
+    let dir = f.root.to_string_lossy().to_string();
+    f.m.store
+        .add(
+            "video",
+            "https://ornek.test/v",
+            None,
+            Some(&dir),
+            None,
+            None,
+            Some("yt:4"),
+        )
+        .unwrap();
+    f.m.store
+        .update_by_gid("yt:4", &map(json!({"status":"active"})))
+        .unwrap();
+    crate::video::test_is_ekle(&f.m, "yt:4", &dir, "d.mp4", "active");
+    let bulunan = find_duplicate(&f.m, "https://ornek.test/v").unwrap();
+    assert_eq!(bulunan.unwrap()["gid"], "yt:4");
+}

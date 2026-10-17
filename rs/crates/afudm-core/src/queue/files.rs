@@ -75,28 +75,11 @@ pub(super) fn remove(m: &Manager, gid: &str, delete_files: bool) -> Result<bool>
         }
     }
     if actual.starts_with("yt:") {
-        let (job, stopper) = {
-            let mut s = state(m)?;
-            (s.video_jobs.remove(actual), s.video_stoppers.remove(actual))
-        };
-        if let Some(stop) = stopper {
-            stop();
-        }
-        if let Some(job) = job {
-            let dir = job
-                .get("dest_dir")
-                .or_else(|| job.get("dir"))
-                .and_then(Json::as_str)
-                .unwrap_or("");
-            if !dir.is_empty() && !text(&job["filename"]).is_empty() {
-                if let Some(path) = safe(
-                    m,
-                    Path::new(dir),
-                    &Path::new(dir).join(text(&job["filename"])),
-                    actual,
-                ) {
-                    targets.push(path);
-                }
+        // Python remove() yt dali: is durdurulur ve listeden atilir; hedef guvenli yolsa silinir.
+        if let Some(path) = crate::video::kaldir(m, actual) {
+            let root = path.parent().map(Path::to_path_buf).unwrap_or_default();
+            if let Some(path) = safe(m, &root, &path, actual) {
+                targets.push(path);
             }
         }
     } else {
@@ -324,18 +307,10 @@ pub(super) fn resolve(m: &Manager, gid: &str) -> Result<Option<PathBuf>> {
             }
         }
     }
-    if let Some(job) = state(m)?.video_jobs.get(gid).cloned() {
-        for key in ["output_path", "target_path"] {
-            if !text(&job[key]).is_empty() {
-                candidates.push(PathBuf::from(text(&job[key])));
-            }
-        }
-        if !text(&job["dir"]).is_empty() && !text(&job["filename"]).is_empty() {
-            outputs(
-                Path::new(text(&job["dir"])),
-                text(&job["filename"]),
-                &mut candidates,
-            );
+    // Python resolve_item_path yt dali: video isinin hedef dosyasi (dest_dir + filename).
+    if let Some(yol) = crate::video::dosya_yolu(m, gid) {
+        if let (Some(dir), Some(ad)) = (yol.parent(), yol.file_name()) {
+            outputs(dir, &ad.to_string_lossy(), &mut candidates);
         }
     }
     if let Ok(snapshot) = shaping::snapshot(m) {
