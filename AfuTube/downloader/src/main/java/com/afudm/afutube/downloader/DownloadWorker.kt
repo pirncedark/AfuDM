@@ -4,6 +4,8 @@ import com.afudm.afutube.runtime.MediaRuntime
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import com.afudm.afutube.core.extractor.InstagramCookies
+import com.afudm.afutube.core.diagnostics.SensitiveDataRedactor
 import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationCompat
@@ -73,7 +75,13 @@ class DownloadWorker(
 
         setForeground(createForegroundInfo("Hazırlanıyor…", 0))
 
+        val cookieFile = InstagramCookies.writeFor(applicationContext, url)
+        val storyPk = if (InstagramCookies.isInstagram(url) && java.net.URI(url).path.orEmpty().startsWith("/stories/"))
+            InstagramCookies.storyMediaCode(url) else null
+
         fun request(useAria2c: Boolean, extractorArgs: String? = null) = YoutubeDLRequest(url).apply {
+            cookieFile?.let { addOption("--cookies", it.absolutePath) }
+            storyPk?.let { addOption("--match-filters", "id=$it") }
             addOption("-f", formatId)
             extractorArgs?.let { addOption("--extractor-args", it) }
             val safeTitle = requestedTitle.replace(Regex("[\\\\/:*?\"<>|\\r\\n]"), "_").trim().take(100)
@@ -151,6 +159,8 @@ class DownloadWorker(
             } catch (e: Exception) {
                 finalError = e.message.orEmpty()
             }
+            cookieFile?.let { finalError = finalError.replace(it.absolutePath, "[gizli]") }
+            finalError = SensitiveDataRedactor.redact(finalError)
             if (DownloadRecoveryPolicy.isHttp403(finalError)) saw403 = true
             if (!saw403 && !networkRetryUsed && isRetryableNetworkError(finalError)) {
                 networkRetryUsed = true

@@ -1,6 +1,7 @@
 package com.afudm.afutube.extractor
 
 import android.content.Context
+import com.afudm.afutube.core.extractor.InstagramCookies
 import com.afudm.afutube.core.diagnostics.AnalysisFailure
 import com.afudm.afutube.core.diagnostics.AnalysisError
 import com.afudm.afutube.core.diagnostics.SensitiveDataRedactor
@@ -29,9 +30,18 @@ class YtDlpExtractor(private val context: Context) : MediaExtractor {
 
     override suspend fun extract(url: String): MediaInfo = withContext(Dispatchers.IO) {
         MediaRuntime.ensureInitialized(context)
+        val instagram = InstagramCookies.isInstagram(url)
+        val stories = instagram && java.net.URI(url).path.orEmpty().startsWith("/stories/")
+        val cookieFile = InstagramCookies.writeFor(context, url)
+        fun safeError(text: String): String {
+            val withoutPath = cookieFile?.let { text.replace(it.absolutePath, "[gizli]") } ?: text
+            return SensitiveDataRedactor.redact(withoutPath)
+        }
+        val loginMessage = "Bu Instagram hikayesi için giriş gerekiyor. AfuTube tarayıcısında Instagram'a bir kez giriş yapıp tekrar dene."
         val request = YoutubeDLRequest(url).apply {
             addOption("--dump-json")
-            addOption("--no-playlist")
+            if (!stories) addOption("--no-playlist")
+            cookieFile?.let { addOption("--cookies", it.absolutePath) }
             addOption("--no-warnings")
             addOption("--socket-timeout", "15")
         }
@@ -43,10 +53,11 @@ class YtDlpExtractor(private val context: Context) : MediaExtractor {
                 .getOrDefault("bilinmiyor")
             throw AnalysisException(
                 AnalysisFailure(
-                    message = error.message ?: "yt-dlp çalıştırılamadı",
-                    traceback = SensitiveDataRedactor.redact(error.stackTraceToString())
+                    message = if (instagram && error.message.orEmpty().contains("log in", ignoreCase = true)) loginMessage
+                        else safeError(error.message ?: "yt-dlp çalıştırılamadı"),
+                    traceback = safeError(error.stackTraceToString())
                 ).toAnalysisError(version),
-                error
+                RuntimeException(safeError(error.toString()))
             )
         }
 
@@ -55,24 +66,31 @@ class YtDlpExtractor(private val context: Context) : MediaExtractor {
                 .getOrDefault("bilinmiyor")
             throw AnalysisException(
                 AnalysisFailure(
-                    message = "yt-dlp hatası (${response.exitCode})",
+                    message = if (instagram && (response.err + response.out).contains("log in", ignoreCase = true)) loginMessage
+                        else "yt-dlp hatası (${response.exitCode})",
                     exitCode = response.exitCode,
-                    traceback = listOf(response.err, response.out).filter { it.isNotBlank() }.joinToString("\n")
+                    traceback = safeError(listOf(response.err, response.out).filter { it.isNotBlank() }.joinToString("\n"))
                 ).toAnalysisError(version)
             )
         }
 
         try {
-            parseJson(JSONObject(response.out.trim()))
+            val json = if (stories) {
+                val entries = response.out.lineSequence().map(String::trim).filter(String::isNotBlank)
+                    .map { JSONObject(it) }.toList()
+                val code = InstagramCookies.storyMediaCode(url)
+                entries.firstOrNull { it.optString("id") == code } ?: entries.first()
+            } else JSONObject(response.out.trim())
+            parseJson(json)
         } catch (error: Throwable) {
             val version = runCatching { YoutubeDL.getInstance().version(context) ?: "bilinmiyor" }
                 .getOrDefault("bilinmiyor")
             throw AnalysisException(
                 AnalysisFailure(
-                    message = error.message ?: "yt-dlp yanıtı ayrıştırılamadı",
-                    traceback = error.stackTraceToString()
+                    message = safeError(error.message ?: "yt-dlp yanıtı ayrıştırılamadı"),
+                    traceback = safeError(error.stackTraceToString())
                 ).toAnalysisError(version),
-                error
+                RuntimeException(safeError(error.toString()))
             )
         }
     }
