@@ -73,6 +73,13 @@ class TorrentFixTests(unittest.TestCase):
         self.assertEqual(result['gid'], 'child')
         self.m.rpc.tell_active = lambda: [self.m.rpc.durumlar['child']]
         self.assertEqual(len(self.m.snapshot()['items']), 1)
+    def test_readded_removed_torrent_is_visible(self):
+        self.m._removed_hashes.add('abc')
+        result = self.m.add('magnet:?xt=urn:btih:abc', kind='torrent')
+        self.assertNotIn('abc', self.m._removed_hashes)
+        gid = result['gid']
+        self.m.rpc.tell_active = lambda: [{'gid': gid, 'infoHash': 'abc', 'status': 'active', 'totalLength': '10', 'completedLength': '0', 'files': []}]
+        self.assertIn(gid, [i['gid'] for i in self.m.snapshot()['items']])
     def test_cancelled_child_stays_hidden(self):
         gid = self.m.torrent_on_ekle('magnet:?xt=urn:btih:abc')
         self.m.rpc.durumlar[gid]['followedBy'] = ['child']
