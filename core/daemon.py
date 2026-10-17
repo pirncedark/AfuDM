@@ -147,7 +147,9 @@ def _args(secret: str, download_dir: str, port: int = RPC_PORT) -> list[str]:
         "--save-session-interval=0",
         # Runtime download options can contain session credentials. Only
         # explicit saves are allowed; they are scrubbed immediately below.
-        "--auto-save-interval=0",
+        # .aria2 kontrol dosyasi yalniz parca haritasi tutar (URI/baslik yok);
+        # 0 olunca motor kapaninca ilerleme kayboluyordu (17 Eki, Valor Mortis).
+        "--auto-save-interval=60",
         "--force-save=true",
         "--log=%s" % paths.ARIA2_LOG,
         "--log-level=warn",

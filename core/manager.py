@@ -547,6 +547,8 @@ class Manager:
             )
         kind = req.kind or self.detect_kind(req.source)
         with self._kilit():
+            # Silinen torrent bilerek yeniden eklenince listede gizli kalmasin.
+            getattr(self, "_removed_hashes", set()).discard(self.magnet_infohash(req.source))
             duplicate = self.find_duplicate(req.source)
             paused_preview = (
                 kind == "torrent"
@@ -1707,11 +1709,12 @@ class Manager:
             if not gid or gid in self._removed_gids or gid in getattr(self, "_preview_gids", set()):
                 continue
             infohash = (status.get("infoHash") or "").lower()
-            if infohash and infohash in self._removed_hashes:
-                continue
             if self.is_metadata_only(status):
                 continue
             row = self.store.by_gid(gid)
+            # Silinmis hash yalniz DB kaydi olmayan artik isi gizler; yeniden eklenen is gorunur.
+            if infohash and infohash in self._removed_hashes and row is None:
+                continue
             if row and row.get("status") == "removed":
                 self._removed_gids.add(gid)
                 continue
