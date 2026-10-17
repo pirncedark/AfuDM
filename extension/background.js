@@ -270,6 +270,8 @@ chrome.downloads.onCreated.addListener((item) => {
     eligible: async (download, url) => {
       const cfg = await config();
       if (!cfg.uzantiAcik || !cfg.enabled) return false;
+      // file:// gibi AfuDM'in acamayacagi adresler tarayicida kalsin (yerel PDF indirilemiyordu).
+      if (!/^(https?|ftp|magnet|blob|data):/i.test(url)) return false;
       const skip = cfg.skipExtensions.split(",").map((s) => s.trim()).filter(Boolean);
       if (skip.includes(extensionOf(url))) return false;
       if (download.fileSize > 0 && download.fileSize < cfg.minSizeMB * 1048576) return false;
