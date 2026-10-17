@@ -5,6 +5,40 @@ import org.junit.Test
 
 class UrlNormalizerTest {
     @Test
+    fun `converts Instagram highlight share and preserves requested story`() {
+        assertEquals(
+            "https://www.instagram.com/stories/highlights/18072912233468488/?story_media_id=4002849496279096279_1581116288",
+            UrlNormalizer.normalize("https://www.instagram.com/s/aGlnaGxpZ2h0OjE4MDcyOTEyMjMzNDY4NDg4?story_media_id=4002849496279096279_1581116288&cplk=MWw2bGMzZW9pZnlscA==&igsh=tracking&utm_source=share")
+        )
+    }
+
+    @Test
+    fun `keeps previous behavior for invalid Instagram share`() {
+        assertEquals(
+            "https://www.instagram.com/s/invalid!/?cplk=keep",
+            UrlNormalizer.normalize("https://www.instagram.com/s/invalid!/?cplk=keep&utm_source=share")
+        )
+    }
+
+    @Test
+    fun `accepts padded and unpadded highlight shares`() {
+        listOf("aGlnaGxpZ2h0OjEyMw==", "aGlnaGxpZ2h0OjEyMw").forEach { encoded ->
+            assertEquals(
+                "https://www.instagram.com/stories/highlights/123/",
+                UrlNormalizer.normalize("https://instagram.com/s/$encoded")
+            )
+        }
+    }
+
+    @Test
+    fun `keeps non highlight Instagram shares unchanged`() {
+        assertEquals(
+            "https://instagram.com/s/b3RoZXI6MTIz?igsh=keep",
+            UrlNormalizer.normalize("https://instagram.com/s/b3RoZXI6MTIz?igsh=keep")
+        )
+    }
+
+    @Test
     fun `converts youtu be and removes share tracking`() {
         assertEquals(
             "https://www.youtube.com/watch?v=Wz4qYO-91zg",

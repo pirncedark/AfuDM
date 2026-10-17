@@ -3,6 +3,7 @@ package com.afudm.afutube.core.extractor
 import java.net.URI
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import kotlin.io.encoding.Base64
 
 object UrlNormalizer {
     private val youtubeHosts = setOf("youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be")
@@ -17,6 +18,22 @@ object UrlNormalizer {
             val uri = URI(trimmed)
             val host = uri.host?.lowercase()?.removePrefix("www.") ?: return@runCatching trimmed
             val query = parseQuery(uri.rawQuery)
+            if (host == "instagram.com") {
+                val encoded = Regex("^/s/([^/]+)/?$").matchEntire(uri.path.orEmpty())?.groupValues?.get(1)
+                val highlight = encoded?.let {
+                    runCatching {
+                        val padded = it.replace('-', '+').replace('_', '/').let { token ->
+                            token.padEnd((token.length + 3) / 4 * 4, '=')
+                        }
+                        Base64.Default.decode(padded).toString(Charsets.UTF_8)
+                    }.getOrNull()
+                }?.let { Regex("highlight:([0-9]+)").matchEntire(it)?.groupValues?.get(1) }
+                if (highlight != null) {
+                    val story = query.firstOrNull { it.first == "story_media_id" }?.second
+                    return@runCatching "https://www.instagram.com/stories/highlights/$highlight/" +
+                        (story?.let { "?story_media_id=$it" } ?: "")
+                }
+            }
             if (host !in youtubeHosts) {
                 val cleaned = uri.rawQuery.orEmpty().split('&').filter { part ->
                     if (part.isBlank()) return@filter false
