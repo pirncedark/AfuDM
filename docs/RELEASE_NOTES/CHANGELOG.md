@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.7](https://github.com/pirncedark/AfuDM/compare/v2.9.6...v2.9.7) (2026-10-17)
+
+
+### Bug Fixes
+
+* **torrent:** show re-added torrents and keep progress across restarts ([#115](https://github.com/pirncedark/AfuDM/issues/115)) ([6ee38be](https://github.com/pirncedark/AfuDM/commit/6ee38be74917aa34d783ddadf95804f584936f04))
+
 ## [2.9.6](https://github.com/pirncedark/AfuDM/compare/v2.9.5...v2.9.6) (2026-10-13)
 
 
