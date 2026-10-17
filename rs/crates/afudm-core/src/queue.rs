@@ -1,112 +1,935 @@
-//! SAHIBI: Ekip C (codex). Bu dosyadaki govdeleri doldur; imzalari DEGISTIRME (afudm-types::ManagerApi).
-#![allow(unused_variables)]
+//! Queue and manager operations ported from core/manager.py (team C).
+mod dosya_adi;
+mod files;
+mod models;
+mod rules;
+mod settings;
+mod shaping;
+#[cfg(test)]
+mod tests;
 
 use crate::Manager;
-#[allow(unused_imports)]
 use afudm_types::{AfuError, Json, JsonMap, Result};
-#[allow(unused_imports)]
+use serde_json::json;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, MutexGuard};
 
-/// Ekip C (codex) kendi calisma durumunu buraya koyar (Manager::queue_state).
+/// Shared queue state. D may use removed_hashes and register video snapshots/stop callbacks.
 #[derive(Default)]
-pub struct State {}
+pub struct State {
+    pub removed_hashes: HashSet<String>,
+    pub removed_gids: HashSet<String>,
+    pub preview_gids: HashSet<String>,
+    pub auth_required_gids: HashSet<String>,
+    pub video_jobs: HashMap<String, Json>,
+    pub video_stoppers: HashMap<String, Arc<dyn Fn() + Send + Sync>>,
+    pub cookies: HashMap<i64, Vec<Json>>,
+    pub last_error: String,
+    pub settings_errors: Vec<Json>,
+    pub started: bool,
+}
+
+fn state(m: &Manager) -> Result<MutexGuard<'_, State>> {
+    m.queue_state
+        .lock()
+        .map_err(|_| AfuError::Other("kuyruk kilidi kullanilamiyor".into()))
+}
+fn invalid(message: impl Into<String>) -> AfuError {
+    AfuError::Invalid(message.into())
+}
+fn text(value: &Json) -> &str {
+    value.as_str().unwrap_or("")
+}
+fn number(value: &Json) -> i64 {
+    value
+        .as_i64()
+        .or_else(|| value.as_str().and_then(|s| s.parse().ok()))
+        .or_else(|| value.as_f64().map(|n| n as i64))
+        .unwrap_or(0)
+}
+fn truthy(value: &Json) -> bool {
+    match value {
+        Json::Null => false,
+        Json::Bool(b) => *b,
+        Json::String(s) => !s.is_empty(),
+        Json::Array(a) => !a.is_empty(),
+        Json::Object(o) => !o.is_empty(),
+        _ => value.as_f64().is_some_and(|v| v != 0.0),
+    }
+}
+fn now() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0)
+}
+fn map(value: Json) -> JsonMap {
+    value.as_object().cloned().unwrap_or_default()
+}
+fn options(row: &Json) -> JsonMap {
+    row.get("options")
+        .and_then(Json::as_object)
+        .cloned()
+        .or_else(|| {
+            row.get("options")
+                .and_then(Json::as_str)
+                .and_then(|s| serde_json::from_str(s).ok())
+        })
+        .unwrap_or_default()
+}
+fn row_id(row: &Json) -> i64 {
+    number(&row["id"])
+}
+fn required_row(m: &Manager, gid: &str) -> Result<Json> {
+    m.store
+        .by_gid(gid)?
+        .ok_or_else(|| AfuError::NotFound(format!("kayit bulunamadi: {gid}")))
+}
+fn setting(m: &Manager, key: &str, default: Json) -> Result<Json> {
+    Ok(m.store.get(key)?.filter(truthy).unwrap_or(default))
+}
+const ACTIVE: [&str; 5] = ["queued", "active", "waiting", "paused", "scheduled"];
 
 pub fn start(m: &Manager) -> Result<()> {
-    let _ = m;
-    todo!("start")
+    if state(m)?.started {
+        return Ok(());
+    }
+    let auth = m.data_dir.join("aria2.auth-required.json");
+    let saved: Vec<Json> = std::fs::read(auth)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
+    state(m)?.auth_required_gids = saved
+        .iter()
+        .filter_map(Json::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .collect();
+    // Daemon/process ownership stays with the shell/engine. RPC is injected into Manager.
+    settings::apply(m)?;
+    state(m)?.started = true;
+    m.store.log("info", "AfuDM basladi", "");
+    Ok(())
 }
 
 pub fn stop(m: &Manager) -> Result<()> {
-    let _ = m;
-    todo!("stop")
+    let stoppers: Vec<_> = {
+        let s = state(m)?;
+        s.video_jobs
+            .iter()
+            .filter(|(_, j)| j["status"] == "active")
+            .filter_map(|(gid, _)| s.video_stoppers.get(gid).cloned())
+            .collect()
+    };
+    for stop in stoppers {
+        stop();
+    }
+    let _ = m.rpc().save_session();
+    let _ = m.rpc().shutdown(false);
+    let mut s = state(m)?;
+    s.started = false;
+    s.cookies.clear();
+    drop(s);
+    m.store.log("info", "AfuDM kapandi", "");
+    Ok(())
 }
 
 pub fn set_mode(m: &Manager, ad: &str) -> Result<Json> {
-    let _ = m;
-    todo!("set_mode")
+    let ad = ad.trim().to_lowercase();
+    if !["snail", "normal", "turbo"].contains(&ad.as_str()) {
+        return Err(invalid(format!(
+            "gecersiz hiz profili: {ad} (snail|normal|turbo olmali)"
+        )));
+    }
+    m.store.set("hiz_profili", json!(ad))?;
+    settings::apply(m)?;
+    Ok(
+        json!({"ok":true,"profil":ad,"limit_kb":settings::speed_limit(&m.store.all_settings()?),"durum":"degisti"}),
+    )
 }
 
-pub fn baglanti_ayarla(m: &Manager, gid: &str, baglanti: Option<i64>, hiz_kb: Option<i64>) -> Result<Json> {
-    let _ = m;
-    todo!("baglanti_ayarla")
+pub fn baglanti_ayarla(
+    m: &Manager,
+    gid: &str,
+    baglanti: Option<i64>,
+    hiz_kb: Option<i64>,
+) -> Result<Json> {
+    let row = required_row(m, gid)?;
+    if gid.starts_with("yt:") {
+        return Err(invalid("video islerinde canli ayar desteklenmez"));
+    }
+    let mut sec = JsonMap::new();
+    if let Some(n) = baglanti {
+        if !(1..=64).contains(&n) {
+            return Err(invalid("baglanti sayisi 1-64 araliginda olmali"));
+        }
+        sec.insert("max-connection-per-server".into(), json!(n.to_string()));
+    }
+    if let Some(n) = hiz_kb {
+        if n < 0 {
+            return Err(invalid("hiz negatif KB/s olamaz"));
+        }
+        sec.insert(
+            "max-download-limit".into(),
+            json!(if n == 0 { "0".into() } else { format!("{n}K") }),
+        );
+    }
+    if !sec.is_empty() {
+        m.rpc()
+            .change_option(gid, &sec)
+            .map_err(|_| invalid("canli degistirilemedi: motor ayari uygulanamadi"))?;
+        let mut opts = options(&row);
+        if let Some(n) = baglanti {
+            opts.insert("baglanti".into(), json!(n));
+        }
+        if let Some(n) = hiz_kb {
+            opts.insert("hiz_kb".into(), json!(n));
+        }
+        m.store
+            .update_by_id(row_id(&row), &map(json!({"options":opts})))?;
+        m.store.log(
+            "info",
+            &format!("is ayarlari canli degistirildi: {}", text(&row["title"])),
+            gid,
+        );
+    }
+    Ok(json!({"ok":true,"gid":gid,"baglanti":baglanti,"hiz_kb":hiz_kb}))
 }
 
 pub fn update_settings(m: &Manager, changes: &JsonMap) -> Result<Json> {
-    let _ = m;
-    todo!("update_settings")
+    settings::update(m, changes)
 }
-
 pub fn current_download_dir(m: &Manager) -> Result<String> {
-    let _ = m;
-    todo!("current_download_dir")
+    Ok(setting(
+        m,
+        "download_dir",
+        json!(m.app_dir.join("downloads").to_string_lossy()),
+    )?
+    .as_str()
+    .unwrap_or("")
+    .to_owned())
 }
 
 pub fn add_completed_file(m: &Manager, path: &Path) -> Result<Json> {
-    let _ = m;
-    todo!("add_completed_file")
+    let path = path
+        .canonicalize()
+        .map_err(|_| invalid("Dosya indirme klasöründe olmalı."))?;
+    let root = PathBuf::from(current_download_dir(m)?)
+        .canonicalize()
+        .map_err(|_| invalid("Dosya indirme klasöründe olmalı."))?;
+    if path.parent() != Some(root.as_path()) || !path.is_file() {
+        return Err(invalid("Dosya indirme klasöründe olmalı."));
+    }
+    let mut bytes: [u8; 16] = rand::random();
+    bytes[6] = (bytes[6] & 15) | 64;
+    bytes[8] = (bytes[8] & 63) | 128;
+    let gid = format!(
+        "local:{}",
+        bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
+    );
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let size = path.metadata()?.len();
+    let id = m.store.add(
+        "http",
+        &gid,
+        Some(&name),
+        root.to_str(),
+        Some(&map(json!({"local_file":true}))),
+        None,
+        Some(&gid),
+    )?;
+    m.store.update_by_id(id,&map(json!({"filename":name,"status":"complete","total_bytes":size,"done_bytes":size,"finished_at":now()})))?;
+    m.store
+        .log("info", "Tarayıcıdan gelen dosya kaydedildi.", "");
+    Ok(json!({"id":id,"gid":gid,"kind":"http"}))
 }
 
 pub fn add(m: &Manager, req: &JsonMap) -> Result<Json> {
-    let _ = m;
-    todo!("add")
+    let req = models::normalize(req)?;
+    let source = text(&req["source"]);
+    if !dosya_adi::supported(source) {
+        return Err(invalid(
+            "gecersiz baglanti: http(s), ftp, magnet ya da .torrent dosyasi olmali",
+        ));
+    }
+    let kind = req
+        .get("kind")
+        .and_then(Json::as_str)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| dosya_adi::detect_kind(source));
+    let guard = m
+        .kilit
+        .lock()
+        .map_err(|_| AfuError::Other("yonetici kilidi kullanilamiyor".into()))?;
+    state(m)?
+        .removed_hashes
+        .remove(&dosya_adi::magnet_hash(source));
+    if let Some(duplicate) = find_duplicate(m, source)? {
+        let paused_preview = kind == "torrent"
+            && duplicate["status"] == "paused"
+            && !text(&duplicate["gid"]).is_empty()
+            && m.store.by_gid(text(&duplicate["gid"]))?.is_none();
+        if !paused_preview
+            && !(req.get("adopt_gid").is_some_and(truthy)
+                && req.get("adopt_gid") == duplicate.get("gid"))
+        {
+            let title = duplicate
+                .get("title")
+                .and_then(Json::as_str)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+                .unwrap_or_else(|| source.chars().take(60).collect());
+            return Err(invalid(format!(
+                "{} zaten kuyrukta: {title}",
+                if kind == "torrent" {
+                    "bu torrent"
+                } else {
+                    "bu baglanti"
+                }
+            )));
+        }
+    }
+    let defaults = map(
+        json!({"dest_dir":current_download_dir(m)?,"proxy":setting(m,"proxy",json!(""))?,"max_speed_kb":setting(m,"max_speed_kb",json!(0))?,"split":setting(m,"max_conn_per_server",json!(16))?}),
+    );
+    let (effective, trace) = rules::evaluate(&m.store.rules_list()?, defaults, &req, kind);
+    let dest = effective
+        .get("dest_dir")
+        .and_then(Json::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .unwrap_or(current_download_dir(m)?);
+    let start_after = req
+        .get("start_after")
+        .filter(|v| truthy(v))
+        .and_then(Json::as_f64)
+        .or(models::parse_time(
+            effective.get("start_after").unwrap_or(&json!("")),
+        )?);
+    std::fs::create_dir_all(&dest)?;
+    let mut opts = map(
+        json!({"quality":req.get("quality").filter(|v|truthy(v)).cloned().unwrap_or(setting(m,"video_quality",json!("best"))?),"audio_only":req["audio_only"],"playlist":req["playlist"],"headers":req["headers"],"filename":req.get("filename").filter(|v|truthy(v)).cloned().unwrap_or(json!("")),"user_agent":req.get("user_agent").filter(|v|truthy(v)).cloned().unwrap_or(json!("")),"title":req.get("title").filter(|v|truthy(v)).cloned().unwrap_or(json!("")),"proxy":effective.get("proxy").cloned().unwrap_or(json!("")),"hiz_kb":effective.get("max_speed_kb").cloned().unwrap_or(json!(0)),"baglanti":effective.get("split").cloned().unwrap_or(json!(0)),"rules_trace":trace,"checksum":req.get("checksum").filter(|v|truthy(v)).cloned().unwrap_or(json!("")),"adopt_gid":req.get("adopt_gid"),"selected_files":req.get("selected_files")}),
+    );
+    for key in [
+        "altyazi_diller",
+        "oto_altyazi",
+        "altyazi_goem",
+        "kucuk_resim",
+        "ustveri_goem",
+        "bolumler",
+        "sponsorblock",
+        "bolum_araligi",
+        "kapsayici",
+        "ses_formati",
+        "dosya_sablonu",
+        "tarayici_cerezi",
+    ] {
+        let fallback = if ["oto_altyazi", "altyazi_goem", "ustveri_goem"].contains(&key) {
+            json!(false)
+        } else {
+            json!("")
+        };
+        opts.insert(
+            key.into(),
+            req.get(key)
+                .filter(|v| truthy(v))
+                .cloned()
+                .unwrap_or(setting(m, &format!("video_{key}"), fallback)?),
+        );
+    }
+    let title = opts
+        .get("title")
+        .and_then(Json::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| dosya_adi::guess(source));
+    let id = m.store.add(
+        kind,
+        source,
+        Some(&title),
+        Some(&dest),
+        Some(&opts),
+        start_after,
+        None,
+    )?;
+    let cookies = models::cookies(req.get("cookies"));
+    if !cookies.is_empty() {
+        state(m)?.cookies.insert(id, cookies);
+    }
+    drop(guard);
+    if let Some(when) = start_after {
+        m.store.log("info", "indirme zamanlandi", "");
+        return Ok(json!({"id":id,"kind":kind,"scheduled_for":when}));
+    }
+    let row = m
+        .store
+        .by_id(id)?
+        .ok_or_else(|| AfuError::NotFound("kayit bulunamadi".into()))?;
+    launch(m, &row)
+}
+
+fn live_statuses(m: &Manager) -> Result<Vec<Json>> {
+    let rpc = m.rpc();
+    let mut live = rpc.tell_active(&[])?;
+    live.extend(rpc.tell_waiting(0, 200, &[])?);
+    live.extend(rpc.tell_stopped(0, 200, &[])?);
+    Ok(live)
+}
+
+fn find_duplicate(m: &Manager, source: &str) -> Result<Option<Json>> {
+    let hash = dosya_adi::magnet_hash(source);
+    let live = match live_statuses(m) {
+        Ok(v) => Some(v),
+        Err(_) => {
+            state(m)?.last_error = "motor durum bilgisi alinamadi".into();
+            None
+        }
+    };
+    if !hash.is_empty() {
+        if let Some(status) = live
+            .as_ref()
+            .into_iter()
+            .flatten()
+            .find(|s| text(&s["infoHash"]).to_lowercase() == hash)
+        {
+            return Ok(Some(shaping::aria(m, status)?));
+        }
+    }
+    let video_gids: HashSet<_> = state(m)?.video_jobs.keys().cloned().collect();
+    for row in m.store.list(None, 300)? {
+        if !ACTIVE.contains(&text(&row["status"])) {
+            continue;
+        }
+        if dosya_adi::url_key(text(&row["source"])) != dosya_adi::url_key(source)
+            && (hash.is_empty() || dosya_adi::magnet_hash(text(&row["source"])) != hash)
+        {
+            continue;
+        }
+        let gid = text(&row["gid"]);
+        if row["status"] == "scheduled"
+            || (row["status"] == "queued" && gid.is_empty())
+            || live.is_none()
+            || video_gids.contains(gid)
+            || live
+                .as_ref()
+                .is_some_and(|l| l.iter().any(|s| s["gid"] == gid))
+        {
+            return Ok(Some(row));
+        }
+        m.store.update_by_id(row_id(&row),&map(json!({"status":"error","finished_at":now(),"error":"motorda karsiligi kalmadi (uygulama kapanmis olabilir)"})))?;
+        m.store.log(
+            "warn",
+            &format!("olu kayit temizlendi: {}", text(&row["title"])),
+            gid,
+        );
+    }
+    Ok(None)
+}
+
+fn connection_options(opts: &JsonMap) -> JsonMap {
+    let mut out = JsonMap::new();
+    let conn = number(opts.get("baglanti").unwrap_or(&Json::Null));
+    let speed = number(opts.get("hiz_kb").unwrap_or(&Json::Null));
+    if (1..=64).contains(&conn) {
+        out.insert("max-connection-per-server".into(), json!(conn.to_string()));
+    }
+    if speed > 0 {
+        out.insert("max-download-limit".into(), json!(format!("{speed}K")));
+    }
+    out
+}
+
+fn request_headers(opts: &JsonMap, cookies: &[Json]) -> Vec<String> {
+    let mut headers: Vec<_> = opts
+        .get("headers")
+        .and_then(Json::as_object)
+        .into_iter()
+        .flatten()
+        .map(|(k, v)| {
+            format!(
+                "{k}: {}",
+                v.as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| v.to_string())
+            )
+        })
+        .collect();
+    if !cookies.is_empty() {
+        headers.push(format!(
+            "Cookie: {}",
+            cookies
+                .iter()
+                .map(|c| format!("{}={}", text(&c["name"]), text(&c["value"])))
+                .collect::<Vec<_>>()
+                .join("; ")
+        ));
+    }
+    headers
+}
+
+fn launch(m: &Manager, row: &Json) -> Result<Json> {
+    let id = row_id(row);
+    let kind = text(&row["kind"]);
+    let opts = options(row);
+    let cookies = state(m)?.cookies.get(&id).cloned().unwrap_or_default();
+    let dest = row
+        .get("dest_dir")
+        .and_then(Json::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .unwrap_or(current_download_dir(m)?);
+    let result: Result<String> = (|| {
+        if ["torrent", "video"].contains(&kind) {
+            // D receives both normalized flat fields and the persisted row/options. It returns gid or {gid,...}.
+            let mut req = opts.clone();
+            req.extend(row.as_object().cloned().unwrap_or_default());
+            req.insert("row_id".into(), json!(id));
+            req.insert("options".into(), json!(opts));
+            req.insert("dest_dir".into(), json!(dest));
+            req.insert("cookies".into(), json!(cookies));
+            let result = if kind == "torrent" {
+                crate::torrent::torrent_ekle_ic(m, &req)?
+            } else {
+                crate::video::video_ekle_ic(m, &req)?
+            };
+            let gid = result
+                .as_str()
+                .or_else(|| result.get("gid").and_then(Json::as_str))
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| AfuError::Engine("motor indirme kimligi dondurmedi".into()))?;
+            return Ok(gid.to_owned());
+        }
+        let mut aria = connection_options(&opts);
+        aria.insert("dir".into(), json!(dest));
+        for (a, b) in [
+            ("filename", "out"),
+            ("user_agent", "user-agent"),
+            ("checksum", "checksum"),
+        ] {
+            if let Some(v) = opts.get(a).filter(|v| truthy(v)) {
+                aria.insert(b.into(), v.clone());
+            }
+        }
+        let headers = request_headers(&opts, &cookies);
+        if !headers.is_empty() {
+            aria.insert("header".into(), json!(headers));
+        }
+        settings::proxy_options(m, &opts, &mut aria)?;
+        m.rpc().add_uri(&[text(&row["source"]).into()], Some(&aria))
+    })();
+    let gid = match result {
+        Ok(gid) => gid,
+        Err(error) => {
+            m.store.update_by_id(
+                id,
+                &map(json!({"status":"error","error":"indirme baslatilamadi","finished_at":now()})),
+            )?;
+            m.store.log(
+                "error",
+                "baslatilamadi: motor indirmeyi baslatamadi",
+                text(&row["gid"]),
+            );
+            return Err(error);
+        }
+    };
+    m.store.attach_gid(id, &gid)?;
+    m.store.log(
+        "info",
+        &format!("basladi [{kind}]: {}", text(&row["title"])),
+        &gid,
+    );
+    let mut accepted = HashSet::from([gid.clone()]);
+    if let Some(adopt) = opts.get("adopt_gid").and_then(Json::as_str) {
+        accepted.insert(adopt.into());
+    }
+    let previews = state(m)?.preview_gids.clone();
+    for _ in 0..=previews.len() {
+        let before = accepted.len();
+        for preview in &previews {
+            if let Ok(status) = m.rpc().tell_status(preview, &["followedBy"]) {
+                if status["followedBy"]
+                    .as_array()
+                    .is_some_and(|children| children.iter().any(|c| accepted.contains(text(c))))
+                {
+                    accepted.insert(preview.clone());
+                }
+            }
+        }
+        if accepted.len() == before {
+            break;
+        }
+    }
+    state(m)?.preview_gids.retain(|p| !accepted.contains(p));
+    Ok(json!({"id":id,"gid":gid,"kind":kind}))
 }
 
 pub fn pause(m: &Manager, gid: &str) -> Result<bool> {
-    let _ = m;
-    todo!("pause")
+    required_row(m, gid)?;
+    if gid.starts_with("yt:") {
+        let stopper = state(m)?.video_stoppers.get(gid).cloned();
+        let exists = state(m)?.video_jobs.contains_key(gid);
+        if !exists {
+            return Ok(false);
+        }
+        if let Some(stop) = stopper {
+            stop();
+        } else {
+            return Err(AfuError::Unavailable(
+                "video durdurma koprusu hazir degil".into(),
+            ));
+        }
+        if let Some(job) = state(m)?.video_jobs.get_mut(gid) {
+            job["status"] = json!("paused");
+        }
+    } else if m.rpc().pause(gid, true).is_err() {
+        return Ok(false);
+    }
+    m.store
+        .update_by_gid(gid, &map(json!({"status":"paused"})))?;
+    Ok(true)
 }
 
 pub fn resume(m: &Manager, gid: &str) -> Result<bool> {
-    let _ = m;
-    todo!("resume")
+    if state(m)?.auth_required_gids.contains(gid) {
+        return Err(invalid(
+            "Kaydedilen oturumdaki giris bilgisi silindi; yeni bilgilerle indirmeyi Yenile.",
+        ));
+    }
+    let row = required_row(m, gid)?;
+    if gid.starts_with("yt:") {
+        m.store
+            .update_by_id(row_id(&row), &map(json!({"status":"queued","gid":null})))?;
+        let row = m
+            .store
+            .by_id(row_id(&row))?
+            .ok_or_else(|| invalid("kayit bulunamadi"))?;
+        launch(m, &row)?;
+    } else {
+        m.rpc().unpause(gid)?;
+        m.store
+            .update_by_gid(gid, &map(json!({"status":"active"})))?;
+    }
+    Ok(true)
 }
 
 pub fn remove(m: &Manager, gid: &str, delete_files: bool) -> Result<bool> {
-    let _ = m;
-    todo!("remove")
+    files::remove(m, gid, delete_files)
 }
-
 pub fn resolve_item_path(m: &Manager, gid: &str) -> Result<Option<PathBuf>> {
-    let _ = m;
-    todo!("resolve_item_path")
+    files::resolve(m, gid)
 }
 
 pub fn pause_all(m: &Manager) -> Result<()> {
-    let _ = m;
-    todo!("pause_all")
+    let _ = m.rpc().pause_all();
+    let gids: Vec<_> = state(m)?
+        .video_jobs
+        .iter()
+        .filter(|(_, j)| !["complete", "error", "removed"].contains(&text(&j["status"])))
+        .map(|(gid, _)| gid.clone())
+        .collect();
+    for gid in gids {
+        pause(m, &gid)?;
+    }
+    Ok(())
 }
 
 pub fn resume_all(m: &Manager) -> Result<()> {
-    let _ = m;
-    todo!("resume_all")
+    let auth = state(m)?.auth_required_gids.clone();
+    if auth.is_empty() {
+        let _ = m.rpc().unpause_all();
+    } else if let Ok(mut statuses) = m.rpc().tell_active(&[]) {
+        if let (Ok(waiting), Ok(stopped)) = (
+            m.rpc().tell_waiting(0, 1000, &[]),
+            m.rpc().tell_stopped(0, 1000, &[]),
+        ) {
+            statuses.extend(waiting);
+            statuses.extend(stopped);
+            for s in statuses {
+                let gid = text(&s["gid"]);
+                if !gid.is_empty() && !auth.contains(gid) && s["status"] == "paused" {
+                    let _ = m.rpc().unpause(gid);
+                }
+            }
+        }
+    }
+    for row in m.store.list(None, 1000)? {
+        if row["status"] == "paused" && text(&row["gid"]).starts_with("yt:") {
+            resume(m, text(&row["gid"]))?;
+        }
+    }
+    Ok(())
 }
 
 pub fn retry(m: &Manager, row_id: i64) -> Result<Json> {
-    let _ = m;
-    todo!("retry")
+    let row = m
+        .store
+        .by_id(row_id)?
+        .ok_or_else(|| invalid("kayit bulunamadi"))?;
+    let old = text(&row["gid"]);
+    if state(m)?.auth_required_gids.contains(old) {
+        return Err(invalid(
+            "Bu indirme yeni giris bilgisi gerektiriyor; Yenile akisini kullanin.",
+        ));
+    }
+    m.store.update_by_id(
+        row_id,
+        &map(json!({"status":"queued","gid":null,"error":null})),
+    )?;
+    if !old.is_empty() {
+        state(m)?.removed_gids.insert(old.into());
+        let _ = m.rpc().remove_result(old);
+    }
+    launch(
+        m,
+        &m.store
+            .by_id(row_id)?
+            .ok_or_else(|| invalid("kayit bulunamadi"))?,
+    )
 }
 
-pub fn renew(m: &Manager, gid: &str, yeni_url: &str, headers: Option<&JsonMap>, cookies: Option<&[Json]>, user_agent: Option<&str>) -> Result<Json> {
-    let _ = m;
-    todo!("renew")
+pub fn renew(
+    m: &Manager,
+    gid: &str,
+    yeni_url: &str,
+    headers: Option<&JsonMap>,
+    cookies: Option<&[Json]>,
+    user_agent: Option<&str>,
+) -> Result<Json> {
+    let url = yeni_url.trim();
+    if !["http://", "https://", "ftp://"]
+        .iter()
+        .any(|s| url.to_lowercase().starts_with(s))
+    {
+        return Err(invalid("yeni adres http(s) veya ftp olmali"));
+    }
+    let row = required_row(m, gid)?;
+    if !["http", "ftp"].contains(&text(&row["kind"])) {
+        return Err(invalid(format!(
+            "{} isleri yenilenemez — yalnizca http(s)/ftp indirmeleri",
+            text(&row["kind"])
+        )));
+    }
+    let status = match m.rpc().tell_status(gid, &["status", "files", "dir"]) {
+        Ok(s) => s,
+        Err(_) => {
+            if ["complete", "error"].contains(&text(&row["status"])) {
+                json!({"status":row["status"]})
+            } else {
+                return Err(invalid("motor o isi bilmiyor: indirme bulunamadi"));
+            }
+        }
+    };
+    let uris = status["files"]
+        .as_array()
+        .and_then(|f| f.first())
+        .and_then(|f| f["uris"].as_array());
+    let old = uris
+        .and_then(|u| {
+            u.iter()
+                .find(|u| u["status"] == "used")
+                .or_else(|| u.first())
+        })
+        .map(|u| text(&u["uri"]))
+        .filter(|s| !s.is_empty())
+        .unwrap_or(text(&row["source"]));
+    let mut opts = options(&row);
+    let mut hdrs = opts
+        .get("headers")
+        .and_then(Json::as_object)
+        .cloned()
+        .unwrap_or_default();
+    if let Some(h) = headers {
+        hdrs.extend(
+            h.iter()
+                .filter(|(k, v)| !k.is_empty() && truthy(v))
+                .map(|(k, v)| (k.clone(), v.clone())),
+        );
+    }
+    opts.insert("headers".into(), json!(hdrs));
+    if let Some(ua) = user_agent.filter(|s| !s.is_empty()) {
+        opts.insert("user_agent".into(), json!(ua));
+    }
+    let clean = models::cookies(cookies.map(|c| json!(c)).as_ref());
+    if !clean.is_empty() {
+        state(m)?.cookies.insert(row_id(&row), clean.clone());
+    }
+    let basliklar = request_headers(&opts, &clean);
+    let mut aria = JsonMap::new();
+    if !basliklar.is_empty() {
+        aria.insert("header".into(), json!(basliklar));
+    }
+    if let Some(ua) = opts.get("user_agent").filter(|v| truthy(v)) {
+        aria.insert("user-agent".into(), ua.clone());
+    }
+    let active = status["status"] == "active";
+    let failed = status["status"] == "error";
+    let (new_gid, changed, new_status) = if status["status"] == "complete" {
+        let path = status["files"]
+            .as_array()
+            .and_then(|f| f.first())
+            .and_then(|f| f.get("path"))
+            .and_then(Json::as_str)
+            .map(PathBuf::from)
+            .unwrap_or(
+                PathBuf::from(
+                    row.get("dest_dir")
+                        .and_then(Json::as_str)
+                        .unwrap_or(&current_download_dir(m)?),
+                )
+                .join(text(&row["title"])),
+            );
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(format!("{}.aria2", path.to_string_lossy()));
+        let _ = m.rpc().remove_result(gid);
+        aria.extend(connection_options(&opts));
+        if let Some(dir) = row.get("dest_dir").filter(|v| truthy(v)) {
+            aria.insert("dir".into(), dir.clone());
+        }
+        aria.insert("gid".into(), json!(gid));
+        let new_gid = match m.rpc().add_uri(&[url.into()], Some(&aria)) {
+            Ok(g) => g,
+            Err(_) => {
+                aria.remove("gid");
+                m.rpc().add_uri(&[url.into()], Some(&aria))?
+            }
+        };
+        (new_gid, 1, json!("active"))
+    } else {
+        if active {
+            let _ = m.rpc().pause(gid, false);
+        }
+        let changed: Result<i64> = (|| {
+            let n = m
+                .rpc()
+                .change_uri(gid, 1, &[old.into()], &[url.into()], 0)?;
+            if !aria.is_empty() {
+                m.rpc().change_option(gid, &aria)?;
+            }
+            Ok(n)
+        })();
+        let changed = match changed {
+            Ok(n) => n,
+            Err(_) => {
+                if active {
+                    let _ = m.rpc().unpause(gid);
+                }
+                return Err(invalid("adres degistirilemedi: motor adresi degistiremedi"));
+            }
+        };
+        (
+            gid.to_owned(),
+            changed,
+            if active || failed {
+                json!("active")
+            } else {
+                status["status"].clone()
+            },
+        )
+    };
+    m.store.update_by_id(
+        row_id(&row),
+        &map(json!({"gid":new_gid,"source":url,"options":opts,"error":null,"status":new_status})),
+    )?;
+    clear_auth(m, gid)?;
+    if active || failed {
+        let _ = m.rpc().unpause(&new_gid);
+    }
+    m.store.log("info", "adres yenilendi", &new_gid);
+    Ok(json!({"ok":true,"gid":new_gid,"eski":old,"yeni":url,"degisen":changed}))
+}
+
+fn clear_auth(m: &Manager, gid: &str) -> Result<()> {
+    let remaining = {
+        let mut s = state(m)?;
+        if !s.auth_required_gids.remove(gid) {
+            return Ok(());
+        }
+        s.auth_required_gids.iter().cloned().collect::<Vec<_>>()
+    };
+    std::fs::write(
+        m.data_dir.join("aria2.auth-required.json"),
+        serde_json::to_vec(&remaining)?,
+    )?;
+    Ok(())
 }
 
 pub fn snapshot(m: &Manager) -> Result<Json> {
-    let _ = m;
-    todo!("snapshot")
+    shaping::snapshot(m)
 }
-
 pub fn servers(m: &Manager, gid: &str) -> Result<Vec<Json>> {
-    let _ = m;
-    todo!("servers")
+    if gid.starts_with("yt:") || gid.starts_with("row:") {
+        return Ok(vec![]);
+    }
+    Ok(m.rpc().get_servers(gid).unwrap_or_default())
 }
 
 pub fn can_release_ui(m: &Manager) -> Result<bool> {
-    let _ = m;
-    todo!("can_release_ui")
+    if !m.rpc().sleeping() {
+        return Ok(false);
+    }
+    {
+        let s = state(m)?;
+        if !s.preview_gids.is_empty()
+            || s.video_jobs
+                .values()
+                .any(|j| ["active", "waiting"].contains(&text(&j["status"])))
+        {
+            return Ok(false);
+        }
+    }
+    for status in [
+        "active",
+        "waiting",
+        "queued",
+        "scheduled",
+        "repairing",
+        "paused",
+    ] {
+        if !m.store.list(Some(status), 1)?.is_empty() {
+            return Ok(false);
+        }
+    }
+    for key in ["lan_erisimi", "sunucu_acik"] {
+        if m.store.get(key)?.as_ref().is_some_and(truthy) {
+            return Ok(false);
+        }
+    }
+    Ok(!m
+        .store
+        .automation_jobs("", 10000)?
+        .iter()
+        .any(|j| ["queued", "running"].contains(&text(&j["status"]))))
 }
 
-pub fn notify_telegram(m: &Manager, text: &str) -> Result<bool> {
-    let _ = m;
-    todo!("notify_telegram")
+pub fn notify_telegram(m: &Manager, message: &str) -> Result<bool> {
+    let token = setting(
+        m,
+        "telegram_bot_token",
+        json!(std::env::var("TELEGRAM_BOT_TOKEN").unwrap_or_default()),
+    )?;
+    let chat = setting(m, "telegram_chat_id", json!(""))?;
+    if !truthy(&token) || !truthy(&chat) {
+        return Ok(false);
+    }
+    let chat = chat
+        .as_str()
+        .map(str::to_owned)
+        .unwrap_or_else(|| chat.to_string());
+    let url = format!("https://api.telegram.org/bot{}/sendMessage", text(&token));
+    let config = ureq::Agent::config_builder()
+        .timeout_global(Some(std::time::Duration::from_secs(15)))
+        .build();
+    let agent: ureq::Agent = config.into();
+    Ok(agent
+        .post(&url)
+        .send_form([
+            ("chat_id", chat.as_str()),
+            ("text", message),
+            ("parse_mode", "HTML"),
+        ])
+        .is_ok_and(|r| r.status().as_u16() == 200))
 }

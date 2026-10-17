@@ -9,3 +9,9 @@ afudm-types.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 log.workspace = true
+rusqlite = { version = "0.37", features = ["bundled"] }
+tempfile = "3"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }

@@ -133,7 +133,7 @@ impl ManagerApi for Manager {
     fn torrent_on_iptal(&self, gid: &str) -> Result<()> {
         torrent::torrent_on_iptal(self, gid)
     }
-    fn torrent_dosyalari(&self, gid: &str) -> Result<Vec<Json>> {
+    fn torrent_dosyalari(&self, gid: &str) -> Result<Json> {
         torrent::torrent_dosyalari(self, gid)
     }
     fn torrent_dosya_secimini_kaydet(&self, gid: &str, indeksler: &[i64]) -> Result<Vec<i64>> {

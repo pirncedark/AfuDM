@@ -181,8 +181,9 @@ pub trait ManagerApi: Send + Sync {
     fn torrent_on_ekle(&self, source: &str) -> Result<String>;
     /// manager.py:1929
     fn torrent_on_iptal(&self, gid: &str) -> Result<()>;
-    /// manager.py:1977
-    fn torrent_dosyalari(&self, gid: &str) -> Result<Vec<Json>>;
+    /// manager.py:1977 — Python TorrentDosyaListesi: liste + hazir_degil/neden ozellikleri.
+    /// Donus: {"dosyalar": [...], "hazir_degil": bool, "neden": str, "gid": str}
+    fn torrent_dosyalari(&self, gid: &str) -> Result<Json>;
     /// manager.py:2036
     fn torrent_dosya_secimini_kaydet(&self, gid: &str, indeksler: &[i64]) -> Result<Vec<i64>>;
     /// manager.py:2054
