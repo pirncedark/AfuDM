@@ -25,7 +25,12 @@ pub struct Manager {
     pub torrent_state: Mutex<torrent::State>,
     pub video_state: Mutex<video::State>,
     pub butunluk_state: Mutex<butunluk::State>,
+    /// Indirme bitince cagrilir (Python manager._on_complete sonundaki otomasyon adimi).
+    /// Arguman: {"title","size","gid"}. Kabuk (app) otomasyon kuyrugunu buraya baglar.
+    pub tamamlandi_kancalari: Mutex<Vec<TamamlandiKancasi>>,
 }
+
+pub type TamamlandiKancasi = Box<dyn Fn(&Json) + Send + Sync>;
 
 impl Manager {
     pub fn new(store: Arc<dyn Store>, rpc: Arc<dyn Aria2>, ui: Arc<dyn UiBridge>, data_dir: PathBuf, app_dir: PathBuf) -> Self {
@@ -40,6 +45,13 @@ impl Manager {
             torrent_state: Mutex::new(Default::default()),
             video_state: Mutex::new(Default::default()),
             butunluk_state: Mutex::new(Default::default()),
+            tamamlandi_kancalari: Mutex::new(Vec::new()),
+        }
+    }
+
+    pub fn tamamlandi_kancasi_ekle(&self, kanca: TamamlandiKancasi) {
+        if let Ok(mut k) = self.tamamlandi_kancalari.lock() {
+            k.push(kanca);
         }
     }
 
