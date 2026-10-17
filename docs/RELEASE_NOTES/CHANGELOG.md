@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.8](https://github.com/pirncedark/AfuDM/compare/v2.9.7...v2.9.8) (2026-10-17)
+
+
+### Bug Fixes
+
+* **extension:** leave file:// downloads to the browser ([#117](https://github.com/pirncedark/AfuDM/issues/117)) ([477c91a](https://github.com/pirncedark/AfuDM/commit/477c91a84ad0e347d3cd159dd8cb658da821a577))
+
 ## [2.9.7](https://github.com/pirncedark/AfuDM/compare/v2.9.6...v2.9.7) (2026-10-17)
 
 
