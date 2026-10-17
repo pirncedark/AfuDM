@@ -5,3 +5,4 @@ app/gen/
 .cargo-home/
 /app/target/
 /app/node_modules/
+/tests_parity/rapor/

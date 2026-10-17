@@ -6,8 +6,12 @@
 mod boot;
 mod bridge;
 mod entegrasyon;
+mod guc;
+mod guncelleme_zamanla;
+mod izleme;
 mod tray;
 mod window;
+mod windows_rota;
 
 use std::sync::Arc;
 
@@ -20,7 +24,7 @@ fn main() {
             window::goster(app);
         }))
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![bridge::api_call])
+        .invoke_handler(tauri::generate_handler![bridge::api_call, bridge::sayfa_hazir])
         .setup(|app| {
             let app_dir = std::env::current_exe()?
                 .parent()

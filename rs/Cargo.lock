@@ -13,6 +13,7 @@ name = "afudm-api"
 version = "3.0.0"
 dependencies = [
  "afudm-db",
+ "afudm-engine",
  "afudm-types",
  "axum",
  "base64 0.22.1",
@@ -91,6 +92,7 @@ dependencies = [
 name = "afudm-extras"
 version = "3.0.0"
 dependencies = [
+ "afudm-api",
  "afudm-db",
  "afudm-engine",
  "afudm-types",

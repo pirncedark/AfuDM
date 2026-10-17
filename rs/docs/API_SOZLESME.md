@@ -27,8 +27,12 @@ Bu belge Python davranışını tanımlar; Rust'taki bilinen farklar en alttadı
   Okuma zaman aşımı 15 saniye. `GOVDE_HATASI`: 400 (bozuk/eksik/negatif uzunluk),
   408 (zaman aşımı), 413 (boyut aşımı).
 - Standart açık hata: `{"ok":false,"code":"GID_GEREKLI","message":"gid gerekli","error":"gid gerekli"}`.
-  Manager hatası Rust ortak sözleşmesine göre `{"ok":false,"error":"..."}`:
-  Invalid 400, NotFound 404, Engine 502, Unavailable 503, diğerleri 500.
+  Hata gövdesi Python sözleşmesiyle aynıdır (afudm-api `hata_yaniti`, g1/g2/h dahil):
+  `{"ok":false,"code","message","error"}`; `message` ve `error` aynı metindir.
+  Eşleme (Python `core/hata.py` hata_json): Invalid -> 400 `BAD_REQUEST`;
+  NotFound -> 400 `KAYIT_YOK` (Python KayitYok); Io -> 400 `IO`;
+  Unavailable -> 503 `KULLANILAMIYOR`; Engine/Db/Other -> 500 `INTERNAL` ve genel metin
+  `beklenmeyen bir sunucu hatasi olustu` (aria2/yt-dlp iç metni istemciye gitmez).
 - Korunan genel yol: 401 `GECERSIZ_TOKEN` / `gecersiz token`.
   `/indir`, `/dosya`, `/klasorler`: 401 `ANAHTAR_GEREKLI` / `anahtar gerekli`.
   Bilinmeyen yol: 404 `BILINMEYEN_YOL` / `bilinmeyen yol`.
@@ -48,8 +52,8 @@ Bu belge Python davranışını tanımlar; Rust'taki bilinen farklar en alttadı
 | GET `/torrent/dosyalar?gid=g` | T | Sorgu `gid` | `{"ok":true,"gid":"g","hazir_degil":false,"neden":"","dosyalar":[]}` | 400 `GID_GEREKLI`; Python manager hatası 400 |
 | GET `/torrent/metrik?gid=g` | T | Sorgu `gid` | `{"ok":true,"gid":"g"}` + torrent_metrikleri alanları | 400 `GID_GEREKLI`; Python manager hatası 400 |
 | GET `/klasorler` | T | Gövde yok | `{"ok":true,"ana":"C:\\Downloads","kategoriler":[{"anahtar":"video","ad":"Video"}],"acik":false}` | Manager/store hatası |
-| GET `/capabilities` | T | Gövde yok | `{"ok":true,"app":"AfuDM","api":1,"motorlar":{},"protokoller":["http","https","ftp","sftp","magnet","torrent"]}` + servis yetenek alanları | Servis hatası |
-| GET `/windows-integration` | T | Gövde yok | windows.status() sonucu, JSON nesnesi | 503 `KULLANILAMIYOR` |
+| GET `/capabilities` | T | Gövde yok | Store `api_capabilities` kaydı varsa o; yoksa Python varsayılanı: `{"ok":true,"app","surum","api":2,"kip":"headless","uzanti_surumu","motorlar","protokoller","turler","roller","ozellikler","sinirlar"}` | Store hatası (Store kaydı yokluğu 503 DEĞİL) |
+| GET `/windows-integration` | F3 | Gövde yok | App (Ekip F3) rotayı ekler; afudm-api'de rota YOK, bu yüzden 404 `BILINMEYEN_YOL` | — |
 | GET `/indir?gid=g` | T | Sorgu `gid` | 200; JSON yok, application/octet-stream dosya akışı | 400 `GID_GEREKLI`; 403 `HEDEF_DISARIDA`/`ERISIM_ENGEL`; 404 `BULUNAMADI`; 500 `AKIS_HATASI` |
 | GET `/dosya?gid=g&k=<gizli>` | Q | Sorgu `gid` | 200; JSON yok, dosya türüne uygun MIME ile akış | 400 `GID_GEREKLI`; 403 `HEDEF_DISARIDA`; 404 `DOSYA_YOK` |
 | POST `/add` | T | `{"url":"https://example.test/a.pdf","audio_only":false,"playlist":false}` | `{"ok":true,"id":7,"gid":"g"}` + manager.add sonucu | 400 doğrulama; 403 `HEDEF_DISARIDA` |
@@ -61,7 +65,7 @@ Bu belge Python davranışını tanımlar; Rust'taki bilinen farklar en alttadı
 | POST `/torrent/secim` | T | `{"gid":"g","indeksler":[1,"2",3.0]}` | `{"ok":true,"gid":"g","indeksler":[1,2,3]}` + manager sonucu | 400 `GID_GEREKLI`/`GECERSIZ_SECIM` |
 | POST `/seed/tazele` | T | `{"gid":"g"}` | `{"ok":true,"gid":"g"}` + seed_tazele sonucu | 400 `GID_GEREKLI` |
 | POST `/tracker/tara` | T | `{"gid":"g"}`; boş gid kabul edilir | `{"ok":true,"gid":"g"}` + tracker_tara sonucu | Manager hatası |
-| POST `/windows-integration` | T | `{"id":"...","action":"test"}` | windows.test/apply/remove sonucu | 503 `KULLANILAMIYOR`; geçersiz action doğrulama hatası |
+| POST `/windows-integration` | F3 | `{"id":"...","action":"test"}` | App (Ekip F3) tarafında; afudm-api'de rota yok (404) | — |
 | POST `/handoff/error` | T | `{"error":"Tarayıcı devredemedi"}` | `{"ok":true}` | Gövde hatası |
 | POST `/token/rotate` | T | `{}` | `{"ok":true,"rotated":true}`; eski token derhal geçersiz | 503 `KULLANILAMIYOR` (Python callback yoksa) |
 | GET `/_listener/ready` | T | Gövde yok | `{"ok":true}`; yalnız UI child | 401 veya 404 `{"ok":false}` |
@@ -139,7 +143,7 @@ iç alanları kendi ekip sözleşmelerinde tamamlanmalıdır; burada uydurma ala
 | Yöntem / yol | Kimlik | İstek | Yanıt | Hata |
 |---|---|---|---|---|
 | GET `/pair` | A, loopback ve açık eşleşme penceresi | Gövde yok | `{"ok":true,"token":"<gizli>"}` | 403 `ESLESME_YEREL_GEREKLI` / `ESLESME_KAPALI` |
-| GET `/m`, `/m/` | A | İsteğe bağlı `?k=<gizli>` | HTML mobil.html; JSON yok; no-store | 404 `SAYFA_YOK` |
+| GET `/m`, `/m/` | A | İsteğe bağlı `?k=<gizli>` | HTML mobil.html (exe'ye gömülü, rs/app/ui kaynağı); JSON yok; no-store | — (gömülü, 404 yok) |
 | GET `/manifest.webmanifest` | A | Gövde yok | application/manifest+json; no-cache | 404 `SAYFA_YOK` |
 | GET `/i18n.js` | A | Gövde yok | text/javascript; no-cache | 404 `SAYFA_YOK` |
 | GET `/sw.js` | A | Gövde yok | text/javascript; no-cache; Service-Worker-Allowed: / | 404 `SAYFA_YOK` |
@@ -161,8 +165,10 @@ imzası yalnız loopback sunar; ayrı web sunucusu H/app kapsamındadır.
 
 `ApiCtx` sözleşmesi şu bilgileri taşımıyor; E diğer ekip dosyalarını değiştirmedi:
 
-1. Yetenek servisi ve Windows entegrasyonu: capabilities geçici olarak Store
-   `api_capabilities` kaydından okunur; yoksa 503. Windows uçları 503 döner.
+1. Yetenek servisi: capabilities Store `api_capabilities` kaydını okur; kayıt
+   yoksa Python `servis.yetenekler()` varsayılanını üretir (503 yok). `surum` /
+   `uzanti_surumu` Rust derleme sürümüdür (CARGO_PKG_VERSION), Python'da 2.9.6.
+   Windows uçları afudm-api'de YOKTUR; F3 app tarafında ekler.
 2. TorrentDosyaListesi metadata'sı: ManagerApi Vec<Json> döndürdüğünden
    hazir_degil/neden bilgisi taşınamıyor; şimdilik false/boş döner.
 3. UI lifecycle quit/idle yan etkisi: UiBridge kapatma/uyku callback'i yok.

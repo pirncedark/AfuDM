@@ -849,3 +849,100 @@ fn video_isi_yinelenen_kontrolunde_canli_sayilir() {
     let bulunan = find_duplicate(&f.m, "https://ornek.test/v").unwrap();
     assert_eq!(bulunan.unwrap()["gid"], "yt:4");
 }
+
+#[test]
+fn dosya_adi_cozumlemesi_python_ile_ayni_sonuc_verir() {
+    use super::probe::{clean_title, guess_name, resolve_filename};
+    assert_eq!(
+        resolve_filename("https://x.test/a%20b.zip", None, None),
+        "a b.zip"
+    );
+    assert_eq!(
+        resolve_filename(
+            "https://x.test/a",
+            Some("attachment; filename=\"ham.txt\"; filename*=UTF-8''%C5%9Fi%20k.pdf"),
+            None
+        ),
+        "şi k.pdf"
+    );
+    assert_eq!(
+        resolve_filename(
+            "https://x.test/indir",
+            None,
+            Some("application/zip; charset=binary")
+        ),
+        "indir.zip"
+    );
+    assert_eq!(
+        resolve_filename("https://x.test/app-v1.12.0", None, None),
+        "app-v1.12.0"
+    );
+    assert_eq!(resolve_filename("https://x.test/CON", None, None), "_CON");
+    assert_eq!(resolve_filename("https://x.test/", None, None), "download");
+    assert_eq!(
+        resolve_filename("magnet:?xt=urn:btih:abc&dn=Film%2F2026", None, None),
+        "Film_2026"
+    );
+    assert_eq!(guess_name("https://x.test/a%20b.zip"), "a b.zip");
+    assert_eq!(clean_title("[METADATA]Ornek"), "Ornek");
+    assert_eq!(clean_title("Ornek"), "Ornek");
+}
+
+#[test]
+fn probe_url_info_yerel_sunucudan_basliklari_okur() {
+    use std::io::{Read, Write};
+    let dinleyici = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = dinleyici.local_addr().unwrap().port();
+    let sunucu = std::thread::spawn(move || {
+        let (mut akis, _) = dinleyici.accept().unwrap();
+        let mut istek = Vec::new();
+        let mut parca = [0u8; 1024];
+        while !istek.windows(4).any(|w| w == b"\r\n\r\n") {
+            let n = akis.read(&mut parca).unwrap();
+            if n == 0 {
+                break;
+            }
+            istek.extend_from_slice(&parca[..n]);
+        }
+        akis.write_all(
+            b"HTTP/1.1 200 OK\r\nContent-Disposition: attachment; filename*=UTF-8''ornek%20dosya.zip\r\nContent-Length: 12\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n",
+        )
+        .unwrap();
+    });
+    let f = Fixture::new();
+    let url = format!("http://127.0.0.1:{port}/indir");
+    let sonuc = probe_url_info(&f.m, &url).unwrap();
+    sunucu.join().unwrap();
+    assert_eq!(sonuc["ok"], true);
+    assert_eq!(sonuc["filename"], "ornek dosya.zip");
+    assert_eq!(sonuc["size"], 12);
+    assert_eq!(sonuc["resumable"], true);
+    assert_eq!(sonuc["final_url"], url.as_str());
+}
+
+#[test]
+fn probe_url_info_erisilemeyen_ve_http_disi_kaynaklar() {
+    let f = Fixture::new();
+    let kapali = probe_url_info(&f.m, "http://127.0.0.1:1/dosya.zip").unwrap();
+    assert_eq!(kapali["ok"], false);
+    assert_eq!(kapali["filename"], "dosya.zip");
+    let ftp = probe_url_info(&f.m, "ftp://x.test/a.zip").unwrap();
+    assert_eq!(ftp["ok"], false);
+    assert_eq!(ftp["filename"], "a.zip");
+    assert!(ftp["size"].is_null());
+}
+
+#[test]
+fn hiz_limiti_ve_gecmis_kaynaklar_ayarlara_gore_doner() {
+    let f = Fixture::new();
+    f.m.store.set("max_speed_kb", json!(500)).unwrap();
+    assert_eq!(hiz_limiti_kb(&f.m, None).unwrap(), 500);
+    f.m.store.set("hiz_profili", json!("snail")).unwrap();
+    f.m.store.set("snail_speed_kb", json!(100)).unwrap();
+    assert_eq!(hiz_limiti_kb(&f.m, None).unwrap(), 100);
+    f.m.store.set("hiz_profili", json!("turbo")).unwrap();
+    assert_eq!(hiz_limiti_kb(&f.m, None).unwrap(), 0);
+    let _ = f.add("gecmis");
+    let kaynaklar = gecmis_sources(&f.m, 10).unwrap();
+    assert!(kaynaklar.iter().any(|s| s == "https://example.test/gecmis"));
+}

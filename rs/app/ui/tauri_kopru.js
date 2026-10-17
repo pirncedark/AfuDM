@@ -25,11 +25,11 @@
     if (surukleme_alani(e.target)) invoke("pencere_buyut", []);
   });
 
-  // LinkGrabber: kabuk "afudm-linkgrabber" olayi yollar; DOM olayina cevirilir.
-  if (window.__TAURI__ && window.__TAURI__.event) {
-    window.__TAURI__.event.listen("afudm-linkgrabber", (e) =>
-      document.dispatchEvent(new CustomEvent("afudm-linkgrabber", { detail: e.payload })));
-  }
+  // LinkGrabber: kabuk bekleyen metni window.afudmLinkgrabber ile iletir; sayfa hazir olunca
+  // bekleyen varsa teslim edilir (Python window.events.loaded -> sayfa_hazir).
+  window.addEventListener("load", () => {
+    if (window.__TAURI__ && window.__TAURI__.core) window.__TAURI__.core.invoke("sayfa_hazir");
+  });
 
   // Arayuz pywebviewready olayini bekler; dinleyiciler kurulduktan sonra tetiklenir.
   setTimeout(() => window.dispatchEvent(new Event("pywebviewready")), 0);

@@ -58,6 +58,16 @@ impl IdleRpc {
         Ok(true)
     }
 
+    /// Python reliability.restart_engine: daemon'u durdur (oturum kaydedilir), yeniden baslat.
+    /// Manager ayni IdleRpc'yi tuttugu icin rpc referansi degismez; yalniz motor surecı yenilenir.
+    pub fn restart(&self) -> Result<()> {
+        let mut state = self.lock()?;
+        state.daemon.stop()?;
+        state.daemon.start(Duration::from_secs(20))?;
+        state.sleeping = false;
+        Ok(())
+    }
+
     pub(crate) fn invoke(&self, method: &str, params: Vec<Json>) -> Result<Json> {
         let mut state = self.lock()?;
         if state.sleeping {

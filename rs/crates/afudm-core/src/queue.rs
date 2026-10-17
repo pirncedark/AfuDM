@@ -3,6 +3,7 @@ mod dosya_adi;
 mod files;
 mod models;
 pub(crate) mod netcheck;
+mod probe;
 pub mod proxy;
 mod rules;
 mod settings;
@@ -373,7 +374,8 @@ fn live_statuses(m: &Manager) -> Result<Vec<Json>> {
     Ok(live)
 }
 
-fn find_duplicate(m: &Manager, source: &str) -> Result<Option<Json>> {
+/// Python Manager.find_duplicate: ayni is kuyrukta mi (canli kayit dondurur).
+pub fn find_duplicate(m: &Manager, source: &str) -> Result<Option<Json>> {
     let hash = dosya_adi::magnet_hash(source);
     let live = match live_statuses(m) {
         Ok(v) => Some(v),
@@ -972,4 +974,57 @@ pub(crate) fn tamamlandi(m: &Manager, title: &str, size: u64, gid: &str) {
             kanca(&yuk);
         }
     }
+}
+
+/// Python Manager.detect_kind (statik): torrent, video veya http.
+pub fn detect_kind(source: &str) -> &'static str {
+    dosya_adi::detect_kind(source)
+}
+
+/// Python Manager.is_supported_source (statik): motorun acabilecegi kaynak mi.
+pub fn is_supported_source(source: &str) -> bool {
+    dosya_adi::supported(source)
+}
+
+/// Python Manager.magnet_infohash (statik): magnet info hash (kucuk harf hex), yoksa bos.
+pub fn magnet_infohash(source: &str) -> String {
+    dosya_adi::magnet_hash(source)
+}
+
+/// Python Manager.guess_name (statik): kaynaktan guvenli dosya adi.
+pub fn guess_name(source: &str) -> String {
+    probe::guess_name(source)
+}
+
+/// Python Manager.clean_title (statik): "[METADATA]" ekini kaldirir.
+pub fn clean_title(title: &str) -> String {
+    probe::clean_title(title)
+}
+
+/// Python Manager.gecmis_sources: DB'deki tum kaynak adresleri (en fazla limit).
+pub fn gecmis_sources(m: &Manager, limit: usize) -> Result<Vec<String>> {
+    Ok(m.store
+        .list(None, limit)?
+        .iter()
+        .map(|r| text(&r["source"]).to_string())
+        .collect())
+}
+
+/// Python Manager.hiz_limiti_kb: aktif profile gore toplam hiz siniri (KB/s; 0 = sinirsiz).
+pub fn hiz_limiti_kb(m: &Manager, ayarlar: Option<&JsonMap>) -> Result<i64> {
+    let ayarlar = match ayarlar {
+        Some(a) => a.clone(),
+        None => m.store.all_settings()?,
+    };
+    Ok(settings::speed_limit(&ayarlar))
+}
+
+/// Python Manager.apply_settings: ayarlari aria2 global seceneklerine uygular.
+pub fn apply_settings(m: &Manager) -> Result<()> {
+    settings::apply(m)
+}
+
+/// Python probe_url_info: HEAD ve gerekirse 1 baytlik Range GET ile dosya adi, boyut, tur.
+pub fn probe_url_info(_m: &Manager, url: &str) -> Result<Json> {
+    probe::probe_url_info(url)
 }

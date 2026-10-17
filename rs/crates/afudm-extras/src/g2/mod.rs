@@ -43,13 +43,9 @@ fn hata(durum: u16, kod: &str, mesaj: &str) -> Response {
         .into_response()
 }
 
+/// Ortak Python uyumlu hata govdesi (afudm-api::hata_yaniti).
 fn afu_hatasi(e: AfuError) -> Response {
-    match e {
-        AfuError::Invalid(m) => hata(400, "BAD_REQUEST", &m),
-        AfuError::NotFound(m) => hata(404, "NOT_FOUND", &m),
-        AfuError::Unavailable(m) => hata(503, "KULLANILAMIYOR", &m),
-        other => hata(500, "HATA", &other.to_string()),
-    }
+    afudm_api::hata_yaniti(&e)
 }
 
 fn govde(bytes: &Bytes) -> std::result::Result<Json, &'static str> {

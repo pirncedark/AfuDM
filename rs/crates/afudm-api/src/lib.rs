@@ -36,16 +36,12 @@ pub fn router(ctx: ApiCtx) -> Router {
         .route("/torrent/dosyalar", get(torrent_files))
         .route("/torrent/metrik", get(torrent_metrics))
         .route("/capabilities", get(capabilities))
-        .route(
-            "/windows-integration",
-            get(windows_unavailable).post(windows_unavailable),
-        )
         .route("/indir", get(transfer::download))
         .route("/dosya", get(transfer::phone_download))
         .route("/add_blob", post(transfer::add_blob))
         .route("/add", post(add))
         .route("/control", post(control))
-        .route("/settings", post(settings))
+        .route("/settings", post(settings).get(bilinmeyen_yol))
         .route("/renew", post(renew))
         .route("/mode", post(mode))
         .route("/torrent/secim", post(torrent_select))
@@ -54,7 +50,7 @@ pub fn router(ctx: ApiCtx) -> Router {
         .route("/handoff/error", post(handoff_error))
         .route("/token/rotate", post(rotate))
         .route("/_listener/{action}", get(child_lifecycle))
-        .fallback(|| async { fault(404, "BILINMEYEN_YOL", "bilinmeyen yol") })
+        .fallback(bilinmeyen_yol)
         .with_state(ctx)
 }
 
@@ -134,19 +130,38 @@ fn fault(status: u16, code: &str, message: &str) -> Response {
     )
         .into_response()
 }
-fn error(e: AfuError) -> Response {
-    let status = match &e {
-        AfuError::Invalid(_) => 400,
-        AfuError::NotFound(_) => 404,
-        AfuError::Engine(_) => 502,
-        AfuError::Unavailable(_) => 503,
-        _ => 500,
+/// Python `GET` icin tanimsiz yol: 404 `BILINMEYEN_YOL` (Python do_GET/do_POST else dali).
+pub async fn bilinmeyen_yol() -> Response {
+    fault(404, "BILINMEYEN_YOL", "bilinmeyen yol")
+}
+/// Python `api/server.py` ve `core/hata.py` `hata_json` ile ayni hata govdesi:
+/// {"ok":false,"code","message","error"} (`message` ve `error` ayni metin).
+/// Durum ve metin Python eslemesini izler: kayit yok 400 KAYIT_YOK; motor (aria2/yt-dlp),
+/// veritabani ve beklenmeyen hatalar 500 INTERNAL ile genel metin doner (ic metin sizdirilmaz).
+pub fn hata_yaniti(e: &AfuError) -> Response {
+    let (durum, kod, mesaj) = match e {
+        AfuError::Invalid(m) => (StatusCode::BAD_REQUEST, "BAD_REQUEST", m.clone()),
+        AfuError::NotFound(m) => (StatusCode::BAD_REQUEST, "KAYIT_YOK", m.clone()),
+        AfuError::Unavailable(m) => (StatusCode::SERVICE_UNAVAILABLE, "KULLANILAMIYOR", m.clone()),
+        AfuError::Io(_) => (
+            StatusCode::BAD_REQUEST,
+            "IO",
+            "dosya islemi basarisiz".to_string(),
+        ),
+        AfuError::Engine(_) | AfuError::Db(_) | AfuError::Other(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "INTERNAL",
+            "beklenmeyen bir sunucu hatasi olustu".to_string(),
+        ),
     };
     (
-        StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-        Json(json!({"ok":false,"error":e.to_string()})),
+        durum,
+        Json(json!({"ok":false,"code":kod,"message":mesaj,"error":mesaj})),
     )
         .into_response()
+}
+fn error(e: AfuError) -> Response {
+    hata_yaniti(&e)
 }
 fn merged(value: Value) -> Response {
     let mut obj = JsonMap::from_iter([("ok".into(), Value::Bool(true))]);
@@ -236,11 +251,15 @@ async fn snapshot(State(ctx): State<ApiCtx>) -> Response {
     result(ctx.manager.snapshot())
 }
 async fn probe(State(ctx): State<ApiCtx>, req: Request) -> Response {
-    result(
-        ctx.manager
-            .probe_video(q(&query(&req), "url"))
-            .map(|v| json!({"info":v})),
-    )
+    // Python GET /probe: her hata (bos url dahil) 400 ile doner; kod hata_json eslemesinden gelir.
+    match ctx.manager.probe_video(q(&query(&req), "url")) {
+        Ok(v) => merged(json!({"info":v})),
+        Err(e) => {
+            let mut yanit = hata_yaniti(&e);
+            *yanit.status_mut() = StatusCode::BAD_REQUEST;
+            yanit
+        }
+    }
 }
 async fn peers(State(ctx): State<ApiCtx>, req: Request) -> Response {
     result(
@@ -291,14 +310,62 @@ async fn folders(State(ctx): State<ApiCtx>) -> Response {
         )
     })())
 }
-async fn windows_unavailable() -> Response {
-    fault(503, "KULLANILAMIYOR", "Windows entegrasyonu kullanilamiyor")
+const YETENEK_OZELLIKLER: &[&str] = &[
+    "scheduler",
+    "hiz_profilleri",
+    "renew",
+    "ozel_basliklar",
+    "cerez",
+    "zamanlama",
+    "cli",
+    "api",
+    "kategori_klasorleri",
+    "proxy",
+    "sistem_proxy",
+    "checksum",
+    "canli_ayar",
+    "headless",
+    "servis_katmani",
+    "web_panel",
+    "roller",
+    "erisim_anahtarlari",
+    "anahtar_rotasyonu",
+    "aktif_istemciler",
+    "hiz_sinirlama",
+    "origin_denetimi",
+    "sunucu_profilleri",
+    "tek_ornek_kilidi",
+];
+/// Python `servis.yetenekler()` varsayilani (Store kaydi yoksa).
+fn yetenek_varsayilani(ctx: &ApiCtx) -> Value {
+    let surum = env!("CARGO_PKG_VERSION");
+    json!({
+        "ok": true,
+        "app": "AfuDM",
+        "surum": surum,
+        "api": 2,
+        "kip": "headless",
+        "uzanti_surumu": surum,
+        "motorlar": afudm_engine::engines::durum(&ctx.app_dir),
+        "protokoller": ["http", "https", "ftp", "sftp", "magnet", "torrent"],
+        "turler": ["http", "video", "torrent"],
+        "roller": ["yonetici", "salt_okur"],
+        "ozellikler": YETENEK_OZELLIKLER,
+        "sinirlar": {
+            "kaynak": 8192,
+            "baslik": 200,
+            "user_agent": 512,
+            "ozel_baslik": 40,
+            "proxy": 1024
+        }
+    })
 }
 async fn capabilities(State(ctx): State<ApiCtx>) -> Response {
-    // The app can publish its actual service capabilities; never claim missing engines.
+    // Store'da uygulamanin yayinladigi kayit varsa o doner; yoksa Python varsayilani. 503 yok.
     match ctx.store.get("api_capabilities") {
         Ok(Some(v)) => Json(v).into_response(),
-        _ => fault(503, "KULLANILAMIYOR", "Yetenek bilgisi kullanilamiyor"),
+        Ok(None) => Json(yetenek_varsayilani(&ctx)).into_response(),
+        Err(e) => error(e),
     }
 }
 async fn add(State(ctx): State<ApiCtx>, req: Request) -> Response {

@@ -18,16 +18,28 @@ use afudm_types::{AfuError, ApiCtx, Json};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::post;
 use axum::{Json as AxumJson, Router};
-use serde_json::json;
 
+/// Python api/server.py: /reliability/* yalniz POST (do_POST); GET 404 BILINMEYEN_YOL.
 pub fn router(ctx: ApiCtx) -> Router {
     Router::new()
-        .route("/reliability/integrity", get(integrity_rota))
-        .route("/reliability/backup", get(backup_rota))
-        .route("/reliability/diagnostics-preview", get(tani_onizleme_rota))
-        .route("/reliability/diagnostics-export", get(tani_disa_aktar_rota))
+        .route(
+            "/reliability/integrity",
+            post(integrity_rota).get(afudm_api::bilinmeyen_yol),
+        )
+        .route(
+            "/reliability/backup",
+            post(backup_rota).get(afudm_api::bilinmeyen_yol),
+        )
+        .route(
+            "/reliability/diagnostics-preview",
+            post(tani_onizleme_rota).get(afudm_api::bilinmeyen_yol),
+        )
+        .route(
+            "/reliability/diagnostics-export",
+            post(tani_disa_aktar_rota).get(afudm_api::bilinmeyen_yol),
+        )
         .with_state(ctx)
 }
 
@@ -58,20 +70,9 @@ fn yanit(sonuc: afudm_types::Result<Json>) -> Response {
     }
 }
 
-/// afudm-api ile ayni hata biçimi: {"ok": false, "error": "..."}.
+/// afudm-api ile ayni Python uyumlu hata govdesi ({ok,code,message,error}).
 fn hata_yaniti(e: AfuError) -> Response {
-    let durum = match &e {
-        AfuError::Invalid(_) => StatusCode::BAD_REQUEST,
-        AfuError::NotFound(_) => StatusCode::NOT_FOUND,
-        AfuError::Engine(_) => StatusCode::BAD_GATEWAY,
-        AfuError::Unavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
-        _ => StatusCode::INTERNAL_SERVER_ERROR,
-    };
-    (
-        durum,
-        AxumJson(json!({"ok": false, "error": e.to_string()})),
-    )
-        .into_response()
+    afudm_api::hata_yaniti(&e)
 }
 
 /// Testler icin yerel HTTP sahte sunucusu (gercek internet kullanilmaz).

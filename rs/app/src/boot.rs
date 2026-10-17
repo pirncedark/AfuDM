@@ -1,8 +1,8 @@
 //! Motor acilis sirasi (Python: app.py main / core/manager.py):
-//! 0. bekleyen geri yukleme (restore_bekleyen.db -> afudm.db), cerez artiklari
-//! 1. veri klasoru  2. SqliteStore  3. Aria2Daemon -> IdleRpc
-//! 4. Manager (+ start, tamamlandi kancasi: otomasyon)  5. ApiCtx
-//! 6. with_auth(router U g1 U g2 U h)  7. serve(port)  8. api_endpoint.json
+//! bekleyen geri yukleme (restore_bekleyen.db -> afudm.db), cerez artiklari;
+//! veri klasoru, SqliteStore, Aria2Daemon -> IdleRpc;
+//! Manager (+ start, tamamlandi kancasi: otomasyon), ApiCtx;
+//! with_auth(router U g1 U g2 U h), serve(port), api_endpoint.json.
 //! Calisma arka plan thread'inde; pencere/tepsi beklemez.
 
 use std::fs;
@@ -105,6 +105,8 @@ fn calistir(kabuk: &Arc<Kabuk>) -> Result<(), String> {
         app_dir: app_dir.clone(),
         ui,
     };
+    // Python _on_complete: kapatma / uyku adimi (tamamlanma kancasi).
+    manager.tamamlandi_kancasi_ekle(crate::guc::bitis_kancasi(ctx.clone()));
     let _ = kabuk.ctx.set(ctx.clone());
 
     // Tek eklenti servisi: HTTP ve kopru ayni ornegi kullanir.
@@ -114,13 +116,18 @@ fn calistir(kabuk: &Arc<Kabuk>) -> Result<(), String> {
         eklenti: eklenti.clone(),
         guncelleme,
         otomasyon,
-        rpc: idle.clone() as Arc<dyn Aria2>,
+        rpc: idle.clone(),
+        core: manager.clone(),
     });
+
+    crate::guncelleme_zamanla::baslat(kabuk.clone());
+    crate::izleme::baslat(kabuk.clone());
 
     let yonlendirici = router(ctx.clone())
         .merge(afudm_extras::g1::router(ctx.clone()))
         .merge(afudm_extras::g2::router_with(ctx.clone(), eklenti))
-        .merge(afudm_extras::h::router(ctx.clone()));
+        .merge(afudm_extras::h::router(ctx.clone()))
+        .merge(crate::windows_rota::router(ctx.clone()));
     let uygulama = with_auth(yonlendirici, ctx.clone());
 
     let runtime = tokio::runtime::Builder::new_multi_thread()

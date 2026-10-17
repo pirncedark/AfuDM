@@ -136,19 +136,72 @@ async fn add_control_torrent_and_error_mapping() {
         .0,
         400
     );
-    assert_eq!(
-        request(&ctx, "GET", "/probe?url=bad", "", true).await.0,
-        502
-    );
-    for (error, status) in [
-        (AfuError::Invalid("x".into()), 400),
-        (AfuError::NotFound("x".into()), 404),
-        (AfuError::Engine("x".into()), 502),
-        (AfuError::Unavailable("x".into()), 503),
-        (AfuError::Other("x".into()), 500),
+    // Python /probe: her hata 400; motor hatasi kodu INTERNAL ve genel metin.
+    let (status, body) = request(&ctx, "GET", "/probe?url=bad", "", true).await;
+    assert_eq!(status, 400);
+    assert_eq!(body["code"], "INTERNAL");
+    assert_eq!(body["message"], body["error"]);
+    for (error, status, kod) in [
+        (AfuError::Invalid("x".into()), 400, "BAD_REQUEST"),
+        (AfuError::NotFound("x".into()), 400, "KAYIT_YOK"),
+        (AfuError::Engine("x".into()), 500, "INTERNAL"),
+        (AfuError::Unavailable("x".into()), 503, "KULLANILAMIYOR"),
+        (AfuError::Io("x".into()), 400, "IO"),
+        (AfuError::Other("x".into()), 500, "INTERNAL"),
     ] {
-        assert_eq!(super::error(error).status().as_u16(), status);
+        let (durum, govde) = govde_al(super::hata_yaniti(&error)).await;
+        assert_eq!(durum, status, "{kod} durum kodu");
+        assert_eq!(govde["ok"], false);
+        assert_eq!(govde["code"], kod);
+        assert_eq!(govde["message"], govde["error"]);
     }
+}
+
+async fn govde_al(yanit: Response) -> (u16, Value) {
+    let durum = yanit.status().as_u16();
+    let bytes = axum::body::to_bytes(yanit.into_body(), 1024 * 1024)
+        .await
+        .unwrap();
+    (durum, serde_json::from_slice(&bytes).unwrap())
+}
+
+#[tokio::test]
+async fn python_uyumlu_rotalar_ve_yetenekler() {
+    let (_dir, ctx, _) = fixture();
+    // GET /settings: Python gibi 404 BILINMEYEN_YOL (POST ayni kalir).
+    let (status, body) = request(&ctx, "GET", "/settings", "", true).await;
+    assert_eq!(status, 404);
+    assert_eq!(body["code"], "BILINMEYEN_YOL");
+    assert_eq!(body["message"], "bilinmeyen yol");
+    assert_eq!(body["error"], "bilinmeyen yol");
+    // /windows-integration afudm-api'den kaldirildi; F3 app tarafinda ekler.
+    let (status, _) = request(&ctx, "GET", "/windows-integration", "", true).await;
+    assert_eq!(status, 404);
+    // /capabilities: Store kaydi yoksa 200 ve Python varsayilani (503 yok).
+    let (status, body) = request(&ctx, "GET", "/capabilities", "", true).await;
+    assert_eq!(status, 200);
+    assert_eq!(body["ok"], true);
+    assert_eq!(body["app"], "AfuDM");
+    assert_eq!(body["api"], 2);
+    assert_eq!(body["kip"], "headless");
+    assert_eq!(body["roller"], json!(["yonetici", "salt_okur"]));
+    assert_eq!(body["sinirlar"]["kaynak"], 8192);
+    for anahtar in [
+        "surum",
+        "uzanti_surumu",
+        "motorlar",
+        "protokoller",
+        "turler",
+        "ozellikler",
+    ] {
+        assert!(body.get(anahtar).is_some(), "{anahtar} eksik");
+    }
+    // Hata govdesi: bos /renew -> code, message ve error birlikte.
+    let (status, body) = request(&ctx, "POST", "/renew", "{}", true).await;
+    assert_eq!(status, 400);
+    assert_eq!(body["code"], "BAD_REQUEST");
+    assert_eq!(body["message"], "gid ve url gerekli");
+    assert_eq!(body["error"], "gid ve url gerekli");
 }
 #[tokio::test]
 async fn cors_and_body_limit() {

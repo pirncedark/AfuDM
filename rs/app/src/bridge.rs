@@ -8,14 +8,16 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 
 use afudm_extras::g1::{guncelleme::Guncelleme, reliability};
+use afudm_engine::IdleRpc;
 use afudm_extras::g1::automation::Otomasyon;
 use afudm_extras::g2::eklenti_servis::EklentiServisi;
 use afudm_types::{Aria2, ApiCtx, Json, JsonMap, ManagerApi, UiBridge};
 use serde_json::json;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::{entegrasyon, window::{self, ANA}};
@@ -77,6 +79,27 @@ pub struct TauriUi {
     app: AppHandle,
     sayac: Mutex<i64>,
     bekleyen: Mutex<BTreeMap<i64, Bekleyen>>,
+    pub lg: Arc<LinkGrabberDurum>,
+}
+
+/// LinkGrabber teslimi (Python linkgrabber_devret + sayfa_hazir): metin, UI yuklenene dek bekler.
+pub struct LinkGrabberDurum {
+    bekleyen: Mutex<Option<(String, bool)>>,
+    hazir: AtomicBool,
+}
+
+/// Bekleyen LinkGrabber metnini ana pencereye `window.afudmLinkgrabber(metin, dosya)` ile iletir.
+fn lg_teslim_et(app: &AppHandle, lg: &LinkGrabberDurum) {
+    if !lg.hazir.load(Ordering::SeqCst) {
+        return;
+    }
+    let Some((metin, dosya)) = kilit(&lg.bekleyen).take() else {
+        return;
+    };
+    if let Some(w) = app.get_webview_window(ANA) {
+        let js = format!("window.afudmLinkgrabber({}, {})", json!(metin), dosya);
+        let _ = w.eval(&js);
+    }
 }
 
 impl TauriUi {
@@ -85,6 +108,10 @@ impl TauriUi {
             app,
             sayac: Mutex::new(0),
             bekleyen: Mutex::new(BTreeMap::new()),
+            lg: Arc::new(LinkGrabberDurum {
+                bekleyen: Mutex::new(None),
+                hazir: AtomicBool::new(false),
+            }),
         }
     }
 
@@ -95,7 +122,7 @@ impl TauriUi {
         }
     }
 
-    fn listele(&self) -> Vec<Json> {
+    pub(crate) fn listele(&self) -> Vec<Json> {
         kilit(&self.bekleyen)
             .iter()
             .map(|(kimlik, b)| {
@@ -141,12 +168,13 @@ impl UiBridge for TauriUi {
     }
 
     fn open_linkgrabber(&self, metin: &str, uyari: bool) -> bool {
+        *kilit(&self.lg.bekleyen) = Some((metin.to_string(), uyari));
         let app = self.app.clone();
-        let yuk = json!({"metin": metin, "uyari": uyari});
+        let lg = self.lg.clone();
         self.app
             .run_on_main_thread(move || {
                 window::goster(&app);
-                let _ = app.emit("afudm-linkgrabber", yuk);
+                lg_teslim_et(&app, &lg);
             })
             .is_ok()
     }
@@ -185,7 +213,94 @@ pub struct Ek {
     pub eklenti: EklentiServisi,
     pub guncelleme: Arc<Guncelleme>,
     pub otomasyon: Arc<Otomasyon>,
-    pub rpc: Arc<dyn Aria2>,
+    pub rpc: Arc<IdleRpc>,
+    /// queue::probe_url_info ve guess_name somut Manager ister (ApiCtx dyn tutar).
+    pub core: Arc<afudm_core::Manager>,
+}
+
+/// Python kaydet.KATEGORI_KLASORU anahtarlari.
+const KATEGORILER: [&str; 9] = [
+    "telefon", "video", "muzik", "belge", "program", "arsiv", "resim", "torrent", "genel",
+];
+
+/// Python app.kaydet_bilgi: indirme penceresi icin kind/kategori/klasor bilgisi.
+fn kaydet_bilgi(c: &ApiCtx, url: &str, dosya_adi: &str, kind: &str) -> Sonuc {
+    let url = url.trim();
+    let kind = if !kind.is_empty() {
+        kind.to_string()
+    } else if !url.is_empty() {
+        afudm_core::queue::detect_kind(url).to_string()
+    } else {
+        String::new()
+    };
+    let kategori = if url.is_empty() {
+        "genel".to_string()
+    } else {
+        afudm_db::kaydet::kategori_tahmin(url, &kind, dosya_adi)
+    };
+    let ana = c.manager.current_download_dir()?;
+    let ad = if !url.is_empty() && kind == "http" {
+        afudm_core::queue::guess_name(url)
+    } else {
+        String::new()
+    };
+    let son_klasor = match c.store.get("son_klasor")? {
+        Some(Json::Object(m)) if m.get("ana").and_then(Json::as_str) == Some(ana.as_str()) => {
+            m.get("yol").and_then(Json::as_str).unwrap_or("").to_string()
+        }
+        _ => String::new(),
+    };
+    let klasor_ler = KATEGORILER
+        .iter()
+        .map(|k| ((*k).to_string(), json!(afudm_db::kaydet::kategori_klasoru(&ana, k))))
+        .collect::<JsonMap>();
+    Ok(json!({
+        "ok": true,
+        "kind": kind,
+        "kategori": kategori,
+        "video_quality": c.store.get("video_quality")?.unwrap_or(json!("best")),
+        "dosya_adi": ad,
+        "ana": ana,
+        "son_klasor": son_klasor,
+        "kategori_klasorleri": c.store.get("kategori_klasorleri")?.is_some_and(|v| truthy(&v)),
+        "klasorler": klasor_ler,
+    }))
+}
+
+fn truthy(v: &Json) -> bool {
+    match v {
+        Json::Bool(b) => *b,
+        Json::Number(n) => n.as_f64().is_some_and(|f| f != 0.0),
+        Json::String(s) => !s.is_empty(),
+        Json::Array(a) => !a.is_empty(),
+        Json::Object(o) => !o.is_empty(),
+        Json::Null => false,
+    }
+}
+
+/// Python app.probe_link: HTTP(S) icin HEAD + Range GET ile ad/boyut/tur.
+fn probe_link(k: &Kabuk, url: &str) -> Json {
+    let url = url.trim();
+    let Some(e) = k.ek.get() else {
+        return motor_hazir_degil();
+    };
+    if !(url.to_lowercase().starts_with("http://") || url.to_lowercase().starts_with("https://")) {
+        return json!({"ok": false});
+    }
+    match afudm_core::queue::probe_url_info(&e.core, url) {
+        Ok(v) => {
+            let ad = v.get("filename").and_then(Json::as_str).unwrap_or("").to_string();
+            json!({
+                "ok": v.get("ok").and_then(Json::as_bool).unwrap_or(false),
+                "filename": ad,
+                "size": v.get("size").cloned().unwrap_or(Json::Null),
+                "content_type": v.get("content_type").cloned().unwrap_or(Json::Null),
+                "kategori": afudm_db::kaydet::kategori_tahmin(url, "http", &ad),
+                "resumable": v.get("resumable").and_then(Json::as_bool).unwrap_or(false),
+            })
+        }
+        Err(err) => hata(err.to_string()),
+    }
 }
 
 /// Tauri state: pencere, motor baglantisi ve boot durumu.
@@ -248,7 +363,7 @@ fn ek_ctx_cagri(k: &Kabuk, f: impl FnOnce(&Ek, &ApiCtx) -> Sonuc) -> Json {
 }
 
 /// Snapshot'ta aktif (status == "active") bir indirme var mi; guncelleme uygulamayi engeller.
-fn aktif_var(v: &Json) -> bool {
+pub(crate) fn aktif_var(v: &Json) -> bool {
     match v {
         Json::Object(m) => {
             m.get("status").and_then(Json::as_str) == Some("active") || m.values().any(aktif_var)
@@ -364,6 +479,112 @@ fn windows_test(ident: &str) -> Json {
         "protocol" => json!({"ok": entegrasyon::protokol_kayitli(), "registered": entegrasyon::protokol_kayitli()}),
         _ => henuz_yok(),
     }
+}
+
+fn kayit_bulunamadi() -> String {
+    "kayıt bulunamadı".into()
+}
+
+/// Python app.settings_save / ayarlari_dogrula_kaydet (hata ayrintisi yok: update_settings
+/// tek hata dondurur; Python'daki alan bazli hatalar burada uretilmez).
+fn ayar_kaydet(c: &ApiCtx, payload: &JsonMap) -> Sonuc {
+    match c.manager.update_settings(payload) {
+        Ok(kayit) => Ok(json!({"ok": true, "hatalar": [], "ayarlar": kayit, "settings": kayit})),
+        Err(_) => Ok(json!({
+            "ok": false,
+            "hatalar": [{"alan": "_genel", "mesaj_anahtari": "err.invalidValue"}],
+            "ayarlar": c.store.all_settings()?,
+        })),
+    }
+}
+
+/// Python item_yolu: kayit icin kaynak adres ve diskteki tam yol.
+fn item_yolu(c: &ApiCtx, gid: &str) -> Sonuc {
+    let Some(row) = c.store.by_gid(gid)? else {
+        return Ok(hata(kayit_bulunamadi()));
+    };
+    let mut klasor = row
+        .get("dest_dir")
+        .and_then(Json::as_str)
+        .filter(|d| !d.is_empty())
+        .map(String::from)
+        .unwrap_or(c.manager.current_download_dir()?);
+    let mut ad = row.get("filename").and_then(Json::as_str).unwrap_or("").to_string();
+    if let Some(hedef) = c.manager.resolve_item_path(gid)? {
+        if let (Some(p), Some(n)) = (hedef.parent(), hedef.file_name()) {
+            klasor = p.display().to_string();
+            ad = n.to_string_lossy().into_owned();
+        }
+    }
+    let yol = if ad.is_empty() { klasor.clone() } else { PathBuf::from(&klasor).join(&ad).display().to_string() };
+    Ok(json!({
+        "ok": true,
+        "url": row.get("source").and_then(Json::as_str).unwrap_or(""),
+        "klasor": klasor,
+        "ad": ad,
+        "yol": yol,
+    }))
+}
+
+/// Python dosya_ac: dosya varsa kendi programiyla, yoksa klasoru acar (Explorer).
+fn dosya_ac(c: &ApiCtx, gid: &str) -> Sonuc {
+    if c.store.by_gid(gid)?.is_none() {
+        return Ok(hata(kayit_bulunamadi()));
+    }
+    let hedef = c.manager.resolve_item_path(gid)?;
+    match hedef {
+        Some(yol) if yol.is_file() => gezgin_ac(&yol, false),
+        _ => {
+            let klasor = c.manager.current_download_dir()?;
+            gezgin_ac(Path::new(&klasor), false);
+        }
+    }
+    Ok(json!({"ok": true}))
+}
+
+/// Python chrome_kurulum.panoya_kopyala: `clip` UTF-16LE girdi ile.
+fn panoya_yaz(metin: &str) -> bool {
+    use std::io::Write;
+    let mut cocuk = match hidden_cmd("clip").stdin(std::process::Stdio::piped()).spawn() {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    if let Some(mut girdi) = cocuk.stdin.take() {
+        let bayt: Vec<u8> = metin.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        let _ = girdi.write_all(&bayt);
+    }
+    cocuk.wait().map(|s| s.success()).unwrap_or(false)
+}
+
+/// Python clipboard.read_text: pano metni; bos pano bos metin.
+fn panodan_oku() -> Json {
+    let cikti = hidden_cmd("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Clipboard -Raw",
+        ])
+        .output();
+    match cikti {
+        Ok(o) if o.status.success() => json!({
+            "ok": true,
+            "metin": String::from_utf8_lossy(&o.stdout).trim_end_matches(['\r', '\n']),
+        }),
+        Ok(o) => hata(String::from_utf8_lossy(&o.stderr).trim().chars().take(200).collect::<String>()),
+        Err(e) => hata(e.to_string()),
+    }
+}
+
+/// Konsol penceresi acmayan surec (CREATE_NO_WINDOW).
+fn hidden_cmd(program: &str) -> Command {
+    let mut komut = Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        komut.creation_flags(0x0800_0000);
+    }
+    komut
 }
 
 /// Tek giris noktasi. Motor/store cagrilari `spawn_blocking` icinde calisir.
@@ -558,17 +779,24 @@ fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Json {
             Some(c) => reliability::backups(&c.data_dir),
             None => motor_hazir_degil(),
         },
-        "reliability_diagnostics_preview" => ctx_cagri(k, |c| reliability::diagnostics_preview(&*c.store)),
+        "reliability_diagnostics_preview" => {
+            ctx_cagri(k, |c| reliability::diagnostics_preview(&*c.store, &c.app_dir))
+        }
         "reliability_diagnostics_export" => {
-            ctx_cagri(k, |c| reliability::diagnostics_export(&*c.store, &c.data_dir))
+            ctx_cagri(k, |c| reliability::diagnostics_export(&*c.store, &c.data_dir, &c.app_dir))
         }
         "reliability_restore" => ctx_cagri(k, |c| reliability::restore(&*c.store, &c.data_dir, s(a, 0))),
         "reliability_health" => match k.ek.get() {
             Some(e) => json!({"ok": true, "rpc_alive": e.rpc.alive(), "uyku": e.rpc.sleeping()}),
             None => motor_hazir_degil(),
         },
-        // Motoru yeniden baslatmak icin IdleRpc'de daemon'a erisim/API yok (A ekibi).
-        "reliability_restart_engine" => henuz_yok(),
+        "reliability_restart_engine" => match k.ek.get() {
+            Some(e) => match e.rpc.restart() {
+                Ok(()) => json!({"ok": e.rpc.alive(), "message": "motor yeniden baslatildi"}),
+                Err(err) => hata(err.to_string()),
+            },
+            None => motor_hazir_degil(),
+        },
 
         // --- guncelleme (G1) ---
         "guncelleme_kontrol" => match k.ek.get() {
@@ -621,8 +849,14 @@ fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Json {
         }),
         "torrent_dosyalari" => motor_cagri(k, |m| {
             let gid = s(a, 0);
-            m.torrent_dosyalari(gid).map(|d| {
-                json!({"ok": true, "gid": gid, "hazir_degil": false, "neden": "", "dosyalar": d})
+            m.torrent_dosyalari(gid).map(|v| {
+                json!({
+                    "ok": true,
+                    "gid": v.get("gid").cloned().unwrap_or(json!(gid)),
+                    "hazir_degil": v.get("hazir_degil").and_then(Json::as_bool).unwrap_or(false),
+                    "neden": v.get("neden").cloned().unwrap_or(json!("")),
+                    "dosyalar": v.get("dosyalar").cloned().unwrap_or(json!([])),
+                })
             })
         }),
         "torrent_secimi_ayarla" => motor_cagri(k, |m| m.torrent_secimi_ayarla(s(a, 0), &sayilar(a, 1))),
@@ -650,8 +884,38 @@ fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Json {
         }),
         "retry" => motor_cagri(k, |m| m.retry(n(a, 0))),
 
-        // Bagli degil: kaydet_bilgi/probe_link (afudm-core detect_kind/probe pub(super)),
-        // G/H ekleri (router'lari bos), eklenti, sunucu, telefon, paylasim.
+        "kaydet_bilgi" => match k.ctx.get() {
+            Some(c) => cevap(kaydet_bilgi(c, s(a, 0), s(a, 1), s(a, 2))),
+            None => motor_hazir_degil(),
+        },
+        "probe_link" => probe_link(k, s(a, 0)),
+        "settings_save" => ctx_cagri(k, |c| {
+            ayar_kaydet(c, &a.first().and_then(Json::as_object).cloned().unwrap_or_default())
+        }),
+        "clear_finished" => ctx_cagri(k, |c| {
+            c.store.clear_finished().map(|n| json!({"ok": true, "removed": n}))
+        }),
+        "loglar" => ctx_cagri(k, |c| {
+            c.store.recent_events(50, s(a, 0)).map(|e| json!({"ok": true, "events": e}))
+        }),
+        "link_yenile" => motor_cagri(k, |m| m.renew(s(a, 0), s(a, 1), None, None, None)),
+        "automation_jobs" => ctx_cagri(k, |c| {
+            c.store.automation_jobs(s(a, 0), 200).map(|j| json!({"ok": true, "jobs": j}))
+        }),
+        "rules_list" => ctx_cagri(k, |c| c.store.rules_list().map(|r| json!({"ok": true, "rules": r}))),
+        "item_yolu" => ctx_cagri(k, |c| item_yolu(c, s(a, 0))),
+        "dosya_ac" => ctx_cagri(k, |c| dosya_ac(c, s(a, 0))),
+        "panoya_kopyala" => {
+            let metin = s(a, 0);
+            if metin.is_empty() {
+                json!({"ok": false})
+            } else {
+                json!({"ok": panoya_yaz(metin)})
+            }
+        }
+        "panodan_oku" => panodan_oku(),
+
+        // Bagli degil: G/H ekleri (router'lari bos), eklenti, sunucu, telefon, paylasim.
         _ => henuz_yok(),
     }
 }
@@ -677,4 +941,15 @@ pub async fn api_call(app: AppHandle, name: String, args: Vec<Json>) -> Json {
     tauri::async_runtime::spawn_blocking(move || dispatch(&kabuk, &name, &args))
         .await
         .unwrap_or_else(|e| hata(e.to_string()))
+}
+
+/// Arayuz yuklendi (tauri_kopru.js). Yalniz ana pencere icin; LinkGrabber bekleyeni burada teslim edilir.
+#[tauri::command]
+pub fn sayfa_hazir(app: AppHandle, window: tauri::WebviewWindow) {
+    if window.label() != ANA {
+        return;
+    }
+    let kabuk = app.state::<Arc<Kabuk>>().inner().clone();
+    kabuk.ui.lg.hazir.store(true, Ordering::SeqCst);
+    lg_teslim_et(&app, &kabuk.ui.lg);
 }

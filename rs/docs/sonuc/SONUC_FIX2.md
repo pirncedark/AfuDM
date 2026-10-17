@@ -115,3 +115,65 @@ TEST_EXIT=0
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.99s
 CLIPPY_EXIT=0
 ```
+
+## Ek madde 6 (koordinatör): kabuğun Manager yardımcılarına erişimi
+Kabuk (app) için `afudm_core::queue::` altında `pub fn` yapıldı. İmzalar Python ile aynı; Manager gerektirmeyenler serbest fonksiyon.
+- ✅ `detect_kind(source) -> &'static str` (serbest)
+- ✅ `is_supported_source(source) -> bool` (serbest)
+- ✅ `magnet_infohash(source) -> String` (serbest; kucuk harf hex)
+- ✅ `guess_name(source) -> String` (serbest; Python resolve_filename(source))
+- ✅ `clean_title(title) -> String` (serbest)
+- ✅ `gecmis_sources(m, limit) -> Result<Vec<String>>`
+- ✅ `find_duplicate(m, source) -> Result<Option<Json>>` (artik pub)
+- ✅ `hiz_limiti_kb(m, ayarlar: Option<&JsonMap>) -> Result<i64>` (None ise store.all_settings)
+- ✅ `apply_settings(m) -> Result<()>`
+- ✅ `probe_url_info(m, url) -> Result<Json>`: Python dosya_adi.probe_url_info ile birebir. Yeni modul `queue/probe.rs`: Content-Disposition (RFC 6266 ve filename* RFC 5987), MIME uzantisi tablosu, guvenli dosya adi (DOS aygit adlari, 200 karakter), HEAD + Range 0-0 GET yedegi, 3 sn zaman asimi. Donus alanlari: ok, filename, size, content_type, resumable, final_url.
+- ✅ `kaydet_bilgi` ve `probe_link` icin gereken tek core eksigi probe_url_info idi. kategori_tahmin ve kategori klasorleri zaten afudm-db/src/kaydet.rs icinde. Kabuk tarafindaki kaydet_bilgi/probe_link govdeleri bu crate'te portlanmadi (kabuğun isi).
+
+Ek testler (queue/tests.rs): dosya_adi_cozumlemesi_python_ile_ayni_sonuc_verir; probe_url_info_yerel_sunucudan_basliklari_okur (gercek yerel HTTP sunucusu); probe_url_info_erisilemeyen_ve_http_disi_kaynaklar; hiz_limiti_ve_gecmis_kaynaklar_ayarlara_gore_doner.
+
+Acik notlar:
+- 📍 Python probe'undaki Range basligi `bytes 0-0` ("bytes=0-0" olmali) aynen korundu; Python davranisi esas alindi, duzeltme yok.
+- ⚠ filename* icinde iso-8859-1 charset'i icin Python latin-1 cozer; Rust bu durumda UTF-8 cozer (kucuk fark).
+- ⚠ detect_kind Rust'ta sabit host listesi kullanir; Python ytdlp.is_video_site ile tam ayni olmayabilir (onceki ekipten gelen kod, degistirilmedi).
+
+Son dogrulama (gercek cikti):
+### cargo test (son 30 satir)
+```
+test h::smb::tests::net_share_ciktisi_sadece_afudm_adlarini_alir ... ok
+test h::tunel::tests::url_bulucu_python_gibi ... ok
+test h::tunel::tests::baslat_url_dondurur_ve_argumanlar_dogru ... ok
+test h::tunel::tests::url_yoksa_iki_denemeden_sonra_hata ... ok
+test h::paylasim::tests::dar_sunucu_range_ile_dosya_verir ... ok
+test h::paylasim::tests::kok_icinde_sinirlar ... ok
+test g2::eklenti_servis::entegrasyon::ozet_uyusmazligi_kurulumu_durdurur ... ok
+test g2::eklenti_servis::entegrasyon::guncelle_yanlis_paketi_reddeder ... ok
+test g2::eklenti_servis::entegrasyon::kur_listele_ayar_kaldir_akisi ... ok
+test g2::linkgrabber::tests::ayiklar_http_ftp_magnet ... ok
+test g1::reliability::tests::yedek_olusur_listelenir_ve_geri_yuklenir ... ok
+test h::tunel::tests::durdur_izleyiciyi_etkisiz_kilar ... ok
+test h::tunel::tests::izleyici_surec_cikinca_bir_kez_yeniden_baslatir ... ok
+test g1::guncelleme::tests::kontrol_ag_hatasinda_turkce_hata ... ok
+
+test result: ok. 87 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.05s
+
+   Doc-tests afudm_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests afudm_extras
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+TEST_EXIT=0
+```
+### cargo clippy -D warnings
+```
+    Checking afudm-core v3.0.0 (C:\Users\afuuu\Desktop\afuproject\AfuDM_rs\rs\crates\afudm-core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.03s
+CLIPPY_EXIT=0
+```
