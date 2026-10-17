@@ -141,7 +141,7 @@ fn visible(entry: &DirEntry) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
-        return entry.metadata().is_ok_and(|m| m.file_attributes() & 6 == 0);
+        entry.metadata().is_ok_and(|m| m.file_attributes() & 6 == 0)
     }
     #[cfg(not(windows))]
     true

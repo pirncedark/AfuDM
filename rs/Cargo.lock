@@ -40,6 +40,7 @@ dependencies = [
 name = "afudm-core"
 version = "3.0.0"
 dependencies = [
+ "afudm-db",
  "afudm-types",
  "base64 0.22.1",
  "chrono",
@@ -52,6 +53,7 @@ dependencies = [
  "sha1",
  "ureq",
  "url",
+ "winreg",
 ]
 
 [[package]]
@@ -89,11 +91,26 @@ dependencies = [
 name = "afudm-extras"
 version = "3.0.0"
 dependencies = [
+ "afudm-db",
+ "afudm-engine",
  "afudm-types",
  "axum",
+ "base64 0.22.1",
+ "chrono",
+ "futures-util",
  "log",
+ "md-5",
+ "rand",
+ "regex",
+ "rusqlite",
  "serde",
  "serde_json",
+ "sha1",
+ "sha2",
+ "tokio",
+ "ureq",
+ "winreg",
+ "zip",
 ]
 
 [[package]]
@@ -876,6 +893,16 @@ name = "matchit"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
+
+[[package]]
+name = "md-5"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d89e7ee0cfbedfc4da3340218492196241d89eefb6dab27de5df917a6d2e78cf"
+dependencies = [
+ "cfg-if",
+ "digest",
+]
 
 [[package]]
 name = "memchr"

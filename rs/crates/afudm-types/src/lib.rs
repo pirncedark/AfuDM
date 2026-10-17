@@ -216,6 +216,11 @@ pub trait UiBridge: Send + Sync {
         Some(req.clone())
     }
     fn notify(&self, _title: &str, _body: &str) {}
+    /// Python: _Handler.on_linkgrabber(metin, uyari) — LinkGrabber panelini acar.
+    /// false = arayuz yok (HTTP 503 UI_YOK).
+    fn open_linkgrabber(&self, _metin: &str, _uyari: bool) -> bool {
+        false
+    }
 }
 
 pub struct NoUi;

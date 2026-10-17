@@ -177,6 +177,8 @@ fn query(req: &Request) -> HashMap<String, String> {
 fn q<'a>(data: &'a HashMap<String, String>, key: &str) -> &'a str {
     data.get(key).map(String::as_str).unwrap_or("")
 }
+// Hata tarafi axum Response'u: framework tipi, kutulamak tum cagri zincirini degistirir.
+#[allow(clippy::result_large_err)]
 async fn body(req: Request) -> std::result::Result<JsonMap, Response> {
     if let Some(length) = req.headers().get("content-length") {
         match length.to_str().ok().and_then(|s| s.parse::<i64>().ok()) {
@@ -269,11 +271,7 @@ async fn torrent_files(State(ctx): State<ApiCtx>, req: Request) -> Response {
     if gid.is_empty() {
         return fault(400, "GID_GEREKLI", "gid gerekli");
     }
-    result(
-        ctx.manager
-            .torrent_dosyalari(gid)
-            .map(|files| json!({"gid":gid,"hazir_degil":false,"neden":"","dosyalar":files})),
-    )
+    result(ctx.manager.torrent_dosyalari(gid))
 }
 const CATEGORIES: &[(&str, &str)] = &[
     ("telefon", "📱 Telefona İndir"),

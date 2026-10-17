@@ -186,6 +186,8 @@ pub(super) fn remove(m: &Manager, gid: &str, delete_files: bool) -> Result<bool>
     Ok(true)
 }
 
+// Windows'ta salt-okunur bayragini kaldirmak icin set_readonly(false) sart (Python'daki chmod karsiligi).
+#[allow(clippy::permissions_set_readonly_false)]
 fn erase(path: &Path) {
     for _ in 0..5 {
         if let Ok(meta) = path.symlink_metadata() {

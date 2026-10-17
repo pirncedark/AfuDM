@@ -1,25 +1,48 @@
-//! SAHIBI: Ekip D (claude kod ajani). Python: core/manager.py (video dali, probe_video) + video/ytdlp.py (probe).
+//! SAHIBI: Ekip D2 (video). Python: core/manager.py video dali (add/_launch_video, _on_video_update,
+//! pause/resume/remove/pause_all icindeki yt dallari, _recover_orphan_video_jobs, snapshot satirlari)
+//! Ayrica video/ytdlp.py (probe, VideoJob) ve video/mp4mux.py.
+//! Alt moduller: secim (format/ad/yol), hata (kullaniciya giden metin), ilerleme (cikti
+//! ayristirma), cerez (Netscape cerez dosyasi), is (VideoJob, surec, pompa), mp4mux (MP4
+//! birlestirme).
+//!
 //! Imzalar afudm-types::ManagerApi ile sabit; degistirilmez.
-//! DURUM: probe_video tasindi. video_ekle_ic (VideoJob surec yoneticisi, video/ytdlp.py 275-831,
-//! video/mp4mux.py, video/mp4kutu.py) henuz tasinmadi; bkz. docs/sonuc/SONUC_D.md.
+
+mod cerez;
+mod hata;
+mod ilerleme;
+mod is;
+mod mp4mux;
+mod secim;
 
 use crate::Manager;
-use afudm_types::{AfuError, Json, JsonMap, Result};
+use afudm_types::{AfuError, Json, JsonMap, Result, Store};
+use is::{Gozlemci, Ortam, VideoJob};
 use serde_json::json;
+use std::collections::{HashMap, HashSet};
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// Ekip D (claude kod ajani) kendi calisma durumunu buraya koyar (Manager::video_state).
+/// Ekip D2 calisma durumu (Manager::video_state). Tum video isleri ve yt-dlp kimlik sayaci.
 #[derive(Default)]
-pub struct State {}
+pub struct State {
+    /// `yt:<n>` sayaci; ilk kullanimda store.max_video_seq() ile baslar.
+    seq: i64,
+    isler: HashMap<String, Arc<Mutex<VideoJob>>>,
+    /// Python _known_complete: tamamlanma bildirimi bir kez gider.
+    bildirilen: Arc<Mutex<HashSet<String>>>,
+}
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// Python ytdlp.probe varsayilan zaman asimi (sn).
 const PROBE_ZAMAN_ASIMI: Duration = Duration::from_secs(90);
 
 /// Python paths._bundled_or_system("yt-dlp.exe"): once uygulama klasorundeki engine\yt-dlp.exe,
-/// yoksa sistemdeki yt-dlp. (Varsayim: Python BASE = Manager::app_dir.)
+/// yoksa sistemdeki yt-dlp.
 fn ytdlp_yolu(app_dir: &Path) -> String {
     let yerel = app_dir.join("engine").join("yt-dlp.exe");
     if yerel.exists() {
@@ -35,7 +58,7 @@ fn al(v: &Json, anahtar: &str) -> Json {
 }
 
 /// Python truthiness (null/false/0/""/bos dizi-nesne falsy).
-fn dogru_mu(v: &Json) -> bool {
+pub(crate) fn dogru_mu(v: &Json) -> bool {
     match v {
         Json::Null => false,
         Json::Bool(b) => *b,
@@ -46,7 +69,24 @@ fn dogru_mu(v: &Json) -> bool {
     }
 }
 
-/// Python ytdlp.probe'un JSON'u isleyen kismi: yt-dlp -J ciktisini Afu sekline cevirir.
+/// Python str(): metin ise icerigi, degilse JSON gosterimi.
+fn json_metin(v: &Json) -> String {
+    v.as_str().map_or_else(|| v.to_string(), str::to_string)
+}
+
+/// Python options.get(k, "") — metin; null/yok -> bos.
+fn secenek_metni(o: &JsonMap, anahtar: &str) -> String {
+    match o.get(anahtar) {
+        None | Some(Json::Null) => String::new(),
+        Some(v) => json_metin(v),
+    }
+}
+
+fn secenek_dogru(o: &JsonMap, anahtar: &str) -> bool {
+    o.get(anahtar).is_some_and(dogru_mu)
+}
+
+/// Python probe_sonucu(): yt-dlp -J ciktisini Afu sekline cevirir.
 pub(crate) fn probe_sonucu(url: &str, data: &Json) -> Json {
     let formats: Vec<Json> = data
         .get("formats")
@@ -55,7 +95,11 @@ pub(crate) fn probe_sonucu(url: &str, data: &Json) -> Json {
             dizi.iter()
                 .map(|fmt| {
                     let filesize = al(fmt, "filesize");
-                    let filesize = if dogru_mu(&filesize) { filesize } else { al(fmt, "filesize_approx") };
+                    let filesize = if dogru_mu(&filesize) {
+                        filesize
+                    } else {
+                        al(fmt, "filesize_approx")
+                    };
                     json!({
                         "id": al(fmt, "format_id"),
                         "ext": al(fmt, "ext"),
@@ -88,13 +132,21 @@ pub(crate) fn probe_sonucu(url: &str, data: &Json) -> Json {
 }
 
 /// Surec calistirir; zaman asiminda oldurur. Donen: (cikis kodu, stdout, stderr).
-fn surec_calistir(yol: &str, args: &[&str], zaman_asimi: Duration) -> Result<(Option<i32>, Vec<u8>, Vec<u8>)> {
+fn surec_calistir(
+    yol: &str,
+    args: &[&str],
+    zaman_asimi: Duration,
+) -> Result<(Option<i32>, Vec<u8>, Vec<u8>)> {
     let mut komut = Command::new(yol);
-    komut.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    komut
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        komut.creation_flags(0x0800_0000); // CREATE_NO_WINDOW (Python ytdlp.CREATE_NO_WINDOW)
+        komut.creation_flags(CREATE_NO_WINDOW);
     }
     let mut cocuk = komut.spawn()?;
     let mut out_pipe = cocuk.stdout.take();
@@ -150,19 +202,307 @@ pub fn probe_video(m: &Manager, url: &str) -> Result<Json> {
     if kod != Some(0) {
         let metin = String::from_utf8_lossy(&stderr);
         let kirpik = metin.trim();
-        let mesaj = if kirpik.is_empty() { "yt-dlp bilgi alamadi" } else { kirpik };
+        let mesaj = if kirpik.is_empty() {
+            "yt-dlp bilgi alamadi"
+        } else {
+            kirpik
+        };
         return Err(AfuError::Engine(mesaj.chars().take(500).collect()));
     }
     let data: Json = serde_json::from_str(&String::from_utf8_lossy(&stdout))?;
     Ok(probe_sonucu(url, &data))
 }
 
-/// Python manager.py add() icindeki video dali (_launch_video + VideoJob).
-/// TODO(Ekip D): VideoJob surec yoneticisi (video/ytdlp.py 275-831) henuz tasinmadi.
-#[allow(dead_code)] // C ekibi cagirana kadar stub
+fn ortam(m: &Manager) -> Ortam {
+    Ortam {
+        ytdlp: ytdlp_yolu(&m.app_dir),
+        ffmpeg: secim::ffmpeg_yolu(&m.app_dir),
+        aria2c: secim::aria2c_yolu(&m.app_dir),
+    }
+}
+
+fn kilit_durum(m: &Manager) -> std::sync::MutexGuard<'_, State> {
+    m.video_state.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// Python _on_video_update(): is alanlarini store'a yazar; tamamlanmada bildirim verir.
+fn gozlemci(m: &Manager, bildirilen: Arc<Mutex<HashSet<String>>>) -> Gozlemci {
+    let store: Arc<dyn Store> = Arc::clone(&m.store);
+    let ui = Arc::clone(&m.ui);
+    let veri_dizini: PathBuf = m.data_dir.clone();
+    Arc::new(move |job: &VideoJob| {
+        let mut alanlar = JsonMap::new();
+        alanlar.insert("total_bytes".into(), json!(job.total));
+        alanlar.insert("done_bytes".into(), json!(job.downloaded));
+        alanlar.insert("status".into(), json!(job.status));
+        alanlar.insert("filename".into(), json!(job.filename));
+        alanlar.insert("title".into(), json!(job.display_title()));
+        if matches!(job.status.as_str(), "complete" | "error" | "removed") {
+            // Cerez dosyasi bitince silinir (GUVENLIK).
+            cerez::sil(&veri_dizini, &job.job_id);
+            let bitis = if job.finished_at > 0.0 {
+                job.finished_at
+            } else {
+                simdi()
+            };
+            alanlar.insert("finished_at".into(), json!(bitis));
+            if !job.error.is_empty() {
+                alanlar.insert(
+                    "error".into(),
+                    json!(job.error.chars().take(500).collect::<String>()),
+                );
+            }
+        }
+        let _ = store.update_by_gid(&job.job_id, &alanlar);
+        if job.status == "complete" {
+            let ilk = bildirilen
+                .lock()
+                .map(|mut kume| kume.insert(job.job_id.clone()))
+                .unwrap_or(false);
+            if ilk {
+                let baslik = job.display_title();
+                store.log("info", &format!("tamamlandi: {baslik}"), &job.job_id);
+                let bildirim_acik = store
+                    .get("windows_notifications")
+                    .ok()
+                    .flatten()
+                    .is_none_or(|v| dogru_mu(&v));
+                if bildirim_acik {
+                    ui.notify("AfuDM", &format!("Indirme tamamlandi: {baslik}"));
+                }
+            }
+        }
+    })
+}
+
+fn simdi() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |d| d.as_secs_f64())
+}
+
+/// Python manager.py _launch_video(): video isini olusturur ve baslatir. Donus: `yt:<n>` kimligi.
 pub(crate) fn video_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
-    let _ = (m, req);
-    todo!("video_ekle_ic")
+    let opt: JsonMap = req
+        .get("options")
+        .and_then(Json::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let url = secenek_metni(req, "source");
+    let dest_dir = secenek_metni(req, "dest_dir");
+    let satir_basligi = secenek_metni(req, "title");
+    let cerezler = cerez::temizle(req.get("cookies").unwrap_or(&Json::Null));
+
+    let seq = {
+        let mut st = kilit_durum(m);
+        if st.seq == 0 {
+            st.seq = m.store.max_video_seq()?;
+        }
+        st.seq += 1;
+        st.seq
+    };
+    let job_id = format!("yt:{seq}");
+    let cookie_file = if cerezler.is_empty() {
+        String::new()
+    } else {
+        cerez::dosya_yaz(&m.data_dir, &job_id, &cerezler)?
+            .to_string_lossy()
+            .into_owned()
+    };
+
+    let mut job = VideoJob::yeni(job_id.clone(), url.clone(), dest_dir, ortam(m));
+    job.quality = opt
+        .get("quality")
+        .map_or_else(|| "best".to_string(), json_metin);
+    job.audio_only = secenek_dogru(&opt, "audio_only");
+    job.playlist = secenek_dogru(&opt, "playlist");
+    job.title = if satir_basligi.is_empty() {
+        url.clone()
+    } else {
+        satir_basligi
+    };
+    job.dil = m
+        .store
+        .get("language")?
+        .map_or_else(|| "auto".to_string(), |v| json_metin(&v));
+    job.cookie_file = cookie_file;
+    job.user_agent = secenek_metni(&opt, "user_agent");
+    job.headers = opt
+        .get("headers")
+        .and_then(Json::as_object)
+        .map(|h| h.iter().map(|(k, v)| (k.clone(), json_metin(v))).collect())
+        .unwrap_or_default();
+    job.proxy = secenek_metni(&opt, "proxy");
+    job.dosya_adi = secenek_metni(&opt, "title");
+    job.altyazi_diller = secenek_metni(&opt, "altyazi_diller");
+    job.oto_altyazi = secenek_dogru(&opt, "oto_altyazi");
+    job.altyazi_goem = secenek_dogru(&opt, "altyazi_goem");
+    job.kucuk_resim = secenek_metni(&opt, "kucuk_resim");
+    job.ustveri_goem = secenek_dogru(&opt, "ustveri_goem");
+    job.bolumler = secenek_metni(&opt, "bolumler");
+    job.sponsorblock = secenek_metni(&opt, "sponsorblock");
+    job.bolum_araligi = secenek_metni(&opt, "bolum_araligi");
+    job.kapsayici = secenek_metni(&opt, "kapsayici");
+    job.ses_formati = secenek_metni(&opt, "ses_formati");
+    job.dosya_sablonu = secenek_metni(&opt, "dosya_sablonu");
+    job.tarayici_cerezi = secenek_metni(&opt, "tarayici_cerezi");
+
+    let is = Arc::new(Mutex::new(job));
+    let bildirilen = Arc::clone(&kilit_durum(m).bildirilen);
+    kilit_durum(m).isler.insert(job_id.clone(), Arc::clone(&is));
+    if let Err(hata) = is::baslat(&is, Some(gozlemci(m, bildirilen))) {
+        kilit_durum(m).isler.remove(&job_id);
+        return Err(hata);
+    }
+    Ok(Json::String(job_id))
+}
+
+/// Python snapshot/video satirlari: kaldirilmamis video islerinin kayit sekli.
+#[allow(dead_code)] // queue.rs (C) snapshot'a baglayana kadar
+pub(crate) fn video_satirlari(m: &Manager) -> Vec<Json> {
+    let isler: Vec<Arc<Mutex<VideoJob>>> = kilit_durum(m).isler.values().cloned().collect();
+    isler
+        .iter()
+        .map(|is| is::kilitle(is))
+        .filter(|j| j.status != "removed")
+        .map(|j| j.satir())
+        .collect()
+}
+
+fn is_bul(m: &Manager, gid: &str) -> Option<Arc<Mutex<VideoJob>>> {
+    kilit_durum(m).isler.get(gid).cloned()
+}
+
+/// Python pause() yt dali: isi durdurur, kaydi "paused" yapar. Video kimligi yoksa false.
+#[allow(dead_code)] // queue.rs (C) pause'a baglayana kadar
+pub(crate) fn durdur(m: &Manager, gid: &str) -> bool {
+    let Some(is) = is_bul(m, gid) else {
+        return false;
+    };
+    is::durdur(&is);
+    is::kilitle(&is).status = "paused".into();
+    let mut alanlar = JsonMap::new();
+    alanlar.insert("status".into(), json!("paused"));
+    let _ = m.store.update_by_gid(gid, &alanlar);
+    true
+}
+
+/// Python pause_all() yt dali: bitmemis video islerini durdurur.
+#[allow(dead_code)] // queue.rs (C) pause_all'a baglayana kadar
+pub(crate) fn tumunu_durdur(m: &Manager) {
+    let gidler: Vec<String> = kilit_durum(m).isler.keys().cloned().collect();
+    for gid in gidler {
+        let bitmis = is_bul(m, &gid).is_some_and(|is| {
+            matches!(
+                is::kilitle(&is).status.as_str(),
+                "complete" | "error" | "removed"
+            )
+        });
+        if !bitmis {
+            durdur(m, &gid);
+        }
+    }
+}
+
+/// Python remove() yt dali: isi durdurur ve listeden atar. Silinecek dosya yolunu doner
+/// (yalniz dosya adi guvenliyse; yol kacisina karsi kontrol).
+#[allow(dead_code)] // queue.rs (C) remove'a baglayana kadar
+pub(crate) fn kaldir(m: &Manager, gid: &str) -> Option<PathBuf> {
+    let is = kilit_durum(m).isler.remove(gid)?;
+    is::durdur(&is);
+    let j = is::kilitle(&is);
+    let ad = j.filename.as_str();
+    if ad.is_empty() || ad == ".." || ad.contains(['/', '\\']) {
+        return None;
+    }
+    Some(Path::new(&j.dest_dir).join(ad))
+}
+
+/// Python: aktif (status == active) video isi sayisi.
+#[allow(dead_code)] // queue.rs (C) idle/istatistik kontrollerine baglayana kadar
+pub(crate) fn aktif_sayisi(m: &Manager) -> usize {
+    kilit_durum(m)
+        .isler
+        .values()
+        .filter(|is| is::kilitle(is).status == "active")
+        .count()
+}
+
+/// Aktif video islerinin toplam anlik hizi (bayt/sn).
+#[allow(dead_code)] // queue.rs (C) istatistik toplamina baglayana kadar
+pub(crate) fn hiz_toplami(m: &Manager) -> u64 {
+    kilit_durum(m)
+        .isler
+        .values()
+        .map(|is| {
+            let j = is::kilitle(is);
+            if j.status == "active" {
+                j.speed
+            } else {
+                0
+            }
+        })
+        .sum()
+}
+
+/// Python _recover_orphan_video_jobs(): onceki oturumdan kalan calismayan video kayitlarini duzeltir.
+/// Tamamlanmis kardesi olan (ayni kaynak+klasor ya da ayni baslik+klasor) kayit "removed" olur,
+/// digerleri "paused" (kaldigi yerden devam edilebilir). Dosyalara dokunulmaz.
+#[allow(dead_code)] // queue.rs (C) acilista cagirana kadar
+pub(crate) fn yetimleri_duzelt(m: &Manager) -> Result<()> {
+    let satirlar = m.store.list(None, 100_000)?;
+    let secenek = |row: &Json| -> JsonMap {
+        match row.get("options") {
+            Some(Json::Object(o)) => o.clone(),
+            Some(Json::String(s)) => serde_json::from_str::<JsonMap>(s).unwrap_or_default(),
+            _ => JsonMap::new(),
+        }
+    };
+    let metin = |row: &Json, k: &str| row.get(k).and_then(Json::as_str).unwrap_or("").to_string();
+
+    let mut tamamlananlar: HashSet<(String, String)> = HashSet::new();
+    let mut tamamlanan_basliklar: HashSet<(String, String)> = HashSet::new();
+    for row in satirlar
+        .iter()
+        .filter(|r| metin(r, "kind") == "video" && metin(r, "status") == "complete")
+    {
+        let dest = metin(row, "dest_dir");
+        tamamlananlar.insert((metin(row, "source"), dest.clone()));
+        let baslik = secenek(row)
+            .get("title")
+            .and_then(Json::as_str)
+            .unwrap_or("")
+            .to_string();
+        if !baslik.is_empty() {
+            tamamlanan_basliklar.insert((baslik, dest));
+        }
+    }
+    for row in satirlar.iter().filter(|r| metin(r, "kind") == "video") {
+        let durum = metin(row, "status");
+        if durum != "active" && durum != "waiting" {
+            continue;
+        }
+        let Some(id) = row.get("id").and_then(Json::as_i64) else {
+            continue;
+        };
+        let dest = metin(row, "dest_dir");
+        let baslik = secenek(row)
+            .get("title")
+            .and_then(Json::as_str)
+            .unwrap_or("")
+            .to_string();
+        let kardes_tamamlandi = tamamlananlar.contains(&(metin(row, "source"), dest.clone()))
+            || (!baslik.is_empty() && tamamlanan_basliklar.contains(&(baslik, dest)));
+        let yeni = if kardes_tamamlandi {
+            "removed"
+        } else {
+            "paused"
+        };
+        let mut alanlar = JsonMap::new();
+        alanlar.insert("status".into(), json!(yeni));
+        m.store.update_by_id(id, &alanlar)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

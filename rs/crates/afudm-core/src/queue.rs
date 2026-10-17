@@ -2,6 +2,7 @@
 mod dosya_adi;
 mod files;
 mod models;
+pub mod proxy;
 mod rules;
 mod settings;
 mod shaping;
@@ -518,7 +519,9 @@ fn launch(m: &Manager, row: &Json) -> Result<Json> {
         if !headers.is_empty() {
             aria.insert("header".into(), json!(headers));
         }
-        settings::proxy_options(m, &opts, &mut aria)?;
+        if let Some(p) = proxy::proksi_bul(m, &opts)? {
+            aria.extend(proxy::aria2_secenekleri(&p));
+        }
         m.rpc().add_uri(&[text(&row["source"]).into()], Some(&aria))
     })();
     let gid = match result {

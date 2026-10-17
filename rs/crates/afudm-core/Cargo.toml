@@ -18,3 +18,7 @@ url = "2"
 data-encoding = "2"
 rand = "0.9"
 ureq = { version = "3", features = ["json"] }
+afudm-db.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"

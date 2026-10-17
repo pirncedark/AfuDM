@@ -1,5 +1,5 @@
 use crate::{fault, q, query, ApiCtx};
-use afudm_types::{AfuError, Result};
+use afudm_types::Result;
 use axum::{
     extract::{ConnectInfo, Request, State},
     http::{HeaderValue, Method},

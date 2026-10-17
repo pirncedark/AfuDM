@@ -386,6 +386,18 @@ impl HizSinirlayici {
             state: Mutex::new(RateState::default()),
         }
     }
+    /// Canli ayar (Python HizSinirlayici.ayarla): yeni degerler hemen gecerli, yeniden baslatma yok.
+    pub fn ayarla(&mut self, limit: Option<usize>, hatali_limit: Option<u32>, kilit_saniye: Option<u32>) {
+        if let Some(v) = limit {
+            self.limit = v.max(1);
+        }
+        if let Some(v) = hatali_limit {
+            self.hatali_limit = v.max(1);
+        }
+        if let Some(v) = kilit_saniye {
+            self.kilit_saniye = v.max(5) as f64;
+        }
+    }
     /// Check/record an attempt, or record auth success/failure, or clear locks.
     pub fn call(&self, action: &str, ip: &str) -> Result<Json> {
         let mut state = self

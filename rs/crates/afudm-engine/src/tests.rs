@@ -19,7 +19,11 @@ pub(crate) fn serve_bytes(
         let deadline = Instant::now() + Duration::from_secs(15);
         let mut socket = loop {
             match listener.accept() {
-                Ok((socket, _)) => break socket,
+                Ok((socket, _)) => {
+                    // Windows: kabul edilen soket dinleyicinin non-blocking modunu miras alir.
+                    socket.set_nonblocking(false).unwrap();
+                    break socket;
+                }
                 Err(e)
                     if e.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline =>
                 {
@@ -174,40 +178,40 @@ fn rpc_all_trait_methods_send_python_methods_and_parameters() {
         "OK",
         |r| assert_eq!(r.unpause_all().unwrap(), "OK")
     );
-    case!("aria2.tellStatus",[json!("g"),json!(["gid"])],{"gid":"g"},|r|assert_eq!(r.tell_status("g",&["gid"]).unwrap(),json!({"gid":"g"})));
+    case!("aria2.tellStatus",[json!("g"),json!(["gid"])],json!({"gid":"g"}),|r|assert_eq!(r.tell_status("g",&["gid"]).unwrap(),json!({"gid":"g"})));
     case!(
         "aria2.tellActive",
         [json!(rpc::STATUS_KEYS)],
-        [],
+        json!([]),
         |r| assert!(r.tell_active(&[]).unwrap().is_empty())
     );
     case!(
         "aria2.tellWaiting",
         [json!(2), json!(200), json!(rpc::STATUS_KEYS)],
-        [],
+        json!([]),
         |r| assert!(r.tell_waiting(2, 200, &[]).unwrap().is_empty())
     );
     case!(
         "aria2.tellStopped",
         [json!(0), json!(200), json!(["gid"])],
-        [],
+        json!([]),
         |r| assert!(r.tell_stopped(0, 200, &["gid"]).unwrap().is_empty())
     );
     case!(
         "aria2.getGlobalStat",
         Vec::<serde_json::Value>::new(),
-        {},
+        json!({}),
         |r| assert_eq!(r.global_stat().unwrap(), json!({}))
     );
-    case!("aria2.getPeers", [json!("g")], [], |r| assert!(r
+    case!("aria2.getPeers", [json!("g")], json!([]), |r| assert!(r
         .get_peers("g")
         .unwrap()
         .is_empty()));
-    case!("aria2.getFiles", [json!("g")], [], |r| assert!(r
+    case!("aria2.getFiles", [json!("g")], json!([]), |r| assert!(r
         .get_files("g")
         .unwrap()
         .is_empty()));
-    case!("aria2.getServers", [json!("g")], [], |r| assert!(r
+    case!("aria2.getServers", [json!("g")], json!([]), |r| assert!(r
         .get_servers("g")
         .unwrap()
         .is_empty()));
@@ -242,7 +246,7 @@ fn rpc_all_trait_methods_send_python_methods_and_parameters() {
     case!(
         "aria2.getGlobalOption",
         Vec::<serde_json::Value>::new(),
-        {},
+        json!({}),
         |r| assert!(r.get_global_option().unwrap().is_empty())
     );
     case!(

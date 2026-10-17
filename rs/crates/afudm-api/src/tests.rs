@@ -475,8 +475,8 @@ impl ManagerApi for FakeManager {
         Err(AfuError::Unavailable("test metodu".into()))
     }
     #[allow(unused_variables)]
-    fn torrent_dosyalari(&self, gid: &str) -> Result<Vec<Value>> {
-        Ok(vec![])
+    fn torrent_dosyalari(&self, gid: &str) -> Result<Value> {
+        Ok(json!({"dosyalar": [], "hazir_degil": false, "neden": "", "gid": gid}))
     }
     #[allow(unused_variables)]
     fn torrent_dosya_secimini_kaydet(&self, gid: &str, indeksler: &[i64]) -> Result<Vec<i64>> {
@@ -537,4 +537,26 @@ fn limiter_live_settings_preserve_attempts_and_locks() {
     assert_eq!(status["kilit_saniye"], 5);
     limiter.ayarla(Some(0), None, None);
     assert_eq!(limiter.call("durum", "").unwrap()["limit"], 1);
+}
+
+#[tokio::test]
+async fn serve_passes_client_addr_as_connect_info() {
+    async fn echo_ip(axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<SocketAddr>) -> String {
+        addr.ip().to_string()
+    }
+    let app = Router::new().route("/ip", axum::routing::get(echo_ip));
+    let port = serve(app, 0).await.unwrap();
+    let raw = tokio::task::spawn_blocking(move || {
+        use std::io::{Read, Write};
+        let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+        s.write_all(b"GET /ip HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .unwrap();
+        let mut out = String::new();
+        s.read_to_string(&mut out).unwrap();
+        out
+    })
+    .await
+    .unwrap();
+    assert!(raw.starts_with("HTTP/1.1 200"), "{raw}");
+    assert!(raw.trim_end().ends_with("127.0.0.1"), "{raw}");
 }

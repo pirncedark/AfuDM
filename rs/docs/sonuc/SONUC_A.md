@@ -90,3 +90,7 @@ error: failed to download from `https://static.crates.io/crates/windows_i686_gnu
 Caused by:
   transfer too slow: failed to transfer more than 10 bytes in 30s (transferred 0 bytes)
 ```
+
+## Entegrasyon-1 (FIX1) guncellemesi
+Ayrinti: SONUC_FIX1.md. Bu ekipten gelen eksikler icin yapilan islemler:
+- ✅ engine/api/core test ve clippy yesil (SONUC_FIX1 icindeki gercek cikti).

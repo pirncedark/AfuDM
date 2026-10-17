@@ -66,3 +66,7 @@ warning: build failed, waiting for other jobs to finish...
 error: could not compile `afudm-db` (lib test) due to 1 previous error
 exit_code=101
 ```
+
+## Entegrasyon-1 (FIX1) guncellemesi
+Ayrinti: SONUC_FIX1.md. Bu ekipten gelen eksikler icin yapilan islemler:
+- ✅ api erisim.rs HizSinirlayici::ayarla eklendi; /torrent/dosyalar sozlesmesi uyarlandi.

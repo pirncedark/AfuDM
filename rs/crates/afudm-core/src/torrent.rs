@@ -6,6 +6,7 @@ mod bencode;
 mod saglik;
 mod trackers;
 
+use crate::queue::proxy;
 use crate::Manager;
 use afudm_types::{Aria2, AfuError, Json, JsonMap, ManagerApi, Result, Store};
 use base64::Engine;
@@ -14,14 +15,10 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, MutexGuard};
 
-/// Ekip D calisma durumu (Manager::torrent_state).
+/// Ekip D calisma durumu (Manager::torrent_state). preview/removed gid'leri tek kaynak olarak
+/// queue::State'te tutulur (bkz. queue_kilidi); burada ikinci kopya yoktur.
 #[derive(Default)]
-pub struct State {
-    /// Python self._preview_gids: torrent_on_ekle ile duraklatilmis onizleme gid'leri.
-    pub preview_gids: HashSet<String>,
-    /// Python self._removed_gids: torrent_on_iptal ile silinen gid'ler (snapshot tuketir).
-    pub removed_gids: HashSet<String>,
-}
+pub struct State {}
 
 // ---------------------------------------------------------------- yardimcilar
 
@@ -148,8 +145,11 @@ fn torrent_yol_parcalari(yol: &str, torrent_adi: &str) -> Vec<String> {
     parcalar
 }
 
-fn durum_kilidi(m: &Manager) -> Result<MutexGuard<'_, State>> {
-    m.torrent_state.lock().map_err(|e| AfuError::Other(e.to_string()))
+/// preview/removed gid'leri icin tek kaynak: queue::State (Python ortak _preview_gids/_removed_gids).
+fn queue_kilidi(m: &Manager) -> Result<MutexGuard<'_, crate::queue::State>> {
+    m.queue_state
+        .lock()
+        .map_err(|_| AfuError::Other("kuyruk kilidi kullanilamiyor".into()))
 }
 
 fn ana_kilit(m: &Manager) -> Result<MutexGuard<'_, ()>> {
@@ -458,7 +458,9 @@ pub fn torrent_on_ekle(m: &Manager, source: &str) -> Result<String> {
     secenekler.insert("bt-save-metadata".to_string(), json!("false"));
     secenekler.insert("pause".to_string(), json!("true"));
     secenekler.insert("pause-metadata".to_string(), json!("false"));
-    // TODO(proxy): Python self._proksi({}) + P.aria2_secenekleri burada yok; proxy katmani Rust'a tasinmadi.
+    if let Some(p) = proxy::proksi_bul(m, &JsonMap::new())? {
+        secenekler.extend(proxy::aria2_secenekleri(&p));
+    }
 
     let rpc = m.rpc();
     let _kilit = ana_kilit(m)?;
@@ -471,7 +473,7 @@ pub fn torrent_on_ekle(m: &Manager, source: &str) -> Result<String> {
     };
     match sonuc {
         Ok(gid) => {
-            durum_kilidi(m)?.preview_gids.insert(gid.clone());
+            queue_kilidi(m)?.preview_gids.insert(gid.clone());
             Ok(gid)
         }
         Err(e) => {
@@ -495,7 +497,7 @@ pub fn torrent_on_iptal(m: &Manager, gid: &str) -> Result<()> {
         .ok()
         .and_then(|d| ilk_followed(&d));
     {
-        let mut durum = durum_kilidi(m)?;
+        let mut durum = queue_kilidi(m)?;
         durum.removed_gids.insert(gid.to_string());
         if let Some(c) = child.as_ref() {
             durum.removed_gids.insert(c.clone());
@@ -514,9 +516,15 @@ pub fn torrent_on_iptal(m: &Manager, gid: &str) -> Result<()> {
 
 // --------------------------------------------------------------- dosyalar
 
-/// Python torrent_dosyalari. NOT: Python `hazir_degil`/`neden` bilgisini list alt sinifinda tasir;
-/// afudm-types sozlesmesi Vec<Json> donduruldugu icin bu bilgi burada kaybolur (SONUC'ta sozlesme sorunu).
-pub fn torrent_dosyalari(m: &Manager, gid: &str) -> Result<Vec<Json>> {
+const HAZIR_DEGIL_NEDEN: &str = "Magnet ustverisi henuz gelmedi; dosya listesi hazir degil.";
+
+/// Python TorrentDosyaListesi'nin JSON karsiligi: hazir degilse liste bos, neden dolu.
+fn hazir_degil_sonuc(gid: &str) -> Json {
+    json!({"dosyalar": [], "hazir_degil": true, "neden": HAZIR_DEGIL_NEDEN, "gid": gid})
+}
+
+/// Python torrent_dosyalari. Donus: {"dosyalar", "hazir_degil", "neden", "gid"} (sozlesme: afudm-types).
+pub fn torrent_dosyalari(m: &Manager, gid: &str) -> Result<Json> {
     let rpc = m.rpc();
     let row = m.store.by_gid(gid)?;
     const ALANLAR: [&str; 4] = ["gid", "infoHash", "bittorrent", "followedBy"];
@@ -538,13 +546,13 @@ pub fn torrent_dosyalari(m: &Manager, gid: &str) -> Result<Vec<Json>> {
         return Err(AfuError::Invalid("dosya listesi yalnizca torrent GID icin kullanilir".to_string()));
     }
     if !truthy(Some(&bittorrent)) && !truthy(durum.get("infoHash")) {
-        return Ok(Vec::new()); // Python: hazir_degil=True (bkz. fonksiyon notu)
+        return Ok(hazir_degil_sonuc(&aktif_gid));
     }
     let ham_dosyalar = rpc
         .get_files(&aktif_gid)
         .map_err(|e| AfuError::Invalid(format!("torrent dosya listesi okunamadi: {}", kes(&e.to_string(), 160))))?;
     if ham_dosyalar.is_empty() && !truthy(Some(&bittorrent)) {
-        return Ok(Vec::new()); // Python: hazir_degil=True
+        return Ok(hazir_degil_sonuc(&aktif_gid));
     }
     let torrent_adi = str_of(bittorrent.get("info").and_then(|i| i.get("name")));
     let tercih_var = m.store.torrent_dosya_secimi_var(&aktif_gid)?;
@@ -593,7 +601,7 @@ pub fn torrent_dosyalari(m: &Manager, gid: &str) -> Result<Vec<Json>> {
             "uris": uris,
         }));
     }
-    Ok(sonuc)
+    Ok(json!({"dosyalar": sonuc, "hazir_degil": false, "neden": "", "gid": aktif_gid}))
 }
 
 /// Python torrent_dosya_secimini_kaydet: UI secimini sonraki baslatmaya kadar DB'de saklar.
@@ -796,7 +804,9 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
     let mut secenekler = JsonMap::new();
     secenekler.insert("dir".to_string(), json!(dest_dir));
     secenekler.insert("bt-save-metadata".to_string(), json!("false"));
-    // TODO(proxy): Python _proksi(options) + P.aria2_secenekleri burada yok (bkz. torrent_on_ekle).
+    if let Some(p) = proxy::proksi_bul(m, req)? {
+        secenekler.extend(proxy::aria2_secenekleri(&p));
+    }
     let yerel = Path::new(&source);
     let sonuc = if yerel.exists() && uzanti_kucuk(&dosya_adi_of(yerel)) == ".torrent" {
         let bayt = std::fs::read(yerel)?;

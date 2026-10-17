@@ -27,6 +27,9 @@
 - Her public fonksiyon için en az bir birim testi yaz. Python testlerinde (AfuDM\tests\) karşılığı olan durumları taşı.
 - Ekranda pencere açma; testler headless çalışır.
 
+## Satır sonu
+Tüm dosyalar LF satır sonuyla yazılır (CRLF yok; pre-commit "mixed line ending" düşürüyor).
+
 ## Git
 YIKICI GIT YASAK: git restore / checkout -- / reset / clean / stash / rebase / amend / push / switch / commit.
 Commit'i Claude atar.
