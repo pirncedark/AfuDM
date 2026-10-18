@@ -139,6 +139,8 @@ def _args(secret: str, download_dir: str, port: int = RPC_PORT) -> list[str]:
         "--bt-request-peer-speed-limit=50M",
         "--bt-detach-seed-only=true",
         "--seed-ratio=1.0",
+        # Amac hiz: indirme bitince seed'e kalmadan baglantilari kapat.
+        "--seed-time=0",
         "--follow-torrent=true",
         "--bt-save-metadata=false",
         # --- oturum: kapatip acinca kaldigi yerden ---

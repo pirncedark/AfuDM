@@ -627,10 +627,16 @@ class Manager:
             else:
                 gid = self._launch_http(row, options, dest_dir)
         except Exception as exc:
+            error = str(exc)[:500]
+            disk_dolu = "not enough space" in str(exc).lower()
+            if disk_dolu:
+                error = "Diskte yer yok. Başka bir klasör seçin ya da yer açın."
             self.store.update_by_id(
-                row["id"], status="error", error=str(exc)[:500], finished_at=time.time()
+                row["id"], status="error", error=error, finished_at=time.time()
             )
             self.store.log("error", f"baslatilamadi: {exc}", gid=row.get("gid", "") or "")
+            if disk_dolu:
+                raise ValueError(error) from exc
             raise
         self.store.attach_gid(row["id"], gid)
         self.store.log("info", f"basladi [{kind}]: {row['title']}", gid=gid)
@@ -706,6 +712,32 @@ class Manager:
         aria_options.update(self._baglanti_secenekleri(options))
         return self.rpc.add_uri([row["source"]], aria_options)
 
+    @staticmethod
+    def _torrent_kok_mevcut(source: str, dest_dir: str, name: str = "") -> bool:
+        """Ustverideki kok zaten varsa aria2 mevcut parcalari dogrulamali."""
+        try:
+            if not name:
+                local = Path(source)
+                if local.suffix.lower() != ".torrent" or not local.is_file():
+                    return False
+                from .tracker_saglik import _bencode_oku
+                metadata = _bencode_oku(local.read_bytes())
+                info = metadata.get(b"info", {}) if isinstance(metadata, dict) else {}
+                if not isinstance(info, dict):
+                    return False
+                raw_name = info.get(b"name.utf-8", info.get(b"name", b""))
+                if not isinstance(raw_name, bytes):
+                    return False
+                name = raw_name.decode("utf-8")
+            # Torrent adi hedefin disindaki bir dosyaya isaret edemez.
+            if (not name or name in (".", "..")
+                    or any(c in name for c in ("/", "\\", ":", "\x00"))):
+                return False
+            return (Path(dest_dir) / name).exists()
+        except (OSError, ValueError, IndexError):
+            # Bozuk/okunamayan torrentin asil hatasini aria2 raporlasin.
+            return False
+
     def _launch_torrent(self, row: dict, dest_dir: str) -> str:
         options = json.loads(row["options"] or "{}")
         adopt_gid = options.get("adopt_gid")
@@ -731,17 +763,25 @@ class Manager:
 
         if adopt_gid:
             gid = adopt_gid
+            durum = {}
             try:
-                durum = self.rpc.tell_status(gid, ["followedBy"])
+                durum = self.rpc.tell_status(gid, ["followedBy", "bittorrent"])
                 if durum.get("followedBy"):
                     gid = durum["followedBy"][0]
+                    durum = self.rpc.tell_status(gid, ["bittorrent"])
             except Aria2Error:
                 pass
 
+            aria_options = {"dir": dest_dir, "bt-save-metadata": "false"}
+            name = durum.get("bittorrent", {}).get("info", {}).get("name", "")
+            if self._torrent_kok_mevcut(row["source"], dest_dir, name):
+                aria_options["check-integrity"] = "true"
             try:
-                self.rpc.change_option(gid, {"dir": dest_dir, "bt-save-metadata": "false"})
+                self.rpc.change_option(gid, aria_options)
             except Aria2Error as exc:
                 self.store.log("error", f"kayit dizini degistirilemedi: {exc}", gid=gid)
+                if "not enough space" in str(exc).lower():
+                    raise
                 raise ValueError("Secilen klasore kaydedilemiyor, baska bir klasor secin.") from exc
 
             selected = options.get("selected_files")
@@ -761,6 +801,8 @@ class Manager:
 
         source = row["source"]
         aria_options = {"dir": dest_dir, "bt-save-metadata": "false"}
+        if self._torrent_kok_mevcut(source, dest_dir):
+            aria_options["check-integrity"] = "true"
         proksi = self._proksi(options)
         if proksi:
             aria_options.update(P.aria2_secenekleri(proksi))
