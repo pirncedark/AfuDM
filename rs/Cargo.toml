@@ -1,0 +1,41 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/afudm-types",
+    "crates/afudm-db",
+    "crates/afudm-engine",
+    "crates/afudm-core",
+    "crates/afudm-api",
+    "crates/afudm-extras",
+    # "app" (Tauri) Ekip F tarafindan eklenir
+]
+
+[workspace.package]
+version = "3.0.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+afudm-types = { path = "crates/afudm-types" }
+afudm-db = { path = "crates/afudm-db" }
+afudm-engine = { path = "crates/afudm-engine" }
+afudm-core = { path = "crates/afudm-core" }
+afudm-api = { path = "crates/afudm-api" }
+afudm-extras = { path = "crates/afudm-extras" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+log = "0.4"
+rusqlite = { version = "0.37", features = ["bundled"] }
+ureq = { version = "3", features = ["json"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
+axum = "0.8"
+base64 = "0.22"
+sha2 = "0.10"
+rand = "0.9"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

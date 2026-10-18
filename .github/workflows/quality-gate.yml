@@ -135,6 +135,7 @@ jobs:
     name: quality-gate
     if: ${{ always() }}
     needs:
+      - rust
       - desktop-tests
       - ui-gate
       - deletion-recovery
@@ -146,6 +147,7 @@ jobs:
       - name: quality-gate PASS/FAIL
         shell: bash
         env:
+          RUST: ${{ needs.rust.result }}
           DESKTOP_TESTS: ${{ needs.desktop-tests.result }}
           UI_GATE: ${{ needs.ui-gate.result }}
           DELETION_RECOVERY: ${{ needs.deletion-recovery.result }}
@@ -156,6 +158,7 @@ jobs:
           set -euo pipefail
           failed=0
           for result in \
+            "rust=$RUST" \
             "desktop-tests=$DESKTOP_TESTS" \
             "ui-gate=$UI_GATE" \
             "deletion-recovery=$DELETION_RECOVERY" \
@@ -172,3 +175,36 @@ jobs:
             exit 1
           fi
           echo "QUALITY GATE: PASS"
+
+  rust:
+    name: Rust fmt, test, clippy
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Sabit Rust arac zinciri
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup override set 1.98.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+      - name: aria2c motorunu indir
+        run: python -c "from core import engines; engines.indir('aria2c')"
+      - name: Rust kapilari (iki workspace)
+        env:
+          AFUDM_ARIA2_TEST_EXE: ${{ github.workspace }}/engine/aria2c.exe
+        shell: pwsh
+        run: |
+          foreach ($manifest in @("rs/Cargo.toml", "rs/app/Cargo.toml")) {
+            cargo fmt --manifest-path $manifest --all -- --check
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            cargo test --locked --manifest-path $manifest
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            cargo clippy --locked --manifest-path $manifest --all-targets -- -D warnings
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
