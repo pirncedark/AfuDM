@@ -642,3 +642,12 @@ fn omniget_json_reader_preserves_valid_and_repeated_corrupt_files() {
     assert!(backups.contains(&"{broken".into()));
     assert!(backups.contains(&"[broken".into()));
 }
+
+#[test]
+fn upload_default_for_existing_settings() {
+    let s = SqliteStore::open_in_memory().unwrap();
+    assert_eq!(s.get("max_upload_kb").unwrap(), Some(json!(100)));
+    assert_eq!(s.all_settings().unwrap()["max_upload_kb"], 100);
+    s.set("max_upload_kb", json!(0)).unwrap();
+    assert_eq!(s.all_settings().unwrap()["max_upload_kb"], 0);
+}

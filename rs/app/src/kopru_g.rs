@@ -53,6 +53,7 @@ const METIN_ANAHTARLAR: [&str; 9] = [
 /// Python core/servis.py `UYGULAMA_ZAMANI` (ayar rozetleri). Ayni sirayla kopya.
 const UYGULAMA_ZAMANI: &[(&str, &str)] = &[
     ("max_speed_kb", "hemen"),
+    ("max_upload_kb", "hemen"),
     ("hiz_profili", "hemen"),
     ("snail_speed_kb", "hemen"),
     ("max_concurrent", "hemen"),
@@ -1255,6 +1256,7 @@ mod tests {
     fn uygulama_zamani_tablosu() {
         assert_eq!(uygulama_zamani("proxy"), "yeni_indirmelerde");
         assert_eq!(uygulama_zamani("max_speed_kb"), "hemen");
+        assert_eq!(uygulama_zamani("max_upload_kb"), "hemen");
         assert_eq!(uygulama_zamani("bilinmeyen_ayar"), "bilinmiyor");
     }
 

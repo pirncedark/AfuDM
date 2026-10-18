@@ -1936,6 +1936,7 @@ $("openSettings").onclick = async () => {
   $("sSpeed").value = s.max_speed_kb ?? 0;
   $("sMode").value = s.hiz_profili || "normal";
   $("sRatio").value = s.seed_ratio ?? 1;
+  $("sUploadSpeed").value = s.max_upload_kb ?? 100;
   $("sChat").value = s.telegram_chat_id || "";
   $("sToken").value = s.telegram_bot_token || "";
   $("sClip").checked = !!s.clipboard_watch;
@@ -2314,6 +2315,7 @@ $("setGo").onclick = async () => {
     max_speed_kb: Number($("sSpeed").value) || 0,
     hiz_profili: $("sMode").value || "normal",
     seed_ratio: Number($("sRatio").value) || 0,
+    max_upload_kb: Number($("sUploadSpeed").value),
     telegram_chat_id: $("sChat").value.trim(),
     telegram_bot_token: $("sToken").value.trim(),
     clipboard_watch: $("sClip").checked,
@@ -4083,6 +4085,7 @@ const AYAR_ROZET_ALANI = {
   sSpeed: "max_speed_kb",
   sMode: "hiz_profili",
   sRatio: "seed_ratio",
+  sUploadSpeed: "max_upload_kb",
   sChat: "telegram_chat_id",
   sToken: "telegram_bot_token",
   sClip: "clipboard_watch",
