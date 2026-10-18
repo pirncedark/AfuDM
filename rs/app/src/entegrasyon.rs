@@ -12,14 +12,13 @@ use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::process::Command;
 
-use winreg::enums::{HKEY_CURRENT_USER, KEY_SET_VALUE};
+use winreg::enums::{HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, KEY_SET_VALUE};
 use winreg::RegKey;
 
 const KOK: &str = r"Software\Classes";
 const TORRENT_UZANTI: &str = ".torrent";
 const TORRENT_PROGID: &str = "AfuDM.torrent";
 const MAGNET: &str = "magnet";
-const PROTOKOL: &str = "afudm";
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const KISAYOL_ADI: &str = "AfuDM.lnk";
 const KISAYOL_ACIKLAMA: &str = "AfuDM — indirme yoneticisi";
@@ -174,24 +173,36 @@ pub fn iliskilendirme_durumu() -> (bool, bool) {
     (torrent, magnet)
 }
 
-// --- afudm:// protokolu -------------------------------------------------------
-
-pub fn protokol_ac() -> io::Result<()> {
-    let k = komut()?;
-    yaz(PROTOKOL, "URL:AfuDM Download", "")?;
-    yaz(PROTOKOL, "", "URL Protocol")?;
-    yaz(&format!("{PROTOKOL}\\shell\\open\\command"), &k, "")
-}
-
-pub fn protokol_kapat() {
-    agac_sil(PROTOKOL);
-}
-
-pub fn protokol_kayitli() -> bool {
+/// Python iliskilendir.varsayilan_mi: Windows'un GERCEK secimi (UserChoice, yoksa HKCR). Yalniz okur.
+pub fn varsayilan_mi(tur: &str) -> bool {
     let Ok(k) = komut() else {
         return false;
     };
-    oku(&format!("{PROTOKOL}\\shell\\open\\command"), "").as_deref() == Some(k.as_str())
+    let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
+    let varsayilan = |yol: String| -> Option<String> {
+        hkcr.open_subkey(yol).ok()?.get_value::<String, _>("").ok()
+    };
+    match tur {
+        "torrent" => {
+            if let Some(progid) = user_choice_progid(r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.torrent\UserChoice") {
+                return progid == TORRENT_PROGID;
+            }
+            varsayilan(TORRENT_UZANTI.to_string()).as_deref() == Some(TORRENT_PROGID)
+        }
+        "magnet" => {
+            if let Some(progid) = user_choice_progid(r"Software\Microsoft\Windows\Shell\Associations\UrlAssociations\magnet\UserChoice") {
+                if let Some(gercek) = varsayilan(format!(r"{progid}\shell\open\command")) {
+                    return gercek == k;
+                }
+            }
+            varsayilan(format!(r"{MAGNET}\shell\open\command")).as_deref() == Some(k.as_str())
+        }
+        _ => false,
+    }
+}
+
+fn user_choice_progid(yol: &str) -> Option<String> {
+    hkcu().open_subkey(yol).ok()?.get_value::<String, _>("ProgId").ok()
 }
 
 // --- acilista calisma ---------------------------------------------------------

@@ -47,7 +47,9 @@ def main():
         f=OUT/(name+'.json')
         if not f.exists():checks.append(False);continue
         v=json.loads(f.read_text(encoding='utf-8'))
-        ok=all(x.get('status')=='GECTI' for x in v) if isinstance(v,list) else v.get('status')=='GECTI'
+        # crash kapisi yalniz Rust satirlarina bakar: Python'da acilis kurtarmasi yok (referans satirlar KALDI kalir).
+        if name=='crash':ok=all(x.get('status')=='GECTI' for x in v if x.get('side')=='rs')
+        else:ok=all(x.get('status')=='GECTI' for x in v) if isinstance(v,list) else v.get('status')=='GECTI'
         checks.append(ok);print('RESULT',name,'GECTI' if ok else 'KALDI',flush=True)
     code=int(bool(errors) or bool(alive) or not all(checks))
     emit('runner_progress',{'status':'FINISHED','selected':selected,'completed':completed,'exit_code':code})

@@ -1004,6 +1004,29 @@ fn sync_persists_completion_once_before_purge_and_snapshot_reads_db() {
 }
 
 #[test]
+fn acilis_kurtarmasi_aria2da_olmayan_bitmemis_kaydi_yeniden_ekler() {
+    let f = Fixture::new();
+    let gid = f.add("kesik.bin")["gid"].as_str().unwrap().to_string();
+    // Motor cokmesi: aria2 oturumu bos kaldi, gid artik motorda yok.
+    f.rpc.statuses.lock().unwrap().remove(&gid);
+    sync_aria2(&f.m).unwrap();
+    let adet_add_uri = f
+        .rpc
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(ad, _)| ad.as_str() == "add_uri")
+        .count();
+    assert_eq!(adet_add_uri, 2, "ilk ekleme + acilis kurtarmasi");
+    let satir = f.m.store.list(None, 10).unwrap();
+    assert_eq!(satir.len(), 1);
+    let yeni = text(&satir[0]["gid"]).to_string();
+    assert!(f.rpc.statuses.lock().unwrap().contains_key(&yeni));
+    assert!(state(&f.m).unwrap().kurtarma_bitti);
+}
+
+#[test]
 fn sync_persists_errors_and_does_not_wake_sleeping_engine() {
     let f = Fixture::new();
     let gid = f.add("error.bin")["gid"].as_str().unwrap().to_string();

@@ -48,8 +48,17 @@ fn afu_hatasi(e: AfuError) -> Response {
     afudm_api::hata_yaniti(&e)
 }
 
+/// Python `_govde_oku`: bos govde {} sayilir; bozuk JSON ve JSON nesnesi olmayan govde
+/// GOVDE_HATASI metniyle reddedilir.
 fn govde(bytes: &Bytes) -> std::result::Result<Json, &'static str> {
-    serde_json::from_slice(bytes).map_err(|_| "gecersiz JSON govdesi")
+    if bytes.is_empty() {
+        return Ok(json!({}));
+    }
+    match serde_json::from_slice::<Json>(bytes) {
+        Ok(v) if v.is_object() => Ok(v),
+        Ok(_) => Err("Istek bicimi uygun degil. Yeniden dene."),
+        Err(_) => Err("Istek okunamadi. Yeniden dene."),
+    }
 }
 
 /// Python `_boolean_al`: true/false/1/0 metinleri ve bool/None kabul edilir; digeri hata.
@@ -113,7 +122,7 @@ async fn kurallari_listele(State(d): State<Durum>) -> Response {
 async fn kurallari_kaydet(State(d): State<Durum>, body: Bytes) -> Response {
     let data = match govde(&body) {
         Ok(v) => v,
-        Err(m) => return hata(400, "BAD_REQUEST", m),
+        Err(m) => return hata(400, "GOVDE_HATASI", m),
     };
     let Some(gelen) = data.get("rules").and_then(Json::as_array) else {
         return hata(400, "BAD_REQUEST", "rules liste olmali");
@@ -156,7 +165,7 @@ async fn eklenti_islem(State(d): State<Durum>) -> Response {
 async fn eklenti_eylem(State(d): State<Durum>, body: Bytes) -> Response {
     let data = match govde(&body) {
         Ok(v) => v,
-        Err(m) => return hata(400, "BAD_REQUEST", m),
+        Err(m) => return hata(400, "GOVDE_HATASI", m),
     };
     let eylem = metin_al(&data, "eylem");
     let ad = metin_al(&data, "ad");
@@ -200,7 +209,7 @@ async fn eklenti_eylem(State(d): State<Durum>, body: Bytes) -> Response {
 async fn linkgrabber_gonder(State(d): State<Durum>, body: Bytes) -> Response {
     let data = match govde(&body) {
         Ok(v) => v,
-        Err(m) => return hata(400, "BAD_REQUEST", m),
+        Err(m) => return hata(400, "GOVDE_HATASI", m),
     };
     let metin = metin_al(&data, "metin");
     let metin = metin.trim();
@@ -215,4 +224,24 @@ async fn linkgrabber_gonder(State(d): State<Durum>, body: Bytes) -> Response {
         return hata(503, "UI_YOK", "LinkGrabber paneli kullanilamiyor");
     }
     Cevap(serde_json::json!({"ok": true, "pending": true})).into_response()
+}
+
+#[cfg(test)]
+mod govde_tests {
+    use super::govde;
+    use axum::body::Bytes;
+
+    #[test]
+    fn bos_govde_nesne_sayilir_ve_hatalar_python_metniyle_doner() {
+        assert_eq!(govde(&Bytes::new()).unwrap(), serde_json::json!({}));
+        assert_eq!(
+            govde(&Bytes::from_static(b"{bozuk")).unwrap_err(),
+            "Istek okunamadi. Yeniden dene."
+        );
+        assert_eq!(
+            govde(&Bytes::from_static(b"[]")).unwrap_err(),
+            "Istek bicimi uygun degil. Yeniden dene."
+        );
+        assert!(govde(&Bytes::from_static(b"{\"metin\":\"a\"}")).is_ok());
+    }
 }

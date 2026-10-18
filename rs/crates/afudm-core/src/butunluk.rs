@@ -98,24 +98,13 @@ pub fn butunluk_onar(m: &Manager, gid: &str, yeni_url: &str) -> Result<Json> {
     Ok(json!({"ok": true, "durum": "Onarım başlatıldı."}))
 }
 
-pub fn butunluk_hepsini_tara(m: &Manager) -> Result<Json> {
-    let satirlar = m.store.list(None, i64::MAX as usize)?;
-    let mut sonuclar = JsonMap::new();
-    let mut taranan = 0u64;
-    for row in &satirlar {
-        if row["status"] != "complete"
-            || !matches!(row["kind"].as_str(), Some("http") | Some("ftp"))
-        {
-            continue;
-        }
-        taranan += 1;
-        if let Some(gid) = row["gid"].as_str().filter(|g| !g.is_empty()) {
-            let sonuc = butunluk_tara(m, gid)
-                .unwrap_or_else(|e| json!({"ok": false, "neden": e.to_string()}));
-            sonuclar.insert(gid.to_string(), sonuc);
-        }
-    }
-    Ok(json!({"ok": true, "sonuclar": sonuclar, "taranan": taranan}))
+/// Python manager.butunluk_hepsini_tara (manager.py:2616) `self.store.all_downloads()` cagirir;
+/// Python Store sinifinda bu metod yok (db.py), yani Python her cagrida AttributeError verir.
+/// Rust da ayni hatayi uretir (birebir). Duzeltme SONUC_FIX6b.md'de 📍 olarak onerilir.
+pub fn butunluk_hepsini_tara(_m: &Manager) -> Result<Json> {
+    Err(AfuError::Other(
+        "'Store' object has no attribute 'all_downloads'".into(),
+    ))
 }
 
 /// Python: butunluk.tara. Donus: {durum: saglam|eksik|bozuk|bulunamadi, neden, ...}.
@@ -819,7 +808,7 @@ mod tests {
     }
 
     #[test]
-    fn butunluk_hepsini_tara_yalniz_tamamlananlari_sayar() {
+    fn butunluk_hepsini_tara_python_gibi_hata_verir() {
         let d = gecici_klasor("hepsi");
         let (m, store) = yonetici(&d);
         store
@@ -833,10 +822,9 @@ mod tests {
                 Some("a"),
             )
             .expect("ekle");
-        let s = butunluk_hepsini_tara(&m).expect("hepsi");
-        assert_eq!(s["ok"], true);
-        assert_eq!(s["taranan"], 0);
-        assert!(s["sonuclar"].as_object().is_some_and(|o| o.is_empty()));
+        // Python ile ayni: store.all_downloads yok -> hata (duzeltme SONUC'ta 📍).
+        let hata = butunluk_hepsini_tara(&m).expect_err("python uyumlu hata");
+        assert!(hata.to_string().contains("all_downloads"));
     }
 
     #[test]

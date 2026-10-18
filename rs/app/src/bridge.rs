@@ -20,7 +20,7 @@ use serde_json::json;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 
-use crate::{entegrasyon, window::{self, ANA}};
+use crate::{entegrasyon, window::{self, ANA}, windows_rota};
 
 type Sonuc = afudm_types::Result<Json>;
 
@@ -44,6 +44,41 @@ pub(crate) fn cevap(r: Sonuc) -> Json {
     match r {
         Ok(v) => v,
         Err(e) => hata(e.to_string()),
+    }
+}
+
+/// Python core/servis.py `_hata` sozlesmesi: code + message + error.
+pub(crate) fn servis_hata(metin: impl Into<String>) -> Json {
+    let m = metin.into();
+    json!({"ok": false, "code": "ISLEM_HATASI", "message": m, "error": m})
+}
+
+/// Python torrent koprusu hatasi: error_code + error + error_details.
+fn torrent_hata(metin: impl Into<String>) -> Json {
+    let m = metin.into();
+    json!({"ok": false, "error_code": "engine", "error": m, "error_details": m})
+}
+
+/// Python servis.kontrol orphan kontrolu: "kayit bulunamadi" / "not found" (ASCII ve Turkce biçim).
+fn orphan_mi(metin: &str) -> bool {
+    let t = metin.to_lowercase();
+    t.contains("kayit bulunamadi") || t.contains("kayıt bulunamadı") || t.contains("not found")
+}
+
+/// Python torrent_metrikleri hatasi: torrent_hata + hazir_degil/neden.
+fn torrent_metrik_hata(metin: impl Into<String>) -> Json {
+    let m = metin.into();
+    json!({"ok": false, "error_code": "engine", "error": m, "error_details": m, "hazir_degil": true, "neden": m})
+}
+
+/// Python `{"ok": True, **sonuc}` sarmalayicisi.
+fn ok_ile(v: Json) -> Json {
+    match v {
+        Json::Object(mut m) => {
+            m.insert("ok".into(), json!(true));
+            Json::Object(m)
+        }
+        _ => json!({"ok": true}),
     }
 }
 
@@ -340,9 +375,13 @@ impl Kabuk {
     }
 
     pub fn boot_hatasi(&self, hata: String) {
+        if let Some(c) = self.ctx.get() {
+            c.store.log("error", &format!("boot hatasi: {hata}"), "");
+        }
         *kilit(&self.boot_hata) = Some(hata);
     }
 
+    /// Rust'a ozel tani (`tani_boot`); sistem_durumu Python sozlesmesini korur, boot_hata tasimaz.
     fn boot_hata_metni(&self) -> Option<String> {
         kilit(&self.boot_hata).clone()
     }
@@ -392,6 +431,17 @@ fn motor_cagri(k: &Kabuk, f: impl FnOnce(&dyn ManagerApi) -> Sonuc) -> Json {
     }
 }
 
+/// `motor_cagri` ile ayni, ama hata biçimini Python'un o metodunun sozlesmesine gore secer.
+fn motor_cagri_ile(k: &Kabuk, f: impl FnOnce(&dyn ManagerApi) -> Sonuc, hata_yap: fn(String) -> Json) -> Json {
+    match k.manager() {
+        Some(m) => match f(m) {
+            Ok(v) => v,
+            Err(e) => hata_yap(e.to_string()),
+        },
+        None => motor_hazir_degil(),
+    }
+}
+
 pub(crate) fn gezgin_ac(yol: &Path, sec: bool) {
     let mut komut = Command::new("explorer.exe");
     if sec {
@@ -413,43 +463,42 @@ fn api_info(k: &Kabuk) -> Json {
 }
 
 fn motor_durumu(k: &Kabuk) -> Json {
-    let mut motorlar = JsonMap::new();
-    for ad in ["aria2c", "yt-dlp", "ffmpeg", "cloudflared"] {
-        let kaynak = if afudm_engine::engines::var_mi(&k.app_dir, ad) {
-            "paket"
-        } else if !afudm_engine::engines::sistemde(&k.app_dir, ad).is_empty() {
-            "sistem"
-        } else {
-            "yok"
-        };
-        motorlar.insert(ad.into(), json!({"kaynak": kaynak}));
-    }
-    json!({"ok": true, "motorlar": motorlar, "ilerleme": {}})
+    json!({"ok": true, "motorlar": afudm_engine::engines::durum(&k.app_dir), "ilerleme": {}})
 }
 
+/// Python surum.uzanti_surumu: extension/manifest.json icindeki surum; okunamazsa bos.
+fn uzanti_surumu(k: &Kabuk) -> String {
+    fs::read_to_string(k.app_dir.join("extension").join("manifest.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str::<Json>(&t).ok())
+        .and_then(|v| v.get("version").and_then(Json::as_str).map(str::to_string))
+        .unwrap_or_default()
+}
+
+/// Python WindowsIntegration.status() + windows_integration_status: torrent, startup, notify, defender uzerine biner.
 fn windows_durumu(k: &Kabuk) -> Json {
-    let (torrent, magnet) = entegrasyon::iliskilendirme_durumu();
-    let kayitli = |anahtar: &str| {
-        k.ctx
-            .get()
-            .and_then(|c| c.store.get(anahtar).ok().flatten())
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false)
+    let Some(c) = k.ctx.get() else {
+        return motor_hazir_degil();
     };
-    let defender = std::env::var("ProgramFiles")
-        .map(|p| PathBuf::from(p).join("Windows Defender").join("MpCmdRun.exe").exists())
-        .unwrap_or(false);
-    json!({"ok": true, "integrations": {
-        "torrent": {"registered": torrent && magnet, "scope": "current_user"},
-        "startup": {"registered": entegrasyon::baslangic_acik(), "scope": "current_user"},
-        "protocol": {"registered": entegrasyon::protokol_kayitli(), "scope": "current_user"},
-        "notify": {"registered": kayitli("windows_notifications"), "scope": "current_user"},
-        "defender": {"registered": kayitli("defender_auto_scan"), "scope": "current_user", "available": defender},
-    }})
+    let mut d = windows_rota::durum(c);
+    let (torrent, magnet) = entegrasyon::iliskilendirme_durumu();
+    if let Some(ent) = d.get_mut("integrations").and_then(Json::as_object_mut) {
+        ent.insert("torrent".into(), json!({"registered": torrent && magnet, "scope": "current_user"}));
+        ent.insert("startup".into(), json!({"registered": entegrasyon::baslangic_acik(), "scope": "current_user"}));
+        ent.insert("notify".into(), json!({"registered": bayrak(c, "windows_notifications"), "scope": "current_user"}));
+        ent.insert(
+            "defender".into(),
+            json!({"registered": bayrak(c, "defender_auto_scan"), "scope": "current_user", "available": defender_var()}),
+        );
+    }
+    d
 }
 
 /// Python windows_integration_apply / remove. `ac` true ise uygular.
 fn windows_uygula(k: &Kabuk, ident: &str, ac: bool) -> Json {
+    let Some(c) = k.ctx.get() else {
+        return motor_hazir_degil();
+    };
     let sonuc: Result<(), String> = match (ident, ac) {
         ("torrent", true) => entegrasyon::iliskilendir_ac().map_err(|e| e.to_string()),
         ("torrent", false) => {
@@ -458,22 +507,13 @@ fn windows_uygula(k: &Kabuk, ident: &str, ac: bool) -> Json {
         }
         ("startup", true) => entegrasyon::baslangic_ac("--tepside").map_err(|e| e.to_string()),
         ("startup", false) => entegrasyon::baslangic_kapat().map_err(|e| e.to_string()),
-        ("protocol", true) => entegrasyon::protokol_ac().map_err(|e| e.to_string()),
-        ("protocol", false) => {
-            entegrasyon::protokol_kapat();
-            Ok(())
-        }
         ("notify" | "defender", _) => {
             let anahtar = if ident == "notify" { "windows_notifications" } else { "defender_auto_scan" };
-            match k.ctx.get() {
-                Some(c) => c
-                    .store
-                    .set(anahtar, json!(ac))
-                    .map_err(|e| e.to_string()),
-                None => return motor_hazir_degil(),
-            }
+            c.store.set(anahtar, json!(ac)).map_err(|e| e.to_string())
         }
-        _ => return henuz_yok(),
+        // Python: protocol, context, afup ve bilinmeyen kimlik self.windows'a gider.
+        (_, true) => windows_rota::uygula(c, ident),
+        (_, false) => windows_rota::kaldir(c, ident),
     };
     match sonuc {
         Ok(()) => windows_durumu(k),
@@ -481,16 +521,34 @@ fn windows_uygula(k: &Kabuk, ident: &str, ac: bool) -> Json {
     }
 }
 
-fn windows_test(ident: &str) -> Json {
+/// Python WindowsIntegration.test / windows_integration_test.
+fn windows_test(k: &Kabuk, ident: &str) -> Json {
+    let Some(c) = k.ctx.get() else {
+        return motor_hazir_degil();
+    };
     match ident {
         "torrent" => {
             let (t, m) = entegrasyon::iliskilendirme_durumu();
             json!({"ok": t && m, "registered": t && m})
         }
         "startup" => json!({"ok": entegrasyon::baslangic_acik(), "registered": entegrasyon::baslangic_acik()}),
-        "protocol" => json!({"ok": entegrasyon::protokol_kayitli(), "registered": entegrasyon::protokol_kayitli()}),
-        _ => henuz_yok(),
+        "notify" => json!({"ok": true, "registered": bayrak(c, "windows_notifications")}),
+        "defender" => json!({"ok": defender_var(), "registered": bayrak(c, "defender_auto_scan")}),
+        _ => match windows_rota::test(c, ident) {
+            Ok(v) => v,
+            Err(e) => hata(e),
+        },
     }
+}
+
+fn bayrak(c: &ApiCtx, anahtar: &str) -> bool {
+    c.store.get(anahtar).ok().flatten().and_then(|v| v.as_bool()).unwrap_or(false)
+}
+
+fn defender_var() -> bool {
+    std::env::var("ProgramFiles")
+        .map(|p| PathBuf::from(p).join("Windows Defender").join("MpCmdRun.exe").exists())
+        .unwrap_or(false)
 }
 
 fn kayit_bulunamadi() -> String {
@@ -654,24 +712,26 @@ fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Json {
             }
         }
         "bekleyen_iptal" => {
-            if k.ui.iptal(n(a, 0)) {
-                json!({"ok": true})
-            } else {
-                hata("istek bulunamadi")
-            }
+            // Python Bekleyenler.al: kimlik bulunmasa da {"ok": true} doner.
+            k.ui.iptal(n(a, 0));
+            json!({"ok": true})
         }
 
         // --- kabuk durumu ---
         "api_info" => api_info(k),
-        "surum_bilgi" => json!({"ok": true, "surum": env!("CARGO_PKG_VERSION"), "uzanti": null}),
+        "surum_bilgi" => json!({"surum": env!("CARGO_PKG_VERSION"), "uzanti": uzanti_surumu(k)}),
         "motor_durumu" => motor_durumu(k),
+        // Rust'a ozel tani: Python'da karsiligi yok, sistem_durumu sozlesmesine girmez.
+        "tani_boot" => json!({"ok": true, "boot_hata": k.boot_hata_metni()}),
         "sistem_durumu" => {
             let (t, m) = entegrasyon::iliskilendirme_durumu();
             json!({
                 "ok": true,
                 "baslangic": entegrasyon::baslangic_acik(),
-                "torrent": {"kayitli": t && m, "torrent": t, "magnet": m},
-                "boot_hata": k.boot_hata_metni(),
+                "torrent": {
+                    "torrent": {"kayitli": t, "varsayilan": entegrasyon::varsayilan_mi("torrent")},
+                    "magnet": {"kayitli": m, "varsayilan": entegrasyon::varsayilan_mi("magnet")},
+                },
             })
         }
         "baslangic_ayarla" => {
@@ -705,7 +765,7 @@ fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Json {
         "windows_integration_status" => windows_durumu(k),
         "windows_integration_apply" => windows_uygula(k, s(a, 0), true),
         "windows_integration_remove" => windows_uygula(k, s(a, 0), false),
-        "windows_integration_test" => windows_test(s(a, 0)),
+        "windows_integration_test" => windows_test(k, s(a, 0)),
 
         // --- klasor ve yollar ---
         "klasor_kisayollar" => match k.ctx.get() {
@@ -797,7 +857,15 @@ fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Json {
         "reliability_diagnostics_export" => {
             ctx_cagri(k, |c| reliability::diagnostics_export(&*c.store, &c.data_dir, &c.app_dir))
         }
-        "reliability_restore" => ctx_cagri(k, |c| reliability::restore(&*c.store, &c.data_dir, s(a, 0))),
+        // Python restore yaniti 'staged' icermez; arayuz da kullanmiyor, kopru yanitindan cikarilir.
+        "reliability_restore" => ctx_cagri(k, |c| {
+            reliability::restore(&*c.store, &c.data_dir, s(a, 0)).map(|mut v| {
+                if let Some(o) = v.as_object_mut() {
+                    o.remove("staged");
+                }
+                v
+            })
+        }),
         "reliability_health" => match k.ek.get() {
             Some(e) => json!({"ok": true, "rpc_alive": e.rpc.alive(), "uyku": e.rpc.sleeping()}),
             None => motor_hazir_degil(),
@@ -837,8 +905,8 @@ fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Json {
         },
 
         // --- otomasyon (G1) ---
-        "automation_retry" => ek_ctx_cagri(k, |e, _| e.otomasyon.retry(n(a, 0))),
-        "automation_cancel" => ek_ctx_cagri(k, |e, _| e.otomasyon.cancel(n(a, 0))),
+        "automation_retry" => ek_ctx_cagri(k, |e, _| e.otomasyon.retry(n(a, 0)).map(|j| json!({"ok": true, "job": j}))),
+        "automation_cancel" => ek_ctx_cagri(k, |e, _| e.otomasyon.cancel(n(a, 0)).map(|j| json!({"ok": true, "job": j}))),
 
         // --- eklenti (G2): HTTP ile ayni servis ornegi ---
         "eklenti_listesi" => ek_ctx_cagri(k, |e, _| e.eklenti.liste()),
@@ -853,48 +921,78 @@ fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Json {
         "seed_dosya_ekle" => motor_cagri(k, |m| m.seed_dosya_ekle(s(a, 0))),
         "seed_dosya_sil" => motor_cagri(k, |m| m.seed_dosya_sil(s(a, 0))),
         "tracker_tara" => motor_cagri(k, |m| m.tracker_tara(s(a, 0))),
-        "torrent_on_ekle" => motor_cagri(k, |m| {
-            m.torrent_on_ekle(s(a, 0)).map(|gid| json!({"ok": true, "gid": gid}))
-        }),
+        "torrent_on_ekle" => motor_cagri_ile(
+            k,
+            |m| m.torrent_on_ekle(s(a, 0)).map(|gid| json!({"ok": true, "gid": gid})),
+            torrent_hata,
+        ),
         "torrent_on_iptal" => motor_cagri(k, |m| {
             m.torrent_on_iptal(s(a, 0)).map(|_| json!({"ok": true}))
         }),
-        "torrent_dosyalari" => motor_cagri(k, |m| {
-            let gid = s(a, 0);
-            m.torrent_dosyalari(gid).map(|v| {
-                json!({
-                    "ok": true,
-                    "gid": v.get("gid").cloned().unwrap_or(json!(gid)),
-                    "hazir_degil": v.get("hazir_degil").and_then(Json::as_bool).unwrap_or(false),
-                    "neden": v.get("neden").cloned().unwrap_or(json!("")),
-                    "dosyalar": v.get("dosyalar").cloned().unwrap_or(json!([])),
+        "torrent_dosyalari" => motor_cagri_ile(
+            k,
+            |m| {
+                let gid = s(a, 0);
+                m.torrent_dosyalari(gid).map(|v| {
+                    json!({
+                        "ok": true,
+                        "gid": v.get("gid").cloned().unwrap_or(json!(gid)),
+                        "hazir_degil": v.get("hazir_degil").and_then(Json::as_bool).unwrap_or(false),
+                        "neden": v.get("neden").cloned().unwrap_or(json!("")),
+                        "dosyalar": v.get("dosyalar").cloned().unwrap_or(json!([])),
+                    })
                 })
-            })
-        }),
-        "torrent_secimi_ayarla" => motor_cagri(k, |m| m.torrent_secimi_ayarla(s(a, 0), &sayilar(a, 1))),
-        "torrent_metrikleri" => motor_cagri(k, |m| {
-            let gid = s(a, 0);
-            m.torrent_metrikleri(gid).map(|v| {
-                let hazir_degil = v.get("hazir_degil").and_then(Json::as_bool).unwrap_or(false);
-                json!({
-                    "ok": true,
-                    "gid": gid,
-                    "hazir_degil": hazir_degil,
-                    "neden": v.get("neden").cloned().unwrap_or(json!("")),
-                    "metrikler": if hazir_degil { json!({}) } else { v.clone() },
+            },
+            torrent_hata,
+        ),
+        "torrent_secimi_ayarla" => motor_cagri_ile(
+            k,
+            |m| m.torrent_secimi_ayarla(s(a, 0), &sayilar(a, 1)),
+            torrent_hata,
+        ),
+        "torrent_metrikleri" => motor_cagri_ile(
+            k,
+            |m| {
+                let gid = s(a, 0);
+                m.torrent_metrikleri(gid).map(|v| {
+                    let hazir_degil = v.get("hazir_degil").and_then(Json::as_bool).unwrap_or(false);
+                    json!({
+                        "ok": true,
+                        "gid": gid,
+                        "hazir_degil": hazir_degil,
+                        "neden": v.get("neden").cloned().unwrap_or(json!("")),
+                        "metrikler": if hazir_degil { json!({}) } else { v.clone() },
+                    })
                 })
-            })
-        }),
-        "control" => motor_cagri(k, |m| {
-            let gid = s(a, 1);
-            match s(a, 0) {
-                "pause" => m.pause(gid).map(|_| json!({"ok": true})),
-                "resume" => m.resume(gid).map(|_| json!({"ok": true})),
-                "remove" => m.remove(gid, b(a, 2)).map(|_| json!({"ok": true})),
-                _ => Ok(hata("bilinmeyen islem")),
-            }
-        }),
-        "retry" => motor_cagri(k, |m| m.retry(n(a, 0))),
+            },
+            torrent_metrik_hata,
+        ),
+        "control" => motor_cagri_ile(
+            k,
+            |m| {
+                let gid = s(a, 1);
+                let eylem = s(a, 0).trim();
+                let sonuc = match eylem {
+                    "pause" => m.pause(gid).map(|_| ()),
+                    "resume" => m.resume(gid).map(|_| ()),
+                    "remove" => m.remove(gid, b(a, 2)).map(|_| ()),
+                    _ => {
+                        let kisa: String = eylem.chars().take(24).collect();
+                        return Ok(json!({"ok": false, "code": "BILINMEYEN_EYLEM", "error": format!("bilinmeyen eylem: {kisa}")}));
+                    }
+                };
+                match sonuc {
+                    Ok(()) => Ok(json!({"ok": true, "action": eylem, "gid": gid})),
+                    // Python servis.kontrol: zaten listede olmayan kayit basarili sayilir (orphan).
+                    Err(e) if eylem == "remove" && orphan_mi(&e.to_string()) => {
+                        Ok(json!({"ok": true, "action": "remove", "gid": gid, "orphan": true}))
+                    }
+                    Err(e) => Err(e),
+                }
+            },
+            servis_hata,
+        ),
+        "retry" => motor_cagri_ile(k, |m| m.retry(n(a, 0)).map(ok_ile), servis_hata),
 
         "kaydet_bilgi" => match k.ctx.get() {
             Some(c) => cevap(kaydet_bilgi(c, s(a, 0), s(a, 1), s(a, 2))),
@@ -910,7 +1008,11 @@ fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Json {
         "loglar" => ctx_cagri(k, |c| {
             c.store.recent_events(50, s(a, 0)).map(|e| json!({"ok": true, "events": e}))
         }),
-        "link_yenile" => motor_cagri(k, |m| m.renew(s(a, 0), s(a, 1), None, None, None)),
+        "link_yenile" => motor_cagri_ile(
+            k,
+            |m| m.renew(s(a, 0), s(a, 1), None, None, None).map(ok_ile),
+            servis_hata,
+        ),
         "automation_jobs" => ctx_cagri(k, |c| {
             c.store.automation_jobs(s(a, 0), 200).map(|j| json!({"ok": true, "jobs": j}))
         }),
@@ -966,4 +1068,41 @@ pub fn sayfa_hazir(app: AppHandle, window: tauri::WebviewWindow) {
     let kabuk = app.state::<Arc<Kabuk>>().inner().clone();
     kabuk.ui.lg.hazir.store(true, Ordering::SeqCst);
     lg_teslim_et(&app, &kabuk.ui.lg);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn servis_hatasi_python_sozlesmesi() {
+        let v = servis_hata("x");
+        assert_eq!(v["ok"], json!(false));
+        assert_eq!(v["code"], json!("ISLEM_HATASI"));
+        assert_eq!(v["message"], json!("x"));
+        assert_eq!(v["error"], json!("x"));
+    }
+
+    #[test]
+    fn torrent_metrik_hatasi_hazir_degil_alanini_tasir() {
+        let v = torrent_metrik_hata("y");
+        assert_eq!(v["error_code"], json!("engine"));
+        assert_eq!(v["hazir_degil"], json!(true));
+        assert_eq!(v["neden"], json!("y"));
+        assert!(torrent_hata("y").get("hazir_degil").is_none());
+    }
+
+    #[test]
+    fn ok_ile_nesneye_ok_ekler() {
+        assert_eq!(ok_ile(json!({"a": 1})), json!({"ok": true, "a": 1}));
+        assert_eq!(ok_ile(Json::Null), json!({"ok": true}));
+    }
+
+    #[test]
+    fn orphan_metni_iki_bicimi_de_taniyar() {
+        assert!(orphan_mi("Kayit bulunamadi: abc"));
+        assert!(orphan_mi("kayıt bulunamadı"));
+        assert!(orphan_mi("GID not found"));
+        assert!(!orphan_mi("disk dolu"));
+    }
 }

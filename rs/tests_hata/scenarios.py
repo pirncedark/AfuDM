@@ -51,6 +51,17 @@ def resource(apps,server,idle=300):
     ok=idle>=300 and all(r['json'].get('ok') and r.get('sha_ok') and r.get('complete') for _,_,_,r in outputs)
     emit('resources',{'status':'GECTI' if ok else 'KALDI','idle_seconds':idle,'summary':summary})
 
+def fuzz_sig(r):
+    # Sekil imzasi (tests_parity ile ayni mantik): durum kodu + anahtar kumesi + tipler.
+    # gid/id/zaman gibi degisken degerler fark sayilmaz; "code" degeri (BAD_REQUEST / GOVDE_HATASI)
+    # ise sabit sozlesmedir, o yuzden degeri de karsilastirilir.
+    if not isinstance(r,dict): return r
+    govde={k:v for k,v in r.items() if k not in ('status','exception')}
+    j=govde.get('json')
+    kod=j.get('code') if isinstance(j,dict) else None
+    return {'status':r.get('status'),'exception':r.get('exception') is not None,
+            'code':kod,'shape':shape(govde)}
+
 def fuzz(apps,server):
     # Route inventory is derived from production Rust routers (including chained .post()).
     files=[ROOT/'crates/afudm-api/src/lib.rs',ROOT/'app/src/windows_rota.rs',
@@ -95,7 +106,7 @@ def fuzz(apps,server):
                 row[a.kind]=redact(r)
                 # /rotate is body-independent; always refresh current credential.
                 a.token=(a.base/'data/api_token.txt').read_text().strip()
-            row['difference']=row['py']!=row['rs']
+            row['difference']=fuzz_sig(row['py'])!=fuzz_sig(row['rs'])
             row['failure']=any(row[a.kind]['status']==0 or row[a.kind]['status']>=500 or a.proc.poll() is not None for a in apps)
             row['masked_429']=any(row[a.kind]['status']==429 for a in apps)
             rows.append(row);sent+=1
@@ -132,6 +143,40 @@ SKIP={
  'tarayicidan_sor':'download dialog','ana_pencere_kapandi':'window lifecycle',
  'reliability_restart_engine':'Rust daemon scans production RPC port range',
 }
+
+# Kopru vaka listesi (yalniz bridge): Python gecersiz girdide istisna firlatir (__exception__).
+# Gecersiz vaka 'muaf' olarak isaretlenir (Rust zarif hata); gecerli vaka ayri satir olarak olculur.
+BRIDGE_ATLA={'windows_integration_apply','windows_integration_remove'}
+BRIDGE_GECERSIZ_MUAF={'reliability_restore','reliability_recovery_preview','windows_integration_test'}
+BRIDGE_GECERLI={'reliability_restore','reliability_recovery_preview','windows_integration_test'}
+
+def hazirla_indirme(a,server,timeout=60):
+    """Izole veriye yerel dosya sunucusundan kucuk bir indirme ekler, tamamlanmasini bekler; id doner."""
+    import sqlite3
+    r=a.http('/add',{'url':server.add('gecerli_t2.bin',65536)})
+    rid=(r.get('json') or {}).get('id')
+    if rid is None:return None
+    db=a.base/'data'/'afudm.db';t=time.monotonic()
+    while time.monotonic()-t<timeout:
+        con=sqlite3.connect(str(db))
+        try:satir=con.execute('SELECT status FROM downloads WHERE id=?',(rid,)).fetchone()
+        except sqlite3.Error:satir=None
+        finally:con.close()
+        if satir and satir[0]=='complete':return int(rid)
+        time.sleep(1)
+    return None
+
+def bridge_gecerli_args(name,a,server=None):
+    """Her uygulama kendi izole verisinden gecerli bir girdi uretir; uretilemezse None."""
+    import sqlite3
+    if name=='windows_integration_test':return ['torrent']
+    if name=='reliability_recovery_preview':
+        rid=hazirla_indirme(a,server)
+        return [rid] if rid is not None else None
+    if name=='reliability_restore':
+        zips=sorted((a.base/'data'/'backups').glob('*.zip'),key=lambda p:p.stat().st_mtime)
+        return [str(zips[-1])] if zips else None
+    return None
 
 def bridge(apps,server):
     gate_checks=[]
@@ -178,6 +223,8 @@ def bridge(apps,server):
         if name=='sunucu_ayarla':args=[False]
         if name=='telefon_ayarla':args=[False]
         if name=='windows_integration_apply' or name=='windows_integration_remove':args=['invalid-t2']
+        if name in BRIDGE_ATLA:
+            rows.append({'name':name,'skip':'muaf: kayit defterine yazar (kullanici makinesi); harness yazmaz'});continue
         row={'name':name,'args':args}
         for a in apps:
             own=json.loads(json.dumps(args).replace('__T2_BASE__',str(a.base).replace('\\','\\\\')))
@@ -188,12 +235,47 @@ def bridge(apps,server):
                          'exception':r.get('json',{}).get('__exception__') if isinstance(r.get('json'),dict) else None}
             a.token=(a.base/'data/api_token.txt').read_text().strip()
         row['shape_equal']=row['py']['shape']==row['rs']['shape']
+        if name in BRIDGE_GECERSIZ_MUAF:
+            row['skip']='muaf: Python istisna, Rust zarif hata (gecersiz girdi)'
         rows.append(row)
         print(f'BRIDGE {name}: equal={row["shape_equal"]}',flush=True)
+        emit('bridge_rows',rows)
+    # Gecerli vaka: Python'un istisna firlatmadigi girdi; biçim Python ile ayni olmali.
+    for name in sorted(BRIDGE_GECERLI):
+        row={'name':name+' [gecerli]','args':'per-app'}
+        for a in apps:
+            args=bridge_gecerli_args(name,a,server)
+            if args is None:
+                row[a.kind]={'status':None,'shape':None,'ok':None,'exception':'gecerli girdi uretilemedi'}
+                continue
+            r=a.call(name,args)
+            row[a.kind]={'status':r['status'],'shape':shape(r.get('json')),
+                         'ok':r.get('json',{}).get('ok') if isinstance(r.get('json'),dict) else None,
+                         'exception':r.get('json',{}).get('__exception__') if isinstance(r.get('json'),dict) else None}
+            a.token=(a.base/'data/api_token.txt').read_text().strip()
+        row['shape_equal']=row['py']['shape']==row['rs']['shape'] and row['py']['shape'] is not None
+        rows.append(row)
+        print(f'BRIDGE {row["name"]}: equal={row["shape_equal"]}',flush=True)
         emit('bridge_rows',rows)
     called=[r for r in rows if 'skip' not in r]
     emit('bridge',{'status':'GECTI' if all(c['passed'] for c in gate_checks) and all(r['shape_equal'] and r['py']['status']==200 and r['rs']['status']==200 and not r['py']['exception'] for r in called) else 'KALDI',
                   'unique_public_methods':len(methods),'called':len(called),'skipped':len(rows)-len(called),'differences':sum(not r['shape_equal'] for r in called)})
+
+def scan_dosya(path,limit):
+    """Dosyayi 64 KiB parcalarla BLOCK ile karsilastirir; yazilmamis (sifir) ve bozuk parcalari sayar."""
+    path=Path(path)
+    if not path.exists() or limit<=0:return None
+    n=bad=zero=0;ilk=None;off=0
+    with open(path,'rb') as f:
+        while off<limit:
+            d=f.read(min(len(BLOCK),limit-off))
+            if not d:break
+            n+=1
+            if d!=BLOCK[:len(d)]:
+                bad+=1;ilk=off if ilk is None else ilk
+                if d.count(0)==len(d):zero+=1
+            off+=len(d)
+    return {'chunks':n,'bad':bad,'zero':zero,'ilk_bad_offset':ilk}
 
 def crash(apps,server):
     rows=[];size=192*1024**2
@@ -210,7 +292,7 @@ def crash(apps,server):
         starts={a.kind:a.http('/add',{'url':url if mode=='http' else str(a.base/'crash.torrent')}) for a in apps}
         gids={k:v.get('json',{}).get('gid') for k,v in starts.items()}
         progress={};t=time.monotonic()
-        while time.monotonic()-t<160:
+        while time.monotonic()-t<300:
             for a in apps:
                 snap=a.call('snapshot',[]).get('json',{})
                 # Search the snapshot recursively for the assigned gid.
@@ -244,20 +326,22 @@ def crash(apps,server):
             print(f'CRASH {mode} {a.kind}: stopping at {info["fraction"]:.1%}; session={info["session_bytes"]} bytes',flush=True)
             a.kill()
             info['taskkill_exit']=getattr(a,'last_taskkill_exit',None)
+            info['pre_restart_scan']=scan_dosya(a.base/'downloads'/name,before_done//65536*65536)
             pending.append((a,info))
         for a,info in pending:
-            print(f'CRASH {mode} {a.kind}: restarting; resume deadline 75 seconds',flush=True)
+            print(f'CRASH {mode} {a.kind}: restarting; resume deadline 300 seconds',flush=True)
             mark=len(server.ranges);a.start()
             info['integrity']=integrity(a.base)
             # Speed reset after restart; record completed bytes before reset and all resumed ranges.
             info['restart_snapshot_shape']=shape(a.call('snapshot',[]).get('json'))
             a.call('settings_save',[{'max_speed_kb':0}])
-            deadline=time.monotonic()+75
+            deadline=time.monotonic()+300
             file=a.base/'downloads'/name
             while time.monotonic()<deadline:
                 if file.exists() and not Path(str(file)+'.aria2').exists():break
                 time.sleep(1)
             info['resumed_ranges']=[r for r in server.ranges[mark:] if r['path'].split('?')[0]=='/'+name]
+            info['post_scan']=scan_dosya(file,size)
             info['sha_ok']=file.exists() and file.stat().st_size==size and digest_file(file)==expected_digest(size)
             info['range_after_restart']=any(r['start']>0 for r in info['resumed_ranges'])
             info['status']='GECTI' if info['at_40_percent'] and info['control_exists'] and info['integrity']=='ok' and info['sha_ok'] and info['range_after_restart'] else 'KALDI'

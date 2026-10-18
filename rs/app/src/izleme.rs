@@ -21,24 +21,25 @@ pub fn baslat(kabuk: Arc<Kabuk>) {
                 (Some(ek), Some(ctx)) => {
                     // Video completion must drain even while aria2 sleeps.
                     let synced = afudm_core::queue::sync_aria2(&ek.core).is_ok();
+                    // Yalniz DB okur (RPC yok, motoru uyandirmaz): is yokken yoklama yavaslar.
+                    let pending = ["active", "waiting", "queued", "scheduled", "repairing"]
+                        .iter()
+                        .any(|status| {
+                            ctx.store
+                                .list(Some(status), 1)
+                                .map(|rows| !rows.is_empty())
+                                .unwrap_or(true)
+                        });
                     if synced && son_uyku_kontrolu.elapsed() >= BOSTA_KONTROL {
                         son_uyku_kontrolu = Instant::now();
                         // A download may finish between sync and sleep_if_idle.
                         // Until its DB row is synced, active/queued state blocks
                         // purge. Never run a separate unsynchronized idle thread.
-                        let pending = ["active", "waiting", "queued", "scheduled", "repairing"]
-                            .iter()
-                            .any(|status| {
-                                ctx.store
-                                    .list(Some(status), 1)
-                                    .map(|rows| !rows.is_empty())
-                                    .unwrap_or(true)
-                            });
                         if !pending && !ek.rpc.sleeping() {
                             let _ = ek.rpc.sleep_if_idle();
                         }
                     }
-                    if ek.rpc.sleeping() {
+                    if ek.rpc.sleeping() || !pending {
                         UYKU_ARALIK
                     } else {
                         POLL_ARALIK

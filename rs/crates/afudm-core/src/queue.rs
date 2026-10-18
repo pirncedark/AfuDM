@@ -29,6 +29,8 @@ pub struct State {
     /// Python _known_complete: aria2 tamamlanmasi tamamlandi zincirine bir kez girer.
     pub known_complete: HashSet<String>,
     pub cookies: HashMap<i64, Vec<Json>>,
+    /// Acilis kurtarmasi (kesilenleri_kurtar) motor ilk kez uyanik senkronda bir kez calisir.
+    pub kurtarma_bitti: bool,
     pub last_error: String,
     pub settings_errors: Vec<Json>,
     pub started: bool,
@@ -844,6 +846,58 @@ fn clear_auth(m: &Manager, gid: &str) -> Result<()> {
     Ok(())
 }
 
+/// Acilis kurtarmasi: DB'de bitmemis (active/waiting/paused) http/torrent kaydinin gid'i aria2'de
+/// yoksa ayni dir/out/secenekle yeniden eklenir. Oturum dosyasi bos kaldigi icin (--save-session-interval=0)
+/// aria2 --continue=true ile .aria2 kontrol dosyasindan devam eder. Duraklatilmis kayit duraklatilmis eklenir.
+/// Oturum bilgisi silinmis (auth_required) gid'ler atlanir; "Yenile" akisi onlari yeniden baslatir.
+/// Cerezler yalniz bellekte tutulur; yeniden eklenen cerezli kayitlar 401/403 ile hata durumuna duser.
+fn kesilenleri_kurtar(m: &Manager) -> Result<usize> {
+    let mut motorda = HashSet::new();
+    for liste in [
+        m.rpc().tell_active(&[])?,
+        m.rpc().tell_waiting(0, 1000, &[])?,
+        m.rpc().tell_stopped(0, 1000, &[])?,
+    ] {
+        motorda.extend(liste.iter().map(|s| text(&s["gid"]).to_owned()));
+    }
+    let mut kurtarilan = 0;
+    for row in m.store.list(None, 1000)? {
+        let kind = text(&row["kind"]);
+        let status = text(&row["status"]);
+        let gid = text(&row["gid"]);
+        let toplam = number(&row["total_bytes"]);
+        let tamam = toplam > 0 && number(&row["done_bytes"]) >= toplam;
+        if !["http", "torrent"].contains(&kind)
+            || !["active", "waiting", "paused"].contains(&status)
+            || gid.is_empty()
+            || gid.starts_with("yt:")
+            || gid.starts_with("row:")
+            || tamam
+            || motorda.contains(gid)
+            || state(m)?.auth_required_gids.contains(gid)
+        {
+            continue;
+        }
+        let yeni = match launch(m, &row) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let yeni_gid = text(&yeni["gid"]).to_owned();
+        if status == "paused" {
+            m.rpc().pause(&yeni_gid, true)?;
+            m.store
+                .update_by_gid(&yeni_gid, &map(json!({"status":"paused"})))?;
+        }
+        m.store.log(
+            "info",
+            "kesilen indirme acilista yeniden baslatildi",
+            &yeni_gid,
+        );
+        kurtarilan += 1;
+    }
+    Ok(kurtarilan)
+}
+
 /// Python _sync_aria2: persist engine progress without requiring a snapshot reader.
 pub fn sync_aria2(m: &Manager) -> Result<()> {
     let completed = {
@@ -851,6 +905,11 @@ pub fn sync_aria2(m: &Manager) -> Result<()> {
             .kilit
             .lock()
             .map_err(|_| AfuError::Other("yonetici kilidi kullanilamiyor".into()))?;
+        // Uyuyan motoru uyandirmaz; kurtarma motor uyanikken ilk senkronda bir kez calisir.
+        let kurtarma_bekliyor = !state(m)?.kurtarma_bitti;
+        if kurtarma_bekliyor && !m.rpc().sleeping() && kesilenleri_kurtar(m).is_ok() {
+            state(m)?.kurtarma_bitti = true;
+        }
         sync::collect(m)?
     };
     sync::notify(m, completed);

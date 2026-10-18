@@ -843,9 +843,13 @@ fn motor_indir(k: &Kabuk, ad: &str) -> Json {
     }
 }
 
+/// Python servis.butunluk_* : hata `ok/code/message/error` sozlesmesiyle doner.
 fn butunluk_cagri(k: &Kabuk, f: impl FnOnce(&afudm_core::Manager) -> Result<Json>) -> Json {
     match k.ek.get() {
-        Some(e) => cevap(f(&e.core)),
+        Some(e) => match f(&e.core) {
+            Ok(v) => v,
+            Err(err) => bridge::servis_hata(err.to_string()),
+        },
         None => bridge::motor_hazir_degil(),
     }
 }

@@ -13,6 +13,10 @@ description = "AfuDM masaustu kabugu (Tauri 2)"
 name = "AfuDM"
 path = "src/main.rs"
 
+[features]
+default = []
+test-kapisi = []
+
 [dependencies]
 afudm-types = { path = "../crates/afudm-types" }
 afudm-core = { path = "../crates/afudm-core" }
