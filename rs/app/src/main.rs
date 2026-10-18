@@ -54,6 +54,17 @@ fn main() {
             let kabuk = Arc::new(bridge::Kabuk::new(app.handle().clone(), app_dir));
             app.manage(kabuk.clone());
             #[cfg(not(feature = "test-kapisi"))]
+            {
+                let motor_kabuk = kabuk.clone();
+                std::thread::spawn(move || {
+                    for ad in afudm_engine::engines::eksikler(&motor_kabuk.app_dir, true) {
+                        if ad != "cloudflared" {
+                            kopru_h::motor_indir(&motor_kabuk, &ad);
+                        }
+                    }
+                });
+            }
+            #[cfg(not(feature = "test-kapisi"))]
             tray::kur(app.handle())?;
             #[cfg(feature = "test-kapisi")]
             test_kapisi::baslat(kabuk.clone())?;

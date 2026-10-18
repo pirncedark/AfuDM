@@ -73,6 +73,82 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn torrent_existing_root_integrity_for_local_adopted_and_refreshed_jobs() {
+    let f = Fixture::new();
+    f.m.store
+        .set(
+            "canli_trackerlar",
+            json!("udp://tracker.example.org:1337/announce"),
+        )
+        .unwrap();
+    std::fs::create_dir(f.root.join("Game")).unwrap();
+    let torrent = f.root.join("game.torrent");
+    std::fs::write(&torrent, b"d4:infod4:name4:Gameee").unwrap();
+    crate::torrent::torrent_ekle_ic(
+        &f.m,
+        json!({"source": torrent, "dest_dir": f.root})
+            .as_object()
+            .unwrap(),
+    )
+    .unwrap();
+    {
+        let calls = f.rpc.calls.lock().unwrap();
+        let (_, params) = calls
+            .iter()
+            .rev()
+            .find(|(m, _)| m == "add_torrent")
+            .unwrap();
+        assert_eq!(params[1]["check-integrity"], "true");
+    }
+    f.rpc.statuses.lock().unwrap().insert(
+        "preview".into(),
+        json!({"gid":"preview", "followedBy":["child"]}),
+    );
+    f.rpc.statuses.lock().unwrap().insert("child".into(), json!({"gid":"child", "bittorrent":{"info":{"name":"Game"}}, "infoHash":"abc", "dir":f.root}));
+    crate::torrent::torrent_ekle_ic(
+        &f.m,
+        json!({"source":"magnet:?xt=urn:btih:abc", "adopt_gid":"preview", "dest_dir": f.root})
+            .as_object()
+            .unwrap(),
+    )
+    .unwrap();
+    {
+        let calls = f.rpc.calls.lock().unwrap();
+        let (_, params) = calls
+            .iter()
+            .rev()
+            .find(|(m, _)| m == "change_option")
+            .unwrap();
+        assert_eq!(params[0], "child");
+        assert_eq!(params[1]["check-integrity"], "true");
+    }
+    assert_eq!(
+        crate::torrent::seed_tazele(&f.m, "child").unwrap()["ok"],
+        true
+    );
+    {
+        let calls = f.rpc.calls.lock().unwrap();
+        let (_, params) = calls.iter().rev().find(|(m, _)| m == "add_uri").unwrap();
+        assert_eq!(params[1]["check-integrity"], "true");
+    }
+    std::fs::write(&torrent, b"d4:infod4:name7:Missingee").unwrap();
+    crate::torrent::torrent_ekle_ic(
+        &f.m,
+        json!({"source": torrent, "dest_dir": f.root})
+            .as_object()
+            .unwrap(),
+    )
+    .unwrap();
+    let calls = f.rpc.calls.lock().unwrap();
+    let (_, params) = calls
+        .iter()
+        .rev()
+        .find(|(m, _)| m == "add_torrent")
+        .unwrap();
+    assert!(params[1].get("check-integrity").is_none());
+}
+
+#[test]
 fn http_add_duplicate_controls_and_retry() {
     let f = Fixture::new();
     let result = f.add("test.zip");
@@ -605,7 +681,7 @@ impl Aria2 for MemoryRpc {
     }
     #[allow(unused_variables)]
     fn add_torrent(&self, torrent_b64: &str, options: Option<&JsonMap>) -> Result<String> {
-        self.call("add_torrent", vec![])?;
+        self.call("add_torrent", vec![json!(torrent_b64), json!(options)])?;
         Ok("OK".into())
     }
     #[allow(unused_variables)]
@@ -664,7 +740,7 @@ impl Aria2 for MemoryRpc {
     }
     #[allow(unused_variables)]
     fn change_option(&self, gid: &str, options: &JsonMap) -> Result<String> {
-        self.call("change_option", vec![])?;
+        self.call("change_option", vec![json!(gid), json!(options)])?;
         Ok("OK".into())
     }
     #[allow(unused_variables)]
