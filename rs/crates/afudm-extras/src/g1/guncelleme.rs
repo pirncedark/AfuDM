@@ -636,6 +636,8 @@ mod tests {
     use super::*;
     use crate::g1::test_sunucu;
 
+    const TEST_YENI: &str = "99.0.0";
+
     #[test]
     fn omniget_corrupt_update_state_is_quarantined() {
         let d = gecici("omniget-json");
@@ -677,10 +679,10 @@ mod tests {
             ("/z.zip", bayt),
             (
                 "/z.sha256",
-                format!("{sha}  AfuDM-v3.0.1-win64.zip").into_bytes(),
+                format!("{sha}  AfuDM-v{TEST_YENI}-win64.zip").into_bytes(),
             ),
         ]);
-        let mut bilgi = yayin_bilgisi(&base, "3.0.1");
+        let mut bilgi = yayin_bilgisi(&base, TEST_YENI);
         bilgi["zip_size"] = json!(1);
         let sonuc = indir_ve_dogrula_onekli(&bilgi, &d, None, &base);
         assert_eq!(sonuc["ok"], false);
@@ -765,12 +767,12 @@ mod tests {
     fn indir_dogrula_ve_bekle_dali() {
         let d = gecici("indir");
         let (zip_bytes, sha) = paket_zip();
-        let sha_satiri = format!("{sha}  AfuDM-v3.0.1-win64.zip\n");
+        let sha_satiri = format!("{sha}  AfuDM-v{TEST_YENI}-win64.zip\n");
         let base = test_sunucu::baslat(vec![
             ("/z.zip", zip_bytes.clone()),
             ("/z.sha256", sha_satiri.into_bytes()),
         ]);
-        let bilgi = yayin_bilgisi(&base, "3.0.1");
+        let bilgi = yayin_bilgisi(&base, TEST_YENI);
         let s = indir_ve_dogrula_onekli(&bilgi, &d, None, &base);
         assert_eq!(s["ok"], true, "{s}");
         assert!(hazir(&d), "dogrulanmis paket hazir olmali");
@@ -786,12 +788,12 @@ mod tests {
     fn yanlis_sha_reddedilir_ve_zip_silinir() {
         let d = gecici("sha");
         let (zip_bytes, _) = paket_zip();
-        let yanlis = format!("{}  AfuDM-v3.0.1-win64.zip\n", "0".repeat(64));
+        let yanlis = format!("{}  AfuDM-v{TEST_YENI}-win64.zip\n", "0".repeat(64));
         let base = test_sunucu::baslat(vec![
             ("/z.zip", zip_bytes),
             ("/z.sha256", yanlis.into_bytes()),
         ]);
-        let s = indir_ve_dogrula_onekli(&yayin_bilgisi(&base, "3.0.1"), &d, None, &base);
+        let s = indir_ve_dogrula_onekli(&yayin_bilgisi(&base, TEST_YENI), &d, None, &base);
         assert_eq!(
             s,
             json!({"ok": false, "hata": "Güncelleme dosyası doğrulanamadı."})
@@ -807,11 +809,11 @@ mod tests {
             ("/z.zip", zip_bytes),
             (
                 "/z.sha256",
-                format!("{sha}  AfuDM-v3.0.1-win64.zip").into_bytes(),
+                format!("{sha}  AfuDM-v{TEST_YENI}-win64.zip").into_bytes(),
             ),
         ]);
         assert_eq!(
-            indir_ve_dogrula_onekli(&yayin_bilgisi(&base, "3.0.1"), &d, None, &base)["ok"],
+            indir_ve_dogrula_onekli(&yayin_bilgisi(&base, TEST_YENI), &d, None, &base)["ok"],
             true
         );
         assert!(hazir(&d));
