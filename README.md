@@ -34,7 +34,7 @@ Since **3.0**, the desktop app is built with **Rust + Tauri**. Extract the relea
 
 <img src="docs/readme/features.svg" width="960" alt="Feature cards: parallel downloads, pause and resume, torrents, optional video engines, browser capture and fallback, one retry after HTTP 403, error-page detection, automatic updates, portability, phone QR pairing, idle engine sleep, English and Turkish." />
 
-- **Files, torrents and video:** multi-connection downloads, magnet links and `.torrent` files in one app. Video sites use optional **yt-dlp**; support depends on the site and available engines. Add yt-dlp and FFmpeg from **Settings → Engines** when needed.
+- **Files, torrents and video:** multi-connection downloads, magnet links and `.torrent` files in one app. Video sites use optional **yt-dlp**; support depends on the site and available engines. If yt-dlp or FFmpeg is missing, AfuDM downloads it automatically in the background on first launch — nothing to set up.
 - **Recovery that knows the browser:** eligible HTTP 403 failures get one retry with browser-style headers. The extension also has a browser-context fallback; protected or expired links can still require a fresh link or sign-in.
 - **Quiet when idle:** the aria2 engine saves its session and stops when no downloads need it, waking for new work.
 - **Portable, with familiar controls:** no AfuDM installer, automatic updates, phone pairing and English/Turkish UI. Optional Windows integration may register file associations or startup behavior.
@@ -91,6 +91,6 @@ The desktop binary is `rs/app/target/release/AfuDM.exe`. For a runnable folder, 
 
 1. **Başlangıç:** [Son sürümü indir](https://github.com/pirncedark/AfuDM/releases/latest), ZIP'in tamamını çıkar ve `AfuDM.exe` dosyasını aç. Tarayıcıdan devralmak için **Chrome'a ekle** adımını izle.
 2. **Nasıl çalışır:** eklenti bağlantıyı yakalar, aria2 parçaları paralel indirir, hata sayfası denetlenir. Beklenen SHA-256 verilirse sağlama kontrolü yapılır. İsteğe bağlı ZIP çıkarma, taşıma ve bildirim adımları çalışır.
-3. **Özellikler:** duraklat/sürdür, torrent/magnet, isteğe bağlı yt-dlp ile video, tarayıcı üzerinden ikinci indirme yolu, uygun 403 hatalarında bir yeniden deneme, otomatik güncelleme, boşta motorun uyuması ve Türkçe/İngilizce arayüz. Aynı yerel ağda QR ile telefon eşleştirme; ayrı Android uygulaması [AfuTube](AfuTube/README.md).
+3. **Özellikler:** duraklat/sürdür, torrent/magnet, video (yt-dlp ve FFmpeg eksikse ilk açılışta arka planda kendiliğinden iner, kurulum gerekmez), tarayıcı üzerinden ikinci indirme yolu, uygun 403 hatalarında bir yeniden deneme, otomatik güncelleme, boşta motorun uyuması ve Türkçe/İngilizce arayüz. Aynı yerel ağda QR ile telefon eşleştirme; ayrı Android uygulaması [AfuTube](AfuTube/README.md).
 4. **Neden AfuDM:** taşınabilirlik, açık kaynak, torrent ve telefon eşleştirme aynı uygulamada. Yukarıdaki tabloda **✗** resmî kaynakla doğrulanan eksikliği gösterir; **—**, özelliğin olmadığı değil, burada doğrulanmadığı anlamına gelir. Ölçülmemiş hız/RAM üstünlüğü iddiası yoktur.
 5. **Kaynaktan derleme:** Windows'ta Rust, C++ Build Tools ve WebView2 hazırken `rs/app` içinde `cargo build --release --locked` çalıştır. Çalıştırılabilir paket için `engine/` ve `extension/` klasörlerini koru.
