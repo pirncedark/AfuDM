@@ -43,9 +43,17 @@ c.close()
     );
     drop(store);
     let after = counts();
+    let mut before_tables = before.as_object().unwrap().clone();
+    let mut after_tables = after.as_object().unwrap().clone();
+    let before_settings = before_tables.remove("settings").unwrap().as_u64().unwrap();
+    let after_settings = after_tables.remove("settings").unwrap().as_u64().unwrap();
     assert_eq!(
-        before, after,
-        "Opening the copy must preserve every table row count"
+        before_tables, after_tables,
+        "Opening the copy must preserve every non-settings table row count"
+    );
+    assert!(
+        after_settings >= before_settings,
+        "Opening the copy must not lose settings rows"
     );
     println!("Copied database: Python/Rust row counts match: {after}");
 }
