@@ -7,7 +7,7 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('--only',choices=['resources','fuzz','bridge','network','crash','smoke'])
     p.add_argument('--idle-seconds',type=int,default=300);args=p.parse_args()
     with tempfile.TemporaryDirectory(prefix='afudm_t2_') as tmp:
-        apps=[];server=FileServer();errors=[]
+        apps=[];taze=[];server=FileServer();errors=[]
         selected=[] if args.only=='smoke' else [args.only] if args.only else ['resources','fuzz','crash','bridge','network']
         for name in selected:
             (OUT/(name+'.json')).unlink(missing_ok=True)
@@ -22,18 +22,18 @@ def main():
                 for a in apps:print(a.kind,a.call('surum_bilgi',[]),a.http('/ping'),flush=True)
                 return 0
             def fresh(fn):
-                # bridge/network: onceki asamalarin (crash/fuzz) biraktigi durumu almasin; her iki taraf taze ve ozdes veriyle baslar.
+                # fuzz/bridge/network: onceki asamalarin istekleri hiz sinirini doldurmasin, kalan durumu almasin; her iki taraf taze ve ozdes veriyle baslar. Taze cift 'apps'a girmez (crash yalniz ana cifti kullanir).
                 def run():
                     sub=tempfile.mkdtemp(prefix='fresh_',dir=tmp);pair=[]
                     try:
                         for side in ('py','rs'):
-                            a=App(side,sub);apps.append(a);pair.append(a);a.start()
+                            a=App(side,sub);taze.append(a);pair.append(a);a.start()
                             print(f'READY {side} API={a.port} gate={a.gate} fresh data',flush=True)
                         return fn(pair)
                     finally:
                         for a in pair:a.close()
                 return run
-            phases={'resources':lambda:resource(apps,server,args.idle_seconds),'fuzz':lambda:fuzz(apps,server),
+            phases={'resources':lambda:resource(apps,server,args.idle_seconds),'fuzz':fresh(lambda p:fuzz(p,server)),
                     'crash':lambda:crash(apps,server),'bridge':fresh(lambda p:bridge(p,server)),'network':fresh(lambda p:network(p))}
             for name,fn in phases.items():
                 if args.only and args.only!=name:continue
@@ -47,10 +47,10 @@ def main():
                 print('END',name,flush=True)
         finally:
             server.shutdown();server.server_close()
-            for a in apps:
+            for a in apps+taze:
                 try:a.close()
                 except Exception as e:print("Cleanup failure:",a.kind,type(e).__name__,flush=True)
-            alive=[p.pid for a in apps for p in a.owned()]
+            alive=[p.pid for a in apps+taze for p in a.owned()]
             emit('cleanup',{'all_owned_processes_stopped':not alive,'remaining':alive})
             print('CLEANUP all owned processes stopped:',not alive,flush=True)
     checks=[]
