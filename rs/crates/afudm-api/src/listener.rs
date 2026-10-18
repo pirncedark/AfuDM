@@ -18,6 +18,7 @@ use std::{
     time::Duration,
 };
 use tokio::{
+    io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, BufReader},
     process::{Child, Command},
     sync::{Mutex as AsyncMutex, Notify},
 };
@@ -35,6 +36,7 @@ struct Inner {
     closed: std::sync::atomic::AtomicBool,
     last_error: Mutex<String>,
     command: PathBuf,
+    http: reqwest::Client,
 }
 struct ChildState {
     child: Option<Child>,
@@ -64,6 +66,11 @@ impl Listener {
                 wake: Notify::new(),
                 closed: false.into(),
                 last_error: Mutex::new(String::new()),
+                http: reqwest::Client::builder()
+                    .no_proxy()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .build()
+                    .map_err(|_| AfuError::Other("Istemci baslatilamadi".into()))?,
                 command,
             }),
         })
@@ -228,7 +235,8 @@ impl Listener {
     ) -> reqwest::RequestBuilder {
         let token = std::fs::read_to_string(self.inner.ctx.data_dir.join("api_token.txt"))
             .unwrap_or_default();
-        reqwest::Client::new()
+        self.inner
+            .http
             .request(method, format!("http://127.0.0.1:{}{path}", state.port))
             .header("X-AfuDM-Token", token.trim())
             .timeout(Duration::from_secs(30))
@@ -251,9 +259,7 @@ impl Listener {
             None => false,
         };
         if !running {
-            let socket = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
-            state.port = socket.local_addr()?.port();
-            drop(socket);
+            state.port = 0;
             let log = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -262,14 +268,34 @@ impl Listener {
             command
                 .arg("--tepside")
                 .env("AFUDM_UI_CHILD", "1")
-                .env("AFUDM_CHILD_PORT", state.port.to_string())
+                .env("AFUDM_CHILD_PORT", "0")
                 .env("AFUDM_LISTENER_PORT", state.listener_port.to_string())
                 .env("AFUDM_LISTENER_TRAY", "0")
-                .stdout(log.try_clone()?)
+                .stdout(std::process::Stdio::piped())
                 .stderr(log);
             #[cfg(windows)]
             command.creation_flags(0x08000000);
-            state.child = Some(command.spawn()?);
+            let mut child = command.spawn()?;
+            let output = child
+                .stdout
+                .take()
+                .ok_or_else(|| AfuError::Unavailable("AfuDM acilamadi".into()))?;
+            let mut output = BufReader::new(output);
+            let port = tokio::time::timeout(Duration::from_secs(45), child_port(&mut output)).await;
+            match port {
+                Ok(Ok(port)) => state.port = port,
+                _ => {
+                    let _ = child.kill().await;
+                    return Err(AfuError::Unavailable(
+                        "AfuDM acilamadi. Tepsiden Ac'a basip tekrar dene.".into(),
+                    ));
+                }
+            }
+            // Boru dolup cocugu durdurmasin; stderr mevcut gunlukte kalir.
+            tokio::spawn(async move {
+                let _ = tokio::io::copy(&mut output, &mut tokio::io::sink()).await;
+            });
+            state.child = Some(child);
         }
         let deadline = tokio::time::Instant::now() + Duration::from_secs(45);
         while tokio::time::Instant::now() < deadline && !self.closed() {
@@ -324,6 +350,27 @@ impl Listener {
         }
     }
 }
+// Kaynak yalniz spawn edilen cocugun stdout borusudur; agdan port kabul edilmez.
+async fn child_port(output: &mut (impl AsyncRead + Unpin)) -> Result<u16> {
+    let mut limited = BufReader::new(output.take(4096));
+    let mut line = String::new();
+    while limited.read_line(&mut line).await? > 0 {
+        // Sinira takilan veya yarim kalan port sayisi baska bir port sanilmasin.
+        if !line.ends_with('\n') {
+            break;
+        }
+        if let Some(value) = line.trim().strip_prefix("AFUDM_CHILD_BOUND:") {
+            return value
+                .parse::<u16>()
+                .ok()
+                .filter(|p| *p != 0)
+                .ok_or_else(|| AfuError::Unavailable("AfuDM acilamadi".into()));
+        }
+        line.clear();
+    }
+    Err(AfuError::Unavailable("AfuDM acilamadi".into()))
+}
+
 fn records(root: &Path) -> Result<Vec<PathBuf>> {
     let mut paths = std::fs::read_dir(root)?
         .filter_map(|e| e.ok().map(|e| e.path()))
@@ -375,7 +422,13 @@ fn write_record(path: &Path, record: &Json) -> Result<()> {
     Ok(())
 }
 fn read_record(path: &Path) -> Result<Json> {
-    let mut record: Json = serde_json::from_slice(&std::fs::read(path)?)?;
+    let mut record: Json = match serde_json::from_slice(&std::fs::read(path)?) {
+        Ok(record) => record,
+        Err(_) => {
+            afudm_engine::daemon::quarantine_json(path);
+            return Ok(Json::Null);
+        }
+    };
     if let Some(body) = record["body"].as_str() {
         record["body"] = json!(crypt(body, true)?);
     }
@@ -566,4 +619,145 @@ async fn forward_http(State(owner): State<Listener>, req: Request) -> Response {
         }
     }
     output
+}
+
+#[cfg(test)]
+mod record_tests {
+    use super::*;
+
+    #[test]
+    fn corrupt_record_is_quarantined_without_replay_or_backup_loss() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("request.json");
+        let malformed = b"{\"state\":\"queued\",\"body\":";
+
+        for expected_backups in 1..=2 {
+            std::fs::write(&path, malformed).unwrap();
+            let record = read_record(&path).unwrap();
+            assert_eq!(record, Json::Null);
+            assert_ne!(record["state"], "queued");
+            assert!(!path.exists());
+            assert!(records(dir.path()).unwrap().is_empty());
+
+            let backups = std::fs::read_dir(dir.path())
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
+                .collect::<Vec<_>>();
+            assert_eq!(backups.len(), expected_backups);
+            for backup in backups {
+                let name = backup.file_name().unwrap().to_str().unwrap();
+                let stamp = name.strip_prefix("request.json.corrupt-").unwrap();
+                assert_eq!(stamp.len(), 15);
+                chrono::NaiveDateTime::parse_from_str(stamp, "%Y%m%d-%H%M%S").unwrap();
+                assert_eq!(std::fs::read(backup).unwrap(), malformed);
+            }
+        }
+    }
+
+    #[test]
+    fn valid_record_round_trips_and_missing_record_remains_an_io_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("request.json");
+        assert!(read_record(&path).is_err());
+        let record = json!({"state": "queued", "body": "{\"url\":\"https://example.com/file\"}"});
+        write_record(&path, &record).unwrap();
+        assert_eq!(read_record(&path).unwrap(), record);
+        assert_eq!(records(dir.path()).unwrap(), vec![path]);
+    }
+}
+
+#[cfg(test)]
+mod port_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn pipe_child_fixture() {
+        if std::env::var("AFUDM_301A_PIPE_FIXTURE").as_deref() != Ok("1") {
+            return;
+        }
+        // Talep edilen port dolu bile olsa cocuk kendi bos portuna baglanir.
+        let router = Router::new().route("/ping", get(|| async { "child-ready" }));
+        crate::serve(router, 1).await.unwrap();
+        tokio::time::sleep(Duration::from_secs(30)).await;
+    }
+
+    #[tokio::test]
+    async fn gercek_cocuk_borusu_yeni_portu_bildirir() {
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "listener::port_tests::pipe_child_fixture",
+                "--exact",
+                "--nocapture",
+            ])
+            .env("AFUDM_301A_PIPE_FIXTURE", "1")
+            .env("AFUDM_UI_CHILD", "1")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true);
+        #[cfg(windows)]
+        command.creation_flags(0x08000000);
+        let mut child = command.spawn().unwrap();
+        let mut output = child.stdout.take().unwrap();
+        let port = tokio::time::timeout(Duration::from_secs(10), child_port(&mut output))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_ne!(port, 1);
+        let response = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
+            .get(format!("http://127.0.0.1:{port}/ping"))
+            .send()
+            .await
+            .unwrap();
+        let text = response.text().await.unwrap();
+        child.kill().await.unwrap();
+        child.wait().await.unwrap();
+        assert_eq!(text, "child-ready");
+    }
+
+    #[tokio::test]
+    async fn cocuk_portu_yalniz_borudan_ve_baglandiktan_sonra_ogrenilir() {
+        let socket = crate::bind(0).await.unwrap();
+        let port = socket.local_addr().unwrap().port();
+        let mesaj = format!("baslatiliyor\nAFUDM_CHILD_BOUND:{port}\n");
+        let bildirilen = child_port(&mut mesaj.as_bytes()).await.unwrap();
+        assert_eq!(bildirilen, port);
+        // OS portu halen cocugun dinleyicisine aittir; baska surec alamaz.
+        assert!(
+            tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port))
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn eksik_sahte_ve_gecersiz_port_bildirimi_reddedilir() {
+        for mesaj in [
+            "",
+            "{\"ok\":true}",
+            "AFUDM_CHILD_BOUND:0\n",
+            "AFUDM_CHILD_BOUND:65536\n",
+            "AFUDM_CHILD_BOUND:abc\n",
+            "AFUDM_CHILD_BOUND:43210",
+        ] {
+            assert!(child_port(&mut mesaj.as_bytes()).await.is_err());
+        }
+        assert!(child_port(&mut vec![b'x'; 5000].as_slice()).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn boru_bildirimi_gelmeden_http_baslamaz() {
+        use tokio::io::AsyncWriteExt;
+        let (mut yaz, mut oku) = tokio::io::duplex(64);
+        let bekle = child_port(&mut oku);
+        tokio::pin!(bekle);
+        assert!(tokio::time::timeout(Duration::from_millis(20), &mut bekle)
+            .await
+            .is_err());
+        yaz.write_all(b"AFUDM_CHILD_BOUND:43210\n").await.unwrap();
+        assert_eq!(bekle.await.unwrap(), 43210);
+    }
 }

@@ -3,13 +3,15 @@
 //! app.py start_pairing. Pencere kisa surelidir; anahtar yalniz pencere acikken ve yalniz
 //! yerel istemciye verilir.
 
+use rand::RngCore;
+use serde::Deserialize;
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use afudm_types::{AfuError, ApiCtx, Result};
-use axum::extract::{ConnectInfo, Request, State};
+use axum::extract::{ConnectInfo, Query, Request, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -19,6 +21,48 @@ use serde_json::json;
 static ESLESME_BITIS: Mutex<f64> = Mutex::new(0.0);
 /// Python `_Handler.son_eslesme`.
 static SON_ESLESME: Mutex<f64> = Mutex::new(0.0);
+
+// Kodlar diske yazilmaz; ayni veri dizinindeki kullanilmamis QR yenilenmez.
+struct MobilKod {
+    veri: PathBuf,
+    kod: String,
+    bitis: Instant,
+}
+static MOBIL_KODLAR: Mutex<Vec<MobilKod>> = Mutex::new(Vec::new());
+
+/// QR icin 5 dakika gecerli, tek kullanimlik rastgele eslestirme kodu.
+pub fn mobil_kod_uret(veri: &Path) -> String {
+    let mut kodlar = MOBIL_KODLAR.lock().unwrap_or_else(|e| e.into_inner());
+    let simdi = Instant::now();
+    kodlar.retain(|k| k.bitis > simdi);
+    if let Some(k) = kodlar.iter().find(|k| k.veri == veri) {
+        return k.kod.clone();
+    }
+    let mut bayt = [0u8; 32];
+    rand::rng().fill_bytes(&mut bayt);
+    let kod: String = bayt.iter().map(|b| format!("{b:02x}")).collect();
+    kodlar.push(MobilKod {
+        veri: veri.into(),
+        kod: kod.clone(),
+        bitis: simdi + Duration::from_secs(300),
+    });
+    kod
+}
+
+fn mobil_kod_tuket(veri: &Path, kod: &str) -> bool {
+    let mut kodlar = MOBIL_KODLAR.lock().unwrap_or_else(|e| e.into_inner());
+    kodlar.retain(|k| k.bitis > Instant::now());
+    let Some(i) = kodlar.iter().position(|k| k.veri == veri && k.kod == kod) else {
+        return false;
+    };
+    kodlar.remove(i);
+    true
+}
+
+#[derive(Deserialize)]
+pub struct EslemeSorgu {
+    code: Option<String>,
+}
 
 fn simdi() -> f64 {
     SystemTime::now()
@@ -58,9 +102,23 @@ pub fn token_oku(veri: &Path) -> Result<String> {
     Ok(token)
 }
 
-/// `GET /pair`: yalniz loopback ve acik pencerede `{"ok":true,"token":...}`.
+/// `GET /pair?code=...`: tek kullanimlik mobil kod; kodsuz istek eski yerel uzanti akisidir.
 /// Istemci adresi (ConnectInfo) yoksa guvenli tarafta kalip yerel degil sayilir.
-pub async fn pair(State(ctx): State<ApiCtx>, istek: Request) -> Response {
+pub async fn pair(
+    State(ctx): State<ApiCtx>,
+    Query(sorgu): Query<EslemeSorgu>,
+    istek: Request,
+) -> Response {
+    if let Some(kod) = sorgu.code {
+        if !mobil_kod_tuket(&ctx.data_dir, &kod) {
+            return super::hata(
+                StatusCode::FORBIDDEN,
+                "ESLESME_KODU_GECERSIZ",
+                "Baglanti suresi doldu. Bilgisayardaki QR kodunu yeniden okut.",
+            );
+        }
+        return esleme_yaniti(&ctx);
+    }
     let yerel = istek
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
@@ -80,10 +138,21 @@ pub async fn pair(State(ctx): State<ApiCtx>, istek: Request) -> Response {
             "eslestirme kapali — AfuDM'de Ayarlar > Uzantiyi bagla'ya bas",
         );
     }
+    esleme_yaniti(&ctx)
+}
+
+fn esleme_yaniti(ctx: &ApiCtx) -> Response {
     match token_oku(&ctx.data_dir) {
         Ok(token) => {
             *kilit(&SON_ESLESME) = simdi();
-            Json(json!({"ok": true, "token": token})).into_response()
+            (
+                [
+                    ("cache-control", "no-store"),
+                    ("referrer-policy", "no-referrer"),
+                ],
+                Json(json!({"ok": true, "token": token})),
+            )
+                .into_response()
         }
         Err(e) => super::afu_hata(&e),
     }
@@ -92,6 +161,45 @@ pub async fn pair(State(ctx): State<ApiCtx>, istek: Request) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mobil_kod_tek_kullanimlik_ve_veri_dizinine_baglidir() {
+        let veri = PathBuf::from("test-301a-tek-kullanim");
+        let kod = mobil_kod_uret(&veri);
+        assert_eq!(kod.len(), 64);
+        assert_eq!(kod, mobil_kod_uret(&veri));
+        assert!(!mobil_kod_tuket(Path::new("baska-veri"), &kod));
+        assert!(!mobil_kod_tuket(&veri, "yanlis"));
+        assert!(mobil_kod_tuket(&veri, &kod));
+        assert!(!mobil_kod_tuket(&veri, &kod));
+        assert_ne!(mobil_kod_uret(&veri), kod);
+    }
+
+    #[test]
+    fn mobil_kod_suresi_dolunca_reddedilir() {
+        let veri = PathBuf::from("test-301a-sure");
+        let kod = mobil_kod_uret(&veri);
+        {
+            let mut kodlar = MOBIL_KODLAR.lock().unwrap();
+            let kayit = kodlar.iter_mut().find(|k| k.veri == veri).unwrap();
+            assert!(kayit.bitis <= Instant::now() + Duration::from_secs(300));
+            kayit.bitis = Instant::now() - Duration::from_secs(1);
+        }
+        assert!(!mobil_kod_tuket(&veri, &kod));
+        assert_ne!(mobil_kod_uret(&veri), kod);
+    }
+
+    #[test]
+    fn mobil_kod_eszamanli_yalniz_bir_kisiye_verilir() {
+        let veri = PathBuf::from("test-301a-yaris");
+        let kod = mobil_kod_uret(&veri);
+        let sonuc = std::thread::scope(|scope| {
+            let a = scope.spawn(|| mobil_kod_tuket(&veri, &kod));
+            let b = scope.spawn(|| mobil_kod_tuket(&veri, &kod));
+            usize::from(a.join().unwrap()) + usize::from(b.join().unwrap())
+        });
+        assert_eq!(sonuc, 1);
+    }
 
     #[test]
     fn pencere_ac_ve_kapat_suresi() {

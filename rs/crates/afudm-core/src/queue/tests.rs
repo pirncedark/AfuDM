@@ -1126,3 +1126,180 @@ fn fix8_filename_motor_kokunden_cikamaz() {
         }
     }
 }
+
+#[test]
+fn omniget_403_retries_once_with_preserved_request() {
+    let f = Fixture::new();
+    let r = add(&f.m, json!({"source":"https://example.test/file.zip","filename":"saved.zip","headers":{"Authorization":"Bearer keep","Referer":"https://example.test/"},"cookies":[{"name":"sid","value":"keep","domain":"example.test"}]}).as_object().unwrap()).unwrap();
+    let gid = text(&r["gid"]).to_owned();
+    f.rpc.statuses.lock().unwrap().get_mut(&gid).unwrap().as_object_mut().unwrap().extend(map(json!({"status":"error","errorCode":"22","errorMessage":"The response status is not successful. status=403","dir":f.root,"files":[{"path":f.root.join("saved.zip")}]})));
+    sync_aria2(&f.m).unwrap();
+    let row = f.m.store.by_id(number(&r["id"])).unwrap().unwrap();
+    let new_gid = text(&row["gid"]).to_owned();
+    assert_ne!(new_gid, gid);
+    let calls = f.rpc.calls.lock().unwrap();
+    let (_, args) = calls.iter().rev().find(|(n, _)| n == "add_uri").unwrap();
+    assert_eq!(args[1]["dir"], json!(f.root));
+    assert_eq!(args[1]["out"], "saved.zip");
+    let headers = args[1]["header"].as_array().unwrap();
+    for value in [
+        "Authorization: Bearer keep",
+        "Referer: https://example.test/",
+        "Cookie: sid=keep",
+        "Range: bytes=0-",
+        "Sec-Fetch-Mode: navigate",
+        "Sec-Fetch-Dest: document",
+    ] {
+        assert!(headers.contains(&json!(value)), "missing {value}");
+    }
+    drop(calls);
+    f.rpc
+        .statuses
+        .lock()
+        .unwrap()
+        .get_mut(&new_gid)
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .extend(map(
+            json!({"status":"error","errorCode":"22","errorMessage":"status=403"}),
+        ));
+    sync_aria2(&f.m).unwrap();
+    assert_eq!(
+        f.m.store.by_id(number(&r["id"])).unwrap().unwrap()["status"],
+        "error"
+    );
+    assert_eq!(
+        f.rpc
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(n, _)| n == "add_uri")
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn omniget_only_real_http_403_is_retried() {
+    for (code, message) in [
+        ("22", "status=404"),
+        ("3", "status=403"),
+        ("22", "status=1403"),
+    ] {
+        let f = Fixture::new();
+        let r = f.add("x.zip");
+        let gid = text(&r["gid"]);
+        f.rpc
+            .statuses
+            .lock()
+            .unwrap()
+            .get_mut(gid)
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .extend(map(
+                json!({"status":"error","errorCode":code,"errorMessage":message}),
+            ));
+        sync_aria2(&f.m).unwrap();
+        assert_eq!(
+            f.m.store.by_id(number(&r["id"])).unwrap().unwrap()["gid"],
+            gid
+        );
+    }
+}
+
+#[test]
+fn omniget_html_error_blocks_completion_and_preserves_file() {
+    for (name, headers, body, error) in [
+        (
+            "x.zip",
+            json!({}),
+            "\u{feff} \r\n<!DOCTYPE HTML><title>denied</title>",
+            true,
+        ),
+        ("x.zip", json!({}), " \u{feff}<html>denied", true),
+        ("x.zip", json!({}), "<HEAD>denied", true),
+        ("x.HTML", json!({}), "<html>page", false),
+        ("x.htm", json!({}), "<html>page", false),
+        (
+            "x.zip",
+            json!({"Content-Type":"text/html; charset=utf-8"}),
+            "<html>page",
+            false,
+        ),
+        ("x.zip", json!({}), "PK binary", false),
+    ] {
+        let f = Fixture::new();
+        let r = add(
+            &f.m,
+            json!({"source":format!("https://example.test/{name}"),"headers":headers})
+                .as_object()
+                .unwrap(),
+        )
+        .unwrap();
+        let gid = text(&r["gid"]);
+        let path = f.root.join(name);
+        std::fs::write(&path, body).unwrap();
+        f.rpc.statuses.lock().unwrap().get_mut(gid).unwrap().as_object_mut().unwrap().extend(map(json!({"status":"complete","files":[{"path":path}],"totalLength":body.len().to_string(),"completedLength":body.len().to_string()})));
+        let hooks = Arc::new(Mutex::new(0));
+        let count = hooks.clone();
+        f.m.tamamlandi_kancasi_ekle(Box::new(move |_| *count.lock().unwrap() += 1));
+        sync_aria2(&f.m).unwrap();
+        sync_aria2(&f.m).unwrap();
+        let row = f.m.store.by_gid(gid).unwrap().unwrap();
+        assert_eq!(
+            row["status"],
+            if error { "error" } else { "complete" },
+            "{name}: {body}"
+        );
+        assert_eq!(
+            *hooks.lock().unwrap(),
+            if error { 0 } else { 1 },
+            "{name}: {body}"
+        );
+        assert_eq!(
+            snapshot(&f.m).unwrap()["items"][0]["status"],
+            if error { "error" } else { "complete" }
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), body);
+    }
+}
+
+#[test]
+fn omniget_corrupt_auth_marker_is_quarantined() {
+    let f = Fixture::new();
+    let path = f.root.join("aria2.auth-required.json");
+    std::fs::write(&path, b"{broken").unwrap();
+    start(&f.m).unwrap();
+    assert!(!path.exists());
+    assert!(std::fs::read_dir(&f.root)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .any(|e| e
+            .file_name()
+            .to_string_lossy()
+            .starts_with("aria2.auth-required.json.corrupt-")));
+}
+
+#[test]
+fn omniget_html_content_type_does_not_skip_binary_integrity() {
+    let f = Fixture::new();
+    let r = add(
+        &f.m,
+        json!({"source":"https://example.test/x.zip","headers":{"Content-Type":"text/html"}})
+            .as_object()
+            .unwrap(),
+    )
+    .unwrap();
+    let gid = text(&r["gid"]);
+    let path = f.root.join("x.zip");
+    std::fs::write(&path, "broken binary").unwrap();
+    f.rpc.statuses.lock().unwrap().get_mut(gid).unwrap().as_object_mut().unwrap().extend(map(json!({"status":"complete","files":[{"path":path}],"totalLength":"13","completedLength":"13"})));
+    let hooks = Arc::new(Mutex::new(0));
+    let count = hooks.clone();
+    f.m.tamamlandi_kancasi_ekle(Box::new(move |_| *count.lock().unwrap() += 1));
+    sync_aria2(&f.m).unwrap();
+    assert_eq!(*hooks.lock().unwrap(), 0);
+}

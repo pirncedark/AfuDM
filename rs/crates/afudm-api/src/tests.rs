@@ -618,3 +618,16 @@ async fn serve_passes_client_addr_as_connect_info() {
     assert!(raw.starts_with("HTTP/1.1 200"), "{raw}");
     assert!(raw.trim_end().ends_with("127.0.0.1"), "{raw}");
 }
+
+#[test]
+fn omniget_corrupt_endpoint_does_not_break_token_rotation() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("api_endpoint.json"), "broken").unwrap();
+    assert!(crate::security::rotate_token(dir.path()).is_ok());
+    assert!(!dir.path().join("api_endpoint.json").exists());
+    assert!(std::fs::read_dir(dir.path()).unwrap().any(|e| e
+        .unwrap()
+        .file_name()
+        .to_string_lossy()
+        .starts_with("api_endpoint.json.corrupt-")));
+}

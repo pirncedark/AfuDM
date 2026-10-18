@@ -52,10 +52,7 @@ pub fn sanitize_session_file(data_dir: &Path) -> Result<BTreeSet<String>> {
     }
     let text = String::from_utf8_lossy(&fs::read(&session)?).into_owned();
     let marker = data_dir.join("aria2.auth-required.json");
-    let mut required: BTreeSet<String> = fs::read(&marker)
-        .ok()
-        .and_then(|b| serde_json::from_slice::<Vec<serde_json::Value>>(&b).ok())
-        .unwrap_or_default()
+    let mut required: BTreeSet<String> = read_json_or_default::<Vec<serde_json::Value>>(&marker)
         .into_iter()
         .filter(|v| !v.is_null() && v != "" && v != false && v != 0)
         .map(|v| {
@@ -301,5 +298,82 @@ impl Aria2Daemon {
 impl Drop for Aria2Daemon {
     fn drop(&mut self) {
         let _ = self.stop();
+    }
+}
+
+/// Preserve malformed JSON beside its source; never include its contents in logs.
+pub fn quarantine_json(path: &Path) {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    for offset in 0..1000 {
+        let stamp = quarantine_stamp(seconds + offset);
+        let mut name = path.as_os_str().to_os_string();
+        name.push(format!(".corrupt-{stamp}"));
+        let target = PathBuf::from(name);
+        // A hard link reserves the destination atomically without overwriting an older backup.
+        match fs::hard_link(path, &target) {
+            Ok(()) => {
+                if let Err(e) = fs::remove_file(path) {
+                    log::warn!(
+                        "JSON quarantine source could not be moved: {} ({})",
+                        path.display(),
+                        e.kind()
+                    );
+                } else {
+                    log::warn!("Malformed JSON quarantined: {}", target.display());
+                }
+                return;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => {
+                log::warn!("JSON quarantine failed: {} ({})", path.display(), e.kind());
+                return;
+            }
+        }
+    }
+    log::warn!("JSON quarantine destinations occupied: {}", path.display());
+}
+
+fn quarantine_stamp(seconds: u64) -> String {
+    // Gregorian civil date from days since 1970-01-01, UTC; no extra dependency.
+    let days = (seconds / 86400) as i64 + 719468;
+    let era = days / 146097;
+    let doe = days - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = mp + if mp < 10 { 3 } else { -9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    let time = seconds % 86400;
+    format!(
+        "{year:04}{month:02}{day:02}-{:02}{:02}{:02}",
+        time / 3600,
+        time / 60 % 60,
+        time % 60
+    )
+}
+
+/// Read application state, quarantine invalid JSON, and continue with its default.
+pub fn read_json_or_default<T: serde::de::DeserializeOwned + Default>(path: &Path) -> T {
+    match fs::read(path) {
+        Ok(bytes) => match serde_json::from_slice(&bytes) {
+            Ok(value) => value,
+            Err(_) => {
+                quarantine_json(path);
+                T::default()
+            }
+        },
+        Err(e) => {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                log::warn!(
+                    "JSON state could not be read: {} ({})",
+                    path.display(),
+                    e.kind()
+                );
+            }
+            T::default()
+        }
     }
 }

@@ -6,6 +6,16 @@ fn rounded(value: f64, digits: i32) -> f64 {
 }
 
 pub(super) fn aria(m: &Manager, status: &Json) -> Result<Json> {
+    let mut checked = status.clone();
+    let saved = m.store.by_gid(text(&status["gid"]))?;
+    if saved
+        .as_ref()
+        .is_some_and(|r| r["status"] == "error" && r["error"] == safety::HTML_ERROR)
+    {
+        checked["status"] = json!("error");
+        checked["errorMessage"] = json!(safety::HTML_ERROR);
+    }
+    let status = &checked;
     let gid = text(&status["gid"]);
     let row = m.store.by_gid(gid)?.unwrap_or(Json::Null);
     let total = number(&status["totalLength"]);

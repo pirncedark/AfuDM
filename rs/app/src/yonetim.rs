@@ -241,15 +241,16 @@ pub fn lan_kapat() {
     }
 }
 
-/// Python `lan_adresi`: `http://ip:port/m?k=token`. LAN kapaliysa None.
+/// LAN adresi yalniz kisa omurlu eslestirme kodu tasir. LAN kapaliysa None.
 pub fn lan_adres(ctx: &ApiCtx) -> Option<String> {
     let (ip, port) = {
         let g = kilit(&LAN);
         let c = g.as_ref()?;
         (c.ip.clone(), c.port)
     };
-    let token = esleme::token_oku(&ctx.data_dir).ok()?;
-    Some(format!("http://{ip}:{port}/m?k={token}"))
+    esleme::token_oku(&ctx.data_dir).ok()?;
+    let kod = esleme::mobil_kod_uret(&ctx.data_dir);
+    Some(format!("http://{ip}:{port}/m?code={kod}"))
 }
 
 /// Python `_qr_uret`: adresi PNG data-URI olarak uretir (box 6, kenar 2, #0f131a / #e6eaf0).
@@ -540,7 +541,6 @@ fn anahtar_al(h: &HeaderMap) -> String {
 }
 
 fn istemci_ip(p: &Panel, peer: SocketAddr, h: &HeaderMap) -> String {
-    let mut ip = peer.ip().to_string();
     let guven = p
         .ctx
         .store
@@ -548,7 +548,12 @@ fn istemci_ip(p: &Panel, peer: SocketAddr, h: &HeaderMap) -> String {
         .ok()
         .flatten()
         .is_some_and(|v| crate::bridge::truthy(&v));
-    if guven {
+    proxy_istemci_ip(guven, peer, h)
+}
+
+fn proxy_istemci_ip(guven: bool, peer: SocketAddr, h: &HeaderMap) -> String {
+    let mut ip = peer.ip().to_string();
+    if guven && peer.ip().is_loopback() {
         if let Some(xff) = h.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
             if let Some(son) = xff.split(',').map(str::trim).next_back() {
                 if !son.is_empty() {
@@ -1295,6 +1300,27 @@ pub(crate) fn hedef_klasor(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn proxy_yalniz_loopback_peer_icin_guvenilir() {
+        let mut h = HeaderMap::new();
+        h.insert(
+            "x-forwarded-for",
+            "198.51.100.1, 203.0.113.8".parse().unwrap(),
+        );
+        for (guven, peer, beklenen) in [
+            (true, "192.168.1.8:42", "192.168.1.8"),
+            (false, "127.0.0.1:42", "127.0.0.1"),
+            (true, "127.0.0.1:42", "203.0.113.8"),
+            (true, "[::1]:42", "203.0.113.8"),
+        ] {
+            assert_eq!(proxy_istemci_ip(guven, peer.parse().unwrap(), &h), beklenen);
+        }
+        assert_eq!(
+            proxy_istemci_ip(true, "127.0.0.1:42".parse().unwrap(), &HeaderMap::new()),
+            "127.0.0.1"
+        );
+    }
 
     #[test]
     fn qr_png_data_uri_olusur() {

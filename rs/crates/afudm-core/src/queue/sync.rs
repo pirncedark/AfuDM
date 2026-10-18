@@ -20,7 +20,10 @@ pub(super) fn collect(m: &Manager) -> Result<Completed> {
     let auth_error = regex::Regex::new(r"\b(?:401|403)\b").ok();
     for status in statuses {
         let gid = text(&status["gid"]);
-        if gid.is_empty() || state(m)?.preview_gids.contains(gid) {
+        if gid.is_empty()
+            || state(m)?.preview_gids.contains(gid)
+            || state(m)?.removed_gids.contains(gid)
+        {
             continue;
         }
         let row = match m.store.by_gid(gid)? {
@@ -29,7 +32,14 @@ pub(super) fn collect(m: &Manager) -> Result<Completed> {
         };
         let total = number(&status["totalLength"]);
         let done = number(&status["completedLength"]);
-        let status_name = text(&status["status"]);
+        let html_error = row
+            .as_ref()
+            .is_some_and(|r| status["status"] == "complete" && safety::html_error(r, &status));
+        let status_name = if html_error {
+            "error"
+        } else {
+            text(&status["status"])
+        };
         let name = status["files"]
             .as_array()
             .and_then(|f| f.first())
@@ -43,6 +53,9 @@ pub(super) fn collect(m: &Manager) -> Result<Completed> {
                 fields.insert("filename".into(), json!(name));
             }
             if status_name == "error" {
+                if !html_error && safety::retry_403(m, row, &status)? {
+                    continue;
+                }
                 if row["kind"] == "http"
                     && row["status"] != "error"
                     && auth_error
@@ -55,7 +68,9 @@ pub(super) fn collect(m: &Manager) -> Result<Completed> {
                         gid,
                     );
                 }
-                let error = if state(m)?.auth_required_gids.contains(gid) {
+                let error = if html_error {
+                    safety::HTML_ERROR.into()
+                } else if state(m)?.auth_required_gids.contains(gid) {
                     "Kaydedilen oturumdaki Cookie/Authorization guvenlik icin silindi. Yeni giris bilgileriyle indirmeyi Yenile.".into()
                 } else {
                     text(&status["errorMessage"])
