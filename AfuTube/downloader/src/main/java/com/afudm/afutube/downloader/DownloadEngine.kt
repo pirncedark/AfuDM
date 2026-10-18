@@ -122,12 +122,15 @@ class DownloadEngine(private val context: Context) {
     }
 
     private fun deletePartialFiles(title: String) {
-        val dir = context.getExternalFilesDir(null) ?: return
         val prefix = title.take(20)
         if (prefix.isBlank()) return
-        dir.listFiles()?.filter { f ->
-            f.name.startsWith(prefix) && PARTIAL_SUFFIXES.any { f.name.contains(it) }
-        }?.forEach { runCatching { it.delete() } }
+        // Yarim dosyalar hem eski kok klasorde hem de yeni gecici klasorde olabilir.
+        val roots = listOfNotNull(context.getExternalFilesDir(null), DownloadFolder.stagingDir(context))
+        roots.distinct().forEach { root ->
+            root.listFiles()?.filter { f ->
+                f.isFile && f.name.startsWith(prefix) && PARTIAL_SUFFIXES.any { f.name.contains(it) }
+            }?.forEach { runCatching { it.delete() } }
+        }
     }
 
     /** Tüm aktif torrent indirme akışı */
