@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.1](https://github.com/pirncedark/AfuDM/compare/v3.0.0...v3.0.1) (2026-10-18)
+
+
+### Bug Fixes
+
+* 3.0.1 security hardening and download reliability ([#124](https://github.com/pirncedark/AfuDM/issues/124)) ([9f9e334](https://github.com/pirncedark/AfuDM/commit/9f9e33473519c91a8ef97b0cf2b37e8c012e92d8))
+
 ## [3.0.0](https://github.com/pirncedark/AfuDM/compare/v2.9.9...v3.0.0) (2026-10-18)
 
 
