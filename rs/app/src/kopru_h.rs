@@ -36,8 +36,10 @@ static MOTOR_ILERLEME: Mutex<BTreeMap<String, Json>> = Mutex::new(BTreeMap::new(
 /// Python `_sunucu_hata`: son yonetim sunucusu acilis hatasi.
 static SUNUCU_HATA: Mutex<String> = Mutex::new(String::new());
 
-const PAYLASILAMAZ: &str = "Sadece tamamlanmış tekil dosyalar paylaşılabilir veya dosya diskte bulunamadı.";
-const SMB_UYARI_YONETICI: &str = "SMB paylaşımı için yönetici izni bulunamadı; HTTP LAN bağlantısı hazırlandı.";
+const PAYLASILAMAZ: &str =
+    "Sadece tamamlanmış tekil dosyalar paylaşılabilir veya dosya diskte bulunamadı.";
+const SMB_UYARI_YONETICI: &str =
+    "SMB paylaşımı için yönetici izni bulunamadı; HTTP LAN bağlantısı hazırlandı.";
 
 /// Tek giris: kopru_h'nin sahip oldugu ad ise yanit, degilse None.
 pub fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Option<Json> {
@@ -48,20 +50,42 @@ pub fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Option<Json> {
         "sunucu_yeniden" => ctx_ile(k, |c| cevap(sunucu_yeniden(c))),
         "sunucu_panel_ac" => ctx_ile(k, |_| sunucu_panel_ac()),
         "sunucu_anahtarlar" => ctx_ile(k, |c| cevap(sunucu_anahtarlar(c))),
-        "sunucu_anahtar_olustur" => ctx_ile(k, |c| cevap(sunucu_anahtar_olustur(c, s(a, 0), s(a, 1), s(a, 2)))),
-        "sunucu_anahtar_rotasyon" => ctx_ile(k, |c| cevap(anahtar_cagri(c, "anahtar_rotasyon", n(a, 0), None))),
-        "sunucu_anahtar_iptal" => ctx_ile(k, |c| cevap(anahtar_cagri(c, "anahtar_iptal", n(a, 0), None))),
+        "sunucu_anahtar_olustur" => ctx_ile(k, |c| {
+            cevap(sunucu_anahtar_olustur(c, s(a, 0), s(a, 1), s(a, 2)))
+        }),
+        "sunucu_anahtar_rotasyon" => ctx_ile(k, |c| {
+            cevap(anahtar_cagri(c, "anahtar_rotasyon", n(a, 0), None))
+        }),
+        "sunucu_anahtar_iptal" => ctx_ile(k, |c| {
+            cevap(anahtar_cagri(c, "anahtar_iptal", n(a, 0), None))
+        }),
         "sunucu_anahtar_sil" => ctx_ile(k, |c| cevap(anahtar_sil(c, n(a, 0)))),
-        "sunucu_anahtar_rol" => ctx_ile(k, |c| cevap(anahtar_cagri(c, "anahtar_rol_ayarla", n(a, 0), Some(s(a, 1))))),
+        "sunucu_anahtar_rol" => ctx_ile(k, |c| {
+            cevap(anahtar_cagri(
+                c,
+                "anahtar_rol_ayarla",
+                n(a, 0),
+                Some(s(a, 1)),
+            ))
+        }),
         "sunucu_istemciler" => ctx_ile(k, |c| cevap(sunucu_istemciler(c, n(a, 0)))),
         "sunucu_istemci_iptal" => ctx_ile(k, |c| cevap(sunucu_istemci_iptal(c, n(a, 0)))),
         "sunucu_istemci_temizle" => ctx_ile(k, |c| {
-            cevap(sunucu_istemci_temizle(c, a.first().and_then(Json::as_i64).unwrap_or(7)))
+            cevap(sunucu_istemci_temizle(
+                c,
+                a.first().and_then(Json::as_i64).unwrap_or(7),
+            ))
         }),
         "sunucu_kilit_temizle" => ctx_ile(k, |c| cevap(sunucu_kilit_temizle(c))),
         "sunucu_profiller" => ctx_ile(k, |c| cevap(sunucu_profiller(c))),
         "sunucu_profil_kaydet" => ctx_ile(k, |c| {
-            cevap(sunucu_profil_kaydet(c, &a.first().and_then(Json::as_object).cloned().unwrap_or_default()))
+            cevap(sunucu_profil_kaydet(
+                c,
+                &a.first()
+                    .and_then(Json::as_object)
+                    .cloned()
+                    .unwrap_or_default(),
+            ))
         }),
         "sunucu_profil_sil" => ctx_ile(k, |c| cevap(sunucu_profil_sil(c, n(a, 0)))),
         "sunucu_profil_etkinlestir" => ctx_ile(k, |c| cevap(sunucu_profil_etkinlestir(c, n(a, 0)))),
@@ -87,13 +111,31 @@ pub fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Option<Json> {
         }),
 
         // --- bekleyen indirme istekleri ---
-        "yerelden_sor" => yerelden_sor(k, a.first().and_then(Json::as_object).cloned().unwrap_or_default()),
-        "tarayicidan_sor" => tarayicidan_sor(k, a.first().and_then(Json::as_object).cloned().unwrap_or_default()),
+        "yerelden_sor" => yerelden_sor(
+            k,
+            a.first()
+                .and_then(Json::as_object)
+                .cloned()
+                .unwrap_or_default(),
+        ),
+        "tarayicidan_sor" => tarayicidan_sor(
+            k,
+            a.first()
+                .and_then(Json::as_object)
+                .cloned()
+                .unwrap_or_default(),
+        ),
 
         // --- diger Api metotlari ---
         "windows" => Json::Null,
         "ayarlari_dogrula_kaydet" => ctx_ile(k, |c| {
-            cevap(ayarlari_dogrula_kaydet(c, &a.first().and_then(Json::as_object).cloned().unwrap_or_default()))
+            cevap(ayarlari_dogrula_kaydet(
+                c,
+                &a.first()
+                    .and_then(Json::as_object)
+                    .cloned()
+                    .unwrap_or_default(),
+            ))
         }),
         "ag_konumlari_listele" => ctx_ile(k, |c| cevap(ag_konumlari_listele(c))),
         "ana_pencere_kapandi" => {
@@ -107,9 +149,11 @@ pub fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Option<Json> {
         "guc_durumu" => guc_durumu(),
         "simdi_uyu" => json!({"ok": automation::uyut()}),
         "reliability_recovery_preview" => ctx_ile(k, |c| {
-            cevap(c.manager.current_download_dir().and_then(|ana| {
-                reliability::recovery_preview(&*c.store, &ana, n(a, 0))
-            }))
+            cevap(
+                c.manager
+                    .current_download_dir()
+                    .and_then(|ana| reliability::recovery_preview(&*c.store, &ana, n(a, 0))),
+            )
         }),
         "security_rotate_token" => security_rotate_token(k),
         "tracker_klasoru_ac" => tracker_klasoru_ac(k),
@@ -286,7 +330,15 @@ pub(crate) fn sunucu_durumu(c: &ApiCtx) -> Result<Json> {
                 b.baslangic,
             )
         }
-        None => (false, ayar["port"].as_i64().unwrap_or(6821), String::new(), String::new(), 0, 0, 0.0),
+        None => (
+            false,
+            ayar["port"].as_i64().unwrap_or(6821),
+            String::new(),
+            String::new(),
+            0,
+            0,
+            0.0,
+        ),
     };
     Ok(json!({
         "ok": true,
@@ -337,7 +389,8 @@ fn sunucu_baslat(c: &ApiCtx) -> Result<Json> {
         }
         Err(mesaj) => {
             *kilit(&SUNUCU_HATA) = mesaj.clone();
-            c.store.log("error", &format!("yonetim sunucusu acilamadi: {mesaj}"), "");
+            c.store
+                .log("error", &format!("yonetim sunucusu acilamadi: {mesaj}"), "");
             Ok(json!({"ok": false, "code": "SUNUCU_ACILAMADI", "message": mesaj, "error": mesaj}))
         }
     }
@@ -363,7 +416,9 @@ fn sunucu_panel_ac() -> Json {
             let url = format!("http://127.0.0.1:{}/panel", b.port);
             match bridge::hidden_cmd("explorer.exe").arg(&url).spawn() {
                 Ok(_) => json!({"ok": true, "url": url}),
-                Err(e) => json!({"ok": false, "code": "ACILAMADI", "error": kisalt(&e.to_string(), 200)}),
+                Err(e) => {
+                    json!({"ok": false, "code": "ACILAMADI", "error": kisalt(&e.to_string(), 200)})
+                }
             }
         }
     }
@@ -374,7 +429,12 @@ pub(crate) fn sunucu_anahtarlar(c: &ApiCtx) -> Result<Json> {
     Ok(json!({"ok": true, "roller": ["yonetici", "salt_okur"], "anahtarlar": anahtarlar}))
 }
 
-pub(crate) fn sunucu_anahtar_olustur(c: &ApiCtx, ad: &str, rol: &str, not_metni: &str) -> Result<Json> {
+pub(crate) fn sunucu_anahtar_olustur(
+    c: &ApiCtx,
+    ad: &str,
+    rol: &str,
+    not_metni: &str,
+) -> Result<Json> {
     ok_veya_kotu(depo(c).call(
         "anahtar_olustur",
         &harita(json!({"ad": ad, "rol": rol, "not_metni": not_metni})),
@@ -382,7 +442,12 @@ pub(crate) fn sunucu_anahtar_olustur(c: &ApiCtx, ad: &str, rol: &str, not_metni:
 }
 
 /// Python anahtar_rotasyon / anahtar_iptal / anahtar_rol_ayarla (ValueError -> BAD_REQUEST).
-pub(crate) fn anahtar_cagri(c: &ApiCtx, eylem: &str, key_id: i64, rol: Option<&str>) -> Result<Json> {
+pub(crate) fn anahtar_cagri(
+    c: &ApiCtx,
+    eylem: &str,
+    key_id: i64,
+    rol: Option<&str>,
+) -> Result<Json> {
     let mut veri = json!({"key_id": key_id});
     if let Some(rol) = rol {
         veri["rol"] = json!(rol);
@@ -392,7 +457,9 @@ pub(crate) fn anahtar_cagri(c: &ApiCtx, eylem: &str, key_id: i64, rol: Option<&s
 
 /// Python `anahtar_sil`: ValueError yakalanmaz (genel hata).
 pub(crate) fn anahtar_sil(c: &ApiCtx, key_id: i64) -> Result<Json> {
-    Ok(ok_birlestir(depo(c).call("anahtar_sil", &harita(json!({"key_id": key_id})))?))
+    Ok(ok_birlestir(
+        depo(c).call("anahtar_sil", &harita(json!({"key_id": key_id})))?,
+    ))
 }
 
 pub(crate) fn sunucu_istemciler(c: &ApiCtx, dakika: i64) -> Result<Json> {
@@ -402,7 +469,11 @@ pub(crate) fn sunucu_istemciler(c: &ApiCtx, dakika: i64) -> Result<Json> {
 
 pub(crate) fn sunucu_istemci_iptal(c: &ApiCtx, client_id: i64) -> Result<Json> {
     let sonuc = depo(c).call("oturum_iptal", &harita(json!({"client_id": client_id})))?;
-    c.store.log("info", &format!("istemci oturumu iptal edildi (#{client_id})"), "");
+    c.store.log(
+        "info",
+        &format!("istemci oturumu iptal edildi (#{client_id})"),
+        "",
+    );
     Ok(ok_birlestir(sonuc))
 }
 
@@ -449,11 +520,18 @@ pub(crate) fn sunucu_profil_kaydet(c: &ApiCtx, veri: &JsonMap) -> Result<Json> {
 }
 
 pub(crate) fn sunucu_profil_sil(c: &ApiCtx, profil_id: i64) -> Result<Json> {
-    Ok(ok_birlestir(depo(c).call("profil_sil", &harita(json!({"profil_id": profil_id})))?))
+    Ok(ok_birlestir(depo(c).call(
+        "profil_sil",
+        &harita(json!({"profil_id": profil_id})),
+    )?))
 }
 
 pub(crate) fn sunucu_profil_etkinlestir(c: &ApiCtx, profil_id: i64) -> Result<Json> {
-    if profil_id != 0 && depo(c).call("profil", &harita(json!({"profil_id": profil_id})))?.is_null() {
+    if profil_id != 0
+        && depo(c)
+            .call("profil", &harita(json!({"profil_id": profil_id})))?
+            .is_null()
+    {
         return Ok(json!({"ok": false, "code": "BAD_REQUEST", "error": "profil bulunamadi"}));
     }
     c.store.set("sunucu_profil_id", json!(profil_id))?;
@@ -482,7 +560,9 @@ fn telefon_durumu(k: &Kabuk, c: &ApiCtx) -> Json {
 fn telefon_ayarla(k: &Kabuk, c: &ApiCtx, acik: bool) -> Result<Json> {
     if acik {
         if yonetim::lan_ac(port(k)).is_err() {
-            return Ok(json!({"ok": false, "error": "lan_bind_failed", "acik": ayar_bool(c, "lan_erisimi")}));
+            return Ok(
+                json!({"ok": false, "error": "lan_bind_failed", "acik": ayar_bool(c, "lan_erisimi")}),
+            );
         }
     } else {
         yonetim::lan_kapat();
@@ -495,13 +575,19 @@ fn telefon_ayarla(k: &Kabuk, c: &ApiCtx, acik: bool) -> Result<Json> {
 // --- paylasim ----------------------------------------------------------------
 
 fn dosya_yolu(c: &ApiCtx, gid: &str) -> Result<Option<PathBuf>> {
-    Ok(c.manager.resolve_item_path(gid)?.filter(|yol| yol.is_file()))
+    Ok(c.manager
+        .resolve_item_path(gid)?
+        .filter(|yol| yol.is_file()))
 }
 
 /// Python `_paylasim_url`: LAN hostu (yoksa 127.0.0.1) ile yerel indirme adresi.
 fn paylasim_url(k: &Kabuk, token: &str) -> String {
     let ip = yonetim::lan_ip();
-    let host = if ip.is_empty() { "127.0.0.1".to_string() } else { ip };
+    let host = if ip.is_empty() {
+        "127.0.0.1".to_string()
+    } else {
+        ip
+    };
     format!("http://{host}:{}/s/{token}", port(k))
 }
 
@@ -520,7 +606,11 @@ fn internet_linki(c: &ApiCtx, token: &str) -> (String, String) {
 fn paylasim_sonucu(k: &Kabuk, c: &ApiCtx, token: &str, yol: &Path, uyari: &str) -> Json {
     let yerel = paylasim_url(k, token);
     let (internet, internet_hata) = internet_linki(c, token);
-    let kullanilacak = if internet.is_empty() { yerel.clone() } else { internet.clone() };
+    let kullanilacak = if internet.is_empty() {
+        yerel.clone()
+    } else {
+        internet.clone()
+    };
     let qr = yonetim::qr_uri(&kullanilacak);
     json!({
         "ok": true,
@@ -596,7 +686,11 @@ fn share_list(k: &Kabuk) -> Json {
                 .as_ref()
                 .map(|taban| format!("{taban}/s/{token}"))
                 .unwrap_or_default();
-            let url = if internet.is_empty() { yerel.clone() } else { internet.clone() };
+            let url = if internet.is_empty() {
+                yerel.clone()
+            } else {
+                internet.clone()
+            };
             let boyut = std::fs::metadata(yol).map(|m| m.len()).unwrap_or(0);
             (
                 *olusturuldu,
@@ -653,7 +747,12 @@ fn dosya_sec_ve_paylas(k: &Kabuk, c: &ApiCtx) -> Result<Json> {
     if k.app.get_webview_window(ANA).is_none() {
         return Ok(json!({"ok": false}));
     }
-    let secim = k.app.dialog().file().blocking_pick_files().unwrap_or_default();
+    let secim = k
+        .app
+        .dialog()
+        .file()
+        .blocking_pick_files()
+        .unwrap_or_default();
     if secim.is_empty() {
         return Ok(json!({"ok": false, "error": "Dosya seçimi iptal edildi."}));
     }
@@ -713,17 +812,30 @@ fn ag_konumlari_listele(c: &ApiCtx) -> Result<Json> {
 
 /// Python `bekleyen_onayla`'nin indirme kismi: secimle birlestirilmis istegi manager.add ile baslatir.
 fn indir_onayla(c: &ApiCtx, t: &JsonMap) -> Json {
-    let metin = |anahtar: &str| t.get(anahtar).and_then(Json::as_str).unwrap_or("").to_string();
+    let metin = |anahtar: &str| {
+        t.get(anahtar)
+            .and_then(Json::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
     let url = metin("url").trim().to_string();
     let kind = match metin("kind") {
         k if k.is_empty() => afudm_core::queue::detect_kind(&url).to_string(),
         k => k,
     };
     let ad = afudm_db::kaydet::guvenli_dosya_adi(&metin("filename"));
-    let hedef = match yonetim::hedef_klasor(c, &metin("dest_dir"), &url, &kind, &metin("kategori"), false) {
+    let hedef = match yonetim::hedef_klasor(
+        c,
+        &metin("dest_dir"),
+        &url,
+        &kind,
+        &metin("kategori"),
+        false,
+    ) {
         Ok(h) => h,
         Err(e) => {
-            c.store.log("error", &format!("Download approval failed: {e}"), "");
+            c.store
+                .log("error", &format!("Download approval failed: {e}"), "");
             return json!({"ok": false, "error": e});
         }
     };
@@ -733,21 +845,54 @@ fn indir_onayla(c: &ApiCtx, t: &JsonMap) -> Json {
     if let Some(h) = hedef {
         istek.insert("dest_dir".into(), json!(h));
     }
-    istek.insert("quality".into(), t.get("quality").cloned().unwrap_or(Json::Null));
-    istek.insert("audio_only".into(), json!(t.get("audio_only").and_then(Json::as_bool).unwrap_or(false)));
+    istek.insert(
+        "quality".into(),
+        t.get("quality").cloned().unwrap_or(Json::Null),
+    );
+    istek.insert(
+        "audio_only".into(),
+        json!(t.get("audio_only").and_then(Json::as_bool).unwrap_or(false)),
+    );
     istek.insert("start_at".into(), json!(metin("start_at")));
-    istek.insert("headers".into(), t.get("headers").cloned().unwrap_or_else(|| json!({})));
-    istek.insert("filename".into(), if kind == "http" && !ad.is_empty() { json!(ad) } else { Json::Null });
+    istek.insert(
+        "headers".into(),
+        t.get("headers").cloned().unwrap_or_else(|| json!({})),
+    );
+    istek.insert(
+        "filename".into(),
+        if kind == "http" && !ad.is_empty() {
+            json!(ad)
+        } else {
+            Json::Null
+        },
+    );
     istek.insert(
         "title".into(),
-        if kind == "video" && !ad.is_empty() { json!(ad) } else { t.get("title").cloned().unwrap_or(Json::Null) },
+        if kind == "video" && !ad.is_empty() {
+            json!(ad)
+        } else {
+            t.get("title").cloned().unwrap_or(Json::Null)
+        },
     );
-    istek.insert("cookies".into(), t.get("cookies").cloned().unwrap_or(Json::Null));
-    istek.insert("user_agent".into(), t.get("user_agent").cloned().unwrap_or(Json::Null));
+    istek.insert(
+        "cookies".into(),
+        t.get("cookies").cloned().unwrap_or(Json::Null),
+    );
+    istek.insert(
+        "user_agent".into(),
+        t.get("user_agent").cloned().unwrap_or(Json::Null),
+    );
     match c.manager.add(&istek) {
         Ok(sonuc) if sonuc["ok"] == json!(false) => {
-            let hata_metni = sonuc["error"].as_str().unwrap_or("Download rejected").to_string();
-            c.store.log("error", &format!("Download approval failed: {hata_metni}"), "");
+            let hata_metni = sonuc["error"]
+                .as_str()
+                .unwrap_or("Download rejected")
+                .to_string();
+            c.store.log(
+                "error",
+                &format!("Download approval failed: {hata_metni}"),
+                "",
+            );
             json!({"ok": false, "error": hata_metni})
         }
         Ok(sonuc) => {
@@ -758,7 +903,8 @@ fn indir_onayla(c: &ApiCtx, t: &JsonMap) -> Json {
             ok_birlestir(sonuc)
         }
         Err(e) => {
-            c.store.log("error", &format!("Download approval failed: {e}"), "");
+            c.store
+                .log("error", &format!("Download approval failed: {e}"), "");
             json!({"ok": false, "error": e.to_string()})
         }
     }
@@ -810,11 +956,18 @@ fn tarayicidan_sor(k: &Kabuk, istek: JsonMap) -> Json {
 fn motor_indir(k: &Kabuk, ad: &str) -> Json {
     {
         let mut ilerleme = kilit(&MOTOR_ILERLEME);
-        let suruyor = ilerleme.get(ad).and_then(|v| v.get("durum")).and_then(Json::as_str) == Some("iniyor");
+        let suruyor = ilerleme
+            .get(ad)
+            .and_then(|v| v.get("durum"))
+            .and_then(Json::as_str)
+            == Some("iniyor");
         if suruyor {
             return json!({"ok": true, "zaten": true});
         }
-        ilerleme.insert(ad.to_string(), json!({"durum": "iniyor", "inen": 0, "toplam": 0}));
+        ilerleme.insert(
+            ad.to_string(),
+            json!({"durum": "iniyor", "inen": 0, "toplam": 0}),
+        );
     }
     let app_dir = k.app_dir.clone();
     let ad_t = ad.to_string();
@@ -870,7 +1023,14 @@ fn guc_durumu() -> Json {
 
 fn powershell(komut: &str) -> String {
     bridge::hidden_cmd("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", komut])
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            komut,
+        ])
         .output()
         .map(|cikti| String::from_utf8_lossy(&cikti.stdout).trim().to_string())
         .unwrap_or_default()
@@ -897,7 +1057,10 @@ fn kart_ayristir(ham: &str) -> (String, String, String) {
     (
         parcalar[0].trim().to_string(),
         parcalar[1].trim().to_uppercase(),
-        parcalar.get(2).map(|p| p.trim().to_string()).unwrap_or_default(),
+        parcalar
+            .get(2)
+            .map(|p| p.trim().to_string())
+            .unwrap_or_default(),
     )
 }
 
@@ -928,9 +1091,17 @@ fn uyandirmaya_hazir() -> bool {
 /// Python regex `(ethernet|wi-?fi|wireless|network|realtek|intel\(r\) )` (buyuk/kucuk harf duyarsiz).
 fn uyandirma_metni_destekli(ham: &str) -> bool {
     let kucuk = ham.to_lowercase();
-    ["ethernet", "wifi", "wi-fi", "wireless", "network", "realtek", "intel(r) "]
-        .iter()
-        .any(|desen| kucuk.contains(*desen))
+    [
+        "ethernet",
+        "wifi",
+        "wi-fi",
+        "wireless",
+        "network",
+        "realtek",
+        "intel(r) ",
+    ]
+    .iter()
+    .any(|desen| kucuk.contains(*desen))
 }
 
 /// Python `security_rotate_token`: token dosyasini yeniler; acik panel/uc noktasi dosyasi guncellenir.
@@ -975,7 +1146,9 @@ mod tests {
 
     #[test]
     fn gecersiz_girdi_bad_request_doner() {
-        let cikti = bad(AfuError::Invalid("rol 'yonetici' veya 'salt_okur' olmali".into()));
+        let cikti = bad(AfuError::Invalid(
+            "rol 'yonetici' veya 'salt_okur' olmali".into(),
+        ));
         assert_eq!(cikti["code"], "BAD_REQUEST");
         assert_eq!(cikti["ok"], false);
         let diger = bad(AfuError::Db("kilit".into()));
@@ -989,7 +1162,10 @@ mod tests {
         assert_eq!(ad, "Ethernet");
         assert_eq!(mac, "AA-BB-CC-DD-EE-FF");
         assert_eq!(aciklama, "Realtek PCIe GbE");
-        assert_eq!(kart_ayristir(""), (String::new(), String::new(), String::new()));
+        assert_eq!(
+            kart_ayristir(""),
+            (String::new(), String::new(), String::new())
+        );
     }
 
     #[test]

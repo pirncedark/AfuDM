@@ -10,7 +10,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use afudm_api::erisim::{self, ErisimDeposu, HizSinirlayici};
-use afudm_extras::h::{esleme, paylasim, tunel::{self, TunelYoneticisi}};
+use afudm_extras::h::{
+    esleme, paylasim,
+    tunel::{self, TunelYoneticisi},
+};
 use afudm_types::{AfuError, ApiCtx, JsonMap, Result};
 use axum::body::Body;
 use axum::extract::{ConnectInfo, State};
@@ -214,7 +217,8 @@ pub fn lan_ac(port: u16) -> std::result::Result<String, String> {
         .get()
         .cloned()
         .ok_or_else(|| "lan_bind_failed".to_string())?;
-    let dinleyici = StdListener::bind((ip.as_str(), port)).map_err(|_| "lan_bind_failed".to_string())?;
+    let dinleyici =
+        StdListener::bind((ip.as_str(), port)).map_err(|_| "lan_bind_failed".to_string())?;
     dinleyici
         .set_nonblocking(true)
         .map_err(|_| "lan_bind_failed".to_string())?;
@@ -250,7 +254,8 @@ pub fn lan_adres(ctx: &ApiCtx) -> Option<String> {
 
 /// Python `_qr_uret`: adresi PNG data-URI olarak uretir (box 6, kenar 2, #0f131a / #e6eaf0).
 pub fn qr_uri(metin: &str) -> String {
-    let Ok(kod) = qrcode::QrCode::with_error_correction_level(metin.as_bytes(), qrcode::EcLevel::M) else {
+    let Ok(kod) = qrcode::QrCode::with_error_correction_level(metin.as_bytes(), qrcode::EcLevel::M)
+    else {
         return String::new();
     };
     let modul = kod.width();
@@ -258,7 +263,8 @@ pub fn qr_uri(metin: &str) -> String {
     const KUTU: usize = 6;
     const KENAR: usize = 2;
     let boyut = (modul + 2 * KENAR) * KUTU;
-    let mut resim = image::RgbImage::from_pixel(boyut as u32, boyut as u32, image::Rgb([230, 234, 240]));
+    let mut resim =
+        image::RgbImage::from_pixel(boyut as u32, boyut as u32, image::Rgb([230, 234, 240]));
     for y in 0..modul {
         for x in 0..modul {
             if matches!(renkler[y * modul + x], qrcode::types::Color::Dark) {
@@ -266,7 +272,11 @@ pub fn qr_uri(metin: &str) -> String {
                 let by = (y + KENAR) * KUTU;
                 for dy in 0..KUTU {
                     for dx in 0..KUTU {
-                        resim.put_pixel((bx + dx) as u32, (by + dy) as u32, image::Rgb([15, 19, 26]));
+                        resim.put_pixel(
+                            (bx + dx) as u32,
+                            (by + dy) as u32,
+                            image::Rgb([15, 19, 26]),
+                        );
                     }
                 }
             }
@@ -358,15 +368,34 @@ pub fn tuneli_durdur() {
 
 /// Boot sonrasi: ayar aciksa LAN dinleyicisini ve yonetim panelini baslatir (Python main akisi).
 pub fn acilista(ctx: &ApiCtx, port: u16) {
-    if ctx.store.get("lan_erisimi").ok().flatten().is_some_and(|v| crate::bridge::truthy(&v)) {
+    if ctx
+        .store
+        .get("lan_erisimi")
+        .ok()
+        .flatten()
+        .is_some_and(|v| crate::bridge::truthy(&v))
+    {
         if let Err(e) = lan_ac(port) {
-            ctx.store.log("error", &format!("LAN dinleyicisi acilamadi: {e}"), "");
+            ctx.store
+                .log("error", &format!("LAN dinleyicisi acilamadi: {e}"), "");
         }
     }
-    let sunucu_acik = ctx.store.get("sunucu_acik").ok().flatten().is_some_and(|v| crate::bridge::truthy(&v));
-    if sunucu_acik && depo(ctx).call("yonetici_var_mi", &JsonMap::new()).ok().and_then(|v| v.as_bool()) == Some(true) {
+    let sunucu_acik = ctx
+        .store
+        .get("sunucu_acik")
+        .ok()
+        .flatten()
+        .is_some_and(|v| crate::bridge::truthy(&v));
+    if sunucu_acik
+        && depo(ctx)
+            .call("yonetici_var_mi", &JsonMap::new())
+            .ok()
+            .and_then(|v| v.as_bool())
+            == Some(true)
+    {
         if let Err(e) = sunucu_ac(ctx) {
-            ctx.store.log("error", &format!("yonetim sunucusu acilamadi: {e}"), "");
+            ctx.store
+                .log("error", &format!("yonetim sunucusu acilamadi: {e}"), "");
         }
     }
 }
@@ -380,7 +409,9 @@ fn depo(c: &ApiCtx) -> ErisimDeposu {
 fn cors(b: Builder, origin: Option<&str>) -> Builder {
     let mut b = b;
     if let Some(o) = origin {
-        b = b.header(header::ACCESS_CONTROL_ALLOW_ORIGIN, o).header(header::VARY, "Origin");
+        b = b
+            .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, o)
+            .header(header::VARY, "Origin");
     }
     b.header(
         header::ACCESS_CONTROL_ALLOW_HEADERS,
@@ -430,7 +461,12 @@ fn hata_json(kod: &str, mesaj: &str) -> Json {
 fn sonuc_yanit(sonuc: Result<Json>, origin: Option<&str>) -> Response {
     match sonuc {
         Ok(v) => yanit(StatusCode::OK, &v, origin, &[]),
-        Err(e) => yanit(StatusCode::BAD_REQUEST, &hata_json("BAD_REQUEST", &e.to_string()), origin, &[]),
+        Err(e) => yanit(
+            StatusCode::BAD_REQUEST,
+            &hata_json("BAD_REQUEST", &e.to_string()),
+            origin,
+            &[],
+        ),
     }
 }
 
@@ -553,7 +589,14 @@ fn kapi(
     let izin_yanit = match p.limit.call("izin_ver", &ip) {
         Ok(v) => v,
         Err(_) => {
-            return Err(reddet(p, 500, "INTERNAL", "hiz siniri okunamadi", origin, &[]));
+            return Err(reddet(
+                p,
+                500,
+                "INTERNAL",
+                "hiz siniri okunamadi",
+                origin,
+                &[],
+            ));
         }
     };
     if !izin_yanit[0].as_bool().unwrap_or(false) {
@@ -568,9 +611,20 @@ fn kapi(
         ));
     }
     if !origin_uygun {
-        return Err(reddet(p, 403, "ORIGIN_REDDEDILDI", "bu adresten gelen istekler izinli degil", None, &[]));
+        return Err(reddet(
+            p,
+            403,
+            "ORIGIN_REDDEDILDI",
+            "bu adresten gelen istekler izinli degil",
+            None,
+            &[],
+        ));
     }
-    if yazma && h.get(CSRF_BASLIK).and_then(|v| v.to_str().ok()).is_none_or(|v| v.trim().is_empty()) {
+    if yazma
+        && h.get(CSRF_BASLIK)
+            .and_then(|v| v.to_str().ok())
+            .is_none_or(|v| v.trim().is_empty())
+    {
         return Err(reddet(
             p,
             403,
@@ -622,7 +676,14 @@ fn kapi(
             .call("oturum_dokun", &harita(json!({"oturum": oturum, "ip": ip})))
             .unwrap_or(Json::Null);
         if dokun.is_null() {
-            return Err(reddet(p, 401, "OTURUM_IPTAL", "oturumun iptal edildi — yeniden baglan", origin, &[]));
+            return Err(reddet(
+                p,
+                401,
+                "OTURUM_IPTAL",
+                "oturumun iptal edildi — yeniden baglan",
+                origin,
+                &[],
+            ));
         }
     }
     let _ = depo(&p.ctx).call("kullanim_isle", &harita(json!({"key_id": id})));
@@ -701,7 +762,9 @@ fn sorgu_deger(sorgu: &[(String, String)], ad: &str) -> String {
 
 fn get_izin(yol: &str) -> Option<&'static str> {
     match yol {
-        "/api/yetenekler" | "/api/durum" | "/api/liste" | "/api/ayarlar" | "/api/olaylar" => Some("oku"),
+        "/api/yetenekler" | "/api/durum" | "/api/liste" | "/api/ayarlar" | "/api/olaylar" => {
+            Some("oku")
+        }
         "/api/anahtarlar" | "/api/istemciler" | "/api/profiller" => Some("yonet"),
         _ => None,
     }
@@ -710,14 +773,25 @@ fn get_izin(yol: &str) -> Option<&'static str> {
 fn post_izin(yol: &str) -> Option<&'static str> {
     match yol {
         "/api/oturum" | "/api/oturum/kapat" => Some("oku"),
-        "/api/ekle" | "/api/kontrol" | "/api/yeniden-dene" | "/api/temizle" | "/api/hiz-profili"
+        "/api/ekle"
+        | "/api/kontrol"
+        | "/api/yeniden-dene"
+        | "/api/temizle"
+        | "/api/hiz-profili"
         | "/api/baglanti-ayarla" => Some("yaz"),
         "/api/ayarlar" => Some("ayar"),
-        "/api/anahtar/olustur" | "/api/anahtar/rotasyon" | "/api/anahtar/iptal" | "/api/anahtar/sil"
-        | "/api/anahtar/rol" | "/api/istemci/iptal" | "/api/istemci/temizle" | "/api/kilit/temizle"
-        | "/api/profil/kaydet" | "/api/profil/sil" | "/api/profil/etkinlestir" | "/api/sunucu/durdur" => {
-            Some("yonet")
-        }
+        "/api/anahtar/olustur"
+        | "/api/anahtar/rotasyon"
+        | "/api/anahtar/iptal"
+        | "/api/anahtar/sil"
+        | "/api/anahtar/rol"
+        | "/api/istemci/iptal"
+        | "/api/istemci/temizle"
+        | "/api/kilit/temizle"
+        | "/api/profil/kaydet"
+        | "/api/profil/sil"
+        | "/api/profil/etkinlestir"
+        | "/api/sunucu/durdur" => Some("yonet"),
         _ => None,
     }
 }
@@ -744,20 +818,36 @@ async fn istek(
     let yol = yol_norm(uri.path());
     let (origin_uygun, origin) = origin_kontrol(&p, &basliklar);
     if metot == Method::OPTIONS {
-        let durum = if origin_uygun { StatusCode::NO_CONTENT } else { StatusCode::FORBIDDEN };
+        let durum = if origin_uygun {
+            StatusCode::NO_CONTENT
+        } else {
+            StatusCode::FORBIDDEN
+        };
         return cors_yanit(durum, origin.as_deref());
     }
     let origin_ref = origin.as_deref();
     if metot == Method::GET {
         match yol.as_str() {
-            "/api/ping" => return yanit(StatusCode::OK, &json!({"ok": true, "app": "AfuDM", "panel": true}), None, &[]),
+            "/api/ping" => {
+                return yanit(
+                    StatusCode::OK,
+                    &json!({"ok": true, "app": "AfuDM", "panel": true}),
+                    None,
+                    &[],
+                )
+            }
             "/" | "/panel" => return dosya("text/html; charset=utf-8", PANEL_HTML),
             "/varlik/i18n.js" => return dosya("application/javascript; charset=utf-8", I18N_JS),
             "/varlik/style.css" => return dosya("text/css; charset=utf-8", STYLE_CSS),
             _ => {}
         }
         let Some(izin) = get_izin(&yol) else {
-            return yanit(StatusCode::NOT_FOUND, &hata_json("BILINMEYEN_YOL", "bilinmeyen yol"), origin_ref, &[]);
+            return yanit(
+                StatusCode::NOT_FOUND,
+                &hata_json("BILINMEYEN_YOL", "bilinmeyen yol"),
+                origin_ref,
+                &[],
+            );
         };
         let kimlik = match kapi(&p, peer, &basliklar, izin, false, origin_uygun, origin_ref) {
             Ok(k) => k,
@@ -768,7 +858,12 @@ async fn istek(
     }
     if metot == Method::POST {
         let Some(izin) = post_izin(&yol) else {
-            return yanit(StatusCode::NOT_FOUND, &hata_json("BILINMEYEN_YOL", "bilinmeyen yol"), origin_ref, &[]);
+            return yanit(
+                StatusCode::NOT_FOUND,
+                &hata_json("BILINMEYEN_YOL", "bilinmeyen yol"),
+                origin_ref,
+                &[],
+            );
         };
         let kimlik = match kapi(&p, peer, &basliklar, izin, true, origin_uygun, origin_ref) {
             Ok(k) => k,
@@ -779,7 +874,10 @@ async fn istek(
             Err(_) => {
                 return yanit(
                     StatusCode::PAYLOAD_TOO_LARGE,
-                    &hata_json("GOVDE_HATASI", "istek govdesi en fazla 2000000 bayt olabilir"),
+                    &hata_json(
+                        "GOVDE_HATASI",
+                        "istek govdesi en fazla 2000000 bayt olabilir",
+                    ),
                     origin_ref,
                     &[],
                 )
@@ -815,9 +913,17 @@ async fn istek(
             .unwrap_or("")
             .trim()
             .to_string();
-        return sonuc_yanit(post_calistir(&p, &yol, &veri, &kimlik, &ip, &ua, &oturum), origin_ref);
+        return sonuc_yanit(
+            post_calistir(&p, &yol, &veri, &kimlik, &ip, &ua, &oturum),
+            origin_ref,
+        );
     }
-    yanit(StatusCode::METHOD_NOT_ALLOWED, &hata_json("BILINMEYEN_YOL", "bilinmeyen yol"), origin_ref, &[])
+    yanit(
+        StatusCode::METHOD_NOT_ALLOWED,
+        &hata_json("BILINMEYEN_YOL", "bilinmeyen yol"),
+        origin_ref,
+        &[],
+    )
 }
 
 fn get_calistir(p: &Panel, yol: &str, sorgu: &[(String, String)], k: &Kimlik) -> Result<Json> {
@@ -847,7 +953,9 @@ fn get_calistir(p: &Panel, yol: &str, sorgu: &[(String, String)], k: &Kimlik) ->
                 "indirme_klasoru": c.manager.current_download_dir()?,
                 "rol": k.rol,
             });
-            if let (Some(hedef), Json::Object(kaynak)) = (cikti.as_object_mut(), kopru_h::sunucu_durumu(c)?) {
+            if let (Some(hedef), Json::Object(kaynak)) =
+                (cikti.as_object_mut(), kopru_h::sunucu_durumu(c)?)
+            {
                 hedef.extend(kaynak);
             }
             Ok(cikti)
@@ -873,7 +981,10 @@ fn get_calistir(p: &Panel, yol: &str, sorgu: &[(String, String)], k: &Kimlik) ->
         "/api/ayarlar" => Ok(json!({"ok": true, "settings": c.store.all_settings()?})),
         "/api/olaylar" => {
             let gid = sorgu_deger(sorgu, "gid");
-            let limit = sorgu_deger(sorgu, "limit").parse::<usize>().unwrap_or(60).clamp(1, 500);
+            let limit = sorgu_deger(sorgu, "limit")
+                .parse::<usize>()
+                .unwrap_or(60)
+                .clamp(1, 500);
             Ok(json!({"ok": true, "events": c.store.recent_events(limit, &gid)?}))
         }
         "/api/anahtarlar" => kopru_h::sunucu_anahtarlar(c),
@@ -913,7 +1024,12 @@ fn post_calistir(
 ) -> Result<Json> {
     let c = &p.ctx;
     let id = veri.get("id").and_then(Json::as_i64).unwrap_or(0);
-    let metin = |anahtar: &str| veri.get(anahtar).and_then(Json::as_str).unwrap_or("").to_string();
+    let metin = |anahtar: &str| {
+        veri.get(anahtar)
+            .and_then(Json::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
     match yol {
         "/api/oturum" => {
             let mut oturum_kodu = String::new();
@@ -936,7 +1052,8 @@ fn post_calistir(
         }
         "/api/oturum/kapat" => {
             if !oturum.is_empty() {
-                let dokun = depo(c).call("oturum_dokun", &harita(json!({"oturum": oturum, "ip": ip})))?;
+                let dokun =
+                    depo(c).call("oturum_dokun", &harita(json!({"oturum": oturum, "ip": ip})))?;
                 if let Some(oid) = dokun.get("id").and_then(Json::as_i64) {
                     depo(c).call("oturum_iptal", &harita(json!({"client_id": oid})))?;
                 }
@@ -947,10 +1064,17 @@ fn post_calistir(
         "/api/kontrol" => {
             let eylem = {
                 let a = metin("action");
-                if a.is_empty() { metin("eylem") } else { a }
+                if a.is_empty() {
+                    metin("eylem")
+                } else {
+                    a
+                }
             };
             let gid = metin("gid");
-            let dosyalari_sil = veri.get("delete_files").and_then(Json::as_bool).unwrap_or(false);
+            let dosyalari_sil = veri
+                .get("delete_files")
+                .and_then(Json::as_bool)
+                .unwrap_or(false);
             let sonuc = match eylem.trim() {
                 "pause" => c.manager.pause(&gid).map(|_| ()),
                 "resume" => c.manager.resume(&gid).map(|_| ()),
@@ -985,20 +1109,32 @@ fn post_calistir(
             })
         }
         "/api/ayarlar" => {
-            let payload = veri.get("settings").and_then(Json::as_object).cloned().unwrap_or_else(|| veri.clone());
+            let payload = veri
+                .get("settings")
+                .and_then(Json::as_object)
+                .cloned()
+                .unwrap_or_else(|| veri.clone());
             Ok(match c.manager.update_settings(&payload) {
                 Ok(kayit) => json!({"ok": true, "settings": kayit}),
                 Err(e) => json!({"ok": false, "code": "AYAR_HATASI", "error": e.to_string()}),
             })
         }
-        "/api/anahtar/olustur" => kopru_h::sunucu_anahtar_olustur(c, &metin("ad"), &metin("rol"), &metin("not_metni")),
+        "/api/anahtar/olustur" => {
+            kopru_h::sunucu_anahtar_olustur(c, &metin("ad"), &metin("rol"), &metin("not_metni"))
+        }
         "/api/anahtar/rotasyon" => kopru_h::anahtar_cagri(c, "anahtar_rotasyon", id, None),
         "/api/anahtar/iptal" => kopru_h::anahtar_cagri(c, "anahtar_iptal", id, None),
         "/api/anahtar/sil" => kopru_h::anahtar_sil(c, id),
-        "/api/anahtar/rol" => kopru_h::anahtar_cagri(c, "anahtar_rol_ayarla", id, Some(&metin("rol"))),
+        "/api/anahtar/rol" => {
+            kopru_h::anahtar_cagri(c, "anahtar_rol_ayarla", id, Some(&metin("rol")))
+        }
         "/api/istemci/iptal" => kopru_h::sunucu_istemci_iptal(c, id),
         "/api/istemci/temizle" => {
-            let gun = veri.get("gun").and_then(Json::as_i64).filter(|g| *g != 0).unwrap_or(7);
+            let gun = veri
+                .get("gun")
+                .and_then(Json::as_i64)
+                .filter(|g| *g != 0)
+                .unwrap_or(7);
             kopru_h::sunucu_istemci_temizle(c, gun)
         }
         "/api/kilit/temizle" => kopru_h::sunucu_kilit_temizle(c),
@@ -1024,7 +1160,13 @@ fn ekle(p: &Panel, veri: &JsonMap) -> Result<Json> {
     let mut urller: Vec<String> = veri
         .get("urls")
         .and_then(Json::as_array)
-        .map(|a| a.iter().filter_map(Json::as_str).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(Json::as_str)
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
         .unwrap_or_default();
     if urller.is_empty() {
         let tek = veri
@@ -1042,12 +1184,22 @@ fn ekle(p: &Panel, veri: &JsonMap) -> Result<Json> {
         return Ok(json!({"ok": false, "code": "BAD_REQUEST", "error": "link gerekli"}));
     }
     let tek_ad = if urller.len() == 1 {
-        afudm_db::kaydet::guvenli_dosya_adi(veri.get("filename").and_then(Json::as_str).unwrap_or(""))
+        afudm_db::kaydet::guvenli_dosya_adi(
+            veri.get("filename").and_then(Json::as_str).unwrap_or(""),
+        )
     } else {
         String::new()
     };
-    let secilen = veri.get("dest_dir").and_then(Json::as_str).unwrap_or("").to_string();
-    let kategori = veri.get("kategori").and_then(Json::as_str).unwrap_or("").to_string();
+    let secilen = veri
+        .get("dest_dir")
+        .and_then(Json::as_str)
+        .unwrap_or("")
+        .to_string();
+    let kategori = veri
+        .get("kategori")
+        .and_then(Json::as_str)
+        .unwrap_or("")
+        .to_string();
     let mut eklenen = 0usize;
     let mut hatalar: Vec<String> = Vec::new();
     for url in urller {
@@ -1069,21 +1221,42 @@ fn ekle(p: &Panel, veri: &JsonMap) -> Result<Json> {
             if let Some(q) = veri.get("quality").filter(|v| crate::bridge::truthy(v)) {
                 istek.insert("quality".into(), q.clone());
             }
-            istek.insert("audio_only".into(), json!(veri.get("audio_only").and_then(Json::as_bool).unwrap_or(false)));
-            istek.insert("playlist".into(), json!(veri.get("playlist").and_then(Json::as_bool).unwrap_or(false)));
+            istek.insert(
+                "audio_only".into(),
+                json!(veri
+                    .get("audio_only")
+                    .and_then(Json::as_bool)
+                    .unwrap_or(false)),
+            );
+            istek.insert(
+                "playlist".into(),
+                json!(veri
+                    .get("playlist")
+                    .and_then(Json::as_bool)
+                    .unwrap_or(false)),
+            );
             match c.manager.add(&istek) {
-                Ok(s) if s["ok"] == json!(false) => Err(s["error"].as_str().unwrap_or("indirme reddedildi").to_string()),
+                Ok(s) if s["ok"] == json!(false) => Err(s["error"]
+                    .as_str()
+                    .unwrap_or("indirme reddedildi")
+                    .to_string()),
                 Ok(_) => Ok(()),
                 Err(e) => Err(e.to_string()),
             }
         })();
         match sonuc {
             Ok(()) => eklenen += 1,
-            Err(mesaj) => hatalar.push(format!("{}: {}", url.chars().take(48).collect::<String>(), mesaj.chars().take(120).collect::<String>())),
+            Err(mesaj) => hatalar.push(format!(
+                "{}: {}",
+                url.chars().take(48).collect::<String>(),
+                mesaj.chars().take(120).collect::<String>()
+            )),
         }
     }
     if eklenen == 0 && !hatalar.is_empty() {
-        return Ok(json!({"ok": false, "code": "EKLENEMEDI", "error": hatalar[0], "failed": hatalar}));
+        return Ok(
+            json!({"ok": false, "code": "EKLENEMEDI", "error": hatalar[0], "failed": hatalar}),
+        );
     }
     Ok(json!({"ok": true, "added": eklenen, "scheduled": 0, "failed": hatalar}))
 }
@@ -1098,7 +1271,10 @@ pub(crate) fn hedef_klasor(
     kategori: &str,
     uzaktan: bool,
 ) -> std::result::Result<Option<String>, String> {
-    let ana = c.manager.current_download_dir().map_err(|e| e.to_string())?;
+    let ana = c
+        .manager
+        .current_download_dir()
+        .map_err(|e| e.to_string())?;
     if !secilen.is_empty() {
         if uzaktan && !PathBuf::from(secilen).starts_with(PathBuf::from(&ana)) {
             return Err("hedef klasor izinli kok dizin disinda".into());

@@ -48,7 +48,11 @@ fn otomatik_kontrol(g: &Arc<Guncelleme>, ctx: &ApiCtx, kabuk: &Kabuk) {
     }
     let zaman = once["zaman"].as_f64().unwrap_or(0.0);
     let taze = simdi() - zaman < ONBELLEK_SN;
-    let bilgi = if taze { once["bilgi"].clone() } else { g.kontrol_ve_kaydet() };
+    let bilgi = if taze {
+        once["bilgi"].clone()
+    } else {
+        g.kontrol_ve_kaydet()
+    };
     let var = bilgi["ok"] == json!(true) && bilgi["var"] == json!(true);
     if !var {
         return;
@@ -77,7 +81,11 @@ fn uygula_bosta(g: &Arc<Guncelleme>, ctx: &ApiCtx, kabuk: &Kabuk) {
     let baslangic = std::time::Instant::now();
     loop {
         let snap = || ctx.manager.snapshot();
-        let bekleyen = ctx.manager.snapshot().map(|s| aktif_var(&s)).unwrap_or(true)
+        let bekleyen = ctx
+            .manager
+            .snapshot()
+            .map(|s| aktif_var(&s))
+            .unwrap_or(true)
             || !kabuk.ui.listele().is_empty();
         let sonuc = g.uygula(&*ctx.store, &snap, bekleyen, true, false);
         if sonuc["bekle"] == json!(true) && baslangic.elapsed() < BEKLEME_ZAMAN_ASIMI {

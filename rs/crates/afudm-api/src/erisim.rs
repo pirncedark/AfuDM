@@ -387,7 +387,12 @@ impl HizSinirlayici {
         }
     }
     /// Canli ayar (Python HizSinirlayici.ayarla): yeni degerler hemen gecerli, yeniden baslatma yok.
-    pub fn ayarla(&mut self, limit: Option<usize>, hatali_limit: Option<u32>, kilit_saniye: Option<u32>) {
+    pub fn ayarla(
+        &mut self,
+        limit: Option<usize>,
+        hatali_limit: Option<u32>,
+        kilit_saniye: Option<u32>,
+    ) {
         if let Some(v) = limit {
             self.limit = v.max(1);
         }

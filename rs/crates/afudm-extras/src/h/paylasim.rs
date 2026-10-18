@@ -284,7 +284,20 @@ fn govde_coz(ham: &[u8]) -> Option<Value> {
 
 /// `POST /share_create` {"gid":"g"} -> {"ok":true,"token","filename"}.
 /// Python: api/server.py do_POST `/share_create` (hazir ve kok icinde tekil dosya).
-pub async fn share_create(State(ctx): State<ApiCtx>, govde: Bytes) -> Response {
+pub async fn share_create(
+    State(ctx): State<ApiCtx>,
+    govde: Result<Bytes, axum::extract::rejection::BytesRejection>,
+) -> Response {
+    let govde = match govde {
+        Ok(b) => b,
+        Err(_) => {
+            return super::hata(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "GOVDE_HATASI",
+                "Istek boyutu uygun degil. Daha kucuk bir istek gonder.",
+            )
+        }
+    };
     let Some(veri) = govde_coz(&govde) else {
         return super::hata(
             StatusCode::BAD_REQUEST,

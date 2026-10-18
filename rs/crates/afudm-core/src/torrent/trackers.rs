@@ -66,14 +66,19 @@ fn ipv4_ozel(ip: Ipv4Addr) -> bool {
 
 /// Python _yerel_mi.
 fn yerel_mi(host: &str) -> bool {
-    if matches!(host, "localhost" | "127.0.0.1" | "::1") || YEREL_EKLER.iter().any(|e| host.ends_with(e)) {
+    if matches!(host, "localhost" | "127.0.0.1" | "::1")
+        || YEREL_EKLER.iter().any(|e| host.ends_with(e))
+    {
         return true;
     }
     match host.parse::<IpAddr>() {
         Ok(IpAddr::V4(v4)) => ipv4_ozel(v4),
         Ok(IpAddr::V6(v6)) => {
             let ilk = v6.segments()[0];
-            v6.is_loopback() || v6.is_unspecified() || (ilk & 0xfe00) == 0xfc00 || (ilk & 0xffc0) == 0xfe80
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || (ilk & 0xfe00) == 0xfc00
+                || (ilk & 0xffc0) == 0xfe80
         }
         Err(_) => false,
     }
@@ -128,7 +133,9 @@ pub fn tracker_normalize(ham: &str) -> Vec<String> {
     let mut sonuc = Vec::new();
     let mut gorulen: HashSet<String> = HashSet::new();
     for adres in adaylar {
-        let Some(host) = host_of(&adres) else { continue };
+        let Some(host) = host_of(&adres) else {
+            continue;
+        };
         if yerel_mi(&host) || YASAK_HOST_ALT.iter().any(|y| host.contains(*y)) {
             continue;
         }
@@ -146,11 +153,22 @@ pub fn ayikla(metin: &str) -> Vec<String> {
 }
 
 /// Python _fetch + bos satirlarin atilmasi. Hata varsa son hatayi doner.
-pub(super) fn indir(url: &str, ua: &str, zaman_asimi: Duration, en_fazla: u64) -> std::result::Result<Vec<u8>, String> {
+pub(super) fn indir(
+    url: &str,
+    ua: &str,
+    zaman_asimi: Duration,
+    en_fazla: u64,
+) -> std::result::Result<Vec<u8>, String> {
     use std::io::Read;
-    let ayar = ureq::Agent::config_builder().timeout_global(Some(zaman_asimi)).build();
+    let ayar = ureq::Agent::config_builder()
+        .timeout_global(Some(zaman_asimi))
+        .build();
     let ajan = ureq::Agent::new_with_config(ayar);
-    let mut yanit = ajan.get(url).header("User-Agent", ua).call().map_err(|e| e.to_string())?;
+    let mut yanit = ajan
+        .get(url)
+        .header("User-Agent", ua)
+        .call()
+        .map_err(|e| e.to_string())?;
     let mut govde = Vec::new();
     let mut okuyucu = yanit.body_mut().as_reader().take(en_fazla);
     okuyucu.read_to_end(&mut govde).map_err(|e| e.to_string())?;
@@ -202,7 +220,10 @@ pub fn onbellek_oku(data_dir: &Path) -> Result<Vec<String>> {
 /// Python cache_yasi().
 pub fn cache_yasi(data_dir: &Path) -> Option<f64> {
     let mt = fs::metadata(cache_yolu(data_dir)).ok()?.modified().ok()?;
-    let mt_sn = mt.duration_since(UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0);
+    let mt_sn = mt
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
     Some(simdi() - mt_sn)
 }
 
@@ -226,7 +247,13 @@ pub fn yenile(data_dir: &Path, force: bool) -> Result<Vec<String>> {
 
 /// Python apply_to_aria2: olculmus canli liste varsa onu, yoksa ek + guncel liste; bt-tracker'a yazar.
 /// Donen: uygulanan tracker sayisi.
-pub fn aria2_uygula(rpc: &dyn Aria2, data_dir: &Path, force: bool, ek: &str, canli: &str) -> Result<usize> {
+pub fn aria2_uygula(
+    rpc: &dyn Aria2,
+    data_dir: &Path,
+    force: bool,
+    ek: &str,
+    canli: &str,
+) -> Result<usize> {
     let filtreli = tracker_normalize(canli);
     let tumu: Vec<String> = if !filtreli.is_empty() {
         filtreli
@@ -252,7 +279,9 @@ mod testler {
 
     #[test]
     fn birlesik_url_ayrilir_ve_ws_elenir() {
-        let liste = tracker_normalize("http://a.example.org/announceudp://b.example.net:1337/announce\nws://x.example.org/y");
+        let liste = tracker_normalize(
+            "http://a.example.org/announceudp://b.example.net:1337/announce\nws://x.example.org/y",
+        );
         assert_eq!(
             liste,
             vec![

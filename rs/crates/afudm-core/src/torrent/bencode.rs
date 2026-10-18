@@ -32,7 +32,9 @@ fn oku(veri: &[u8], i: usize, derinlik: usize) -> std::result::Result<(Bc, usize
             let mut konum = i + 1;
             while veri.get(konum) != Some(&b'e') {
                 let (anahtar, k2) = oku(veri, konum, derinlik + 1)?;
-                let Bc::Metin(anahtar) = anahtar else { return Err(()) };
+                let Bc::Metin(anahtar) = anahtar else {
+                    return Err(());
+                };
                 let (deger, k3) = oku(veri, k2, derinlik + 1)?;
                 sozluk.insert(anahtar, deger);
                 konum = k3;
@@ -55,7 +57,10 @@ fn oku(veri: &[u8], i: usize, derinlik: usize) -> std::result::Result<(Bc, usize
                 .map_err(|_| ())?
                 .parse()
                 .map_err(|_| ())?;
-            let bitis = iki_nokta.checked_add(1).and_then(|x| x.checked_add(boyut)).ok_or(())?;
+            let bitis = iki_nokta
+                .checked_add(1)
+                .and_then(|x| x.checked_add(boyut))
+                .ok_or(())?;
             if bitis > veri.len() {
                 return Err(());
             }
@@ -82,9 +87,15 @@ pub fn torrent_info_hash(veri: &[u8]) -> String {
     }
     let mut konum = 1;
     while veri.get(konum) != Some(&b'e') {
-        let Ok((anahtar, k2)) = oku(veri, konum, 0) else { return String::new() };
-        let Bc::Metin(anahtar) = anahtar else { return String::new() };
-        let Ok((_, k3)) = oku(veri, k2, 0) else { return String::new() };
+        let Ok((anahtar, k2)) = oku(veri, konum, 0) else {
+            return String::new();
+        };
+        let Bc::Metin(anahtar) = anahtar else {
+            return String::new();
+        };
+        let Ok((_, k3)) = oku(veri, k2, 0) else {
+            return String::new();
+        };
         if anahtar == b"info" {
             return Sha1::digest(&veri[k2..k3])
                 .iter()
@@ -103,7 +114,9 @@ mod testler {
     #[test]
     fn sozluk_ve_liste_cozulur() {
         let deger = coz(b"d5:filesd4:abcdd8:completei7eeee").expect("gecerli bencode");
-        let Bc::Sozluk(s) = deger else { panic!("sozluk bekleniyordu") };
+        let Bc::Sozluk(s) = deger else {
+            panic!("sozluk bekleniyordu")
+        };
         assert!(s.contains_key(&b"files"[..]));
     }
 
@@ -118,7 +131,10 @@ mod testler {
         let mut torrent = b"d4:info".to_vec();
         torrent.extend_from_slice(info);
         torrent.push(b'e');
-        let beklenen: String = Sha1::digest(info).iter().map(|b| format!("{b:02x}")).collect();
+        let beklenen: String = Sha1::digest(info)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
         assert_eq!(torrent_info_hash(&torrent), beklenen);
     }
 

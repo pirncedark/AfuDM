@@ -15,7 +15,7 @@ mod url_parca;
 use afudm_types::{AfuError, ApiCtx, Json, Store};
 use axum::{
     body::Bytes,
-    extract::{Query, State},
+    extract::{rejection::BytesRejection, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -35,7 +35,7 @@ struct Durum {
 }
 
 /// Python `_hata`: {"ok": false, "code", "message", "error"} (`message` ve `error` birlikte).
-fn hata(durum: u16, kod: &str, mesaj: &str) -> Response {
+pub fn hata(durum: u16, kod: &str, mesaj: &str) -> Response {
     (
         StatusCode::from_u16(durum).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
         Cevap(json!({"ok": false, "code": kod, "message": mesaj, "error": mesaj})),
@@ -50,7 +50,7 @@ fn afu_hatasi(e: AfuError) -> Response {
 
 /// Python `_govde_oku`: bos govde {} sayilir; bozuk JSON ve JSON nesnesi olmayan govde
 /// GOVDE_HATASI metniyle reddedilir.
-fn govde(bytes: &Bytes) -> std::result::Result<Json, &'static str> {
+pub fn govde(bytes: &Bytes) -> std::result::Result<Json, &'static str> {
     if bytes.is_empty() {
         return Ok(json!({}));
     }
@@ -59,6 +59,29 @@ fn govde(bytes: &Bytes) -> std::result::Result<Json, &'static str> {
         Ok(_) => Err("Istek bicimi uygun degil. Yeniden dene."),
         Err(_) => Err("Istek okunamadi. Yeniden dene."),
     }
+}
+
+/// Python `_govde_oku` siniri (8 MiB); rotalar `DefaultBodyLimit::max(GOVDE_SINIRI)` ile kurulur.
+pub const GOVDE_SINIRI: usize = 8 * 1024 * 1024;
+
+/// Ham govde okuma sonucu: sinir asimi Python gibi 413 GOVDE_HATASI, bozuk govde 400.
+// Hata tarafi axum Response; afudm-api `body` ile ayni gerekce.
+#[allow(clippy::result_large_err)]
+pub fn govde_oku(
+    ham: std::result::Result<Bytes, BytesRejection>,
+) -> std::result::Result<Json, Response> {
+    let bytes = ham.map_err(|r| {
+        if r.status() == StatusCode::PAYLOAD_TOO_LARGE {
+            hata(
+                413,
+                "GOVDE_HATASI",
+                "Istek boyutu uygun degil. Daha kucuk bir istek gonder.",
+            )
+        } else {
+            hata(400, "GOVDE_HATASI", "Istek okunamadi. Yeniden dene.")
+        }
+    })?;
+    govde(&bytes).map_err(|m| hata(400, "GOVDE_HATASI", m))
 }
 
 /// Python `_boolean_al`: true/false/1/0 metinleri ve bool/None kabul edilir; digeri hata.
@@ -109,6 +132,7 @@ pub fn router_with(ctx: ApiCtx, servis: EklentiServisi) -> Router {
         .route("/eklenti/gunluk", get(eklenti_gunluk))
         .route("/eklenti/islem", get(eklenti_islem))
         .route("/linkgrabber", post(linkgrabber_gonder))
+        .layer(axum::extract::DefaultBodyLimit::max(GOVDE_SINIRI))
         .with_state(durum)
 }
 
@@ -119,10 +143,13 @@ async fn kurallari_listele(State(d): State<Durum>) -> Response {
     }
 }
 
-async fn kurallari_kaydet(State(d): State<Durum>, body: Bytes) -> Response {
-    let data = match govde(&body) {
+async fn kurallari_kaydet(
+    State(d): State<Durum>,
+    body: std::result::Result<Bytes, BytesRejection>,
+) -> Response {
+    let data = match govde_oku(body) {
         Ok(v) => v,
-        Err(m) => return hata(400, "GOVDE_HATASI", m),
+        Err(r) => return r,
     };
     let Some(gelen) = data.get("rules").and_then(Json::as_array) else {
         return hata(400, "BAD_REQUEST", "rules liste olmali");
@@ -162,10 +189,13 @@ async fn eklenti_islem(State(d): State<Durum>) -> Response {
     Cevap(d.servis.islem()).into_response()
 }
 
-async fn eklenti_eylem(State(d): State<Durum>, body: Bytes) -> Response {
-    let data = match govde(&body) {
+async fn eklenti_eylem(
+    State(d): State<Durum>,
+    body: std::result::Result<Bytes, BytesRejection>,
+) -> Response {
+    let data = match govde_oku(body) {
         Ok(v) => v,
-        Err(m) => return hata(400, "GOVDE_HATASI", m),
+        Err(r) => return r,
     };
     let eylem = metin_al(&data, "eylem");
     let ad = metin_al(&data, "ad");
@@ -206,10 +236,13 @@ async fn eklenti_eylem(State(d): State<Durum>, body: Bytes) -> Response {
 }
 
 /// Python `/linkgrabber`: metni arayuzdeki LinkGrabber paneline iletir (UiBridge::open_linkgrabber).
-async fn linkgrabber_gonder(State(d): State<Durum>, body: Bytes) -> Response {
-    let data = match govde(&body) {
+async fn linkgrabber_gonder(
+    State(d): State<Durum>,
+    body: std::result::Result<Bytes, BytesRejection>,
+) -> Response {
+    let data = match govde_oku(body) {
         Ok(v) => v,
-        Err(m) => return hata(400, "GOVDE_HATASI", m),
+        Err(r) => return r,
     };
     let metin = metin_al(&data, "metin");
     let metin = metin.trim();

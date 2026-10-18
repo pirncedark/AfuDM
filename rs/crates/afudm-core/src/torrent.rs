@@ -8,7 +8,7 @@ pub mod trackers;
 
 use crate::queue::proxy;
 use crate::Manager;
-use afudm_types::{Aria2, AfuError, Json, JsonMap, ManagerApi, Result, Store};
+use afudm_types::{AfuError, Aria2, Json, JsonMap, ManagerApi, Result, Store};
 use base64::Engine;
 use serde_json::json;
 use std::collections::HashSet;
@@ -25,7 +25,10 @@ pub struct State {}
 /// Python int(x or 0): aria2 sayilari genelde metin olarak gelir.
 fn sayi_of(v: Option<&Json>) -> i64 {
     match v {
-        Some(Json::Number(n)) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)).unwrap_or(0),
+        Some(Json::Number(n)) => n
+            .as_i64()
+            .or_else(|| n.as_f64().map(|f| f as i64))
+            .unwrap_or(0),
         Some(Json::String(s)) => s.trim().parse::<i64>().unwrap_or(0),
         Some(Json::Bool(b)) => i64::from(*b),
         _ => 0,
@@ -81,7 +84,11 @@ fn hata_json(e: &AfuError) -> Json {
 
 /// aria2 select-file degeri: 1-tabanli indeksler, virgullu liste.
 pub(crate) fn select_degeri(indeksler: &[i64]) -> String {
-    indeksler.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",")
+    indeksler
+        .iter()
+        .map(|i| i.to_string())
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 /// Python human_size.
@@ -114,7 +121,10 @@ fn torrent_dosya_turu(uzanti: &str) -> &'static str {
         ("video", &[".mp4", ".mkv", ".avi", ".webm", ".ts"]),
         ("ses", &[".mp3", ".m4a", ".aac", ".ogg", ".flac", ".wav"]),
         ("arsiv", &[".zip", ".rar", ".7z", ".tar", ".gz", ".iso"]),
-        ("belge", &[".pdf", ".txt", ".epub", ".mobi", ".doc", ".docx"]),
+        (
+            "belge",
+            &[".pdf", ".txt", ".epub", ".mobi", ".doc", ".docx"],
+        ),
         ("resim", &[".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]),
     ];
     for (ad, uzantilar) in turler {
@@ -177,19 +187,34 @@ fn arka_planda_tara(store: Arc<dyn Store>, rpc: Arc<dyn Aria2>, data: PathBuf, a
             .and_then(|aktif| aktif.first().map(|s| str_of(s.get("gid"))))
             .unwrap_or_default();
         let sonuc = tracker_tara_ic(&*store, &*rpc, &data, &app, &gid);
-        let basarili = sonuc.as_ref().ok().and_then(|s| s.get("ok")).and_then(|v| v.as_bool()).unwrap_or(false);
+        let basarili = sonuc
+            .as_ref()
+            .ok()
+            .and_then(|s| s.get("ok"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         if !basarili {
             let hata = sonuc
                 .ok()
                 .and_then(|s| s.get("error").and_then(|e| e.as_str()).map(String::from))
                 .unwrap_or_default();
-            store.log("warn", &kes(&format!("tracker taramasi basarisiz: {hata}"), 150), &gid);
+            store.log(
+                "warn",
+                &kes(&format!("tracker taramasi basarisiz: {hata}"), 150),
+                &gid,
+            );
         }
     });
 }
 
 /// Python tracker_tara: GID verilirse info hash ile tarar, sonucu aria2'ye uygular.
-fn tracker_tara_ic(store: &dyn Store, rpc: &dyn Aria2, data: &Path, app: &Path, gid: &str) -> Result<Json> {
+fn tracker_tara_ic(
+    store: &dyn Store,
+    rpc: &dyn Aria2,
+    data: &Path,
+    app: &Path,
+    gid: &str,
+) -> Result<Json> {
     let mut infohash = String::new();
     if !gid.is_empty() {
         match rpc.tell_status(gid, &["infoHash"]) {
@@ -221,15 +246,26 @@ pub fn seed_bilgi(m: &Manager, gid: &str) -> Result<Json> {
     let status = match rpc.tell_status(
         gid,
         &[
-            "gid", "status", "infoHash", "numSeeders", "connections", "bittorrent", "dir",
-            "completedLength", "totalLength",
+            "gid",
+            "status",
+            "infoHash",
+            "numSeeders",
+            "connections",
+            "bittorrent",
+            "dir",
+            "completedLength",
+            "totalLength",
         ],
     ) {
         Ok(s) => s,
         Err(e) => return Ok(hata_json(&e)),
     };
     let bittorrent = status.get("bittorrent").cloned().unwrap_or(Json::Null);
-    let duyuru = bittorrent.get("announceList").and_then(|a| a.as_array()).cloned().unwrap_or_default();
+    let duyuru = bittorrent
+        .get("announceList")
+        .and_then(|a| a.as_array())
+        .cloned()
+        .unwrap_or_default();
     let global_ayar: JsonMap = rpc.get_global_option().unwrap_or_default();
     let havuz_sayisi = str_of(global_ayar.get("bt-tracker"))
         .split(',')
@@ -374,7 +410,10 @@ pub fn seed_tazele(m: &Manager, gid: &str) -> Result<Json> {
     let canli = str_of(m.store.get("canli_trackerlar")?.as_ref());
     let sayi = trackers::aria2_uygula(&*rpc, &m.data_dir, true, &ek, &canli)?;
 
-    let mut kaynak = row.as_ref().map(|r| str_of(r.get("source"))).unwrap_or_default();
+    let mut kaynak = row
+        .as_ref()
+        .map(|r| str_of(r.get("source")))
+        .unwrap_or_default();
     if kaynak.to_lowercase().ends_with(".torrent") && !Path::new(&kaynak).exists() {
         kaynak.clear();
     }
@@ -404,7 +443,8 @@ pub fn seed_tazele(m: &Manager, gid: &str) -> Result<Json> {
     let yeni_gid = match yeni {
         Ok(g) => g,
         Err(e) => {
-            m.store.log("warn", &format!("seed tazeleme basarisiz: {e}"), gid);
+            m.store
+                .log("warn", &format!("seed tazeleme basarisiz: {e}"), gid);
             return Ok(hata_json(&e));
         }
     };
@@ -467,7 +507,10 @@ pub fn torrent_on_ekle(m: &Manager, source: &str) -> Result<String> {
     let yerel = Path::new(source);
     let sonuc = if yerel.exists() && uzanti_kucuk(&dosya_adi_of(yerel)) == ".torrent" {
         let bayt = std::fs::read(yerel)?;
-        rpc.add_torrent(&base64::engine::general_purpose::STANDARD.encode(bayt), Some(&secenekler))
+        rpc.add_torrent(
+            &base64::engine::general_purpose::STANDARD.encode(bayt),
+            Some(&secenekler),
+        )
     } else {
         rpc.add_uri(&[source.to_string()], Some(&secenekler))
     };
@@ -486,7 +529,9 @@ pub fn torrent_on_ekle(m: &Manager, source: &str) -> Result<String> {
 }
 
 fn dosya_adi_of(yol: &Path) -> String {
-    yol.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
+    yol.file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 /// Python torrent_on_iptal: on-eklenmis torrenti (ve varsa ortaya cikan child'i) aria2'den siler.
@@ -529,35 +574,51 @@ pub fn torrent_dosyalari(m: &Manager, gid: &str) -> Result<Json> {
     let row = m.store.by_gid(gid)?;
     const ALANLAR: [&str; 4] = ["gid", "infoHash", "bittorrent", "followedBy"];
     let mut aktif_gid = gid.to_string();
-    let mut durum = rpc
-        .tell_status(&aktif_gid, &ALANLAR)
-        .map_err(|e| AfuError::Invalid(format!("torrent durumu okunamadi: {}", kes(&e.to_string(), 160))))?;
+    let mut durum = rpc.tell_status(&aktif_gid, &ALANLAR).map_err(|e| {
+        AfuError::Invalid(format!(
+            "torrent durumu okunamadi: {}",
+            kes(&e.to_string(), 160)
+        ))
+    })?;
     if let Some(child) = ilk_followed(&durum) {
         aktif_gid = child;
-        durum = rpc
-            .tell_status(&aktif_gid, &ALANLAR)
-            .map_err(|e| AfuError::Invalid(format!("torrent durumu okunamadi: {}", kes(&e.to_string(), 160))))?;
+        durum = rpc.tell_status(&aktif_gid, &ALANLAR).map_err(|e| {
+            AfuError::Invalid(format!(
+                "torrent durumu okunamadi: {}",
+                kes(&e.to_string(), 160)
+            ))
+        })?;
     }
     let bittorrent = durum.get("bittorrent").cloned().unwrap_or(Json::Null);
-    let torrent_mu = row.as_ref().is_some_and(|r| str_of(r.get("kind")) == "torrent")
+    let torrent_mu = row
+        .as_ref()
+        .is_some_and(|r| str_of(r.get("kind")) == "torrent")
         || truthy(Some(&bittorrent))
         || truthy(durum.get("infoHash"));
     if !torrent_mu {
-        return Err(AfuError::Invalid("dosya listesi yalnizca torrent GID icin kullanilir".to_string()));
+        return Err(AfuError::Invalid(
+            "dosya listesi yalnizca torrent GID icin kullanilir".to_string(),
+        ));
     }
     if !truthy(Some(&bittorrent)) && !truthy(durum.get("infoHash")) {
         return Ok(hazir_degil_sonuc(&aktif_gid));
     }
-    let ham_dosyalar = rpc
-        .get_files(&aktif_gid)
-        .map_err(|e| AfuError::Invalid(format!("torrent dosya listesi okunamadi: {}", kes(&e.to_string(), 160))))?;
+    let ham_dosyalar = rpc.get_files(&aktif_gid).map_err(|e| {
+        AfuError::Invalid(format!(
+            "torrent dosya listesi okunamadi: {}",
+            kes(&e.to_string(), 160)
+        ))
+    })?;
     if ham_dosyalar.is_empty() && !truthy(Some(&bittorrent)) {
         return Ok(hazir_degil_sonuc(&aktif_gid));
     }
     let torrent_adi = str_of(bittorrent.get("info").and_then(|i| i.get("name")));
     let tercih_var = m.store.torrent_dosya_secimi_var(&aktif_gid)?;
     let secilenler: HashSet<i64> = if tercih_var {
-        m.store.torrent_dosya_secimleri(&aktif_gid)?.into_iter().collect()
+        m.store
+            .torrent_dosya_secimleri(&aktif_gid)?
+            .into_iter()
+            .collect()
     } else {
         HashSet::new()
     };
@@ -569,7 +630,12 @@ pub fn torrent_dosyalari(m: &Manager, gid: &str) -> Result<Json> {
         let parcalar = torrent_yol_parcalari(&yol, &torrent_adi);
         let ad = match parcalar.last() {
             Some(son) => son.clone(),
-            None => yol.replace('\\', "/").rsplit('/').next().unwrap_or("").to_string(),
+            None => yol
+                .replace('\\', "/")
+                .rsplit('/')
+                .next()
+                .unwrap_or("")
+                .to_string(),
         };
         let uzanti = uzanti_kucuk(&ad);
         let boyut = sayi_of(ham.get("length"));
@@ -579,7 +645,11 @@ pub fn torrent_dosyalari(m: &Manager, gid: &str) -> Result<Json> {
         } else {
             ham.get("selected").and_then(|v| v.as_str()) == Some("true")
         };
-        let uris = if truthy(ham.get("uris")) { ham["uris"].clone() } else { json!([]) };
+        let uris = if truthy(ham.get("uris")) {
+            ham["uris"].clone()
+        } else {
+            json!([])
+        };
         let parent_yol = if parcalar.len() > 1 {
             parcalar[..parcalar.len() - 1].join("/")
         } else {
@@ -605,13 +675,19 @@ pub fn torrent_dosyalari(m: &Manager, gid: &str) -> Result<Json> {
 }
 
 /// Python torrent_dosya_secimini_kaydet: UI secimini sonraki baslatmaya kadar DB'de saklar.
-pub fn torrent_dosya_secimini_kaydet(m: &Manager, gid: &str, indeksler: &[i64]) -> Result<Vec<i64>> {
+pub fn torrent_dosya_secimini_kaydet(
+    m: &Manager,
+    gid: &str,
+    indeksler: &[i64],
+) -> Result<Vec<i64>> {
     let torrent = m
         .store
         .by_gid(gid)?
         .is_some_and(|r| str_of(r.get("kind")) == "torrent");
     if !torrent {
-        return Err(AfuError::Invalid("dosya secimi yalnizca torrent GID icin kaydedilir".to_string()));
+        return Err(AfuError::Invalid(
+            "dosya secimi yalnizca torrent GID icin kaydedilir".to_string(),
+        ));
     }
     let mut temiz: Vec<i64> = indeksler.iter().copied().filter(|&i| i > 0).collect();
     temiz.sort_unstable();
@@ -627,7 +703,9 @@ pub fn torrent_secimi_ayarla(m: &Manager, gid: &str, indeksler: &[i64]) -> Resul
         .by_gid(gid)?
         .is_some_and(|r| str_of(r.get("kind")) == "torrent");
     if !torrent {
-        return Err(AfuError::Invalid("dosya secimi yalnizca torrent GID icin ayarlanir".to_string()));
+        return Err(AfuError::Invalid(
+            "dosya secimi yalnizca torrent GID icin ayarlanir".to_string(),
+        ));
     }
     let mut temiz: Vec<i64> = indeksler.to_vec();
     temiz.sort_unstable();
@@ -638,12 +716,17 @@ pub fn torrent_secimi_ayarla(m: &Manager, gid: &str, indeksler: &[i64]) -> Resul
         ));
     }
     let rpc = m.rpc();
-    let dosyalar = rpc
-        .get_files(gid)
-        .map_err(|e| AfuError::Invalid(format!("torrent dosya listesi okunamadi: {}", kes(&e.to_string(), 160))))?;
+    let dosyalar = rpc.get_files(gid).map_err(|e| {
+        AfuError::Invalid(format!(
+            "torrent dosya listesi okunamadi: {}",
+            kes(&e.to_string(), 160)
+        ))
+    })?;
     let gecerli: HashSet<i64> = dosyalar.iter().map(|d| sayi_of(d.get("index"))).collect();
     if gecerli.is_empty() {
-        return Err(AfuError::Invalid("torrent dosya listesi henuz hazir degil".to_string()));
+        return Err(AfuError::Invalid(
+            "torrent dosya listesi henuz hazir degil".to_string(),
+        ));
     }
     let gecersiz: Vec<String> = temiz
         .iter()
@@ -651,14 +734,25 @@ pub fn torrent_secimi_ayarla(m: &Manager, gid: &str, indeksler: &[i64]) -> Resul
         .map(|i| i.to_string())
         .collect();
     if !gecersiz.is_empty() {
-        return Err(AfuError::Invalid(format!("gecersiz dosya indeksi: {}", gecersiz.join(","))));
+        return Err(AfuError::Invalid(format!(
+            "gecersiz dosya indeksi: {}",
+            gecersiz.join(",")
+        )));
     }
     let mut degisiklik = JsonMap::new();
     degisiklik.insert("select-file".to_string(), json!(select_degeri(&temiz)));
-    rpc.change_option(gid, &degisiklik)
-        .map_err(|e| AfuError::Invalid(format!("dosya secimi canli degistirilemedi: {}", kes(&e.to_string(), 160))))?;
+    rpc.change_option(gid, &degisiklik).map_err(|e| {
+        AfuError::Invalid(format!(
+            "dosya secimi canli degistirilemedi: {}",
+            kes(&e.to_string(), 160)
+        ))
+    })?;
     m.store.torrent_dosya_secimlerini_kaydet(gid, &temiz)?;
-    m.store.log("info", &format!("dosya secimi guncellendi ({} dosya)", temiz.len()), gid);
+    m.store.log(
+        "info",
+        &format!("dosya secimi guncellendi ({} dosya)", temiz.len()),
+        gid,
+    );
     Ok(json!({"ok": true, "gid": gid, "indeksler": temiz}))
 }
 
@@ -672,18 +766,36 @@ pub fn torrent_metrikleri(m: &Manager, gid: &str) -> Result<Json> {
     let rpc = m.rpc();
     let row = m.store.by_gid(gid)?;
     const ALANLAR: [&str; 13] = [
-        "gid", "status", "infoHash", "numSeeders", "connections", "bittorrent", "dir",
-        "completedLength", "totalLength", "uploadLength", "downloadSpeed", "uploadSpeed", "seeder",
+        "gid",
+        "status",
+        "infoHash",
+        "numSeeders",
+        "connections",
+        "bittorrent",
+        "dir",
+        "completedLength",
+        "totalLength",
+        "uploadLength",
+        "downloadSpeed",
+        "uploadSpeed",
+        "seeder",
     ];
-    let status = rpc
-        .tell_status(gid, &ALANLAR)
-        .map_err(|e| AfuError::Invalid(format!("torrent durumu okunamadi: {}", kes(&e.to_string(), 160))))?;
+    let status = rpc.tell_status(gid, &ALANLAR).map_err(|e| {
+        AfuError::Invalid(format!(
+            "torrent durumu okunamadi: {}",
+            kes(&e.to_string(), 160)
+        ))
+    })?;
     let bittorrent = status.get("bittorrent").cloned().unwrap_or(Json::Null);
-    let torrent_mu = row.as_ref().is_some_and(|r| str_of(r.get("kind")) == "torrent")
+    let torrent_mu = row
+        .as_ref()
+        .is_some_and(|r| str_of(r.get("kind")) == "torrent")
         || truthy(Some(&bittorrent))
         || truthy(status.get("infoHash"));
     if !torrent_mu {
-        return Err(AfuError::Invalid("torrent metrikleri yalnizca torrent GID icin kullanilir".to_string()));
+        return Err(AfuError::Invalid(
+            "torrent metrikleri yalnizca torrent GID icin kullanilir".to_string(),
+        ));
     }
     if !truthy(Some(&bittorrent)) && !truthy(status.get("infoHash")) {
         return Ok(json!({
@@ -691,8 +803,15 @@ pub fn torrent_metrikleri(m: &Manager, gid: &str) -> Result<Json> {
             "neden": "Magnet ustverisi henuz gelmedi; metrikler hazir degil.",
         }));
     }
-    let duyuru = bittorrent.get("announceList").and_then(|a| a.as_array()).cloned().unwrap_or_default();
-    let tracker_sayisi: usize = duyuru.iter().map(|g| g.as_array().map_or(0, |a| a.len())).sum();
+    let duyuru = bittorrent
+        .get("announceList")
+        .and_then(|a| a.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let tracker_sayisi: usize = duyuru
+        .iter()
+        .map(|g| g.as_array().map_or(0, |a| a.len()))
+        .sum();
     let global_ayar: JsonMap = rpc.get_global_option().unwrap_or_default();
     let havuz_sayisi = str_of(global_ayar.get("bt-tracker"))
         .split(',')
@@ -702,7 +821,11 @@ pub fn torrent_metrikleri(m: &Manager, gid: &str) -> Result<Json> {
     let done = sayi_of(status.get("completedLength"));
     let total = sayi_of(status.get("totalLength"));
     let uploaded = sayi_of(status.get("uploadLength"));
-    let ratio = if done > 0 { yuvarla(uploaded as f64 / done as f64, 3) } else { 0.0 };
+    let ratio = if done > 0 {
+        yuvarla(uploaded as f64 / done as f64, 3)
+    } else {
+        0.0
+    };
     let canli_peers = peers(m, gid)?;
     let seeder_peers = canli_peers
         .iter()
@@ -755,7 +878,8 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
     if adopt_gid.is_none() {
         let mut infohash = magnet_infohash(&source);
         let yerel = Path::new(&source);
-        if infohash.is_empty() && yerel.exists() && uzanti_kucuk(&dosya_adi_of(yerel)) == ".torrent" {
+        if infohash.is_empty() && yerel.exists() && uzanti_kucuk(&dosya_adi_of(yerel)) == ".torrent"
+        {
             infohash = bencode::torrent_info_hash(&std::fs::read(yerel)?);
         }
         if !infohash.is_empty() {
@@ -784,7 +908,8 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
         dizin.insert("dir".to_string(), json!(dest_dir));
         dizin.insert("bt-save-metadata".to_string(), json!("false"));
         if let Err(e) = rpc.change_option(&gid, &dizin) {
-            m.store.log("error", &format!("kayit dizini degistirilemedi: {e}"), &gid);
+            m.store
+                .log("error", &format!("kayit dizini degistirilemedi: {e}"), &gid);
             return Err(AfuError::Invalid(
                 "Secilen klasore kaydedilemiyor, baska bir klasor secin.".to_string(),
             ));
@@ -794,7 +919,9 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
             secim.insert("select-file".to_string(), json!(select_degeri(&secili)));
             match rpc.change_option(&gid, &secim) {
                 Ok(_) => m.store.torrent_dosya_secimlerini_kaydet(&gid, &secili)?,
-                Err(e) => m.store.log("error", &format!("dosya secimi uygulanamadi: {e}"), &gid),
+                Err(e) => m
+                    .store
+                    .log("error", &format!("dosya secimi uygulanamadi: {e}"), &gid),
             }
         }
         let _ = rpc.unpause(&gid);
@@ -810,7 +937,10 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
     let yerel = Path::new(&source);
     let sonuc = if yerel.exists() && uzanti_kucuk(&dosya_adi_of(yerel)) == ".torrent" {
         let bayt = std::fs::read(yerel)?;
-        rpc.add_torrent(&base64::engine::general_purpose::STANDARD.encode(bayt), Some(&secenekler))
+        rpc.add_torrent(
+            &base64::engine::general_purpose::STANDARD.encode(bayt),
+            Some(&secenekler),
+        )
     } else {
         rpc.add_uri(std::slice::from_ref(&source), Some(&secenekler))
     };
@@ -837,17 +967,39 @@ pub(crate) fn snapshot_alanlari(m: &Manager, status: &Json) -> JsonMap {
     }
     let done = sayi_of(status.get("completedLength"));
     let uploaded = sayi_of(status.get("uploadLength"));
-    harita.insert("numSeeders".to_string(), json!(sayi_of(status.get("numSeeders"))));
-    harita.insert("seeder".to_string(), json!(str_of(status.get("seeder")) == "true"));
-    harita.insert("connections".to_string(), json!(sayi_of(status.get("connections"))));
-    harita.insert("uploadSpeed".to_string(), json!(sayi_of(status.get("uploadSpeed"))));
+    harita.insert(
+        "numSeeders".to_string(),
+        json!(sayi_of(status.get("numSeeders"))),
+    );
+    harita.insert(
+        "seeder".to_string(),
+        json!(str_of(status.get("seeder")) == "true"),
+    );
+    harita.insert(
+        "connections".to_string(),
+        json!(sayi_of(status.get("connections"))),
+    );
+    harita.insert(
+        "uploadSpeed".to_string(),
+        json!(sayi_of(status.get("uploadSpeed"))),
+    );
     harita.insert("uploadLength".to_string(), json!(uploaded));
     harita.insert(
         "ratio".to_string(),
-        json!(if done > 0 { yuvarla(uploaded as f64 / done as f64, 3) } else { 0.0 }),
+        json!(if done > 0 {
+            yuvarla(uploaded as f64 / done as f64, 3)
+        } else {
+            0.0
+        }),
     );
-    harita.insert("infoHash".to_string(), json!(str_of(status.get("infoHash"))));
-    harita.insert("numPieces".to_string(), json!(sayi_of(status.get("numPieces"))));
+    harita.insert(
+        "infoHash".to_string(),
+        json!(str_of(status.get("infoHash"))),
+    );
+    harita.insert(
+        "numPieces".to_string(),
+        json!(sayi_of(status.get("numPieces"))),
+    );
     harita
 }
 
@@ -859,7 +1011,9 @@ pub(crate) fn magnet_infohash(source: &str) -> String {
     }
     let sorgu = source.split_once('?').map(|(_, q)| q).unwrap_or("");
     for parca in sorgu.split('&') {
-        let Some((anahtar, deger)) = parca.split_once('=') else { continue };
+        let Some((anahtar, deger)) = parca.split_once('=') else {
+            continue;
+        };
         if anahtar != "xt" || !deger.to_ascii_lowercase().starts_with("urn:btih:") {
             continue;
         }

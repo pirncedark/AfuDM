@@ -597,7 +597,9 @@ fn limiter_live_settings_preserve_attempts_and_locks() {
 
 #[tokio::test]
 async fn serve_passes_client_addr_as_connect_info() {
-    async fn echo_ip(axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<SocketAddr>) -> String {
+    async fn echo_ip(
+        axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<SocketAddr>,
+    ) -> String {
         addr.ip().to_string()
     }
     let app = Router::new().route("/ip", axum::routing::get(echo_ip));

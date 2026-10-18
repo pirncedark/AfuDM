@@ -47,7 +47,9 @@ fn simdi() -> f64 {
 }
 
 fn dosya_adi(yol: &Path) -> String {
-    yol.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
+    yol.file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 /// Python Path.suffix.lower().
@@ -78,7 +80,9 @@ fn txt_dosyalari(klasor: &Path) -> Vec<PathBuf> {
     if !klasor.is_dir() {
         return Vec::new();
     }
-    let Ok(girdiler) = fs::read_dir(klasor) else { return Vec::new() };
+    let Ok(girdiler) = fs::read_dir(klasor) else {
+        return Vec::new();
+    };
     let mut liste: Vec<PathBuf> = girdiler
         .filter_map(|g| g.ok().map(|g| g.path()))
         .filter(|p| p.is_file())
@@ -95,7 +99,9 @@ fn txt_dosyalari(klasor: &Path) -> Vec<PathBuf> {
 pub fn klasorden_oku(klasor: &Path) -> Vec<String> {
     let mut toplam: Vec<String> = Vec::new();
     for dosya in txt_dosyalari(klasor) {
-        let Ok(metin) = metin_oku(&dosya) else { continue };
+        let Ok(metin) = metin_oku(&dosya) else {
+            continue;
+        };
         for adres in trackers::ayikla(&metin) {
             if !toplam.contains(&adres) {
                 toplam.push(adres);
@@ -110,7 +116,9 @@ pub fn dosyalar(klasor: &Path) -> Vec<Json> {
     klasoru_hazirla(klasor);
     let mut liste = Vec::new();
     for dosya in txt_dosyalari(klasor) {
-        let Ok(metin) = metin_oku(&dosya) else { continue };
+        let Ok(metin) = metin_oku(&dosya) else {
+            continue;
+        };
         liste.push(json!({"ad": dosya_adi(&dosya), "sayi": trackers::ayikla(&metin).len()}));
     }
     liste
@@ -132,7 +140,9 @@ fn bos_ad(klasor: &Path, ad: &str) -> Result<PathBuf> {
             return Ok(aday);
         }
     }
-    Err(AfuError::Invalid("cok fazla ayni adli liste var".to_string()))
+    Err(AfuError::Invalid(
+        "cok fazla ayni adli liste var".to_string(),
+    ))
 }
 
 /// Python dosya_ekle: secilen .txt'yi klasore kopyalar (icerik ayiklanmis yazilir).
@@ -140,12 +150,15 @@ pub fn dosya_ekle(klasor: &Path, yol: &str) -> Result<Json> {
     let kaynak = Path::new(yol);
     let kaynak_adi = dosya_adi(kaynak);
     if uzanti_kucuk(&kaynak_adi) != ".txt" {
-        return Err(AfuError::Invalid("yalniz .txt liste dosyasi eklenebilir".to_string()));
+        return Err(AfuError::Invalid(
+            "yalniz .txt liste dosyasi eklenebilir".to_string(),
+        ));
     }
     if !kaynak.is_file() {
         return Err(AfuError::Invalid("dosya bulunamadi".to_string()));
     }
-    let metin = metin_oku(kaynak).map_err(|e| AfuError::Invalid(format!("dosya okunamadi: {e}")))?;
+    let metin =
+        metin_oku(kaynak).map_err(|e| AfuError::Invalid(format!("dosya okunamadi: {e}")))?;
     let adresler = trackers::ayikla(&metin);
     if adresler.is_empty() {
         return Err(AfuError::Invalid("dosyada tracker adresi yok".to_string()));
@@ -154,7 +167,9 @@ pub fn dosya_ekle(klasor: &Path, yol: &str) -> Result<Json> {
     klasoru_hazirla(klasor);
     let yeni: HashSet<&String> = adresler.iter().collect();
     for var_olan in txt_dosyalari(klasor) {
-        let Ok(eski) = metin_oku(&var_olan) else { continue };
+        let Ok(eski) = metin_oku(&var_olan) else {
+            continue;
+        };
         let eski_kume: HashSet<String> = trackers::ayikla(&eski).into_iter().collect();
         if eski_kume.iter().collect::<HashSet<_>>() == yeni {
             return Ok(json!({"ad": dosya_adi(&var_olan), "sayi": adresler.len(), "zaten": true}));
@@ -174,7 +189,9 @@ pub fn dosya_sil(klasor: &Path, ad: &str) -> Result<Json> {
         return Err(AfuError::Invalid("gecersiz dosya adi".to_string()));
     }
     if !ad.to_ascii_lowercase().ends_with(".txt") {
-        return Err(AfuError::Invalid("yalniz .txt liste dosyasi silinebilir".to_string()));
+        return Err(AfuError::Invalid(
+            "yalniz .txt liste dosyasi silinebilir".to_string(),
+        ));
     }
     if ad == BENI_OKU_AD {
         return Err(AfuError::Invalid("aciklama dosyasi silinemez".to_string()));
@@ -232,10 +249,14 @@ fn host_port(adres: &str) -> Option<(String, u16)> {
 
 /// Python _udp_scrape (BEP 15): connect -> scrape. Donen: (durum, seed, leech).
 fn udp_sor(adres: &str, info_hash: &str) -> (&'static str, i64, i64) {
-    let Some((host, port)) = host_port(adres) else { return ("hata", 0, 0) };
+    let Some((host, port)) = host_port(adres) else {
+        return ("hata", 0, 0);
+    };
     match udp_dene(&host, port, info_hash) {
         Ok(sonuc) => sonuc,
-        Err(e) if matches!(e.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) => ("sessiz", 0, 0),
+        Err(e) if matches!(e.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) => {
+            ("sessiz", 0, 0)
+        }
         Err(_) => ("hata", 0, 0),
     }
 }
@@ -271,7 +292,9 @@ fn udp_dene(host: &str, port: u16, info_hash: &str) -> io::Result<(&'static str,
     if info_hash.is_empty() {
         return Ok(("canli", 0, 0));
     }
-    let Ok(hash) = hex_coz(info_hash) else { return Ok(("hata", 0, 0)) };
+    let Ok(hash) = hex_coz(info_hash) else {
+        return Ok(("hata", 0, 0));
+    };
 
     let islem2 = rand::random::<u32>() & 0x7fff_ffff;
     let mut paket2 = Vec::with_capacity(36 + hash.len());
@@ -310,8 +333,12 @@ fn http_sor(adres: &str, info_hash: &str) -> (&'static str, i64, i64) {
     let Ok(govde) = trackers::indir(&hedef, "AfuDM/1.2", ZAMAN_ASIMI, 4096) else {
         return ("sessiz", 0, 0);
     };
-    let Ok(cevap) = bencode::coz(&govde) else { return ("hata", 0, 0) };
-    let Bc::Sozluk(sozluk) = cevap else { return ("hata", 0, 0) };
+    let Ok(cevap) = bencode::coz(&govde) else {
+        return ("hata", 0, 0);
+    };
+    let Bc::Sozluk(sozluk) = cevap else {
+        return ("hata", 0, 0);
+    };
     if sozluk.contains_key(&b"failure reason"[..]) {
         return ("hata", 0, 0);
     }
@@ -323,7 +350,9 @@ fn http_sor(adres: &str, info_hash: &str) -> (&'static str, i64, i64) {
     let kayit: BTreeMap<Vec<u8>, Bc> = if info_hash.is_empty() {
         BTreeMap::new()
     } else {
-        let Ok(anahtar) = hex_coz(info_hash) else { return ("hata", 0, 0) };
+        let Ok(anahtar) = hex_coz(info_hash) else {
+            return ("hata", 0, 0);
+        };
         match dosyalar.get(&anahtar) {
             None => BTreeMap::new(),
             Some(Bc::Sozluk(k)) => k.clone(),
@@ -507,7 +536,10 @@ mod testler {
 
     #[test]
     fn host_port_ayrisir() {
-        assert_eq!(host_port("udp://Tracker.Example.org:1337/announce"), Some(("tracker.example.org".into(), 1337)));
+        assert_eq!(
+            host_port("udp://Tracker.Example.org:1337/announce"),
+            Some(("tracker.example.org".into(), 1337))
+        );
         assert_eq!(host_port("udp://host/announce"), None);
     }
 

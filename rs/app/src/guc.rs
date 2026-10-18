@@ -29,8 +29,10 @@ fn tum_isler_bitti(ctx: &ApiCtx) -> bool {
 fn etkin_var(v: &Json) -> bool {
     match v {
         Json::Object(m) => {
-            matches!(m.get("status").and_then(Json::as_str), Some("active" | "waiting"))
-                || m.values().any(etkin_var)
+            matches!(
+                m.get("status").and_then(Json::as_str),
+                Some("active" | "waiting")
+            ) || m.values().any(etkin_var)
         }
         Json::Array(a) => a.iter().any(etkin_var),
         _ => false,
@@ -50,16 +52,20 @@ fn gizli(komut: &mut Command) -> &mut Command {
 pub fn bitis_kancasi(ctx: ApiCtx) -> Box<dyn Fn(&Json) + Send + Sync> {
     Box::new(move |_satir| {
         if ayar(&ctx, "shutdown_when_done") && tum_isler_bitti(&ctx) {
-            ctx.store.log("warn", "tum isler bitti — bilgisayar kapatiliyor (60 sn)", "");
-            let _ = gizli(&mut Command::new("shutdown")).args([
-                "/s",
-                "/t",
-                "60",
-                "/c",
-                "AfuDM: indirmeler bitti",
-            ]).spawn();
+            ctx.store.log(
+                "warn",
+                "tum isler bitti — bilgisayar kapatiliyor (60 sn)",
+                "",
+            );
+            let _ = gizli(&mut Command::new("shutdown"))
+                .args(["/s", "/t", "60", "/c", "AfuDM: indirmeler bitti"])
+                .spawn();
         } else if ayar(&ctx, "sleep_when_done") && tum_isler_bitti(&ctx) {
-            ctx.store.log("warn", "tum isler bitti — bilgisayar 20 sn sonra uyutuluyor", "");
+            ctx.store.log(
+                "warn",
+                "tum isler bitti — bilgisayar 20 sn sonra uyutuluyor",
+                "",
+            );
             let ctx = ctx.clone();
             std::thread::spawn(move || {
                 std::thread::sleep(UYKU_BEKLEME);
@@ -76,7 +82,11 @@ pub fn bitis_kancasi(ctx: ApiCtx) -> Box<dyn Fn(&Json) + Send + Sync> {
                     .map(|s| s.success())
                     .unwrap_or(false);
                 if !basarili {
-                    ctx.store.log("warn", "uyutma basarisiz (guc ayarlari engelliyor olabilir)", "");
+                    ctx.store.log(
+                        "warn",
+                        "uyutma basarisiz (guc ayarlari engelliyor olabilir)",
+                        "",
+                    );
                 }
             });
         }

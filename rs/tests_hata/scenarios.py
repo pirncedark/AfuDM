@@ -107,7 +107,8 @@ def fuzz(apps,server):
                 # /rotate is body-independent; always refresh current credential.
                 a.token=(a.base/'data/api_token.txt').read_text().strip()
             row['difference']=fuzz_sig(row['py'])!=fuzz_sig(row['rs'])
-            row['failure']=any(row[a.kind]['status']==0 or row[a.kind]['status']>=500 or a.proc.poll() is not None for a in apps)
+            # Python dev govdede baglantiyi keser (bilinen davranis); Rust 413 doner (FIX6 karari).
+            row['failure']=any((row[a.kind]['status']==0 and not (a.kind=='py' and name=='huge')) or row[a.kind]['status']>=500 or a.proc.poll() is not None for a in apps)
             row['masked_429']=any(row[a.kind]['status']==429 for a in apps)
             rows.append(row);sent+=1
         print(f'FUZZ {route}: {len(rows)} requests/side',flush=True)
@@ -359,6 +360,8 @@ def network(apps):
         setup=a.call('settings_save',[{'sunucu_port':pp,'sunucu_adres':'lan','sunucu_istek_limiti':1000}])
         key=a.call('sunucu_anahtar_olustur',['T2','yonetici','temporary'])
         opened=a.call('sunucu_ayarla',[True])
+        # zaten:True ise panel onceki portta acik kalmis olabilir; gercek acilan port kullanilir.
+        pp=opened.get('json',{}).get('port') or pp
         kv=key.get('json',{}); credential=kv.get('anahtar') or kv.get('gizli') or kv.get('key') or ''
         checks=[]
         for host in filter(None,['127.0.0.1',ip]):

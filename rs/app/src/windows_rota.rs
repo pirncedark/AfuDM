@@ -27,6 +27,9 @@ static TARAMA: Mutex<Option<Json>> = Mutex::new(None);
 pub fn router(ctx: ApiCtx) -> Router {
     Router::new()
         .route("/windows-integration", get(durum_rota).post(islem_rota))
+        .layer(axum::extract::DefaultBodyLimit::max(
+            afudm_extras::g2::GOVDE_SINIRI,
+        ))
         .with_state(ctx)
 }
 
@@ -42,22 +45,35 @@ async fn durum_rota(State(ctx): State<ApiCtx>) -> Response {
     (StatusCode::OK, axum::Json(durum(&ctx))).into_response()
 }
 
-async fn islem_rota(State(ctx): State<ApiCtx>, govde: Bytes) -> Response {
-    let veri: Json = if govde.is_empty() {
-        json!({})
-    } else {
-        match serde_json::from_slice(&govde) {
-            Ok(v) => v,
-            Err(_) => return hata(StatusCode::BAD_REQUEST, "BAD_REQUEST", "gecersiz JSON govdesi"),
-        }
+async fn islem_rota(
+    State(ctx): State<ApiCtx>,
+    govde: Result<Bytes, axum::extract::rejection::BytesRejection>,
+) -> Response {
+    let veri: Json = match afudm_extras::g2::govde_oku(govde) {
+        Ok(v) => v,
+        Err(r) => return r,
     };
-    let ident = veri.get("id").and_then(Json::as_str).unwrap_or("").to_string();
-    let action = veri.get("action").and_then(Json::as_str).unwrap_or("").to_string();
+    let ident = veri
+        .get("id")
+        .and_then(Json::as_str)
+        .unwrap_or("")
+        .to_string();
+    let action = veri
+        .get("action")
+        .and_then(Json::as_str)
+        .unwrap_or("")
+        .to_string();
     let sonuc = match action.as_str() {
         "apply" => uygula(&ctx, &ident).map(|_| durum(&ctx)),
         "remove" => kaldir(&ctx, &ident).map(|_| durum(&ctx)),
         "test" => test(&ctx, &ident),
-        _ => return hata(StatusCode::BAD_REQUEST, "BAD_REQUEST", "action apply, remove veya test olmali"),
+        _ => {
+            return hata(
+                StatusCode::BAD_REQUEST,
+                "BAD_REQUEST",
+                "action apply, remove veya test olmali",
+            )
+        }
     };
     match sonuc {
         Ok(v) => (StatusCode::OK, axum::Json(v)).into_response(),

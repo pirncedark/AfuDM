@@ -77,7 +77,11 @@ pub fn komut() -> io::Result<String> {
 
 fn torrent_ac(komut: &str) -> io::Result<()> {
     yaz(TORRENT_PROGID, "AfuDM Torrent Dosyasi", "")?;
-    yaz(&format!("{TORRENT_PROGID}\\shell\\open\\command"), komut, "")?;
+    yaz(
+        &format!("{TORRENT_PROGID}\\shell\\open\\command"),
+        komut,
+        "",
+    )?;
     if oku(TORRENT_PROGID, "AfuDM_OncekiVarMi").is_none() {
         match oku(TORRENT_UZANTI, "") {
             Some(eski) if eski != TORRENT_PROGID => {
@@ -88,7 +92,11 @@ fn torrent_ac(komut: &str) -> io::Result<()> {
         }
     }
     yaz(TORRENT_UZANTI, TORRENT_PROGID, "")?;
-    yaz(&format!("{TORRENT_UZANTI}\\OpenWithProgids"), "", TORRENT_PROGID)
+    yaz(
+        &format!("{TORRENT_UZANTI}\\OpenWithProgids"),
+        "",
+        TORRENT_PROGID,
+    )
 }
 
 fn torrent_kapat() {
@@ -101,7 +109,10 @@ fn torrent_kapat() {
     } else {
         sil_deger(TORRENT_UZANTI, "");
     }
-    sil_deger(&format!("{TORRENT_UZANTI}\\OpenWithProgids"), TORRENT_PROGID);
+    sil_deger(
+        &format!("{TORRENT_UZANTI}\\OpenWithProgids"),
+        TORRENT_PROGID,
+    );
     agac_sil(TORRENT_PROGID);
 }
 
@@ -168,7 +179,8 @@ pub fn iliskilendirme_durumu() -> (bool, bool) {
     let Ok(k) = komut() else {
         return (false, false);
     };
-    let torrent = oku(&format!("{TORRENT_PROGID}\\shell\\open\\command"), "").as_deref() == Some(k.as_str());
+    let torrent =
+        oku(&format!("{TORRENT_PROGID}\\shell\\open\\command"), "").as_deref() == Some(k.as_str());
     let magnet = oku(&format!("{MAGNET}\\shell\\open\\command"), "").as_deref() == Some(k.as_str());
     (torrent, magnet)
 }
@@ -184,13 +196,17 @@ pub fn varsayilan_mi(tur: &str) -> bool {
     };
     match tur {
         "torrent" => {
-            if let Some(progid) = user_choice_progid(r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.torrent\UserChoice") {
+            if let Some(progid) = user_choice_progid(
+                r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.torrent\UserChoice",
+            ) {
                 return progid == TORRENT_PROGID;
             }
             varsayilan(TORRENT_UZANTI.to_string()).as_deref() == Some(TORRENT_PROGID)
         }
         "magnet" => {
-            if let Some(progid) = user_choice_progid(r"Software\Microsoft\Windows\Shell\Associations\UrlAssociations\magnet\UserChoice") {
+            if let Some(progid) = user_choice_progid(
+                r"Software\Microsoft\Windows\Shell\Associations\UrlAssociations\magnet\UserChoice",
+            ) {
                 if let Some(gercek) = varsayilan(format!(r"{progid}\shell\open\command")) {
                     return gercek == k;
                 }
@@ -202,7 +218,11 @@ pub fn varsayilan_mi(tur: &str) -> bool {
 }
 
 fn user_choice_progid(yol: &str) -> Option<String> {
-    hkcu().open_subkey(yol).ok()?.get_value::<String, _>("ProgId").ok()
+    hkcu()
+        .open_subkey(yol)
+        .ok()?
+        .get_value::<String, _>("ProgId")
+        .ok()
 }
 
 // --- acilista calisma ---------------------------------------------------------
@@ -213,7 +233,12 @@ fn baslangic_klasoru() -> PathBuf {
         .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders")
         .ok()
         .and_then(|k| k.get_value::<String, _>("Startup").ok())
-        .map(|d| PathBuf::from(d.replace("%USERPROFILE%", &std::env::var("USERPROFILE").unwrap_or_default())));
+        .map(|d| {
+            PathBuf::from(d.replace(
+                "%USERPROFILE%",
+                &std::env::var("USERPROFILE").unwrap_or_default(),
+            ))
+        });
     match yol {
         Some(p) if p.is_dir() => p,
         _ => std::env::var_os("APPDATA")
@@ -230,9 +255,17 @@ pub fn baslangic_acik() -> bool {
     baslangic_kisayolu().is_file()
 }
 
-fn powershell_calistir(args: &[&str], betik_dosyasi: Option<&std::path::Path>) -> io::Result<String> {
+fn powershell_calistir(
+    args: &[&str],
+    betik_dosyasi: Option<&std::path::Path>,
+) -> io::Result<String> {
     let mut komut = Command::new("powershell");
-    komut.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass"]);
+    komut.args([
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+    ]);
     if let Some(dosya) = betik_dosyasi {
         komut.arg("-File").arg(dosya).args(args);
     } else {
@@ -241,7 +274,10 @@ fn powershell_calistir(args: &[&str], betik_dosyasi: Option<&std::path::Path>) -
     let cikti = komut.creation_flags(CREATE_NO_WINDOW).output()?;
     if !cikti.status.success() {
         let hata = String::from_utf8_lossy(&cikti.stderr);
-        return Err(io::Error::other(format!("kisayol komutu basarisiz: {}", hata.trim())));
+        return Err(io::Error::other(format!(
+            "kisayol komutu basarisiz: {}",
+            hata.trim()
+        )));
     }
     Ok(String::from_utf8_lossy(&cikti.stdout).trim().to_string())
 }
@@ -276,7 +312,9 @@ pub fn baslangic_ac(ek_arguman: &str) -> io::Result<()> {
             "-Argumanlar",
             ek_arguman,
             "-CalismaKlasoru",
-            &exe.parent().map(|p| p.display().to_string()).unwrap_or_default(),
+            &exe.parent()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default(),
             "-Aciklama",
             KISAYOL_ACIKLAMA,
             "-Simge",

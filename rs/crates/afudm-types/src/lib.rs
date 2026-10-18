@@ -54,8 +54,16 @@ pub trait Store: Send + Sync {
     fn rules_list(&self) -> Result<Vec<Json>>;
     fn rules_save(&self, rules: &[Json]) -> Result<()>;
     #[allow(clippy::too_many_arguments)]
-    fn add(&self, kind: &str, source: &str, title: Option<&str>, dest_dir: Option<&str>,
-           options: Option<&JsonMap>, start_after: Option<f64>, gid: Option<&str>) -> Result<i64>;
+    fn add(
+        &self,
+        kind: &str,
+        source: &str,
+        title: Option<&str>,
+        dest_dir: Option<&str>,
+        options: Option<&JsonMap>,
+        start_after: Option<f64>,
+        gid: Option<&str>,
+    ) -> Result<i64>;
     fn attach_gid(&self, row_id: i64, gid: &str) -> Result<()>;
     fn update_by_gid(&self, gid: &str, fields: &JsonMap) -> Result<()>;
     fn update_by_id(&self, row_id: i64, fields: &JsonMap) -> Result<()>;
@@ -118,7 +126,14 @@ pub trait Aria2: Send + Sync {
     fn get_servers(&self, gid: &str) -> Result<Vec<Json>>;
     fn change_option(&self, gid: &str, options: &JsonMap) -> Result<String>;
     fn change_global_option(&self, options: &JsonMap) -> Result<String>;
-    fn change_uri(&self, gid: &str, file_index: i64, del_uris: &[String], add_uris: &[String], position: i64) -> Result<i64>;
+    fn change_uri(
+        &self,
+        gid: &str,
+        file_index: i64,
+        del_uris: &[String],
+        add_uris: &[String],
+        position: i64,
+    ) -> Result<i64>;
     fn get_global_option(&self) -> Result<JsonMap>;
     fn shutdown(&self, force: bool) -> Result<String>;
     fn save_session(&self) -> Result<String>;
@@ -134,7 +149,12 @@ pub trait ManagerApi: Send + Sync {
     /// manager.py:219
     fn set_mode(&self, ad: &str) -> Result<Json>;
     /// manager.py:244
-    fn baglanti_ayarla(&self, gid: &str, baglanti: Option<i64>, hiz_kb: Option<i64>) -> Result<Json>;
+    fn baglanti_ayarla(
+        &self,
+        gid: &str,
+        baglanti: Option<i64>,
+        hiz_kb: Option<i64>,
+    ) -> Result<Json>;
     /// manager.py:286
     fn update_settings(&self, changes: &JsonMap) -> Result<Json>;
     /// manager.py:320
@@ -162,7 +182,14 @@ pub trait ManagerApi: Send + Sync {
     /// manager.py:1321
     fn retry(&self, row_id: i64) -> Result<Json>;
     /// manager.py:1343
-    fn renew(&self, gid: &str, yeni_url: &str, headers: Option<&JsonMap>, cookies: Option<&[Json]>, user_agent: Option<&str>) -> Result<Json>;
+    fn renew(
+        &self,
+        gid: &str,
+        yeni_url: &str,
+        headers: Option<&JsonMap>,
+        cookies: Option<&[Json]>,
+        user_agent: Option<&str>,
+    ) -> Result<Json>;
     /// manager.py:1510
     fn seed_bilgi(&self, gid: &str) -> Result<Json>;
     /// manager.py:1545

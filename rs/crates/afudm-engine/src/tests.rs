@@ -178,7 +178,12 @@ fn rpc_all_trait_methods_send_python_methods_and_parameters() {
         "OK",
         |r| assert_eq!(r.unpause_all().unwrap(), "OK")
     );
-    case!("aria2.tellStatus",[json!("g"),json!(["gid"])],json!({"gid":"g"}),|r|assert_eq!(r.tell_status("g",&["gid"]).unwrap(),json!({"gid":"g"})));
+    case!(
+        "aria2.tellStatus",
+        [json!("g"), json!(["gid"])],
+        json!({"gid":"g"}),
+        |r| assert_eq!(r.tell_status("g", &["gid"]).unwrap(), json!({"gid":"g"}))
+    );
     case!(
         "aria2.tellActive",
         [json!(rpc::STATUS_KEYS)],

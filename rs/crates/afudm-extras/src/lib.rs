@@ -11,5 +11,7 @@ pub mod h;
 use afudm_types::ApiCtx;
 
 pub fn router(ctx: ApiCtx) -> axum::Router {
-    g1::router(ctx.clone()).merge(g2::router(ctx.clone())).merge(h::router(ctx))
+    g1::router(ctx.clone())
+        .merge(g2::router(ctx.clone()))
+        .merge(h::router(ctx))
 }

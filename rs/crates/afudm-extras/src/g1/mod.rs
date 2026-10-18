@@ -15,6 +15,9 @@ pub mod guncelleme;
 pub mod reliability;
 
 use afudm_types::{AfuError, ApiCtx, Json};
+use axum::body::Bytes;
+use axum::extract::rejection::BytesRejection;
+use axum::extract::DefaultBodyLimit;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -40,22 +43,47 @@ pub fn router(ctx: ApiCtx) -> Router {
             "/reliability/diagnostics-export",
             post(tani_disa_aktar_rota).get(afudm_api::bilinmeyen_yol),
         )
+        .layer(DefaultBodyLimit::max(crate::g2::GOVDE_SINIRI))
         .with_state(ctx)
 }
 
-async fn integrity_rota(State(ctx): State<ApiCtx>) -> Response {
+async fn integrity_rota(
+    State(ctx): State<ApiCtx>,
+    govde: std::result::Result<Bytes, BytesRejection>,
+) -> Response {
+    if let Err(r) = crate::g2::govde_oku(govde) {
+        return r;
+    }
     yanit(reliability::integrity(&*ctx.store))
 }
 
-async fn backup_rota(State(ctx): State<ApiCtx>) -> Response {
+async fn backup_rota(
+    State(ctx): State<ApiCtx>,
+    govde: std::result::Result<Bytes, BytesRejection>,
+) -> Response {
+    if let Err(r) = crate::g2::govde_oku(govde) {
+        return r;
+    }
     yanit(reliability::backup(&*ctx.store, &ctx.data_dir, "manual"))
 }
 
-async fn tani_onizleme_rota(State(ctx): State<ApiCtx>) -> Response {
+async fn tani_onizleme_rota(
+    State(ctx): State<ApiCtx>,
+    govde: std::result::Result<Bytes, BytesRejection>,
+) -> Response {
+    if let Err(r) = crate::g2::govde_oku(govde) {
+        return r;
+    }
     yanit(reliability::diagnostics_preview(&*ctx.store, &ctx.app_dir))
 }
 
-async fn tani_disa_aktar_rota(State(ctx): State<ApiCtx>) -> Response {
+async fn tani_disa_aktar_rota(
+    State(ctx): State<ApiCtx>,
+    govde: std::result::Result<Bytes, BytesRejection>,
+) -> Response {
+    if let Err(r) = crate::g2::govde_oku(govde) {
+        return r;
+    }
     yanit(reliability::diagnostics_export(
         &*ctx.store,
         &ctx.data_dir,
@@ -63,6 +91,7 @@ async fn tani_disa_aktar_rota(State(ctx): State<ApiCtx>) -> Response {
     ))
 }
 
+/// Python do_POST once `_govde_oku` yapar: bozuk govde islemi calistirmadan 400/413 GOVDE_HATASI.
 fn yanit(sonuc: afudm_types::Result<Json>) -> Response {
     match sonuc {
         Ok(v) => (StatusCode::OK, AxumJson(v)).into_response(),

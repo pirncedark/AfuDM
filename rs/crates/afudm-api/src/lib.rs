@@ -104,10 +104,21 @@ async fn bind(port: u16) -> Result<tokio::net::TcpListener> {
         #[cfg(windows)]
         {
             use std::os::windows::io::AsRawSocket;
-            use windows_sys::Win32::Networking::WinSock::{setsockopt, WSAGetLastError, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, SOCKET_ERROR};
+            use windows_sys::Win32::Networking::WinSock::{
+                setsockopt, WSAGetLastError, SOCKET_ERROR, SOL_SOCKET, SO_EXCLUSIVEADDRUSE,
+            };
             let enabled: i32 = 1;
             // The value lives until setsockopt returns; the handle is owned by socket.
-            if unsafe { setsockopt(socket.as_raw_socket() as _, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (&enabled as *const i32).cast(), std::mem::size_of_val(&enabled) as i32) } == SOCKET_ERROR {
+            if unsafe {
+                setsockopt(
+                    socket.as_raw_socket() as _,
+                    SOL_SOCKET,
+                    SO_EXCLUSIVEADDRUSE,
+                    (&enabled as *const i32).cast(),
+                    std::mem::size_of_val(&enabled) as i32,
+                )
+            } == SOCKET_ERROR
+            {
                 return Err(std::io::Error::from_raw_os_error(unsafe { WSAGetLastError() }).into());
             }
         }

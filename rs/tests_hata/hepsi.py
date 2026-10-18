@@ -21,8 +21,20 @@ def main():
             if args.only=='smoke':
                 for a in apps:print(a.kind,a.call('surum_bilgi',[]),a.http('/ping'),flush=True)
                 return 0
+            def fresh(fn):
+                # bridge/network: onceki asamalarin (crash/fuzz) biraktigi durumu almasin; her iki taraf taze ve ozdes veriyle baslar.
+                def run():
+                    sub=tempfile.mkdtemp(prefix='fresh_',dir=tmp);pair=[]
+                    try:
+                        for side in ('py','rs'):
+                            a=App(side,sub);apps.append(a);pair.append(a);a.start()
+                            print(f'READY {side} API={a.port} gate={a.gate} fresh data',flush=True)
+                        return fn(pair)
+                    finally:
+                        for a in pair:a.close()
+                return run
             phases={'resources':lambda:resource(apps,server,args.idle_seconds),'fuzz':lambda:fuzz(apps,server),
-                    'crash':lambda:crash(apps,server),'bridge':lambda:bridge(apps,server),'network':lambda:network(apps)}
+                    'crash':lambda:crash(apps,server),'bridge':fresh(lambda p:bridge(p,server)),'network':fresh(lambda p:network(p))}
             for name,fn in phases.items():
                 if args.only and args.only!=name:continue
                 print('START',name,flush=True)

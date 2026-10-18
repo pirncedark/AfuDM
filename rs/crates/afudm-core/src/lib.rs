@@ -33,7 +33,13 @@ pub struct Manager {
 pub type TamamlandiKancasi = Box<dyn Fn(&Json) + Send + Sync>;
 
 impl Manager {
-    pub fn new(store: Arc<dyn Store>, rpc: Arc<dyn Aria2>, ui: Arc<dyn UiBridge>, data_dir: PathBuf, app_dir: PathBuf) -> Self {
+    pub fn new(
+        store: Arc<dyn Store>,
+        rpc: Arc<dyn Aria2>,
+        ui: Arc<dyn UiBridge>,
+        data_dir: PathBuf,
+        app_dir: PathBuf,
+    ) -> Self {
         Manager {
             store,
             rpc: RwLock::new(rpc),
@@ -73,7 +79,12 @@ impl ManagerApi for Manager {
     fn set_mode(&self, ad: &str) -> Result<Json> {
         queue::set_mode(self, ad)
     }
-    fn baglanti_ayarla(&self, gid: &str, baglanti: Option<i64>, hiz_kb: Option<i64>) -> Result<Json> {
+    fn baglanti_ayarla(
+        &self,
+        gid: &str,
+        baglanti: Option<i64>,
+        hiz_kb: Option<i64>,
+    ) -> Result<Json> {
         queue::baglanti_ayarla(self, gid, baglanti, hiz_kb)
     }
     fn update_settings(&self, changes: &JsonMap) -> Result<Json> {
@@ -116,7 +127,14 @@ impl ManagerApi for Manager {
     fn retry(&self, row_id: i64) -> Result<Json> {
         queue::retry(self, row_id)
     }
-    fn renew(&self, gid: &str, yeni_url: &str, headers: Option<&JsonMap>, cookies: Option<&[Json]>, user_agent: Option<&str>) -> Result<Json> {
+    fn renew(
+        &self,
+        gid: &str,
+        yeni_url: &str,
+        headers: Option<&JsonMap>,
+        cookies: Option<&[Json]>,
+        user_agent: Option<&str>,
+    ) -> Result<Json> {
         queue::renew(self, gid, yeni_url, headers, cookies, user_agent)
     }
     fn seed_bilgi(&self, gid: &str) -> Result<Json> {
