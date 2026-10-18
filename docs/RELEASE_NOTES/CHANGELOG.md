@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.0](https://github.com/pirncedark/AfuDM/compare/v2.9.9...v3.0.0) (2026-10-18)
+
+
+### Features
+
+* AfuDM 3.0 — Rust + Tauri rewrite ([#122](https://github.com/pirncedark/AfuDM/issues/122)) ([a451bc0](https://github.com/pirncedark/AfuDM/commit/a451bc0a9b2d46a3f5515bd23a7a3c960db90cf0))
+
 ## [2.9.9](https://github.com/pirncedark/AfuDM/compare/v2.9.8...v2.9.9) (2026-10-18)
 
 
