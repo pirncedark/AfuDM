@@ -4,7 +4,7 @@ use serde_json::json;
 
 pub fn default_settings() -> JsonMap {
     // Literal generated from db.py DEFAULTS, without importing or running Python.
-    match json!({"language": "auto", "download_dir": "", "max_concurrent": 5, "split": 64, "max_conn_per_server": 16, "max_speed_kb": 0, "hiz_profili": "normal", "snail_speed_kb": 100, "clipboard_watch": true, "clipboard_exts": "zip,rar,7z,exe,msi,iso,pdf,mp4,mkv,mp3,apk,dmg,torrent", "notify_telegram": false, "windows_notifications": true, "telegram_bot_token": "", "telegram_chat_id": "", "shutdown_when_done": false, "sleep_when_done": false, "seed_ratio": 1.0, "auto_update_trackers": true, "video_quality": "best", "api_listen_port": 6811, "api_port": 6811, "kaydetme_penceresi": false, "kategori_klasorleri": true, "tepsiye_kucult": true, "eklenti_max_boyut_mb": 200, "eklenti_max_oran": 100.0, "eklenti_imzasiz_izin": true, "baslangicta_tepside": true, "ek_trackerlar": "", "canli_trackerlar": "", "tracker_tarama_zamani": 0, "tracker_tarama_ozeti": {}, "tracker_otomatik_tara": true, "lan_erisimi": false, "internet_paylasim": true, "ag_konumlari": "", "proxy": "", "system_proxy": false, "automation_enabled": true, "automation_steps": ["checksum", "extract", "move", "rename", "script", "notify", "power"], "automation_checksum": true, "automation_extract": false, "automation_move_to": "", "automation_rename_to": "", "automation_script": "", "automation_notify": true, "automation_power": "none", "automation_power_seconds": 60, "sunucu_acik": false, "sunucu_adres": "yerel", "sunucu_port": 6821, "sunucu_istek_limiti": 120, "sunucu_hatali_limit": 8, "sunucu_kilit_saniye": 300, "sunucu_izinli_originler": "", "sunucu_istemci_kaydi": true, "sunucu_profil_id": 0, "sunucu_proxy_guven": false})
+    match json!({"language": "auto", "download_dir": "", "max_concurrent": 5, "split": 64, "max_conn_per_server": 16, "max_speed_kb": 0, "max_upload_kb": 100, "hiz_profili": "normal", "snail_speed_kb": 100, "clipboard_watch": true, "clipboard_exts": "zip,rar,7z,exe,msi,iso,pdf,mp4,mkv,mp3,apk,dmg,torrent", "notify_telegram": false, "windows_notifications": true, "telegram_bot_token": "", "telegram_chat_id": "", "shutdown_when_done": false, "sleep_when_done": false, "seed_ratio": 1.0, "auto_update_trackers": true, "video_quality": "best", "api_listen_port": 6811, "api_port": 6811, "kaydetme_penceresi": false, "kategori_klasorleri": true, "tepsiye_kucult": true, "eklenti_max_boyut_mb": 200, "eklenti_max_oran": 100.0, "eklenti_imzasiz_izin": true, "baslangicta_tepside": true, "ek_trackerlar": "", "canli_trackerlar": "", "tracker_tarama_zamani": 0, "tracker_tarama_ozeti": {}, "tracker_otomatik_tara": true, "lan_erisimi": false, "internet_paylasim": true, "ag_konumlari": "", "proxy": "", "system_proxy": false, "automation_enabled": true, "automation_steps": ["checksum", "extract", "move", "rename", "script", "notify", "power"], "automation_checksum": true, "automation_extract": false, "automation_move_to": "", "automation_rename_to": "", "automation_script": "", "automation_notify": true, "automation_power": "none", "automation_power_seconds": 60, "sunucu_acik": false, "sunucu_adres": "yerel", "sunucu_port": 6821, "sunucu_istek_limiti": 120, "sunucu_hatali_limit": 8, "sunucu_kilit_saniye": 300, "sunucu_izinli_originler": "", "sunucu_istemci_kaydi": true, "sunucu_profil_id": 0, "sunucu_proxy_guven": false})
     {
         Json::Object(map) => map,
         _ => JsonMap::new(),
@@ -93,10 +93,11 @@ fn string_or_empty(v: &Json) -> String {
 }
 fn normalize(key: &str, v: &Json) -> Result<Json> {
     match key {
-        "api_port" | "api_listen_port" | "snail_speed_kb" | "max_concurrent" => {
+        "api_port" | "api_listen_port" | "snail_speed_kb" | "max_concurrent" | "max_upload_kb" => {
             let (lo, hi, error) = match key {
                 "snail_speed_kb" => (1, 1_000_000, "err.snailRange"),
                 "max_concurrent" => (1, 20, "err.invalidValue"),
+                "max_upload_kb" => (0, 1_000_000, "err.invalidValue"),
                 _ => (1024, 65535, "err.portRange"),
             };
             let n = python_int(v)
