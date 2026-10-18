@@ -282,12 +282,15 @@ function ikinciYolKontrol() {
     const liste = await ikinciYolListesi();
     if (!liste.length) { chrome.alarms.clear(IKINCI_YOL_ALARMI); return { cfg: null, indirilecek: [] }; }
     const cfg = await config();
+    if (!cfg.uzantiAcik || !cfg.enabled) return { cfg, indirilecek: [] };
     let snapshot;
     try {
       const yanit = await fetch(endpoint(cfg, "/snapshot"), {
         headers: { "X-AfuDM-Token": cfg.token }, signal: AbortSignal.timeout(5000),
       });
+      if (!yanit.ok) return { cfg, indirilecek: [] };
       snapshot = await yanit.json();
+      if (!Array.isArray(snapshot?.items)) return { cfg, indirilecek: [] };
     } catch (_) {
       return { cfg, indirilecek: [] };
     }

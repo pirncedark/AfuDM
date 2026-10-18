@@ -217,10 +217,7 @@ pub(super) fn snapshot(m: &Manager) -> Result<Json> {
         if !gid.is_empty() && (gids.contains(gid) || state(m)?.removed_gids.contains(gid)) {
             continue;
         }
-        let hash = dosya_adi::magnet_hash(text(&record["source"]));
-        if !hash.is_empty() && state(m)?.removed_hashes.contains(&hash) {
-            continue;
-        }
+        // Persisted replacement jobs remain visible even when an old hash tombstone survives.
         if ["complete", "error", "scheduled", "paused", "repairing"]
             .contains(&text(&record["status"]))
         {
