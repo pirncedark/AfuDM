@@ -15,6 +15,7 @@ struct MemoryRpc {
     statuses: Mutex<BTreeMap<String, Json>>,
     calls: Mutex<Vec<(String, Vec<Json>)>>,
     offline: Mutex<bool>,
+    failure: Mutex<Option<(String, String)>>,
     asleep: Mutex<bool>,
     status_reads: Mutex<usize>,
 }
@@ -554,6 +555,11 @@ impl Aria2 for MemoryRpc {
         if *self.offline.lock().unwrap() {
             return Err(AfuError::Engine("offline".into()));
         }
+        if let Some((target, message)) = &*self.failure.lock().unwrap() {
+            if target == method {
+                return Err(AfuError::Engine(message.clone()));
+            }
+        }
         self.calls.lock().unwrap().push((method.into(), params));
         if method == "aria2.purgeDownloadResult" {
             self.statuses
@@ -605,7 +611,7 @@ impl Aria2 for MemoryRpc {
     }
     #[allow(unused_variables)]
     fn add_torrent(&self, torrent_b64: &str, options: Option<&JsonMap>) -> Result<String> {
-        self.call("add_torrent", vec![])?;
+        self.call("add_torrent", vec![json!(torrent_b64), json!(options)])?;
         Ok("OK".into())
     }
     #[allow(unused_variables)]
@@ -664,7 +670,7 @@ impl Aria2 for MemoryRpc {
     }
     #[allow(unused_variables)]
     fn change_option(&self, gid: &str, options: &JsonMap) -> Result<String> {
-        self.call("change_option", vec![])?;
+        self.call("change_option", vec![json!(gid), json!(options)])?;
         Ok("OK".into())
     }
     #[allow(unused_variables)]
@@ -1330,4 +1336,289 @@ fn upload_global_default_and_live_changes() {
             update_settings(&f.m, json!({"max_upload_kb": invalid}).as_object().unwrap()).is_err()
         );
     }
+}
+
+// Regression coverage for PR #128's Rust port. Fixtures never use application data.
+fn reuse_torrent(f: &Fixture, name: &[u8]) -> String {
+    let mut bytes = format!("d4:infod4:name{}:", name.len()).into_bytes();
+    bytes.extend_from_slice(name);
+    bytes.extend_from_slice(b"ee");
+    let path = f.root.join("reuse.torrent");
+    std::fs::write(&path, bytes).unwrap();
+    path.to_string_lossy().into_owned()
+}
+
+#[test]
+fn reuse_local_torrent_existing_and_missing_roots() {
+    use base64::Engine;
+    for name in ["Game", "Türkçe oyun"] {
+        for existing in [false, true] {
+            for directory in [false, true] {
+                let f = Fixture::new();
+                let source = reuse_torrent(&f, name.as_bytes());
+                if existing {
+                    if directory {
+                        std::fs::create_dir(f.root.join(name)).unwrap();
+                    } else {
+                        std::fs::write(f.root.join(name), b"old").unwrap();
+                    }
+                }
+                add(&f.m, json!({"source":source}).as_object().unwrap()).unwrap();
+                let calls = f.rpc.calls.lock().unwrap();
+                let (_, params) = calls.iter().find(|(m, _)| m == "add_torrent").unwrap();
+                assert_eq!(
+                    params[1].get("check-integrity"),
+                    existing.then(|| json!("true")).as_ref()
+                );
+                assert_eq!(
+                    base64::engine::general_purpose::STANDARD
+                        .decode(params[0].as_str().unwrap())
+                        .unwrap(),
+                    std::fs::read(&source).unwrap()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn reuse_unsafe_or_broken_metadata_never_enables_integrity() {
+    for name in ["", ".", "..", "a/b", "a\\b", "C:game", "a\0b"] {
+        let f = Fixture::new();
+        std::fs::create_dir_all(f.root.join("a/b")).unwrap();
+        let source = reuse_torrent(&f, name.as_bytes());
+        add(&f.m, json!({"source":source}).as_object().unwrap()).unwrap();
+        let calls = f.rpc.calls.lock().unwrap();
+        let (_, params) = calls.iter().find(|(m, _)| m == "add_torrent").unwrap();
+        assert!(params[1].get("check-integrity").is_none(), "{name:?}");
+    }
+    let f = Fixture::new();
+    let source = reuse_torrent(&f, b"Game");
+    std::fs::create_dir(f.root.join("Game")).unwrap();
+    std::fs::write(&source, b"broken").unwrap();
+    add(&f.m, json!({"source":source}).as_object().unwrap()).unwrap();
+    assert!(f
+        .rpc
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|(m, _)| m == "add_torrent")
+        .unwrap()
+        .1[1]
+        .get("check-integrity")
+        .is_none());
+}
+
+#[test]
+fn reuse_adopted_magnet_uses_child_metadata_and_destination() {
+    for existing in [false, true] {
+        let f = Fixture::new();
+        if existing {
+            std::fs::create_dir(f.root.join("Game")).unwrap();
+        }
+        f.rpc.statuses.lock().unwrap().insert(
+            "preview".into(),
+            json!({"gid":"preview","status":"complete","followedBy":["child"]}),
+        );
+        f.rpc.statuses.lock().unwrap().insert(
+            "child".into(),
+            json!({"gid":"child","status":"paused","bittorrent":{"info":{"name":"Game"}}}),
+        );
+        let result = add(
+            &f.m,
+            json!({"source":"magnet:?xt=urn:btih:abcd","adopt_gid":"preview"})
+                .as_object()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(result["gid"], "child");
+        let calls = f.rpc.calls.lock().unwrap();
+        let (_, params) = calls.iter().find(|(m, _)| m == "change_option").unwrap();
+        assert_eq!(params[0], "child");
+        assert_eq!(params[1]["dir"], json!(f.root));
+        assert_eq!(
+            params[1].get("check-integrity"),
+            existing.then(|| json!("true")).as_ref()
+        );
+    }
+}
+
+#[test]
+fn reuse_fresh_magnet_applies_integrity_after_metadata() {
+    let f = Fixture::new();
+    std::fs::create_dir(f.root.join("Game")).unwrap();
+    let result = add(
+        &f.m,
+        json!({"source":"magnet:?xt=urn:btih:abcd"})
+            .as_object()
+            .unwrap(),
+    )
+    .unwrap();
+    let gid = result["gid"].as_str().unwrap();
+    f.rpc.statuses.lock().unwrap().get_mut(gid).unwrap()["followedBy"] = json!(["child"]);
+    f.rpc.statuses.lock().unwrap().insert(
+        "child".into(),
+        json!({"gid":"child","status":"active","bittorrent":{"info":{"name":"Game"}}}),
+    );
+    sync_aria2(&f.m).unwrap();
+    let calls = f.rpc.calls.lock().unwrap();
+    assert!(calls.iter().any(|(m, p)| m == "change_option"
+        && p[0] == "child"
+        && p[1]["check-integrity"] == "true"
+        && p[1]["dir"] == json!(f.root)));
+}
+
+#[test]
+fn reuse_magnet_child_reported_before_parent_also_checks_integrity() {
+    for following in [true, false] {
+        let f = Fixture::new();
+        std::fs::create_dir(f.root.join("Game")).unwrap();
+        let result = add(
+            &f.m,
+            json!({"source":"magnet:?xt=urn:btih:abcd"})
+                .as_object()
+                .unwrap(),
+        )
+        .unwrap();
+        let mut child = json!({"gid":"child","status":"active","infoHash":"abcd","bittorrent":{"info":{"name":"Game"}}});
+        if following {
+            child["following"] = result["gid"].clone();
+        }
+        f.rpc.statuses.lock().unwrap().insert("child".into(), child);
+        sync_aria2(&f.m).unwrap();
+        assert_eq!(
+            f.m.store.by_gid("child").unwrap().unwrap()["kind"],
+            "torrent"
+        );
+        assert!(f
+            .rpc
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(m, p)| m == "change_option"
+                && p[0] == "child"
+                && p[1]["check-integrity"] == "true"));
+    }
+}
+
+const DISK_MESSAGE: &str = "Diskte yer yok. Başka bir klasör seçin ya da yer açın.";
+
+#[test]
+fn reuse_disk_full_launch_and_adopt_report_actionable_error() {
+    for method in ["add_uri", "add_torrent", "change_option", "unpause"] {
+        let f = Fixture::new();
+        let source = if method == "add_torrent" {
+            reuse_torrent(&f, b"Game")
+        } else {
+            "magnet:?xt=urn:btih:abcd".into()
+        };
+        let mut req = json!({"source":source});
+        if ["change_option", "unpause"].contains(&method) {
+            req["adopt_gid"] = json!("preview");
+        }
+        *f.rpc.failure.lock().unwrap() = Some((method.into(), "Not Enough Space on disk".into()));
+        let error = add(&f.m, req.as_object().unwrap()).unwrap_err();
+        assert!(
+            error.to_string().contains(DISK_MESSAGE),
+            "{method}: {error}"
+        );
+        let row = f.m.store.list(None, 10).unwrap().pop().unwrap();
+        assert_eq!(row["status"], "error");
+        assert_eq!(row["error"], DISK_MESSAGE);
+    }
+}
+
+#[test]
+fn reuse_disk_full_sync_and_snapshot_report_actionable_error() {
+    let f = Fixture::new();
+    let result = f.add("full.zip");
+    let gid = result["gid"].as_str().unwrap();
+    let status = json!({"gid":gid,"status":"error","errorMessage":"Not Enough Space"});
+    f.rpc
+        .statuses
+        .lock()
+        .unwrap()
+        .insert(gid.into(), status.clone());
+    sync_aria2(&f.m).unwrap();
+    assert_eq!(
+        f.m.store.by_gid(gid).unwrap().unwrap()["error"],
+        DISK_MESSAGE
+    );
+    assert_eq!(
+        shaping::aria(&f.m, &status).unwrap()["errorMessage"],
+        DISK_MESSAGE
+    );
+}
+
+#[test]
+fn reuse_seed_refresh_checks_existing_root_for_local_and_magnet() {
+    for local in [false, true] {
+        let f = Fixture::new();
+        std::fs::create_dir(f.root.join("Game")).unwrap();
+        f.m.store
+            .set(
+                "canli_trackerlar",
+                json!("udp://tracker.example.org:1337/announce"),
+            )
+            .unwrap();
+        let source = if local {
+            reuse_torrent(&f, b"Game")
+        } else {
+            "magnet:?xt=urn:btih:abcd".into()
+        };
+        f.m.store
+            .add(
+                "torrent",
+                &source,
+                None,
+                f.root.to_str(),
+                None,
+                None,
+                Some("old"),
+            )
+            .unwrap();
+        f.rpc.statuses.lock().unwrap().insert("old".into(), json!({"gid":"old","status":"paused","infoHash":"abcd","dir":f.root,"bittorrent":{"info":{"name":"Game"}}}));
+        assert_eq!(
+            crate::torrent::seed_tazele(&f.m, "old").unwrap()["ok"],
+            true
+        );
+        let calls = f.rpc.calls.lock().unwrap();
+        let method = if local { "add_torrent" } else { "add_uri" };
+        let (_, params) = calls.iter().find(|(m, _)| m == method).unwrap();
+        assert_eq!(params[1]["check-integrity"], "true");
+    }
+}
+
+#[test]
+fn reuse_seed_refresh_disk_full_updates_record() {
+    let f = Fixture::new();
+    f.m.store
+        .set(
+            "canli_trackerlar",
+            json!("udp://tracker.example.org:1337/announce"),
+        )
+        .unwrap();
+    f.m.store
+        .add(
+            "torrent",
+            "magnet:?xt=urn:btih:abcd",
+            None,
+            f.root.to_str(),
+            None,
+            None,
+            Some("old"),
+        )
+        .unwrap();
+    f.rpc.statuses.lock().unwrap().insert(
+        "old".into(),
+        json!({"gid":"old","status":"paused","infoHash":"abcd","dir":f.root}),
+    );
+    *f.rpc.failure.lock().unwrap() = Some(("add_uri".into(), "Not Enough Space".into()));
+    let result = crate::torrent::seed_tazele(&f.m, "old").unwrap();
+    assert_eq!(result["error"], DISK_MESSAGE);
+    let row = f.m.store.by_gid("old").unwrap().unwrap();
+    assert_eq!(row["error"], DISK_MESSAGE);
+    assert_eq!(row["status"], "error");
 }

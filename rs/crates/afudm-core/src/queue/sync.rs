@@ -73,7 +73,7 @@ pub(super) fn collect(m: &Manager) -> Result<Completed> {
                 } else if state(m)?.auth_required_gids.contains(gid) {
                     "Kaydedilen oturumdaki Cookie/Authorization guvenlik icin silindi. Yeni giris bilgileriyle indirmeyi Yenile.".into()
                 } else {
-                    text(&status["errorMessage"])
+                    kullanici_hatasi(text(&status["errorMessage"]))
                         .chars()
                         .take(500)
                         .collect::<String>()
@@ -92,6 +92,17 @@ pub(super) fn collect(m: &Manager) -> Result<Completed> {
         if let (Some(child), Some(row)) = (followed.and_then(|a| a.first()), &row) {
             let child = text(child);
             if m.store.by_gid(child)?.is_none() {
+                if row["kind"] == "torrent" {
+                    let mut metadata = match rpc.tell_status(child, &["bittorrent"]) {
+                        Ok(metadata) => metadata,
+                        Err(_) => continue,
+                    };
+                    metadata["gid"] = json!(child);
+                    // Leave the parent attached on failure so the next sync can retry.
+                    if shaping::prepare_torrent(m, row, &metadata).is_err() {
+                        continue;
+                    }
+                }
                 let has_selection = m.store.torrent_dosya_secimi_var(gid)?;
                 let selection = m.store.torrent_dosya_secimleri(gid)?;
                 m.store

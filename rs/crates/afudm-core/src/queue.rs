@@ -45,6 +45,16 @@ fn state(m: &Manager) -> Result<MutexGuard<'_, State>> {
 fn invalid(message: impl Into<String>) -> AfuError {
     AfuError::Invalid(message.into())
 }
+pub(crate) fn disk_dolu(message: &str) -> bool {
+    message.to_ascii_lowercase().contains("not enough space")
+}
+pub(crate) fn kullanici_hatasi(message: &str) -> &str {
+    if disk_dolu(message) {
+        "Diskte yer yok. Başka bir klasör seçin ya da yer açın."
+    } else {
+        message
+    }
+}
 fn text(value: &Json) -> &str {
     value.as_str().unwrap_or("")
 }
@@ -536,16 +546,26 @@ fn launch(m: &Manager, row: &Json) -> Result<Json> {
     let gid = match result {
         Ok(gid) => gid,
         Err(error) => {
+            let detail = error.to_string();
+            let message = if disk_dolu(&detail) {
+                kullanici_hatasi(&detail)
+            } else {
+                "indirme baslatilamadi"
+            };
             m.store.update_by_id(
                 id,
-                &map(json!({"status":"error","error":"indirme baslatilamadi","finished_at":now()})),
+                &map(json!({"status":"error","error":message,"finished_at":now()})),
             )?;
             m.store.log(
                 "error",
                 "baslatilamadi: motor indirmeyi baslatamadi",
                 text(&row["gid"]),
             );
-            return Err(error);
+            return Err(if disk_dolu(&detail) {
+                invalid(message)
+            } else {
+                error
+            });
         }
     };
     m.store.attach_gid(id, &gid)?;

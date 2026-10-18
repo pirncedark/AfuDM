@@ -79,7 +79,51 @@ fn kes(s: &str, n: usize) -> String {
 
 /// Python: except Aria2Error/ValueError -> {"ok": False, "error": str(exc)[:200]}.
 fn hata_json(e: &AfuError) -> Json {
-    json!({"ok": false, "error": kes(&e.to_string(), 200)})
+    json!({"ok": false, "error": kes(crate::queue::kullanici_hatasi(&e.to_string()), 200)})
+}
+
+/// Only enable hash verification when metadata names an existing root inside the destination.
+/// Malformed or unreadable metadata is left to aria2 to report.
+pub(crate) fn yeniden_kullan(source: &str, dest: &str, name: &str, options: &mut JsonMap) {
+    let local_name = || -> Option<String> {
+        let path = Path::new(source);
+        if !path.extension()?.eq_ignore_ascii_case("torrent") {
+            return None;
+        }
+        let bencode::Bc::Sozluk(root) = bencode::coz(&std::fs::read(path).ok()?).ok()? else {
+            return None;
+        };
+        let bencode::Bc::Sozluk(info) = root.get(&b"info"[..])? else {
+            return None;
+        };
+        let bencode::Bc::Metin(name) = info
+            .get(&b"name.utf-8"[..])
+            .or_else(|| info.get(&b"name"[..]))?
+        else {
+            return None;
+        };
+        String::from_utf8(name.clone()).ok()
+    };
+    let name = if name.is_empty() {
+        local_name().unwrap_or_default()
+    } else {
+        name.to_owned()
+    };
+    if name.is_empty()
+        || [".", ".."].contains(&name.as_str())
+        || name.contains(['/', '\\', ':', '\0'])
+    {
+        return;
+    }
+    // Canonical paths also prevent a symlink/junction from escaping the destination.
+    if let (Ok(root), Ok(target)) = (
+        Path::new(dest).canonicalize(),
+        Path::new(dest).join(name).canonicalize(),
+    ) {
+        if target != root && target.starts_with(root) {
+            options.insert("check-integrity".into(), json!("true"));
+        }
+    }
 }
 
 /// aria2 select-file degeri: 1-tabanli indeksler, virgullu liste.
@@ -423,6 +467,12 @@ pub fn seed_tazele(m: &Manager, gid: &str) -> Result<Json> {
     let mut secenekler = JsonMap::new();
     secenekler.insert("dir".to_string(), json!(hedef));
     secenekler.insert("bt-save-metadata".to_string(), json!("false"));
+    yeniden_kullan(
+        &kaynak,
+        &hedef,
+        &str_of(status.pointer("/bittorrent/info/name")),
+        &mut secenekler,
+    );
     if m.store.torrent_dosya_secimi_var(gid)? {
         let secim = m.store.torrent_dosya_secimleri(gid)?;
         secenekler.insert("select-file".to_string(), json!(select_degeri(&secim)));
@@ -445,6 +495,17 @@ pub fn seed_tazele(m: &Manager, gid: &str) -> Result<Json> {
         Err(e) => {
             m.store
                 .log("warn", &format!("seed tazeleme basarisiz: {e}"), gid);
+            if crate::queue::disk_dolu(&e.to_string()) {
+                if let Some(row) = row.as_ref() {
+                    m.store.update_by_id(
+                        sayi_of(row.get("id")),
+                        &serde_json::from_value(json!({
+                            "status":"error",
+                            "error":crate::queue::kullanici_hatasi(&e.to_string())
+                        }))?,
+                    )?;
+                }
+            }
             return Ok(hata_json(&e));
         }
     };
@@ -899,17 +960,30 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
 
     if let Some(adopt) = adopt_gid {
         let mut gid = adopt;
-        if let Ok(durum) = rpc.tell_status(&gid, &["followedBy"]) {
+        let mut metadata = Json::Null;
+        if let Ok(durum) = rpc.tell_status(&gid, &["followedBy", "bittorrent"]) {
             if let Some(child) = ilk_followed(&durum) {
                 gid = child;
+                metadata = rpc.tell_status(&gid, &["bittorrent"]).unwrap_or(Json::Null);
+            } else {
+                metadata = durum;
             }
         }
         let mut dizin = JsonMap::new();
         dizin.insert("dir".to_string(), json!(dest_dir));
         dizin.insert("bt-save-metadata".to_string(), json!("false"));
+        yeniden_kullan(
+            &source,
+            &dest_dir,
+            &str_of(metadata.pointer("/bittorrent/info/name")),
+            &mut dizin,
+        );
         if let Err(e) = rpc.change_option(&gid, &dizin) {
             m.store
                 .log("error", &format!("kayit dizini degistirilemedi: {e}"), &gid);
+            if crate::queue::disk_dolu(&e.to_string()) {
+                return Err(e);
+            }
             return Err(AfuError::Invalid(
                 "Secilen klasore kaydedilemiyor, baska bir klasor secin.".to_string(),
             ));
@@ -924,13 +998,14 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
                     .log("error", &format!("dosya secimi uygulanamadi: {e}"), &gid),
             }
         }
-        let _ = rpc.unpause(&gid);
+        rpc.unpause(&gid)?;
         return Ok(json!({"gid": gid}));
     }
 
     let mut secenekler = JsonMap::new();
     secenekler.insert("dir".to_string(), json!(dest_dir));
     secenekler.insert("bt-save-metadata".to_string(), json!("false"));
+    yeniden_kullan(&source, &dest_dir, "", &mut secenekler);
     if let Some(p) = proxy::proksi_bul(m, req)? {
         secenekler.extend(proxy::aria2_secenekleri(&p));
     }

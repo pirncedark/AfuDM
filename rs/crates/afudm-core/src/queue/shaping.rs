@@ -57,6 +57,7 @@ pub(super) fn aria(m: &Manager, status: &Json) -> Result<Json> {
             .find(|s| !s.is_empty())
             .unwrap_or("")
     };
+    let error = kullanici_hatasi(error);
     let mut item = map(
         json!({"id":row.get("id"),"gid":gid,"kind":if torrent{"torrent"}else{row.get("kind").and_then(Json::as_str).unwrap_or("http")},"status":if auth{"error"}else{status.get("status").and_then(Json::as_str).unwrap_or("unknown")},"title":title,"filename":name,"totalLength":total,"completedLength":done,"progress":if total!=0{rounded(done as f64/total as f64*100.0,1)}else{0.0},"downloadSpeed":speed,"avgSpeed":if elapsed>0.0 && done!=0{(done as f64/elapsed) as i64}else{0},"elapsed":elapsed as i64,"remaining":(total-done).max(0),"uploadSpeed":number(&status["uploadSpeed"]),"connections":number(&status["connections"]),"numSeeders":number(&status["numSeeders"]),"seeder":status["seeder"]=="true","eta":if speed>0 && total>done{(total-done)/speed}else{0},"dir":status.get("dir").cloned().unwrap_or(json!("")),"errorMessage":error,"infoHash":status.get("infoHash").cloned().unwrap_or(json!("")),"numPieces":number(&status["numPieces"]),"source":row.get("source").cloned().unwrap_or(json!("")),"uploadLength":number(&status["uploadLength"]),"ratio":if done!=0{rounded(number(&status["uploadLength"]) as f64/done as f64,3)}else{0.0}}),
     );
@@ -93,12 +94,32 @@ pub(super) fn row(row: &Json) -> Json {
     json!({"id":row["id"],"gid":row.get("gid").filter(|v|truthy(v)).cloned().unwrap_or(json!(format!("row:{}",row_id(row)))),"kind":row["kind"],"status":row["status"],"title":row.get("title").filter(|v|truthy(v)).cloned().unwrap_or_else(||row["source"].clone()),"filename":row.get("filename").filter(|v|truthy(v)).cloned().unwrap_or(json!("")),"totalLength":total,"completedLength":done,"progress":progress,"downloadSpeed":0,"uploadSpeed":0,"connections":0,"numSeeders":0,"eta":0,"dir":row.get("dest_dir").filter(|v|truthy(v)).cloned().unwrap_or(json!("")),"errorMessage":error,"source":row["source"],"start_after":row["start_after"]})
 }
 
+pub(super) fn prepare_torrent(m: &Manager, row: &Json, status: &Json) -> Result<()> {
+    if row["kind"] != "torrent" {
+        return Ok(());
+    }
+    let dest = text(&row["dest_dir"]);
+    let mut opts = map(json!({"dir":dest,"bt-save-metadata":"false"}));
+    crate::torrent::yeniden_kullan(
+        text(&row["source"]),
+        dest,
+        text(&status["bittorrent"]["info"]["name"]),
+        &mut opts,
+    );
+    if let Err(e) = m.rpc().change_option(text(&status["gid"]), &opts) {
+        m.store.update_by_id(row_id(row), &map(json!({"status":"error","error":kullanici_hatasi(&e.to_string()),"finished_at":now()})))?;
+        return Err(e);
+    }
+    Ok(())
+}
+
 pub(super) fn reattach(m: &Manager, status: &Json) -> Result<Option<Json>> {
     let gid = text(&status["gid"]);
     if state(m)?.preview_gids.contains(gid) {
         return Ok(None);
     }
     if let Some(parent) = m.store.by_gid(text(&status["following"]))? {
+        prepare_torrent(m, &parent, status)?;
         m.store
             .update_by_id(row_id(&parent), &map(json!({"gid":gid})))?;
         m.store
@@ -114,6 +135,7 @@ pub(super) fn reattach(m: &Manager, status: &Json) -> Result<Option<Json>> {
             && ACTIVE.contains(&text(&row["status"]))
             && dosya_adi::magnet_hash(text(&row["source"])) == hash
         {
+            prepare_torrent(m, &row, status)?;
             m.store
                 .update_by_id(row_id(&row), &map(json!({"gid":gid})))?;
             m.store.log(
