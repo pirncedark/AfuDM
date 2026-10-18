@@ -235,6 +235,111 @@ function extensionOf(url) {
   }
 }
 
+/* --- 1a) Ikinci yol: AfuDM indiremezse dosyayi tarayici kendisi alir ----
+   AfuDM devraldiktan sonra is "error" durumuna duserse (401/403, cerez,
+   oturum...) eklenti ayni adresi tarayici baglaminda ceker ve /add_blob ile
+   AfuDM'in klasorune koyar. Kullanici sildiyse ya da duraklattiysa dokunmaz.
+   Kayitlar storage.session'da: MV3 service worker uyusa da kaybolmaz.
+   Chrome'in kendi indirmesi GERI BASLATILMAZ; bu yol chrome.downloads kullanmaz. */
+const IKINCI_YOL_ALARMI = "afudm-ikinci-yol";
+const IKINCI_YOL_SINIR_MS = 24 * 60 * 60 * 1000;
+const IKINCI_YOL_ANAHTAR = "ikinciYolIzleme";
+const IKINCI_YOL_MAKS_BYTE = 512 * 1024 * 1024;
+let ikinciYolZinciri = Promise.resolve();
+
+function ikinciYolSirala(islem) {
+  const sonuc = ikinciYolZinciri.then(islem);
+  ikinciYolZinciri = sonuc.catch(() => {});
+  return sonuc;
+}
+
+async function ikinciYolListesi() {
+  return (await chrome.storage.session.get(IKINCI_YOL_ANAHTAR))[IKINCI_YOL_ANAHTAR] || [];
+}
+
+function ikinciYolDosyaAdi(url, filename) {
+  let ad = String(filename || "").split(/[\\/]/).pop();
+  if (!ad) {
+    try { ad = decodeURIComponent(new URL(url).pathname.split("/").pop() || ""); } catch (_) { ad = ""; }
+  }
+  return (ad || "download").replace(/[\\/:\x00]/g, "_");
+}
+
+function ikinciYolEkle(url, referrer, filename) {
+  return ikinciYolSirala(async () => {
+    const liste = (await ikinciYolListesi()).filter((kayit) => kayit.url !== url);
+    liste.push({ url, referrer: referrer || "", filename: ikinciYolDosyaAdi(url, filename),
+                 ts: Date.now(), goruldu: false });
+    await chrome.storage.session.set({ [IKINCI_YOL_ANAHTAR]: liste });
+    chrome.alarms.create(IKINCI_YOL_ALARMI, { periodInMinutes: 0.5 });
+  });
+}
+
+/* AfuDM'e bakar. Yalniz "error" olan kayitlari dondurur (ve listeden cikarir).
+   AfuDM kapaliysa kayitlar oldugu gibi kalir. */
+function ikinciYolKontrol() {
+  return ikinciYolSirala(async () => {
+    const liste = await ikinciYolListesi();
+    if (!liste.length) { chrome.alarms.clear(IKINCI_YOL_ALARMI); return { cfg: null, indirilecek: [] }; }
+    const cfg = await config();
+    let snapshot;
+    try {
+      const yanit = await fetch(endpoint(cfg, "/snapshot"), {
+        headers: { "X-AfuDM-Token": cfg.token }, signal: AbortSignal.timeout(5000),
+      });
+      snapshot = await yanit.json();
+    } catch (_) {
+      return { cfg, indirilecek: [] };
+    }
+    const kalan = [];
+    const indirilecek = [];
+    for (const kayit of liste) {
+      if (Date.now() - kayit.ts > IKINCI_YOL_SINIR_MS) continue;
+      const satir = (snapshot.items || []).find((item) => item.source === kayit.url);
+      if (!satir) {
+        // Once gorulup sonra kaybolan: kullanici silmistir ya da tamamlanip temizlenmistir.
+        // Hic gorulmediyse henuz onay bekliyordur: kayit kalir.
+        if (!kayit.goruldu) kalan.push(kayit);
+        continue;
+      }
+      if (satir.status === "error") { indirilecek.push(kayit); continue; }
+      if (satir.status === "complete") continue;
+      kalan.push({ ...kayit, goruldu: true });   // indiriyor ya da duraklatilmis: dokunma
+    }
+    await chrome.storage.session.set({ [IKINCI_YOL_ANAHTAR]: kalan });
+    if (!kalan.length) chrome.alarms.clear(IKINCI_YOL_ALARMI);
+    return { cfg, indirilecek };
+  });
+}
+
+async function ikinciYolIndir(cfg, kayit) {
+  notify("İndirme ikinci yoldan sürüyor.");
+  try {
+    const yanit = await fetch(kayit.url, {
+      credentials: "include",
+      referrer: kayit.referrer || undefined,
+    });
+    if (!yanit.ok) throw new Error("HTTP " + yanit.status);
+    const govde = await yanit.blob();
+    if (govde.size > IKINCI_YOL_MAKS_BYTE) throw new Error("Dosya çok büyük; tarayıcıdan kaydedin.");
+    if (!(await ping(cfg.port))) await portTara(cfg);
+    const cevap = await fetch(endpoint(cfg, "/add_blob?filename=" + encodeURIComponent(kayit.filename)), {
+      method: "POST",
+      headers: { "X-AfuDM-Token": cfg.token, "Content-Type": "application/octet-stream" },
+      body: govde,
+    });
+    const veri = await cevap.json().catch(() => ({}));
+    if (!cevap.ok || veri.ok !== true) throw new Error(veri.error || "HTTP " + cevap.status);
+  } catch (_) {
+    notify("İkinci yol da indiremedi; dosyayı tarayıcıdan kaydedin.");
+  }
+}
+
+async function ikinciYolTurla() {
+  const { cfg, indirilecek } = await ikinciYolKontrol();
+  for (const kayit of indirilecek) await ikinciYolIndir(cfg, kayit);
+}
+
 /* --- 1) Tarayici indirmesini devral --------------------------------- */
 chrome.downloads.onCreated.addListener((item) => {
   // Extension fully disabled means no pause, no inspection, and no takeover.
@@ -286,6 +391,8 @@ chrome.downloads.onCreated.addListener((item) => {
           : (String(download.mime || "").toLowerCase() === "application/pdf" ? "download.pdf" : undefined),
         headers: download.referrer ? { Referer: download.referrer, Origin: new URL(download.referrer).origin } : {},
       });
+      // Kayit hatasi devri bozmasin: AfuDM kabul etti, Chrome kopyasi silinecek.
+      if (/^https?:/i.test(url)) await ikinciYolEkle(url, download.referrer, download.filename).catch(() => {});
       notify(sonuc.pending ? chrome.i18n.getMessage("msgPending")
         : (chrome.i18n.getUILanguage().startsWith("tr") ? "İndirme başladı." : "Download started."));
       return true;
@@ -412,6 +519,7 @@ chrome.runtime.onInstalled.addListener(async () => {
 chrome.runtime.onStartup.addListener(() => { kendiligindenEslesme(); });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ESLESME_ALARMI) kendiligindenEslesme();
+  if (alarm.name === IKINCI_YOL_ALARMI) ikinciYolTurla();
 });
 
 /* --- 3) Sag tik menusu -------------------------------------------- */
