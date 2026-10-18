@@ -129,6 +129,7 @@ fn calistir(kabuk: &Arc<Kabuk>) -> Result<(), String> {
         .merge(afudm_extras::h::router(ctx.clone()))
         .merge(crate::windows_rota::router(ctx.clone()));
     let uygulama = with_auth(yonlendirici, ctx.clone());
+    crate::yonetim::yonlendiriciyi_kaydet(uygulama.clone());
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -138,6 +139,7 @@ fn calistir(kabuk: &Arc<Kabuk>) -> Result<(), String> {
         .block_on(serve(uygulama, port_sec()))
         .map_err(|e| e.to_string())?;
     write_endpoint(&ctx, port).map_err(|e| e.to_string())?;
+    crate::yonetim::acilista(&ctx, port);
     let _ = kabuk.port.set(port);
 
     // Sunucu bu runtime uzerinde yasar; surec kapaninca biter.

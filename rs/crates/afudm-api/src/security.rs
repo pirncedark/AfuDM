@@ -80,7 +80,7 @@ pub(crate) fn endpoint(dir: &Path, port: u16, token: &str) -> Result<()> {
     private_file(&path);
     Ok(())
 }
-pub(crate) fn rotate_token(dir: &Path) -> Result<()> {
+pub fn rotate_token(dir: &Path) -> Result<()> {
     let value = secret(24);
     let path = dir.join("api_token.txt");
     std::fs::write(&path, &value)?;

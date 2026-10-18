@@ -172,7 +172,11 @@ pub fn baglanti_ayarla(
     if !sec.is_empty() {
         m.rpc()
             .change_option(gid, &sec)
-            .map_err(|_| invalid("canli degistirilemedi: motor ayari uygulanamadi"))?;
+            .map_err(|e| {
+                // Python manager.py: "canli degistirilemedi: %s" % str(exc)[:160]
+                let neden: String = e.to_string().chars().take(160).collect();
+                invalid(format!("canli degistirilemedi: {neden}"))
+            })?;
         let mut opts = options(&row);
         if let Some(n) = baglanti {
             opts.insert("baglanti".into(), json!(n));

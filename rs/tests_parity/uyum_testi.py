@@ -554,6 +554,11 @@ def main() -> int:
                     if kayit[side].get("beklenen_ok") is False:
                         kayit["farklar"].append(("kritik", f"govde_kaynakla_uyusmuyor[{side}]",
                                                  "indirilen/servis edilen icerik kaynak dosyayla ayni degil"))
+                    if ("beklenen" in adim or "beklenen_kesit" in adim) and \
+                            kayit[side].get("status") not in (200, 206):
+                        # Icerik dogrulanamadi (ornegin 404): bu bir "fark yok" degil, KANITSIZ.
+                        kayit["farklar"].append(("kritik", f"kanit_yok[{side}]",
+                                                 f"icerik beklendi ama durum={kayit[side].get('status')}"))
             sonuclar.append(kayit)
             print(f"[{kayit['id']}] {kayit['ad']}: py={kayit['py'].get('status')} "
                   f"rs={kayit['rs'].get('status')} fark={len(kayit['farklar'])}", flush=True)

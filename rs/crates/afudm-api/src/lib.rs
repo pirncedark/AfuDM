@@ -2,7 +2,7 @@
 pub mod erisim;
 pub mod listener;
 mod request;
-mod security;
+pub mod security;
 mod transfer;
 
 pub use afudm_types::ApiCtx;

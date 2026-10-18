@@ -24,7 +24,7 @@ use crate::{entegrasyon, window::{self, ANA}};
 
 type Sonuc = afudm_types::Result<Json>;
 
-fn kilit<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+pub(crate) fn kilit<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
@@ -32,30 +32,30 @@ fn henuz_yok() -> Json {
     json!({"ok": false, "error": "henüz yok"})
 }
 
-fn hata(metin: impl Into<String>) -> Json {
+pub(crate) fn hata(metin: impl Into<String>) -> Json {
     json!({"ok": false, "error": metin.into()})
 }
 
-fn motor_hazir_degil() -> Json {
+pub(crate) fn motor_hazir_degil() -> Json {
     hata("motor henüz hazır değil")
 }
 
-fn cevap(r: Sonuc) -> Json {
+pub(crate) fn cevap(r: Sonuc) -> Json {
     match r {
         Ok(v) => v,
         Err(e) => hata(e.to_string()),
     }
 }
 
-fn s(a: &[Json], i: usize) -> &str {
+pub(crate) fn s(a: &[Json], i: usize) -> &str {
     a.get(i).and_then(Json::as_str).unwrap_or("")
 }
 
-fn b(a: &[Json], i: usize) -> bool {
+pub(crate) fn b(a: &[Json], i: usize) -> bool {
     a.get(i).and_then(Json::as_bool).unwrap_or(false)
 }
 
-fn n(a: &[Json], i: usize) -> i64 {
+pub(crate) fn n(a: &[Json], i: usize) -> i64 {
     a.get(i).and_then(Json::as_i64).unwrap_or(0)
 }
 
@@ -103,6 +103,18 @@ fn lg_teslim_et(app: &AppHandle, lg: &LinkGrabberDurum) {
 }
 
 impl TauriUi {
+    /// Python `_bekleyenler.ekle`: istegi kuyruga koyar, onay/iptal yanitini alicidan verir (bekletmez).
+    pub(crate) fn kuyruga_ekle(&self, istek: JsonMap) -> (i64, mpsc::Receiver<Option<JsonMap>>) {
+        let (tx, rx) = mpsc::channel();
+        let kimlik = {
+            let mut s = kilit(&self.sayac);
+            *s += 1;
+            *s
+        };
+        kilit(&self.bekleyen).insert(kimlik, Bekleyen { istek, yanit: tx });
+        (kimlik, rx)
+    }
+
     fn new(app: AppHandle) -> Self {
         Self {
             app,
@@ -267,7 +279,7 @@ fn kaydet_bilgi(c: &ApiCtx, url: &str, dosya_adi: &str, kind: &str) -> Sonuc {
     }))
 }
 
-fn truthy(v: &Json) -> bool {
+pub(crate) fn truthy(v: &Json) -> bool {
     match v {
         Json::Bool(b) => *b,
         Json::Number(n) => n.as_f64().is_some_and(|f| f != 0.0),
@@ -310,7 +322,7 @@ pub struct Kabuk {
     pub ctx: OnceLock<ApiCtx>,
     pub ek: OnceLock<Ek>,
     pub port: OnceLock<u16>,
-    app: AppHandle,
+    pub(crate) app: AppHandle,
     boot_hata: Mutex<Option<String>>,
 }
 
@@ -380,7 +392,7 @@ fn motor_cagri(k: &Kabuk, f: impl FnOnce(&dyn ManagerApi) -> Sonuc) -> Json {
     }
 }
 
-fn gezgin_ac(yol: &Path, sec: bool) {
+pub(crate) fn gezgin_ac(yol: &Path, sec: bool) {
     let mut komut = Command::new("explorer.exe");
     if sec {
         komut.arg(format!("/select,{}", yol.display()));
@@ -487,7 +499,7 @@ fn kayit_bulunamadi() -> String {
 
 /// Python app.settings_save / ayarlari_dogrula_kaydet (hata ayrintisi yok: update_settings
 /// tek hata dondurur; Python'daki alan bazli hatalar burada uretilmez).
-fn ayar_kaydet(c: &ApiCtx, payload: &JsonMap) -> Sonuc {
+pub(crate) fn ayar_kaydet(c: &ApiCtx, payload: &JsonMap) -> Sonuc {
     match c.manager.update_settings(payload) {
         Ok(kayit) => Ok(json!({"ok": true, "hatalar": [], "ayarlar": kayit, "settings": kayit})),
         Err(_) => Ok(json!({
@@ -577,7 +589,7 @@ fn panodan_oku() -> Json {
 }
 
 /// Konsol penceresi acmayan surec (CREATE_NO_WINDOW).
-fn hidden_cmd(program: &str) -> Command {
+pub(crate) fn hidden_cmd(program: &str) -> Command {
     let mut komut = Command::new(program);
     #[cfg(windows)]
     {
@@ -915,8 +927,10 @@ fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Json {
         }
         "panodan_oku" => panodan_oku(),
 
-        // Bagli degil: G/H ekleri (router'lari bos), eklenti, sunucu, telefon, paylasim.
-        _ => henuz_yok(),
+        // Ekip F4a (kopru_g.rs) ve F4b (kopru_h.rs) kendi komutlarini kendi dosyasinda isler.
+        _ => crate::kopru_g::dispatch(k, name, a)
+            .or_else(|| crate::kopru_h::dispatch(k, name, a))
+            .unwrap_or_else(henuz_yok),
     }
 }
 

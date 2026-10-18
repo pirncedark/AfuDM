@@ -64,3 +64,11 @@ Böylece "çalışıyor" iddiası kanıta dayanır.
 - Codex kotası: 17 Eki'de bitikti, bugün çalıştı. Biterse iş claude kod ajanına kayar.
 - Oto güncelleme: 2.9.x güncelleyici zip içindeki AfuDM.exe'yi değiştiriyor; 3.0 zip düzeni aynı tutulmalı, yoksa kullanıcılar takılır.
 - Sürüm 3.0 yayınlanana kadar 2.9.8 kullanılmaya devam eder (risk yok).
+
+## Sonraki sürüm (kullanıcı kararı, 18 Eki: seçenek 1)
+OmniGet incelemesinden alınan fikirler. OmniGet GPL-3.0 lisanslı; kod kopyalanmayacak, aynı fikirler kendi kodumuzla yazılacak.
+Uyum testinde kritik fark 0 olduktan sonra, 3.0.1 sürümünde:
+1. 403 merdiveni: 403 alınınca aynı adresi tarayıcı benzeri başlıklarla (Range bytes=0-, sec-fetch-*) bir kez daha dene.
+2. Hata sayfası kontrolü: indirme bitince dosyanın ilk 512 baytına bak; HTML hata sayfasıysa indirmeyi hata say.
+3. Bozuk durum dosyası karantinası: JSON durum dosyası okunamazsa dosyayı .corrupt-<zaman> adıyla sakla, log yaz, sonra varsayılanı kullan.
+Daha sonra: host başına uyarlanır bağlantı sayısı (yavaş artır, hızlı düşür) ve genel bağlantı bütçesi (~24).

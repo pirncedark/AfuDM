@@ -5,12 +5,15 @@
 
 mod boot;
 mod bridge;
+mod kopru_g;
+mod kopru_h;
 mod entegrasyon;
 mod guc;
 mod guncelleme_zamanla;
 mod izleme;
 mod tray;
 mod window;
+mod yonetim;
 mod windows_rota;
 
 use std::sync::Arc;

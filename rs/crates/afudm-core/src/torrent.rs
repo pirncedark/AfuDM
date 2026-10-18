@@ -3,8 +3,8 @@
 //! Imzalar afudm-types::ManagerApi ile sabit; degistirilmez.
 
 mod bencode;
-mod saglik;
-mod trackers;
+pub mod saglik;
+pub mod trackers;
 
 use crate::queue::proxy;
 use crate::Manager;
