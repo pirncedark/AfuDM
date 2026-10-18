@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
 const html = fs.readFileSync(path.join(__dirname, '../app/ui/mobil.html'), 'utf8');
-const script = html.match(/<script>\s*([\s\S]*?)<\/script>/)[1];
+const script = html.match(/<script>\s*([\s\S]*?)<\/script\s*>/i)[1];
 new vm.Script(script); // Tum mobil betigi de sozdizimsel olarak derlenir.
 function fixture(url, stored = '', response = {ok:true, token:'phone-token'}) {
   const calls = [], elements = new Map(), handlers = new Map(), storage = new Map([['afudm_anahtar', stored]]);
