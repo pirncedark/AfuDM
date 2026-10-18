@@ -3,4 +3,6 @@
     <cache-path name="updates" path="." />
     <cache-path name="share" path="share/" />
     <external-files-path name="downloads" path="." />
+    <!-- Indirilen dosyalar gorunur afutube klasorune tasinir; paylasma buradan calisir. -->
+    <external-path name="afutube_downloads" path="Download/afutube/" />
 </paths>

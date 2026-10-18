@@ -51,8 +51,7 @@ class TorrentWorker(
             ?: return@withContext failure("Bağlantı bulunamadı, indirmeyi yeniden başlat.")
         val title = params.inputData.getString(KEY_TITLE) ?: "Torrent"
         val outputRoot = File(params.inputData.getString(KEY_OUTPUT_DIR)
-            ?: applicationContext.getExternalFilesDir(null)?.absolutePath
-            ?: applicationContext.filesDir.absolutePath)
+            ?: DownloadFolder.stagingDir(applicationContext).absolutePath)
         // WorkManager retries reuse this directory; partial files and .aria2 stay intact.
         val destination = File(outputRoot, "torrent-$id")
         val temporary = File(applicationContext.cacheDir, "torrent-$id")
@@ -132,13 +131,35 @@ class TorrentWorker(
                 files.any { it.name.endsWith(".aria2", true) }) {
                 failure("İndirme tamamlanamadı, bağlantıyı kontrol edip yeniden dene.")
             } else {
-                val output = if (payload.size == 1) payload.single() else destination
-                Result.success(workDataOf("output_path" to output.absolutePath))
+                val outputPath = if (payload.size == 1) {
+                    DownloadFolder.publish(applicationContext, payload.single())
+                } else {
+                    // Keep the complete torrent tree as the aggregate output. Publish copies
+                    // so a failed public-folder write cannot split it across directories.
+                    for (file in payload) {
+                        ensureActive()
+                        val copy = File(temporary, "publish/${file.name}")
+                        try {
+                            runCatching {
+                                check(copy.parentFile!!.isDirectory || copy.parentFile!!.mkdirs())
+                                file.copyTo(copy, overwrite = true)
+                                DownloadFolder.publish(applicationContext, copy)
+                            }
+                        } finally {
+                            copy.delete()
+                        }
+                    }
+                    destination.absolutePath
+                }
+                Result.success(workDataOf("output_path" to outputPath))
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
             failure("İndirme başlatılamadı, bağlantıyı kontrol edip yeniden dene.")
+        } finally {
+            // Only the fetched descriptor is disposable; payload/.aria2 files allow resume.
+            File(temporary, "input.torrent").delete()
         }
     }
 

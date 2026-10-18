@@ -4,9 +4,9 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
-use afudm_types::ApiCtx;
+use afudm_types::{ApiCtx, Store};
 use axum::body::{Body, Bytes};
 use axum::extract::{Path as AxPath, State};
 use axum::http::{header, HeaderMap, StatusCode};
@@ -19,6 +19,20 @@ use serde_json::{json, Value};
 use std::io::SeekFrom;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::sync::oneshot;
+
+// One pacing gate for all share endpoints, including the tunnel server.
+static UPLOAD_GATE: LazyLock<Arc<tokio::sync::Mutex<()>>> =
+    LazyLock::new(|| Arc::new(tokio::sync::Mutex::new(())));
+
+type UploadStore = Option<Arc<dyn Store>>;
+
+fn upload_kb(store: &UploadStore) -> u64 {
+    store
+        .as_ref()
+        .and_then(|s| s.get("max_upload_kb").ok().flatten())
+        .and_then(|v| v.as_u64())
+        .unwrap_or(100)
+}
 
 /// Python `_Handler.shared_files`: token -> (path, created). HTTP ve UI tek defteri kullanir.
 static PAYLASIMLAR: Mutex<BTreeMap<String, (PathBuf, f64)>> = Mutex::new(BTreeMap::new());
@@ -155,7 +169,13 @@ fn aralik_basligi(basliklar: &HeaderMap) -> &str {
 }
 
 /// Dosyayi (Range destekli) parca parca akitir. Python `_dosya_akis_gonder` / dar `_serve`.
-async fn dosya_yaniti(yol: &Path, baslik: &str, mod_: Mod) -> Response {
+async fn dosya_yaniti(
+    yol: &Path,
+    baslik: &str,
+    mod_: Mod,
+    store: UploadStore,
+    gate: Arc<tokio::sync::Mutex<()>>,
+) -> Response {
     let boyut = match tokio::fs::metadata(yol).await {
         Ok(m) if mod_ == Mod::Ana || m.is_file() => m.len(),
         _ => return bos_veya_hata(mod_),
@@ -200,31 +220,52 @@ async fn dosya_yaniti(yol: &Path, baslik: &str, mod_: Mod) -> Response {
             format!("bytes {baslangic}-{son}/{boyut}"),
         );
     }
-    let akis = stream::unfold((dosya, uzunluk), |(mut f, kalan)| async move {
-        if kalan == 0 {
-            return None;
-        }
-        let n = kalan.min(256 * 1024) as usize;
-        let mut tampon = vec![0u8; n];
-        match f.read(&mut tampon).await {
-            Ok(0) => None,
-            Ok(k) => {
-                tampon.truncate(k);
-                Some((
-                    Ok::<Bytes, std::io::Error>(Bytes::from(tampon)),
-                    (f, kalan - k as u64),
-                ))
+    let akis = stream::unfold(
+        (dosya, uzunluk, store, gate),
+        |(mut f, kalan, store, gate)| async move {
+            if kalan == 0 {
+                return None;
             }
-            Err(e) => Some((Err(e), (f, 0))),
-        }
-    });
+            let kb = upload_kb(&store);
+            // At most 100 ms per chunk so live changes/cancellation remain responsive.
+            let chunk = if kb == 0 {
+                256 * 1024
+            } else {
+                (kb.saturating_mul(1024) / 10).clamp(1, 16 * 1024)
+            };
+            let n = kalan.min(chunk) as usize;
+            let mut tampon = vec![0u8; n];
+            match f.read(&mut tampon).await {
+                Ok(0) => None,
+                Ok(k) => {
+                    tampon.truncate(k);
+                    if kb > 0 {
+                        let _permit = gate.lock().await;
+                        tokio::time::sleep(std::time::Duration::from_secs_f64(
+                            k as f64 / (kb as f64 * 1024.0),
+                        ))
+                        .await;
+                    }
+                    Some((
+                        Ok::<Bytes, std::io::Error>(Bytes::from(tampon)),
+                        (f, kalan - k as u64, store, gate),
+                    ))
+                }
+                Err(e) => Some((Err(e), (f, 0, store, gate))),
+            }
+        },
+    );
     yanit
         .body(Body::from_stream(akis))
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 /// `GET /s/{token}` (ana sunucu). Python: api/server.py do_GET `/s/`. Anahtar gerektirmez.
-pub async fn s_ana(AxPath(token): AxPath<String>, basliklar: HeaderMap) -> Response {
+pub async fn s_ana(
+    State(ctx): State<ApiCtx>,
+    AxPath(token): AxPath<String>,
+    basliklar: HeaderMap,
+) -> Response {
     let Some(yol) = paylasim_bul(&token) else {
         return super::hata(
             StatusCode::NOT_FOUND,
@@ -232,21 +273,41 @@ pub async fn s_ana(AxPath(token): AxPath<String>, basliklar: HeaderMap) -> Respo
             "Paylasim bulunamadi veya suresi doldu",
         );
     };
-    dosya_yaniti(&yol, aralik_basligi(&basliklar), Mod::Ana).await
+    dosya_yaniti(
+        &yol,
+        aralik_basligi(&basliklar),
+        Mod::Ana,
+        Some(ctx.store),
+        UPLOAD_GATE.clone(),
+    )
+    .await
 }
 
 /// Dar sunucunun tek rotasi. Python `_PaylasimHandler._serve`: yanit yoksa bos 404.
-async fn dar_servis(AxPath(token): AxPath<String>, basliklar: HeaderMap) -> Response {
+async fn dar_servis(
+    State(store): State<UploadStore>,
+    AxPath(token): AxPath<String>,
+    basliklar: HeaderMap,
+) -> Response {
     match paylasim_bul(&token) {
         Some(yol) if yol.is_file() => {
-            dosya_yaniti(&yol, aralik_basligi(&basliklar), Mod::Dar).await
+            dosya_yaniti(
+                &yol,
+                aralik_basligi(&basliklar),
+                Mod::Dar,
+                store,
+                UPLOAD_GATE.clone(),
+            )
+            .await
         }
         _ => StatusCode::NOT_FOUND.into_response(),
     }
 }
 
-fn dar_yonlendirici() -> axum::Router {
-    axum::Router::new().route("/s/{token}", axum::routing::get(dar_servis))
+fn dar_yonlendirici(store: UploadStore) -> axum::Router {
+    axum::Router::new()
+        .route("/s/{token}", axum::routing::get(dar_servis))
+        .with_state(store)
 }
 
 /// Yol ayiricisi/yollari normalize eder; Windows `\\?\` on ekini atar.
@@ -366,12 +427,20 @@ pub async fn share_create(
 /// Tunel bu porta baglanir; boylece internete yalniz paylasim acilir.
 #[derive(Default)]
 pub struct PaylasimSunucusu {
+    store: UploadStore,
     port: u16,
     kapat_sinyali: Option<oneshot::Sender<()>>,
     is_parcasi: Option<std::thread::JoinHandle<()>>,
 }
 
 impl PaylasimSunucusu {
+    pub fn depoyla(store: Arc<dyn Store>) -> Self {
+        Self {
+            store: Some(store),
+            ..Self::default()
+        }
+    }
+
     pub fn port(&self) -> u16 {
         self.port
     }
@@ -385,6 +454,7 @@ impl PaylasimSunucusu {
         dinleyici.set_nonblocking(true)?;
         let port = dinleyici.local_addr()?.port();
         let (tx, rx) = oneshot::channel::<()>();
+        let store = self.store.clone();
         let parca = std::thread::Builder::new()
             .name("afudm-paylasim-sunucu".into())
             .spawn(move || {
@@ -406,7 +476,7 @@ impl PaylasimSunucusu {
                             return;
                         }
                     };
-                    let sonuc = axum::serve(liste, dar_yonlendirici())
+                    let sonuc = axum::serve(liste, dar_yonlendirici(store))
                         .with_graceful_shutdown(async {
                             let _ = rx.await;
                         })
@@ -450,6 +520,49 @@ mod tests {
         let yol = klasor.join(ad);
         std::fs::write(&yol, icerik).unwrap();
         yol
+    }
+
+    #[tokio::test]
+    async fn upload_shared_file_limit_and_live_unlimited() {
+        use afudm_types::Store;
+        use std::sync::Arc;
+        use std::time::{Duration, Instant};
+        let store = Arc::new(afudm_db::SqliteStore::open_in_memory().unwrap());
+        store.set("max_upload_kb", json!(2)).unwrap();
+        let yol = gecici_dosya("upload.bin", &vec![42; 1024]);
+        let limiter = Arc::new(tokio::sync::Mutex::new(()));
+        let a = dosya_yaniti(&yol, "", Mod::Ana, Some(store.clone()), limiter.clone()).await;
+        let b = dosya_yaniti(
+            &yol,
+            "bytes=0-1023",
+            Mod::Dar,
+            Some(store.clone()),
+            limiter.clone(),
+        )
+        .await;
+        assert_eq!(b.status(), StatusCode::PARTIAL_CONTENT);
+        let start = Instant::now();
+        let (a, b) = tokio::join!(
+            axum::body::to_bytes(a.into_body(), 2048),
+            axum::body::to_bytes(b.into_body(), 2048)
+        );
+        assert_eq!(a.unwrap().len(), 1024);
+        assert_eq!(b.unwrap().len(), 1024);
+        assert!(
+            start.elapsed() >= Duration::from_millis(950),
+            "parallel transfers must share the limit"
+        );
+        // Settings change is read by an already-created stream on its next chunk.
+        let response = dosya_yaniti(&yol, "", Mod::Ana, Some(store.clone()), limiter).await;
+        store.set("max_upload_kb", json!(0)).unwrap();
+        let body = tokio::time::timeout(
+            Duration::from_millis(400),
+            axum::body::to_bytes(response.into_body(), 2048),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(body.len(), 1024);
     }
 
     #[test]

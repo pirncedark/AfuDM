@@ -23,6 +23,46 @@ class ReleaseToolsTest(unittest.TestCase):
             self.assertEqual(version, data["package"]["version"])
         self.assertEqual(version, json.loads((ROOT / "rs/app/tauri.conf.json").read_text())["version"])
 
+    def test_release_please_updates_only_workspace_packages_in_cargo_locks(self):
+        def read_toml(path):
+            return tomllib.loads((ROOT / path).read_text(encoding="utf-8"))
+
+        workspace = read_toml("rs/Cargo.toml")["workspace"]
+        workspace_names = {
+            read_toml(f"rs/{member}/Cargo.toml")["package"]["name"]
+            for member in workspace["members"]
+        }
+        app_name = read_toml("rs/app/Cargo.toml")["package"]["name"]
+        expected_by_lock = {
+            "rs/Cargo.lock": workspace_names,
+            "rs/app/Cargo.lock": workspace_names | {app_name},
+        }
+        config = json.loads(
+            (ROOT / "release-please-config.json").read_text(encoding="utf-8")
+        )
+        extra_files = config["packages"]["."]["extra-files"]
+        for lock_path, expected_names in expected_by_lock.items():
+            with self.subTest(lock=lock_path):
+                packages = read_toml(lock_path)["package"]
+                local_packages = [p for p in packages if "source" not in p]
+                self.assertCountEqual(
+                    [p["name"] for p in local_packages], expected_names
+                )
+                # Exact name filters prevent wildcard/index selectors from
+                # silently bumping registry or git dependencies after reordering.
+                self.assertCountEqual(
+                    [entry for entry in extra_files
+                     if isinstance(entry, dict) and entry.get("path") == lock_path],
+                    [
+                        {
+                            "type": "toml",
+                            "path": lock_path,
+                            "jsonpath": f"$.package[?(@.name.value=='{name}')].version",
+                        }
+                        for name in expected_names
+                    ],
+                )
+
     def test_quality_gate_collects_every_job(self):
         jobs = yaml.safe_load((ROOT / ".github/workflows/quality-gate.yml").read_text())["jobs"]
         self.assertEqual(set(jobs["quality-gate"]["needs"]), set(jobs) - {"quality-gate"})

@@ -40,6 +40,8 @@ pub(crate) fn arguments(
         "--bt-request-peer-speed-limit=50M".into(),
         "--bt-detach-seed-only=true".into(),
         "--seed-ratio=1.0".into(),
+        "--seed-time=0".into(),
+        "--max-overall-upload-limit=100K".into(),
         "--follow-torrent=true".into(),
         "--bt-save-metadata=false".into(),
         format!(

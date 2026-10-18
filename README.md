@@ -1,492 +1,96 @@
-# AfuDM
+<h1 align="center">AfuDM</h1>
 
-A portable download manager for Windows — files, video and torrents in one
-folder. Nothing is written to the system, the registry or AppData: copy the
-folder to a USB stick and it runs.
+<p align="center">
+  <img src="docs/readme/hero.svg" width="960" alt="AfuDM — files, videos and torrents. One portable Windows app." />
+</p>
+<p align="center">
+  <a href="https://github.com/pirncedark/AfuDM/releases/latest"><img src="https://img.shields.io/badge/Download-latest_release-5b9dff?style=for-the-badge" alt="Download the latest Windows release" /></a>
+</p>
+<p align="center">
+  <img src="https://img.shields.io/badge/Windows-64--bit-5b9dff" alt="Windows 64-bit" />
+  <img src="https://img.shields.io/badge/Built_with-Rust_%2B_Tauri-a78bfa" alt="Built with Rust and Tauri" />
+  <img src="https://img.shields.io/badge/Source-open-46c98b" alt="Open source" />
+  <img src="https://img.shields.io/badge/Updates-automatic-46c98b" alt="Automatic updates" />
+</p>
 
-## Engines
+**Download once. Let AfuDM handle the rest.** Files, videos and torrents share one queue, with browser capture, download checks and optional actions when a file finishes. Free to use, open source and ad-free.
 
-AfuDM Core bundles **aria2**.
+Since **3.0**, the desktop app is built with **Rust + Tauri**. Extract the release ZIP and launch `AfuDM.exe`; keep its companion folders together. The portable package includes aria2 and the browser extension. Video engines are optional.
 
-**yt-dlp** and **FFmpeg** are downloaded on demand from
-Settings → Engines and stored inside the AfuDM folder,
-so the application remains portable.
+[Quick start](#quick-start) · [How it works](#how-it-works) · [Why AfuDM](#why-afudm) · [Build from source](#build-from-source) · [Türkçe](#türkçe)
 
-The Full package may include additional engines.
+## How it works
 
-*Türkçe açıklama aşağıda ↓*
+<img src="docs/readme/how-it-works.svg" width="960" alt="Browser extension captures a link; AfuDM queues it; aria2 downloads file parts in parallel; download checks run; the file is saved and configured automation runs." />
 
----
+1. **Click a download in your browser.** The extension hands it to AfuDM. If a handoff fails, a second path can fetch the file in the browser context and pass it to AfuDM.
+2. **Watch the parts fill up.** aria2 downloads file segments over multiple connections. Pause and resume supported downloads from the same queue.
+3. **Check what arrived.** AfuDM detects HTML error pages masquerading as files. SHA-256 verification is available when you supply an expected checksum; it is not a malware scan.
+4. **Finish in the right folder.** Optional automation can extract ZIP archives, move files and notify you. Configure these actions once when you need them.
 
-## Start
+**On your phone:** scan AfuDM's pairing QR code on the same local network to manage downloads and transfer completed files. [AfuTube](AfuTube/README.md) is the separate Android video companion.
 
-```
-AfuDM.exe          no Python needed — the desktop shortcut points here
-AfuDM.bat          run from source (development)
-```
+## Built for everyday downloads
 
-`AfuDM.exe` carries its own Python, but it must sit **next to** `engine/` and
-`ui/` — that is why it lives in the main folder. Don't move it on its own.
+<img src="docs/readme/features.svg" width="960" alt="Feature cards: parallel downloads, pause and resume, torrents, optional video engines, browser capture and fallback, one retry after HTTP 403, error-page detection, automatic updates, portability, phone QR pairing, idle engine sleep, English and Turkish." />
 
-To run from source, run `kur.bat` once; it installs three Python packages
-(`pywebview`, `pystray`, `pillow`). The engines are already in `engine/`.
+- **Files, torrents and video:** multi-connection downloads, magnet links and `.torrent` files in one app. Video sites use optional **yt-dlp**; support depends on the site and available engines. If yt-dlp or FFmpeg is missing, AfuDM downloads it automatically in the background on first launch — nothing to set up.
+- **Recovery that knows the browser:** eligible HTTP 403 failures get one retry with browser-style headers. The extension also has a browser-context fallback; protected or expired links can still require a fresh link or sign-in.
+- **Quiet when idle:** the aria2 engine saves its session and stops when no downloads need it, waking for new work.
+- **Portable, with familiar controls:** no AfuDM installer, automatic updates, phone pairing and English/Turkish UI. Optional Windows integration may register file associations or startup behavior.
 
-Two packages are produced by `python paketle.py`:
+## Why AfuDM
 
-| Package | Size | Contents |
-|---|---|---|
-| core (default) | **22 MB** | aria2 only — video engines are downloaded on demand |
-| `--tam` (full) | 137 MB | everything bundled |
+<img src="docs/readme/why-afudm.svg" width="960" alt="Nine-row comparison: AfuDM combines free open source, portability, torrents, video, auto-update, error-page detection, a 403 retry, local QR pairing and no ads. Crosses mark sourced absences; dashes mean not verified." />
 
-In the core package, Settings → Engines downloads yt-dlp and ffmpeg when you
-want them. Downloads land inside the app folder, so it stays portable.
+Choose AfuDM if you want **a portable, open-source app that combines downloads, torrents, browser recovery and local phone pairing**. Other managers share many of these features; this is a feature comparison, not a speed benchmark.
 
-## What it does
+| Capability | AfuDM | IDM | Free Download Manager (current) | JDownloader 2 | Browser alone |
+|:--|:--:|:--:|:--:|:--:|:--:|
+| Free / open source | ✓ / ✓ | ✗ / ✗ | ✓ / — | ✓ / ✓ | Varies |
+| Portable; no app installer | ✓ | — | — | ✓¹ | Varies |
+| Torrent / magnet downloads | ✓ | ✗ | ✓ | — | — |
+| Video-site downloads | ✓² | ✓ | ✓² | ✓² | Direct files only |
+| Auto-update | ✓ | ✓ | — | ✓ | Varies |
+| Detects error pages saved as files | ✓ | — | — | — | — |
+| Retries 403 with browser headers | ✓³ | — | — | — | — |
+| Local QR phone pairing | ✓ | — | —⁴ | — | — |
+| No ads | ✓ | ✓ | ✓ | — | Varies |
 
-**Fast downloads.** Splits a file into 64 pieces and opens 16 connections per
-server. Measured: 16 concurrent connections, 4.9 MB/s peak.
+**Legend:** ✓ = supported; ✗ = not supported; **— = not verified**. Error-page detection means HTML returned in place of an expected file. Auto-update may require confirmation in other apps. “Browser alone” means its built-in downloader without extensions; behavior varies by browser. Comparison checked on 2026-10-18.
 
-**Pause and resume.** A paused download — even one interrupted by closing the
-app — continues where it stopped. The aria2 session is written to disk every
-15 seconds.
+¹ JDownloader's portable route requires Java. ² Site/engine/add-on dependent; no promise of every site. ³ One retry for eligible HTTP file downloads; access is not guaranteed. ⁴ FDM offers Android remote control with FDM installed on both devices; this table's row specifically means local **QR pairing**.
 
-**Video.** YouTube, Instagram, TikTok and everything else yt-dlp supports.
-Quality picker (up to 4K), audio only (mp3), whole playlists.
+Sources: [IDM features](https://www.internetdownloadmanager.com/features2.html), [IDM trial terms](https://www.internetdownloadmanager.com/register/new_faq/purchase6.html), [IDM licence terms](https://www.internetdownloadmanager.com/support/terms-and-conditions.html), [IDM torrent FAQ](https://www.internetdownloadmanager.com/register/new_faq/functions4.html), [FDM features](https://www.freedownloadmanager.org/features.htm) (its open-source and portable claims are listed under legacy 3.9), [JDownloader](https://jdownloader.org/), [JDownloader portable setup](https://support.jdownloader.org/en/knowledgebase/article/portable-jdownloader-version), [JDownloader updates](https://support.jdownloader.org/en/knowledgebase/article/updates-update-behavior).
 
-**Merging without ffmpeg.** YouTube sends audio and video as separate tracks. If
-ffmpeg is not installed, AfuDM joins them with its own muxer
-(`video/mp4mux.py`) — a remux, so nothing is re-encoded and quality is
-untouched. Verified against ffmpeg's own output: all 46,368 frames identical,
-timestamps included. This is what keeps the core package at 22 MB.
+## Quick start
 
-**Torrents.** Magnet links and `.torrent` files. Live seed/peer counts, uploaded
-bytes, ratio. DHT, PEX and LPD are on, and the tracker list refreshes daily so
-even tired torrents find peers.
+1. **↓ Download** the Windows ZIP from [Latest release](https://github.com/pirncedark/AfuDM/releases/latest).
+2. **▣ Extract** the entire ZIP into a writable folder. Keep `AfuDM.exe`, `engine/` and `extension/` together.
+3. **▶ Open `AfuDM.exe`** and add your first link.
+4. **↗ Choose “Add to Chrome”** in AfuDM to enable browser capture. Follow the built-in guide; the extension connects to AfuDM during setup.
 
-**Queue and scheduling.** How many downloads at once, speed limit, "start at
-23:30", notify Telegram when finished or shut the computer down.
+The Tauri interface uses Microsoft Edge WebView2. If Windows reports it missing, install the [official WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) and reopen AfuDM.
 
-**Download dialog.** Every link — from the extension, the clipboard or a
-double-clicked `.torrent` — stops here first: file name, category, a folder tree
-(shortcuts, drives, "new folder") and start now / start at a time. Nothing
-reaches the engine before you confirm. Turn it off in Settings if you want links
-to start instantly.
+## Build from source
 
-**Category folders.** With no target picked, files land in `downloads/Video`,
-`downloads/Müzik`, `downloads/Belgeler`… by type. Optional.
+On Windows, install the stable [Rust toolchain](https://www.rust-lang.org/tools/install), Microsoft C++ Build Tools and WebView2 using the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows).
 
-**Seed refresh for torrents.** A **Seeds** button on every torrent row opens a
-live window: seeds, connections, the torrent's tracker count, the applied list,
-its age and DHT state. *Refresh now* pulls today's tracker list and re-announces
-the torrent. You can paste **your own trackers** there too — they go to the front
-of the list. Measured on a real 19 GB torrent: connections 6 → 11, progress kept
-(aria2 cannot add trackers to a running torrent, so AfuDM removes and re-adds it
-in place; the `.aria2` control file keeps every downloaded piece).
+From the repository root:
 
-**One copy only.** Opening AfuDM again — or double-clicking a second `.torrent` —
-does not start a second window; the running one comes to the front and takes the
-link.
-
-**Tray.** Minimizing hides the window from the taskbar; the tray icon brings it
-back. It can also start with Windows straight into the tray (Settings), so
-downloads resume without a window popping up. Windows 11 hides new tray icons
-under the `^` arrow — drag it onto the taskbar once to keep it visible.
-
-**Opens .torrent and magnet links.** Settings registers AfuDM for `.torrent`
-files and `magnet:` links (your previous program's registration is backed up and
-restored if you turn it off). Windows will not let a program set itself as the
-default for a file type, so Settings has a button that opens the Windows screen
-where you pick it.
-
-**Clipboard watch.** Copy a downloadable link and the download dialog opens.
-
-**Two languages.** Settings → Dil / Language: Automatic (follows Windows),
-Türkçe or English. The change applies without a restart — window title and tray
-menu follow too. The browser extension uses the browser's own language.
-
-## Browser extension
-
-**One click:** in AfuDM press **Add to Chrome** (left menu) → **Add automatically**.
-AfuDM opens the extensions page, turns on Developer mode, loads the `extension`
-folder and the extension connects to AfuDM by itself. Keep your hands off the
-keyboard for a few seconds. If a step gets stuck, the same window shows the
-manual steps with copy buttons.
-
-By hand: `chrome://extensions` → Developer mode → **Load unpacked** (not "Pack
-extension") → pick the `extension` folder. Keep AfuDM's *Add to Chrome* window
-open and the extension pairs automatically.
-
-What it does:
-- takes over browser downloads (and sends session cookies, so sites that need a
-  login work too — cookies are never stored in AfuDM's database)
-- **video panel:** a "Download with AfuDM" button appears on playing videos, also
-  inside embedded players; pick 1080p / 720p / audio only. Qualities come from the
-  page's HLS/DASH playlist, or from yt-dlp on sites like YouTube
-- "Download with AfuDM" in the right-click menu
-
-When AfuDM is closed the extension stays out of the way and the browser
-downloads normally. DRM-protected streams (Netflix etc.) cannot be downloaded.
-
-## Command line
-
-`afuadm.bat` (a thin wrapper to `afuadm.py`, needs Python) talks to the running
-AfuDM through its local HTTP API — it reads the port+token from
-`data/api_endpoint.json`, so nothing is ever sent unauthenticated. If AfuDM is
-closed it starts it in the background (`--tepside`) and waits; `--no-start`
-disables that.
-
-```
-afuadm list                                   show queue
-afuadm status --json                          engine / total speed (raw JSON)
-afuadm add https://site.com/file.zip
-afuadm add "https://youtube.com/watch?v=..." --quality 1080p --audio-only
-afuadm add URL --start-at "23:30"             schedule
-afuadm mode snail|normal|turbo                live speed profile (100 KB/s / your limit / unlimited)
-afuadm renew <gid> "https://new-valid-link"   swap expired URL, keep downloaded bytes
-afuadm watch --json                           live NDJSON stream (poll every 0.5s)
-afuadm info                                   version + service state
-afuadm ayarla <gid> --baglanti 8 --hiz 500    live per-download connections/speed cap (v1.4)
-afuadm ayar proxy socks5://127.0.0.1:1080     set global proxy (also: system_proxy 1)
-afuadm add URL --proxy http://... --checksum sha-256:<hex>  per-download proxy + verify
-
-afuadm server start                           run the service without any UI (v2.1)
-afuadm server status                          is the headless service up? panel address
-afuadm server stop                            shut it down cleanly (aria2 session is saved)
+```powershell
+cd rs/app
+cargo build --release --locked
 ```
 
-### Headless server (v2.1)
+The desktop binary is `rs/app/target/release/AfuDM.exe`. For a runnable folder, place `engine/aria2c.exe` and `extension/` beside the executable; these are supplied by the release ZIP. The UI is embedded in the executable. See the [Rust release packaging script](scripts/build_release_rust.ps1) for the package layout and the [changelog](docs/RELEASE_NOTES/CHANGELOG.md) for release history.
 
-`afuadm server start` runs AfuDM with **no desktop window**: the download
-engine, the shared service layer and the browser management panel only. The
-desktop UI, the panel and the CLI all call the *same* service layer, so there
-is one copy of the logic.
+## Türkçe
 
-The panel needs an **access key**. Create one in AfuDM → *Server* → *Create
-key*, choosing a role: `administrator` (everything) or `read-only` (watch only).
-The key is shown once and only its SHA-256 digest is stored; *Rotate* issues a
-new one and invalidates the old one instantly, dropping every client that used
-it. Keys are never put in a URL and are never logged.
+**AfuDM: dosya, video ve torrent için taşınabilir Windows indirme yöneticisi.** Ücretsiz, açık kaynaklı ve reklamsızdır. 3.0'dan beri masaüstü uygulaması Rust + Tauri kullanır.
 
-The panel is served over **plain HTTP — the connection is not encrypted.**
-Keep it on `127.0.0.1` or your own local network. AfuDM never opens itself to
-the internet; if you forward the port yourself, the traffic is not protected.
-
-Only one AfuDM instance per folder: if the desktop app is open, `server start`
-stops with a clear message instead of two processes fighting over the same
-database and aria2 session.
-
-Every subcommand accepts `--json`; `--json` and `--no-start` work on either
-side of the command (`afuadm status --json` == `afuadm --json status`). In
-`--json` mode stdout carries **only** the raw JSON / NDJSON; every human
-message and error goes to stderr, and the API token never appears in any
-output. Exit codes: `0` ok, `2` AfuDM missing/unreachable, `3` record not
-found (KAYIT_YOK), `4` API error, `130` interrupted. If two `afuadm` calls
-race to start AfuDM, a lock file (`data/afuadm_baslat.lock`) lets only one of
-them spawn it; the other connects through `/ping` without starting anything.
-
-`mode` (Snail/inspiration from FDM) calls `aria2.changeGlobalOption` so running
-downloads are not interrupted. `renew` (inspiration from Neat DM) uses
-`aria2.changeUri` — the old URI leaves the list, the new one joins it, and the
-`.aria2` control file keeps every downloaded byte, so an expired Google-Drive or
-signed link picks up exactly where it dropped. `renew` is HTTP(S)/FTP only and
-accepts optional `--headers`, `--cookies`, `--user-agent`; torrent/video jobs
-are rejected. Trackers from the seed lists are normalized (glued-URL split,
-dedupe, scheme whitelist, local/blocked-host filtering) when a torrent refresh
-runs — a larger list is not a faster download, a clean one is.
-
-## Tests
-
-```
-python tests/smoke.py                  # everything (really downloads)
-python tests/smoke.py --skip-torrent   # HTTP + video
-python tests/smoke.py --skip-video     # HTTP + torrent
-
-# these need no network and take seconds:
-python tests/netcheck_test.py          # IPv6 detection
-python tests/manager_test.py           # magnet / title rules
-python tests/i18n_test.py              # language keys
-python tests/seed_dosya_test.py        # seed lists in Settings
-python tests/format_test.py            # video format selection
-python tests/engines_test.py           # engine downloads
-python tests/mux_ayristirma_test.py    # MP4 sample parsing
-python tests/mux_test.py               # muxing + ffprobe + full decode
-python tests/kaydet_test.py            # download dialog (categories, folder tree)
-python tests/kuyruk_test.py            # duplicate detection, magnet GID re-attach
-python tests/seed_test.py              # seed refresh + your own trackers
-python tests/cerez_test.py             # session cookies
-python tests/baslangic_test.py         # startup shortcut
-python tests/iliskilendir_test.py      # .torrent / magnet registration
-python tests/cli_test.py               # speed profiles, link renewal, scheduling
-python tests/cli_surum_test.py         # stale endpoint, double auto-start lock, JSON purity, exit codes, token leak
-python tests/trackerlar_test.py        # tracker list normalization
-python tests/db_test.py                # DB migration (PRAGMA user_version, data preserved)
-python tests/fake_http_test.py         # fake HTTP: range/206 resume, auth 401, 403, redirect, drop, checksum
-python tests/network_core_test.py      # proxy parsing, checksum, live per-download options
-```
-
-`smoke.py` performs real downloads: multi-connection HTTP, pause/resume, magnet
-seed tracking, video → mp3. Current state: **17/17**. The offline suites above
-touch neither the real Startup folder nor the real registry — they redirect
-themselves to a temporary location.
-
-## Security
-
-The local API binds to `127.0.0.1` only and requires a token on every request.
-The token is generated into `data/api_token.txt` and is handed to the extension
-only within 2 minutes of you pressing "Pair the extension". aria2's RPC secret
-is generated randomly on every install.
-
-## Layout
-
-```
-AfuDM/
-  AfuDM.exe      single-file build (no Python needed)
-  AfuDM.bat      launcher for running from source
-  afuadm.py      command-line tool (afuadm.bat wrapper; needs Python)
-  kur.bat        one-time package install
-  paketle.py     builds the shippable package
-  app.py         window + tray + clipboard watch
-  core/          aria2 engine, RPC, queue, SQLite, trackers, engine downloads
-                 kaydet.py (download dialog), baslangic.py (start with Windows),
-                 iliskilendir.py (.torrent / magnet), pencere.py (window + tray)
-  video/         yt-dlp layer + MP4 muxer
-  api/           local HTTP API (127.0.0.1 + token)
-  ui/            interface (HTML/CSS/JS)
-  extension/     Chrome/Edge extension
-  engine/        aria2c.exe, yt-dlp.exe, ffmpeg.exe
-  data/          database, session, keys, log
-  downloads/     default download folder
-  tests/         smoke.py (real downloads) + offline suites
-  docs/DURUM.md  development notes (Turkish)
-```
-
----
-
-# AfuDM (Türkçe)
-
-IDM'in yerine geçen portable indirme yöneticisi. Dosya, video ve torrent indirir;
-tek klasörde yaşar, sisteme hiçbir şey yazmaz.
-
-## Motorlar
-
-AfuDM Core paketinde **aria2** bulunur.
-
-**yt-dlp** ve **FFmpeg**, Ayarlar → Motorlar bölümünden
-istek üzerine indirilir ve AfuDM klasöründe tutulur.
-Portable yapı bozulmaz.
-
-Tam paket ek motorları içerebilir.
-
-## Başlatma
-
-```
-AfuDM.exe          Python gerekmez — masaüstü kısayolu da buna bakar
-AfuDM.bat          kaynaktan çalıştırır (geliştirme)
-```
-
-`AfuDM.exe` kendi Python'unu içinde taşır; `engine/` ve `ui/` klasörleriyle
-**aynı yerde** durmalıdır — bu yüzden ana klasördedir, tek başına taşıma.
-
-Kaynaktan çalıştıracaksan bir kez `kur.bat` — sadece üç Python paketini kurar
-(`pywebview`, `pystray`, `pillow`). Motorlar `engine/` klasöründe zaten var.
-
-`python paketle.py` iki paket üretir:
-
-| Paket | Boyut | İçerik |
-|---|---|---|
-| çekirdek (varsayılan) | **22 MB** | yalnız aria2 — video motorları istenince iner |
-| `--tam` | 137 MB | her şey içinde |
-
-Çekirdek pakette Ayarlar → Motorlar'dan yt-dlp ve ffmpeg indirilir. İndirilenler
-uygulama klasörüne gider, portable yapı bozulmaz.
-
-## Ne yapar
-
-**Hızlı indirme.** Bir dosyayı 64 parçaya böler, sunucu başına 16 bağlantı açar.
-Ölçülen: 16 eşzamanlı bağlantı, 4.9 MB/s tepe hız.
-
-**Duraklat ve devam.** Duraklattığın, hatta uygulamayı kapattığın indirme kaldığı
-yerden sürer — aria2 oturumu her 15 saniyede diske yazılır.
-
-**Video.** YouTube, Instagram, TikTok ve yt-dlp'nin desteklediği her yer.
-Kalite seçimi (4K'ya kadar), sadece ses (mp3), playlist'in tamamı.
-
-**ffmpeg'siz birleştirme.** YouTube sesi ve görüntüyü ayrı gönderir. ffmpeg
-kurulu değilse AfuDM iki izi kendi birleştiricisiyle (`video/mp4mux.py`) tek mp4
-yapar — remux olduğu için yeniden kodlama yok, kalite değişmez. ffmpeg'in kendi
-çıktısıyla karşılaştırıldı: 46.368 karenin hepsi aynı, zaman damgaları dahil.
-Çekirdek paketin 22 MB kalmasının sebebi budur.
-
-**Torrent.** Magnet ve `.torrent`. Canlı seed/peer sayısı, gönderilen bayt, oran.
-DHT, PEX ve LPD açık; tracker listesi her gün yenilenir, böylece yorgun
-torrentlerde de peer bulur.
-
-**Kuyruk ve zamanlama.** Aynı anda kaç indirme, hız sınırı, "23:30'da başlat",
-hepsi bitince Telegram'a haber ver veya bilgisayarı kapat.
-
-**Kaydetme penceresi.** Link nereden gelirse gelsin — uzantı, pano ya da çift
-tıklanan bir `.torrent` — önce burada durur: dosya adı, kategori, klasör ağacı
-(kısayollar, diskler, "yeni klasör") ve şimdi başlat / saatinde başlat. Sen
-onaylamadan motora hiçbir şey gitmez. İstersen Ayarlar'dan kapatıp linkleri
-doğrudan başlatabilirsin.
-
-**Kategori klasörleri.** Hedef seçmezsen dosyalar türüne göre `downloads/Video`,
-`downloads/Müzik`, `downloads/Belgeler`… altına iner. İsteğe bağlı.
-
-**Torrentte seed güncelleme.** Her torrent satırında **Seed** düğmesi canlı bir
-pencere açar: seed, bağlantı, torrentin tracker sayısı, uygulanan liste, listenin
-yaşı ve DHT durumu. *Şimdi güncelle* günün tracker listesini çekip torrenti
-yeniden duyurur. **Kendi tracker'larını** da oraya yapıştırabilirsin — listenin
-başına eklenir. Gerçek bir 19 GB torrentte ölçüldü: bağlantı 6 → 11, ilerleme
-korundu (aria2 çalışan torrente tracker ekleyemediği için AfuDM işi yerinde
-kaldırıp yeniden ekler; `.aria2` kontrol dosyası inen her parçayı korur).
-
-**Tek kopya.** AfuDM'i tekrar açmak — ya da ikinci bir `.torrent`e çift tıklamak —
-yeni pencere açmaz; çalışan pencere öne gelir ve linki alır.
-
-**Tepsi.** Küçültünce pencere görev çubuğundan kalkar, tepsi simgesinden geri
-gelir. Bilgisayar açılınca doğrudan tepside de başlayabilir (Ayarlar), böylece
-indirmeler pencere açılmadan sürer. Windows 11 yeni simgeleri `^` okunun altında
-saklar — bir kez görev çubuğuna sürüklersen sabit kalır.
-
-**.torrent ve magnet açar.** Ayarlar'dan AfuDM `.torrent` dosyaları ve `magnet:`
-linkleri için kaydedilir (önceki programın kaydı yedeklenir, kapatınca geri
-gelir). Windows bir programın kendini varsayılan yapmasına izin vermediği için
-Ayarlar'da o ekranı açan bir düğme var.
-
-**Pano yakalama.** İndirilebilir bir link kopyaladığında kaydetme penceresi açılır.
-
-**İki dil.** Ayarlar → Dil / Language: Otomatik (Windows dilinden seçer), Türkçe
-veya English. Değişiklik yeniden başlatmadan uygulanır; pencere başlığı ve tepsi
-menüsü de döner. Tarayıcı uzantısı tarayıcının dilini kullanır.
-
-## Tarayıcı uzantısı
-
-**Tek tık:** AfuDM'de sol menüden **Chrome'a ekle** → **Otomatik ekle**. AfuDM
-uzantılar sayfasını açar, Geliştirici modunu açar, `extension` klasörünü yükler ve
-uzantı AfuDM'e kendiliğinden bağlanır. Birkaç saniye klavyeye/fareye dokunma.
-Bir adımda takılırsa aynı pencerede kopyala düğmeli elle kurulum anlatımı açılır.
-
-Elle: `chrome://extensions` → Geliştirici modu → **Paketlenmemiş öğe yükle**
-("Uzantı paketle" değil) → `extension` klasörünü seç. AfuDM'deki *Chrome'a ekle*
-penceresi açıkken uzantı kendiliğinden bağlanır.
-
-Ne yapar:
-- tarayıcı indirmelerini devralır (oturum çerezlerini de gönderir, giriş isteyen
-  sitelerde de çalışır — çerezler AfuDM'in veritabanına yazılmaz)
-- **video paneli:** oynayan videonun üstünde "AfuDM ile indir" düğmesi çıkar, gömülü
-  oynatıcılarda da; 1080p / 720p / sadece ses seç. Kaliteler sayfanın HLS/DASH
-  listesinden, YouTube gibi sitelerde yt-dlp'den gelir
-- sağ tık menüsünde "AfuDM ile indir"
-
-AfuDM kapalıysa uzantı hiçbir şeye karışmaz. DRM korumalı yayınlar (Netflix vb.)
-indirilemez.
-
-## Komut satırı
-
-`afuadm.bat` (Python ister) çalışan AfuDM'e yerel HTTP API üzerinden iş verir —
-port+token'i `data/api_endpoint.json`'dan okur, bu yüzden hiçbir istek
-kimliksiz gitmez. AfuDM kapalıysa arka planda (`--tepside`) başlatıp bağlanmayı
-bekler; `--no-start` bunu kapatır.
-
-```
-afuadm list                                   kuyruğu göster
-afuadm status --json                          motor / toplam hız (ham JSON)
-afuadm add https://site.com/dosya.zip
-afuadm add "https://youtube.com/watch?v=..." --quality 1080p --audio-only
-afuadm add URL --start-at "23:30"             zamanla
-afuadm mode snail|normal|turbo                canlı hız profili (100 KB/s / limitin / sınırsız)
-afuadm renew <gid> "https://yeni-gecerli-link"  ölen linki değiştir, inen baytları koru
-afuadm watch --json                           canlı NDJSON akışı (0.5 sn'de bir)
-afuadm info                                   sürüm + servis durumu
-afuadm ayarla <gid> --baglanti 8 --hiz 500    canlı is-özel bağlantı/hız ayarı (v1.4)
-afuadm ayar proxy socks5://127.0.0.1:1080     genel proxy ata (ayrıca: system_proxy 1)
-afuadm add URL --proxy http://... --checksum sha-256:<hex>  is-özel proxy + doğrulama
-
-afuadm server start                           servisi arayüzsüz çalıştır (v2.1)
-afuadm server status                          arayüzsüz servis ayakta mı? panel adresi
-afuadm server stop                            düzenli kapat (aria2 oturumu kaydedilir)
-```
-
-### Arayüzsüz sunucu (v2.1)
-
-`afuadm server start` AfuDM'i **masaüstü penceresi olmadan** çalıştırır:
-yalnızca indirme motoru, ortak servis katmanı ve tarayıcıdan yönetim paneli.
-Masaüstü arayüzü, panel ve CLI *aynı* servis katmanını çağırır; iş mantığının
-tek bir kopyası vardır.
-
-Panel bir **erişim anahtarı** ister. AfuDM → *Sunucu* → *Anahtar oluştur* ile
-üret ve rolünü seç: `yönetici` (her şey) ya da `salt okur` (yalnızca izler).
-Anahtar bir kez gösterilir, veritabanında yalnızca SHA-256 özeti durur;
-*Yenile* yeni bir anahtar verir ve eskisini anında geçersiz kılar — o anahtarla
-bağlı her istemci düşer. Anahtar hiçbir zaman adrese yazılmaz ve loglanmaz.
-
-Panel **düz HTTP ile sunulur — bağlantı şifrelenmez.** `127.0.0.1` ya da kendi
-yerel ağında tut. AfuDM kendini internete hiç açmaz; portu sen yönlendirirsen
-trafik korunmaz.
-
-Bir klasörde tek AfuDM örneği: masaüstü uygulaması açıkken `server start` iki
-sürecin aynı veritabanı ve aria2 oturumu üzerinde çakışması yerine net bir
-mesajla durur.
-
-Her alt komut `--json` kabul eder; `--json` ve `--no-start` komutun iki
-yanında da geçerli (`afuadm status --json` = `afuadm --json status`). `--json`
-modunda stdout **yalnızca** ham JSON/NDJSON taşır; tüm kullanıcı mesajı ve
-hata stderr'e gider, API token'ı hiçbir çıktıda görünmez. Exit kodları: `0` tamam,
-`2` AfuDM yok/erişilemez, `3` kayıt bulunamadı (KAYIT_YOK), `4` API hatası,
-`130` kullanıcı durdurdu. İki `afuadm` çağrısı aynı anda AfuDM'i başlatmaya
-kalkarsa `data/afuadm_baslat.lock` kilit dosyası yalnız birinin spawn etmesine
-izin verir; diğeri `/ping` üzerinden başlatmadan bağlanır.
-
-`mode` (FDM'in Snail Mode'u) `aria2.changeGlobalOption` çağırır; çalışan
-indirmeler kesilmez. `renew` (Neat DM'in Renew expired link'i) `aria2.changeUri`
-kullanır — eski URI listeden çıkar, yenisi girer; `.aria2` kontrol dosyası inen
-her baytı korur, böylece süresi dolan Google Drive / imzalı link tam kaldığı
-yerden sürer. `renew` yalnız HTTP(S)/FTP içindir ve `--headers`, `--cookies`,
-`--user-agent` alır; torrent/video işleri reddedilir. Seed listelerinden gelen
-tracker'lar torrent yenilenmesinde normalleştirilir (yapışık URL bölme, dedupe,
-şema beyaz listesi, yerel/engelli sunucu süzme) — daha uzun liste daha hızlı
-torrent demek değildir, temiz liste daha hızlıdır.
-
-## Test
-
-```
-python tests/smoke.py                  # hepsi (gerçekten indirir)
-python tests/smoke.py --skip-torrent   # HTTP + video
-python tests/smoke.py --skip-video     # HTTP + torrent
-
-# bunlar ağ gerektirmez, saniyeler sürer:
-python tests/netcheck_test.py          # IPv6 tespiti
-python tests/manager_test.py           # magnet / başlık kuralları
-python tests/i18n_test.py              # dil anahtarları
-python tests/format_test.py            # video format seçimi
-python tests/engines_test.py           # motor indirme
-python tests/mux_ayristirma_test.py    # MP4 örnek okuma
-python tests/mux_test.py               # birleştirme + ffprobe + tam kod çözme
-python tests/kaydet_test.py            # kaydetme penceresi (kategori, klasör ağacı)
-python tests/kuyruk_test.py            # mükerrer iş, magnet GID yeniden bağlama
-python tests/seed_test.py              # seed tazeleme + kendi tracker'ların
-python tests/cerez_test.py             # oturum çerezleri
-python tests/baslangic_test.py         # başlangıç kısayolu
-python tests/iliskilendir_test.py      # .torrent / magnet kaydı
-python tests/cli_test.py               # hız profilleri, link yenileme, zamanlama
-python tests/cli_surum_test.py         # stale endpoint, çift auto-start kilidi, JSON saflığı, exit kodları, token sızması
-python tests/trackerlar_test.py        # tracker listesi normalizasyonu
-python tests/db_test.py                # DB migration (PRAGMA user_version, veri korunur)
-python tests/fake_http_test.py         # sahte HTTP: range/206 resume, auth 401, 403, redirect, drop, checksum
-python tests/network_core_test.py      # proxy ayristirma, checksum, canli ayar secenekleri
-```
-
-`smoke.py` gerçekten indirir: çok bağlantılı HTTP, duraklat/sürdür, magnet seed
-takibi, video → mp3. Son durum: **17/17**. Yukarıdaki çevrimdışı testler ne
-gerçek Başlangıç klasörüne ne de gerçek kayıt defterine dokunur — kendilerini
-geçici bir yere yönlendirirler.
-
-## Güvenlik
-
-Yerel API yalnızca `127.0.0.1`'e bağlanır ve her istekte token ister. Token
-`data/api_token.txt` içinde üretilir; uzantıya ancak sen "Uzantıyı bağla"
-dedikten sonraki 2 dakika içinde verilir. aria2'nin RPC anahtarı da her
-kurulumda rastgele üretilir.
-
-Geliştirme notları: `docs/DURUM.md`
+1. **Başlangıç:** [Son sürümü indir](https://github.com/pirncedark/AfuDM/releases/latest), ZIP'in tamamını çıkar ve `AfuDM.exe` dosyasını aç. Tarayıcıdan devralmak için **Chrome'a ekle** adımını izle.
+2. **Nasıl çalışır:** eklenti bağlantıyı yakalar, aria2 parçaları paralel indirir, hata sayfası denetlenir. Beklenen SHA-256 verilirse sağlama kontrolü yapılır. İsteğe bağlı ZIP çıkarma, taşıma ve bildirim adımları çalışır.
+3. **Özellikler:** duraklat/sürdür, torrent/magnet, video (yt-dlp ve FFmpeg eksikse ilk açılışta arka planda kendiliğinden iner, kurulum gerekmez), tarayıcı üzerinden ikinci indirme yolu, uygun 403 hatalarında bir yeniden deneme, otomatik güncelleme, boşta motorun uyuması ve Türkçe/İngilizce arayüz. Aynı yerel ağda QR ile telefon eşleştirme; ayrı Android uygulaması [AfuTube](AfuTube/README.md).
+4. **Neden AfuDM:** taşınabilirlik, açık kaynak, torrent ve telefon eşleştirme aynı uygulamada. Yukarıdaki tabloda **✗** resmî kaynakla doğrulanan eksikliği gösterir; **—**, özelliğin olmadığı değil, burada doğrulanmadığı anlamına gelir. Ölçülmemiş hız/RAM üstünlüğü iddiası yoktur.
+5. **Kaynaktan derleme:** Windows'ta Rust, C++ Build Tools ve WebView2 hazırken `rs/app` içinde `cargo build --release --locked` çalıştır. Çalıştırılabilir paket için `engine/` ve `extension/` klasörlerini koru.

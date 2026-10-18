@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.1.0](https://github.com/pirncedark/AfuDM/compare/v3.0.1...v3.1.0) (2026-10-18)
+
+
+### Features
+
+* **afutube:** save downloads to visible AfuTube folder with open/share actions ([#90](https://github.com/pirncedark/AfuDM/issues/90)) ([157850a](https://github.com/pirncedark/AfuDM/commit/157850aaacf52a1c6c80409cd31a0f7b26bb68ae))
+* upload speed limit setting (default 100 KB/s) ([#127](https://github.com/pirncedark/AfuDM/issues/127)) ([0b198a1](https://github.com/pirncedark/AfuDM/commit/0b198a11f2368a30c7719d3bf7cfb97b2bcf9315))
+
 ## [3.0.1](https://github.com/pirncedark/AfuDM/compare/v3.0.0...v3.0.1) (2026-10-18)
 
 
