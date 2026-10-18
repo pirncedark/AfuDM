@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14181f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/ikon.png">
+<title>AfuDM</title>
+<style>
+/* Telefon arayuzu: tek dosya (API sadece bunu servis eder, ek istek yok).
+   Renkler masaustu arayuzle ayni; olculer parmak icin buyutuldu. */
+:root {
+  --bg: #14181f; --bg-deep: #0f131a; --surface: #1c222c; --surface-2: #232b37;
+  --line: #2a3340; --text: #e6eaf0; --muted: #8a97a8; --dim: #616e80;
+  --dl: #5b9dff; --seed: #a78bfa; --hold: #f6c445; --err: #f2678a; --done: #46c98b;
+  --mono: "Cascadia Mono", Consolas, monospace;
+  --ui: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body {
+  margin: 0; background: var(--bg); color: var(--text); font-family: var(--ui);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+header {
+  position: sticky; top: 0; z-index: 5; background: var(--bg-deep);
+  border-bottom: 1px solid var(--line); padding: 12px 16px;
+  padding-top: calc(12px + env(safe-area-inset-top));
+}
+.ust { display: flex; align-items: baseline; gap: 10px; }
+.marka { font-weight: 700; font-size: 17px; letter-spacing: -.01em; }
+.marka span { color: var(--dl); }
+.hiz { margin-left: auto; font-family: var(--mono); font-size: 20px; }
+.hiz small { font-size: 11px; color: var(--muted); margin-left: 4px; }
+.durum { margin-top: 6px; font-size: 11.5px; color: var(--dim); font-family: var(--mono); }
+.durum b { color: var(--muted); font-weight: 600; }
+.nokta { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+         background: var(--err); margin-right: 5px; vertical-align: middle; }
+.nokta.ok { background: var(--done); }
+
+main { padding: 12px 12px 164px; }   /* alt cubuk iki satir */
+.is {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px 14px; margin-bottom: 10px;
+}
+.ad { font-size: 14px; line-height: 1.35; word-break: break-word; margin-bottom: 8px; }
+.tur {
+  display: inline-block; font-size: 10px; font-family: var(--mono); padding: 2px 6px;
+  border-radius: 4px; margin-right: 6px; vertical-align: 1px;
+  background: #5b9dff22; color: var(--dl);
+}
+.tur.torrent { background: #a78bfa22; color: var(--seed); }
+.tur.video { background: #f6c44522; color: var(--hold); }
+.cubuk { height: 6px; border-radius: 3px; background: var(--bg-deep); overflow: hidden; }
+.cubuk i { display: block; height: 100%; background: var(--dl); transition: width .4s; }
+.is.bitti .cubuk i { background: var(--done); }
+.is.hata .cubuk i { background: var(--err); }
+.alt {
+  display: flex; align-items: center; gap: 10px; margin-top: 8px;
+  font-family: var(--mono); font-size: 12px; color: var(--muted);
+}
+.alt .yuzde { color: var(--text); }
+.alt .sag { margin-left: auto; display: flex; gap: 8px; }
+button {
+  font-family: var(--ui); font-size: 13px; color: var(--text); background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px 13px; min-height: 40px;
+}
+button:active { background: #2c3644; }
+button.ana { background: var(--dl); border-color: var(--dl); color: #08121f; font-weight: 600; }
+button.sessiz { background: transparent; border-color: transparent; color: var(--muted); padding: 9px 8px; }
+.bos { text-align: center; color: var(--dim); padding: 48px 16px; line-height: 1.6; }
+
+/* Alt cubuk: link ekleme her zaman elin altinda */
+.ekle {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+  background: var(--bg-deep); border-top: 1px solid var(--line);
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+}
+.ekle-satir { display: flex; gap: 8px; }
+.ekle-satir.secimler { margin-top: 8px; }
+.secimler select {
+  flex: 1; font-size: 13px; padding: 9px 10px; color: var(--muted);
+  appearance: none; background-image: none;
+}
+input[type="text"], select {
+  flex: 1; min-width: 0; background: var(--surface); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px; padding: 11px 12px;
+  font-size: 15px; font-family: var(--ui);
+}
+.satir { display: flex; gap: 8px; margin-top: 8px; }
+.uyari {
+  margin: 10px 12px; padding: 12px 14px; border-radius: 10px; font-size: 13px;
+  line-height: 1.5; background: #f2678a1a; border: 1px solid #f2678a44; color: #ffc9d6;
+}
+.uyari code { font-family: var(--mono); font-size: 12px; }
+.bildirim {
+  position: fixed; left: 12px; right: 12px; bottom: 152px; z-index: 7;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px 14px; font-size: 13.5px; opacity: 0; transform: translateY(8px);
+  transition: opacity .2s, transform .2s; pointer-events: none;
+}
+.bildirim.goster { opacity: 1; transform: none; }
+.bildirim.kotu { border-color: #f2678a66; color: #ffc9d6; }
+#pwaKur { font-size: 11px; min-height: 32px; padding: 6px 8px; }
+.katman { position: fixed; inset: 0; z-index: 8; display: flex; align-items: flex-end; background: #0008; }
+.katman[hidden] { display: none; }
+.katman-icerik { width: 100%; max-height: min(78vh, 680px); overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 16px 16px 0 0; padding: 16px 14px calc(16px + env(safe-area-inset-bottom)); }
+.katman-baslik { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.katman-baslik h2 { margin: 0; font-size: 16px; }
+.seed-ozet { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font: 12px var(--mono); color: var(--muted); }
+.seed-ozet span { background: var(--bg-deep); border-radius: 6px; padding: 7px 8px; }
+.torrent-dosyalar { border-top: 1px solid var(--line); }
+.torrent-dosya { display: flex; align-items: center; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--line); min-width: 0; }
+.torrent-dosya input { flex: 0 0 auto; width: 18px; height: 18px; }
+.torrent-dosya b { display: block; font-size: 13px; overflow-wrap: anywhere; }
+.torrent-dosya small { display: block; margin-top: 3px; color: var(--muted); font: 11px var(--mono); }
+.katman-eylem { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="ust">
+    <div class="marka">Afu<span>DM</span></div>
+    <button class="sessiz" id="pwaKur" style="font-weight: 600; color: var(--dl);">Uygulamayı Kur (APK/PWA)</button>
+    <div class="hiz"><span id="hiz">0.0</span><small>MB/s</small></div>
+  </div>
+  <div class="durum">
+    <span class="nokta" id="nokta"></span><span id="baglanti">bağlanıyor</span>
+    &nbsp; aktif <b id="aktif">0</b> &nbsp; bugün <b id="toplam">0 B</b>
+  </div>
+</header>
+
+<div id="anahtarUyari" class="uyari" style="display:none">
+  Anahtar yok. AfuDM'de <b>Ayarlar → Telefondan bağlan</b> kısmındaki adresin tamamını
+  (sonundaki <code>?k=…</code> dahil) telefona yaz.
+</div>
+
+<div id="baglantiUyari" class="uyari" style="display:none">
+  <b>Bağlantı için geçerli anahtar gerekli.</b>
+  AfuDM'de <b>Ayarlar → Telefondan bağlan</b> adresinin tamamını yapıştır
+  (<code>?k=…</code> dahil) veya yalnız anahtarı gir:
+  <div class="satir">
+    <input id="baglantiAdres" type="text" inputmode="url" autocomplete="off" autocapitalize="off"
+           spellcheck="false" placeholder="http://…/m?k=…  (veya yalnız anahtar)">
+    <button class="ana" id="baglanBtn">Bağlan</button>
+  </div>
+</div>
+
+<main>
+  <div id="liste"></div>
+  <div class="bos" id="bos" style="display:none">Kuyruk boş.<br>Aşağıdan link ekleyebilirsin.</div>
+</main>
+
+<div class="bildirim" id="bildirim"></div>
+
+<div class="katman" id="torrentKatman" hidden>
+  <div class="katman-icerik" role="dialog" aria-modal="true" aria-labelledby="torrentBaslik">
+    <div class="katman-baslik">
+      <h2 id="torrentBaslik">Torrent dosyalari</h2>
+      <button class="sessiz" id="trackerTara">Tracker tara</button>
+    </div>
+    <div class="seed-ozet" id="seedOzet"></div>
+    <div class="torrent-dosyalar" id="torrentDosyalar"></div>
+    <div class="katman-eylem">
+      <button class="sessiz" id="torrentVazgec">Vazgec</button>
+      <button class="ana" id="torrentKaydet">Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<div class="ekle">
+  <div class="ekle-satir">
+    <input id="link" type="text" inputmode="url" autocomplete="off" autocapitalize="off"
+           spellcheck="false" placeholder="Link yapıştır — dosya, video veya magnet">
+    <button class="ana" id="gonder">İndir</button>
+  </div>
+  <div class="ekle-satir secimler">
+    <select id="kalite" aria-label="Kalite">
+      <option value="">Kalite: en iyi</option>
+      <option value="2160">4K'ya kadar</option>
+      <option value="1080">1080p'ye kadar</option>
+      <option value="720">720p'ye kadar</option>
+      <option value="480">480p'ye kadar</option>
+      <option value="audio">Sadece ses (mp3)</option>
+    </select>
+    <select id="klasor" aria-label="Klasör">
+      <option value="">Klasör: varsayılan</option>
+      <option value="__telefon">📱 Telefona indir</option>
+    </select>
+  </div>
+</div>
+
+<script src="i18n.js"></script>
+<script>
+setLang((navigator.language || "tr").toLowerCase().startsWith("tr") ? "tr" : "en");
+/* ---- anahtar: adresten gelir, telefonda kalir ---- */
+const ANAHTAR_AD = "afudm_anahtar";
+const ilkAdres = new URL(location.href);
+const ilkKod = ilkAdres.searchParams.get("code");
+const eskiAnahtar = ilkAdres.searchParams.get("k");
+// Eski kalici anahtari ve yeni tek kullanimlik kodu hemen adresten sil.
+ilkAdres.searchParams.delete("k");
+ilkAdres.searchParams.delete("code");
+history.replaceState(null, "", ilkAdres.pathname + ilkAdres.search + ilkAdres.hash);
+let anahtar = "";
+let eslemeHazir = Promise.resolve();
+try { anahtar = localStorage.getItem(ANAHTAR_AD) || ""; } catch (_) {}
+
+async function kodDegistir(kod) {
+  const yanit = await fetch("/pair?code=" + encodeURIComponent(kod), {
+    cache: "no-store", redirect: "error", credentials: "omit",
+  });
+  const veri = await yanit.json();
+  if (!yanit.ok || veri.ok !== true || !veri.token) {
+    throw new Error("Baglanti suresi doldu. Bilgisayardaki QR kodunu yeniden okut.");
+  }
+  anahtarKaydet(veri.token);
+}
+
+async function eslemeBaslat() {
+  if (ilkKod) {
+    anahtar = "";
+    await kodDegistir(ilkKod);
+  } else if (eskiAnahtar) {
+    // 3.0.1 gecisi: eski baglantiyi mevcut saklama/header akisina aktar.
+    anahtarKaydet(eskiAnahtar);
+  }
+  if (!anahtar) {
+    document.getElementById("anahtarUyari").style.display = "";
+    document.getElementById("baglantiUyari").style.display = "";
+  }
+}
+
+const $ = (id) => document.getElementById(id);
+
+/* Yetki hatalari: anahtar YOK veya ESKI (401). Sayfa her zaman acilir; kullanici
+   bu iki durumda tekrar baglanmak icin panelden adresi/anahtari yapistirir. */
+function yetkiSorunu(hata) {
+  return hata && hata.kod && (hata.kod === "ANAHTAR_GEREKLI" || hata.kod === "GECERSIZ_TOKEN");
+}
+function baglantiPaneli(goster, durum) {
+  $("baglantiUyari").style.display = goster ? "" : "none";
+  if (durum) $("baglanti").textContent = durum;
+}
+function anahtarKaydet(yeni) {
+  try { localStorage.setItem(ANAHTAR_AD, yeni); } catch (_) {}
+  anahtar = yeni;
+  $("anahtarUyari").style.display = "none";
+  baglantiPaneli(false);
+  $("baglantiAdres").value = "";
+}
+
+async function api(yol, secenek = {}) {
+  await eslemeHazir;
+  const yanit = await fetch(yol, {
+    ...secenek,
+    headers: { "Content-Type": "application/json", "X-AfuDM-Token": anahtar,
+               ...(secenek.headers || {}) },
+  });
+  const veri = await yanit.json().catch(() => ({}));
+  if (!yanit.ok || veri.ok === false) {
+    // Hata sozlesmesi: {ok:false, code, message, error}. `code` ile yetki
+    // sorununu (eski/eksik anahtar) baglanti kopuklugundan ayirt ediyoruz.
+    const hata = new Error(veri.error || veri.message || ("hata " + yanit.status));
+    hata.kod = veri.code || "";
+    throw hata;
+  }
+  return veri;
+}
+
+function boyut(bayt) {
+  const n = Number(bayt) || 0;
+  if (n < 1024) return n + " B";
+  const birim = ["KB", "MB", "GB", "TB"];
+  let v = n / 1024, i = 0;
+  while (v >= 1024 && i < birim.length - 1) { v /= 1024; i++; }
+  return v.toFixed(v < 10 ? 1 : 0) + " " + birim[i];
+}
+function sure(saniye) {
+  const s = Number(saniye) || 0;
+  if (s <= 0) return "—";
+  if (s < 60) return s + " sn";
+  if (s < 3600) return Math.floor(s / 60) + " dk";
+  return Math.floor(s / 3600) + " sa " + Math.floor((s % 3600) / 60) + " dk";
+}
+function kacir(metin) {
+  return String(metin).replace(/[&<>"]/g, (k) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[k]));
+}
+
+function bildir(metin, kotu = false) {
+  const el = $("bildirim");
+  el.textContent = metin;
+  el.className = "bildirim goster" + (kotu ? " kotu" : "");
+  clearTimeout(bildir._t);
+  bildir._t = setTimeout(() => { el.className = "bildirim"; }, 3200);
+}
+
+/* ---- liste ---- */
+let oturumBayt = 0;
+const sonInen = new Map();
+
+function satir(is) {
+  const yuzde = Number(is.progress || 0);
+  const sinif = is.status === "complete" ? "bitti" : (is.status === "error" ? "hata" : "");
+  const durakla = is.status === "paused"
+    ? '<button data-eylem="resume" data-gid="' + kacir(is.gid) + '">Sürdür</button>'
+    : (is.status === "active" || is.status === "waiting"
+        ? '<button data-eylem="pause" data-gid="' + kacir(is.gid) + '">Duraklat</button>' : "");
+  const telefonIndir = is.status === "complete"
+    ? '<button data-eylem="telefon" data-gid="' + kacir(is.gid) + '">📱 Telefona indir</button>'
+    : "";
+  const durumYazi = is.status === "complete" ? "bitti"
+    : is.status === "error" ? (is.errorMessage ? "hata" : "hata")
+    : is.status === "paused" ? "duraklatıldı" : "";
+  return '<div class="is ' + sinif + '">' +
+    '<div class="ad"><span class="tur ' + kacir(is.kind || "http") + '">' +
+      kacir(is.kind || "http") + "</span>" + kacir(is.title || is.gid) + "</div>" +
+    '<div class="cubuk"><i style="width:' + Math.max(0, Math.min(100, yuzde)) + '%"></i></div>' +
+    '<div class="alt">' +
+      '<span class="yuzde">' + yuzde.toFixed(1) + "%</span>" +
+      "<span>" + boyut(is.completedLength) + " / " + boyut(is.totalLength) + "</span>" +
+      (is.downloadSpeed > 0 ? "<span>" + boyut(is.downloadSpeed) + "/s</span>" : "") +
+      (is.downloadSpeed > 0 ? "<span>" + sure(is.eta) + "</span>" : "") +
+      (durumYazi ? "<span>" + durumYazi + "</span>" : "") +
+      '<span class="sag">' + telefonIndir + durakla +
+        (is.kind === "torrent" ? '<button data-eylem="dosyalar" data-gid="' + kacir(is.gid) + '">Dosyalar</button>' : "") +
+        '<button class="sessiz" data-eylem="remove" data-gid="' + kacir(is.gid) + '">Kaldır</button>' +
+      "</span>" +
+    "</div></div>";
+}
+
+let acikTorrentGid = "";
+let torrentMetrikZamanlayici = null;
+let torrentKatmanNonce = 0;
+
+function torrentKatmanKapat() {
+  if (torrentMetrikZamanlayici) {
+    clearInterval(torrentMetrikZamanlayici);
+    torrentMetrikZamanlayici = null;
+  }
+  $("torrentKatman").hidden = true;
+  acikTorrentGid = "";
+}
+
+function seedOzetGoster(veri) {
+  $("seedOzet").innerHTML = [
+    "Seed: " + (veri.seed || 0), "Baglanti: " + (veri.baglanti || 0),
+    "Tracker: " + (veri.tracker || 0), "Havuz: " + (veri.havuz || 0),
+  ].map((metin) => "<span>" + metin + "</span>").join("");
+}
+
+async function torrentMetrikTazele(gid) {
+  try {
+    const veri = await api("/torrent/metrik?gid=" + encodeURIComponent(gid));
+    if (acikTorrentGid !== gid || $("torrentKatman").hidden) return;
+    // Magnet ustverisi henuz gelmediyse metrik alanlari YOK; sifir gostermek
+    // yerine durumu yaz, bir sonraki turda gercek deger gelir.
+    if (veri.hazir_degil) {
+      $("seedOzet").innerHTML = "<span>" +
+        kacir(veri.neden || "Magnet ustverisi bekleniyor...") + "</span>";
+      return;
+    }
+    seedOzetGoster({
+      seed: veri.num_seeders,
+      baglanti: veri.connections,
+      tracker: veri.tracker_sayisi,
+      havuz: veri.havuz_sayisi,
+    });
+  } catch (err) {
+    if (acikTorrentGid !== gid || $("torrentKatman").hidden) return;
+    torrentKatmanKapat();
+    bildir(err.message, true);
+  }
+}
+
+async function torrentKatmanAc(gid) {
+  torrentKatmanKapat();
+  acikTorrentGid = gid;
+  const nonce = ++torrentKatmanNonce;
+  $("torrentBaslik").textContent = t("mobile.torrentTitle");
+  $("torrentDosyalar").textContent = t("mobile.loading");
+  $("seedOzet").innerHTML = "";
+  $("torrentKaydet").disabled = false;
+  $("trackerTara").disabled = false;
+  $("trackerTara").textContent = "Tracker tara";
+  $("torrentKatman").hidden = false;
+  torrentMetrikZamanlayici = setInterval(() => { torrentMetrikTazele(gid); }, 3000);
+  try {
+    const [dosyaVeri, seedVeri] = await Promise.all([
+      api("/torrent/dosyalar?gid=" + encodeURIComponent(gid)),
+      api("/seed?gid=" + encodeURIComponent(gid)),
+    ]);
+    if (acikTorrentGid !== gid || nonce !== torrentKatmanNonce || $("torrentKatman").hidden) return;
+    $("torrentBaslik").textContent = seedVeri.baslik || t("mobile.torrentTitle");
+    seedOzetGoster(seedVeri);
+    const dosyalar = dosyaVeri.dosyalar || [];
+    if (dosyaVeri.hazir_degil) {
+      $("torrentDosyalar").textContent = dosyaVeri.neden || t("mobile.filesNotReady");
+      $("torrentKaydet").disabled = true;
+      return;
+    }
+    $("torrentDosyalar").innerHTML = dosyalar.map((dosya) =>
+      '<label class="torrent-dosya"><input type="checkbox" value="' + Number(dosya.indeks) + '"' +
+      (dosya.secili ? " checked" : "") + '><span><b>' + kacir(dosya.ad) + "</b><small>" +
+      boyut(dosya.boyut) + "</small></span></label>").join("") || t("mobile.filesNotFound");
+  } catch (err) {
+    if (acikTorrentGid !== gid || nonce !== torrentKatmanNonce || $("torrentKatman").hidden) return;
+    $("torrentDosyalar").textContent = t("mobile.filesLoadFailed");
+    bildir(err.message, true);
+  }
+}
+
+let yenileTimer = null;
+let yenileInFlight = false;
+
+async function yenile(isManual = false) {
+  if (yenileInFlight) return;
+  if (yenileTimer) { clearTimeout(yenileTimer); yenileTimer = null; }
+  yenileInFlight = true;
+  try {
+    const veri = await api("/snapshot");
+    const isler = veri.items || [];
+    const stat = veri.stat || {};
+    isler.forEach((is) => {
+      const onceki = sonInen.get(is.gid) || 0;
+      if (is.completedLength > onceki) oturumBayt += is.completedLength - onceki;
+      sonInen.set(is.gid, is.completedLength);
+    });
+    $("hiz").textContent = ((stat.downloadSpeed || 0) / 1048576).toFixed(1);
+    $("aktif").textContent = stat.numActive || 0;
+    $("toplam").textContent = boyut(oturumBayt);
+    $("nokta").className = "nokta ok";
+    $("baglanti").textContent = "bağlı";
+    $("liste").innerHTML = isler.map(satir).join("");
+    $("bos").style.display = isler.length ? "none" : "";
+  } catch (err) {
+    $("nokta").className = "nokta";
+    if (yetkiSorunu(err)) {
+      baglantiPaneli(true, "anahtar geçerli değil");
+    } else {
+      baglantiPaneli(false, anahtar ? "bağlantı yok" : "anahtar gerekli");
+    }
+    $("bos").style.display = "";
+  }
+  yenileInFlight = false;
+  yenileTimer = setTimeout(yenile, 1500);
+}
+
+$("liste").addEventListener("click", async (olay) => {
+  const dugme = olay.target.closest("button[data-eylem]");
+  if (!dugme) return;
+  if (dugme.dataset.eylem === "dosyalar") {
+    torrentKatmanAc(dugme.dataset.gid);
+    return;
+  }
+  if (dugme.dataset.eylem === "telefon") {
+    // Tarayiciya normal bir indirme yaptiriyoruz: /dosya ucu dosyayi
+    // Content-Disposition: attachment ile akitir, telefon kendi indirilenler
+    // klasorune kaydeder. Anahtar sorguda gider (fetch degil, gezinme).
+    const adres = "/dosya?gid=" + encodeURIComponent(dugme.dataset.gid) +
+                  "&token=" + encodeURIComponent(anahtar);
+    const bag = document.createElement("a");
+    bag.href = adres;
+    bag.download = "";
+    document.body.appendChild(bag);
+    bag.click();
+    bag.remove();
+    bildir("Telefona indiriliyor...");
+    return;
+  }
+  try {
+    await api("/control", { method: "POST",
+      body: JSON.stringify({ action: dugme.dataset.eylem, gid: dugme.dataset.gid }) });
+    yenile(true);
+  } catch (err) { bildir(err.message, true); }
+});
+
+$("torrentVazgec").addEventListener("click", torrentKatmanKapat);
+$("torrentKatman").addEventListener("click", (olay) => {
+  if (olay.target === $("torrentKatman")) torrentKatmanKapat();
+});
+document.addEventListener("keydown", (olay) => {
+  if (olay.key === "Escape" && !$("torrentKatman").hidden) torrentKatmanKapat();
+});
+
+$("torrentKaydet").addEventListener("click", async () => {
+  const indeksler = Array.from($("torrentDosyalar").querySelectorAll('input[type="checkbox"]:checked'))
+    .map((kutu) => Number(kutu.value));
+  if (!indeksler.length) {
+    bildir("En az bir dosya sec.", true);
+    return;
+  }
+  const dugme = $("torrentKaydet");
+  dugme.disabled = true;
+  try {
+    await api("/torrent/secim", { method: "POST",
+      body: JSON.stringify({ gid: acikTorrentGid, indeksler }) });
+    bildir("Secim kaydedildi.");
+    torrentKatmanKapat();
+    yenile(true);
+  } catch (err) {
+    bildir(err.message, true);
+  } finally {
+    if (!$("torrentKatman").hidden) dugme.disabled = false;
+  }
+});
+
+$("trackerTara").addEventListener("click", async () => {
+  const dugme = $("trackerTara");
+  const eskiYazi = dugme.textContent;
+  dugme.disabled = true;
+  dugme.textContent = "Taraniyor...";
+  try {
+    await api("/tracker/tara", { method: "POST",
+      body: JSON.stringify({ gid: acikTorrentGid }) });
+    const veri = await api("/seed?gid=" + encodeURIComponent(acikTorrentGid));
+    seedOzetGoster(veri);
+  } catch (err) {
+    $("seedOzet").innerHTML = '<div class="hata">' + kacir(err.message) + "</div>";
+  } finally {
+    dugme.disabled = false;
+    dugme.textContent = eskiYazi;
+  }
+});
+
+async function klasorleriDoldur() {
+  try {
+    const veri = await api("/klasorler");
+    const secici = $("klasor");
+    let yazi = veri.ana ? (veri.ana.length > 20 ? "..." + veri.ana.slice(-17) : veri.ana) : "varsayılan";
+    secici.innerHTML = '<option value="">Klasör: ' + kacir(yazi) + '</option>' +
+      '<option value="__telefon">📱 Telefona indir</option>';
+    if (veri.acik && veri.kategoriler) {
+      for (const kat of veri.kategoriler) {
+        secici.innerHTML += '<option value="' + kacir(kat.anahtar) + '">' + kacir(kat.ad) + '</option>';
+      }
+    }
+  } catch (_) { /* anahtar yok ya da baglanti yok: varsayilan secenekle devam */ }
+}
+$("gonder").onclick = async () => {
+  const url = $("link").value.trim();
+  if (!url) { bildir("Önce bir link yapıştır.", true); return; }
+  const kalite = $("kalite").value;
+  const istek = { url };
+  if (kalite === "audio") { istek.quality = "audio"; istek.audio_only = true; }
+  else if (kalite) { istek.quality = kalite; }
+  const klasorSecim = $("klasor").value;
+  // "__telefon" gercek bir kategori DEGIL: dosya once PC'ye iner, telefon
+  // bitince satirdaki "Telefona indir" dugmesiyle ceker. Kategori olarak
+  // gonderirsek sunucu bilinmeyen klasor adi gorur.
+  if (klasorSecim && klasorSecim !== "__telefon") istek.kategori = klasorSecim;
+  $("gonder").disabled = true;
+  try {
+    await api("/add", { method: "POST", body: JSON.stringify(istek) });
+    $("link").value = "";
+    bildir("Eklendi. Bilgisayarda iniyor.");
+  } catch (err) { bildir(err.message, true); }
+  $("gonder").disabled = false;
+};
+$("link").addEventListener("keydown", (olay) => {
+  if (olay.key === "Enter") $("gonder").click();
+});
+let kurulumIstegi;
+const pwaKur = $("pwaKur");
+window.addEventListener("beforeinstallprompt", (olay) => {
+  olay.preventDefault();
+  kurulumIstegi = olay;
+});
+pwaKur.addEventListener("click", async () => {
+  if (kurulumIstegi) {
+    await kurulumIstegi.prompt();
+    kurulumIstegi = null;
+    pwaKur.hidden = true;
+  } else {
+    alert("Uygulamayı ana ekrana eklemek için tarayıcınızın menüsünden (üç nokta) 'Ana Ekrana Ekle' (Add to Home screen) seçeneğine dokunun. Bu sayede AfuDM telefonda yerel bir uygulama (APK) gibi çalışacaktır.");
+  }
+});
+
+/* Yeni QR adresleri ve bir surum boyunca eski anahtarlar kabul edilir. */
+$("baglanBtn").addEventListener("click", async () => {
+  const girilen = $("baglantiAdres").value.trim();
+  if (!girilen) return;
+  try {
+    let yeni = girilen;
+    if (/^https?:\/\//i.test(girilen)) {
+      const adres = new URL(girilen);
+      if (adres.origin !== location.origin) {
+        throw new Error("Bu baglanti baska bir bilgisayara ait. Baglantiyi tarayicida ac.");
+      }
+      const kod = adres.searchParams.get("code");
+      if (kod) {
+        await kodDegistir(kod);
+        yeni = "";
+      } else {
+        yeni = adres.searchParams.get("k") || "";
+        if (!yeni) throw new Error("Baglanti gecersiz. Bilgisayardaki QR kodunu yeniden okut.");
+      }
+    }
+    if (yeni) anahtarKaydet(yeni);
+    // Basarisiz ilk QR denemesinden sonra yeniden baglanmaya izin ver.
+    eslemeHazir = Promise.resolve();
+    bildir("Bağlanılıyor…");
+    yenile(true);
+    klasorleriDoldur();
+  } catch (hata) {
+    bildir(hata.message, true);
+  }
+});
+
+/* Worker kaydi basarisiz olsa bile telefon arayuzu normal calismaya devam eder. */
+if ("serviceWorker" in navigator) {
+  (async () => {
+    try { await navigator.serviceWorker.register("/sw.js", { scope: "/" }); } catch (_) {}
+  })();
+}
+
+eslemeHazir = eslemeBaslat();
+eslemeHazir.then(() => {
+  yenile();
+  klasorleriDoldur();
+}).catch((hata) => {
+  baglantiPaneli(true);
+  bildir(hata.message, true);
+});
+</script>
+</body>
+</html>

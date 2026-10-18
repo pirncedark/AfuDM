@@ -12,6 +12,19 @@ wait_chooser() {
   while [ "$t" -lt "$seconds" ]; do chooser_front && return 0; sleep 1; t=$((t+1)); done
   return 1
 }
+return_to_settings() {
+  local dump_name=$1 attempt=0
+  # BACK only while another app (the share chooser) is in front; a blind BACK after
+  # the chooser has already closed leaves Settings and then the app itself.
+  while [ "$attempt" -lt 8 ]; do
+    dump "$dump_name"
+    grep -q 'text="APK ' "$OUT/$dump_name.xml" && return 0
+    grep -q "package=\"$PKG\"" "$OUT/$dump_name.xml" || adb shell input keyevent KEYCODE_BACK
+    sleep 1.5
+    attempt=$((attempt+1))
+  done
+  return 1
+}
 adb shell input keyevent KEYCODE_BACK
 sleep 2
 dump ayarlar
@@ -38,11 +51,10 @@ echo "BASARILI: ayarlar sade"
 
 tap tap-text "$OUT/ayarlar.xml" "Link gönder" || { echo "HATA: Link gönder yok"; exit 1; }
 wait_chooser 10 || { echo "HATA: link paylaşım seçicisi açılmadı"; exit 1; }
-adb shell input keyevent KEYCODE_BACK; sleep 2
+return_to_settings apk-paylas || { echo "HATA: Ayarlar did not return after link share"; exit 1; }
 echo "BASARILI: link paylasimi acildi"
-dump apk-paylas
 tap tap-text "$OUT/apk-paylas.xml" "APK gönder" || { echo "HATA: APK gönder yok"; exit 1; }
 wait_chooser 20 || { echo "HATA: APK paylaşım seçicisi açılmadı"; adb logcat -d | grep -A20 'FATAL EXCEPTION' | tail -40; exit 1; }
-adb shell input keyevent KEYCODE_BACK; sleep 2
+return_to_settings apk-paylas-son || { echo "HATA: Ayarlar did not return after APK share"; exit 1; }
 adb shell pidof "$PKG" >/dev/null || { echo "HATA: APK paylaşımından sonra uygulama kapandı"; exit 1; }
 echo "BASARILI: APK paylasimi acildi"

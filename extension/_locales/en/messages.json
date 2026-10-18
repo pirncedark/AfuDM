@@ -1,4 +1,5 @@
 {
+  "handoffRetry": {"message": "AfuDM could not receive the download. Retry from the extension menu."},
   "appName": {
     "message": "AfuDM link catcher"
   },

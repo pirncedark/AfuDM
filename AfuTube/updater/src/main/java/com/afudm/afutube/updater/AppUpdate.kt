@@ -21,6 +21,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.io.IOException
 import java.security.MessageDigest
+import android.util.Log
 
 data class AppUpdate(
     val versionName: String,
@@ -29,7 +30,6 @@ data class AppUpdate(
     val apkUrl: String,
     val checksumUrl: String,
     val minSdk: Int = 24,
-    val sha256: String = "",
     val prerelease: Boolean = false
 )
 
@@ -58,7 +58,7 @@ object AppUpdateParser {
         val apk = if (ARM64_ABI in supportedAbis) ARM64_APK else UNIVERSAL_APK
         val base = "https://github.com/pirncedark/AfuDM/releases/download/$tag/$apk"
         return AppUpdate(version, code, manifest.optString("changelog"), base, "$base.sha256",
-            minSdk = manifest.optInt("minSdk", 24), sha256 = manifest.optString("sha256"), prerelease = manifest.optBoolean("prerelease"))
+            minSdk = manifest.optInt("minSdk", 24), prerelease = manifest.optBoolean("prerelease"))
     }
 
     fun shouldFallbackToApi(includePrereleases: Boolean, manifestReadSucceeded: Boolean): Boolean =
@@ -112,10 +112,28 @@ object Sha256 {
         verify(file.toFile(), expected)
 
     fun verify(file: File, expected: String): Boolean {
-        val actual = MessageDigest.getInstance("SHA-256").digest(file.readBytes())
-            .joinToString("") { "%02x".format(it) }
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().buffered().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        val actual = digest.digest().joinToString("") { "%02x".format(it) }
         return actual.equals(expected.trim().split(Regex("\\s")).firstOrNull().orEmpty(), ignoreCase = true)
     }
+}
+
+object UpdateCheckPolicy {
+    fun shouldCheckAutomatically(
+        lastSuccessfulCheck: Long?,
+        now: Long,
+        interval: Long,
+        enabled: Boolean = true,
+        manual: Boolean = false
+    ): Boolean = manual || (enabled && (lastSuccessfulCheck == null || now - lastSuccessfulCheck >= interval))
 }
 
 object UpdateManager {
@@ -135,7 +153,9 @@ object UpdateManager {
                 manifestRead = true
                 AppUpdateParser.fromManifest(manifest, currentVersionCode, Build.SUPPORTED_ABIS.toList())?.let { return@withContext it }
                 return@withContext null
-            } catch (_: Exception) { /* API fallback below */ }
+            } catch (error: Exception) {
+                Log.w("AfuTubeUpdate", "Güncelleme manifesti okunamadı; Releases API kullanılacak", error)
+            }
         }
         check(AppUpdateParser.shouldFallbackToApi(includePrereleases, manifestRead))
         try {
@@ -166,9 +186,11 @@ object UpdateManager {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(AUTO, enabled).apply()
     }
 
-    fun shouldCheckAutomatically(context: Context): Boolean =
-        autoCheckEnabled(context) && System.currentTimeMillis() - context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getLong(LAST_CHECK, 0) >= DAY_MS
+    fun shouldCheckAutomatically(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val lastCheck = if (prefs.contains(LAST_CHECK)) prefs.getLong(LAST_CHECK, 0) else null
+        return UpdateCheckPolicy.shouldCheckAutomatically(lastCheck, System.currentTimeMillis(), DAY_MS, autoCheckEnabled(context))
+    }
 
     fun markChecked(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         .edit().putLong(LAST_CHECK, System.currentTimeMillis()).apply()

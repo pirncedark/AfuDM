@@ -15,10 +15,54 @@ from . import engines, paths
 _SECRET = re.compile(r"(?i)(token|password|passwd|cookie|authorization|api[_-]?key)\s*([:=])\s*([^\s,&\"]+)")
 _URL_SECRET = re.compile(r"([?&](?:token|key|sig|signature|password|auth)=[^&#\s]+)", re.I)
 
+# JSON ANAHTAR adi olarak gecen sirler. Ayarlar sozlugu JSON olarak
+# serilestiginde `"token": "abc"` yazilir; metin deseni (`token\s*[:=]`)
+# anahtarin tirnagini yuttugu icin ESLESMEZ. Bu yuzden maskeleme metin
+# uzerinde degil, JSON metnine ONCE sozluk uzerinde yapilir.
+_SECRET_KEY = re.compile(
+    r"(?i)(token|password|passwd|secret|cookie|authorization|api[_-]?key|key|sifre|parola)")
+
+# Proxy adresi: gecerli bir deger olsa bile kimlik bolumu ATILIR.
+_PROXY_KEYS = ("proxy", "proxy_url", "http_proxy", "https_proxy", "socks_proxy")
+
+
 def mask(value: str) -> str:
     """Remove credentials before anything can be displayed or archived."""
     value = _URL_SECRET.sub(lambda m: m.group(1).split("=", 1)[0] + "=***", str(value))
     return _SECRET.sub(lambda m: m.group(1) + m.group(2) + "***", value)
+
+
+def _sir_maskele(deger: object, anahtar: str = "") -> object:
+    """Bir JSON degeri ozyinelemeli maskeler.
+
+    Anahtar adi sir kalibiyle eslesiyorsa deger "***" olur; proxy adresi
+    `settings_validation.proxy_maskele` ile kimlik bolumu atilmis halde
+    kalir; diger metin degerlerine ek olarak `mask()` uygulanir. Boylece
+    tanimlanmayan anahtarlar icinde gecmis bir `token=...` degeri de sizmaz.
+    """
+    from . import settings_validation
+
+    if anahtar and _SECRET_KEY.search(anahtar):
+        return "***"
+    if isinstance(deger, dict):
+        return {str(k): _sir_maskele(v, str(k)) for k, v in deger.items()}
+    if isinstance(deger, (list, tuple)):
+        return [_sir_maskele(v, anahtar) for v in deger]
+    if isinstance(deger, str):
+        if anahtar in _PROXY_KEYS and deger.strip():
+            return settings_validation.proxy_maskele(deger)
+        return mask(deger)
+    return deger
+
+
+def maskele(data: object) -> object:
+    """Ayar/olay verisini disari cikmadan once maskeler (dict/list/scalar).
+
+    `diagnostics_preview` veriyi once bu fonksiyondan gecirir, SONRA
+    serilestirir; boylece JSON'da saklanan api token'i, proxy parolasi ve
+    tunel token'i ekranda/dosyada gorunmez.
+    """
+    return _sir_maskele(data)
 
 class Reliability:
     def __init__(self, manager) -> None:
@@ -33,7 +77,7 @@ class Reliability:
                 "action": "none" if ok else "restore_backup", "checked_at": time.time()}
 
     def backup(self, reason: str = "manual") -> dict:
-        paths.ensure_dirs(); folder = paths.DATA / "backups"; folder.mkdir(exist_ok=True)
+        paths.ensure_dirs(); folder = paths.DATA / "backups"; folder.mkdir(parents=True, exist_ok=True)
         target = folder / f"afudm-{time.strftime('%Y%m%d-%H%M%S')}-{reason}.zip"
         # SQLite's backup API takes a consistent snapshot even while UI writes.
         temp = folder / (target.stem + ".db")
@@ -67,7 +111,11 @@ class Reliability:
             temp = paths.DATA / "restore.tmp.db"; temp.write_bytes(z.read("afudm.db"))
         db = sqlite3.connect(temp)
         try:
-            if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            try:
+                saglik = db.execute("PRAGMA integrity_check").fetchone()[0]
+            except sqlite3.DatabaseError as exc:
+                raise ValueError("yedek butun degil") from exc
+            if saglik != "ok":
                 temp.unlink(missing_ok=True); raise ValueError("yedek butun degil")
         finally:
             db.close()
@@ -75,26 +123,48 @@ class Reliability:
         # object. Its lock serializes the swap against every Store operation.
         store = self.manager.store
         with store._lock:
-            store.conn.close()
-            shutil.move(str(temp), str(paths.DB_PATH))
-            # Reuse the migration-safe constructor, then transplant its live
-            # connection into the shared Store while all readers are blocked.
-            from .db import Store
-            replacement = Store(str(paths.DB_PATH))
-            store.conn = replacement.conn
+            # close + move + yeniden ac tek adimda: bir adim hata verirse
+            # (Windows dosya kilidi) paylasilan baglanti KAPALI kalirdi ve
+            # uygulama butun DB islemlerinde cokerdii. Bu yuzden hata halinde
+            # ESKI DB yoluyla baglanti yeniden kurulur.
+            try:
+                store.conn.close()
+                shutil.move(str(temp), str(paths.DB_PATH))
+                # Reuse the migration-safe constructor, then transplant its live
+                # connection into the shared Store while all readers are blocked.
+                from .db import Store
+                replacement = Store(str(paths.DB_PATH))
+                store.conn = replacement.conn
+            except Exception as exc:
+                store.conn = self._baglantiyi_kurtar(exc)
+                raise ValueError("yedek geri yuklenemedi, veritabani aynen korundu") from exc
         return {"ok": True, "pre_restore_backup": before["path"], "restart_required": True}
+
+    def _baglantiyi_kurtar(self, _exc: BaseException):
+        """Geri yukleme basarisiz oldu: paylasilan Store'a calisan bir
+        baglanti geri koyar (aksi halde tum DB islemleri cokerdi)."""
+        from .db import Store
+        for deneme in (lambda: Store(str(paths.DB_PATH)),):
+            try:
+                return deneme().conn
+            except Exception:
+                continue
+        return sqlite3.connect(str(paths.DB_PATH))
 
     def diagnostics_preview(self) -> dict:
         events = self.manager.store.recent_events(150)
         data = {"generated_at": time.time(), "integrity": self.integrity(),
                 "engines": engines.durum(), "settings": self.manager.store.all_settings(),
                 "events": events}
-        safe = json.loads(mask(json.dumps(data, ensure_ascii=False)))
+        # Sirler JSON metnine ONCE, sozluk uzerinde maskelenir: metin deseni
+        # `"token": "abc"` yazimini yakalayamadigi icin json.dumps sonrasi
+        # maskelemek sirlari disari birakirdi.
+        safe = maskele(data)
         return {"ok": True, "preview": safe, "masked": True}
 
     def diagnostics_export(self) -> dict:
         preview = self.diagnostics_preview()["preview"]
-        folder = paths.DATA / "diagnostics"; folder.mkdir(exist_ok=True)
+        folder = paths.DATA / "diagnostics"; folder.mkdir(parents=True, exist_ok=True)
         target = folder / f"afudm-diagnostics-{time.strftime('%Y%m%d-%H%M%S')}.json"
         target.write_text(json.dumps(preview, ensure_ascii=False, indent=2), encoding="utf-8")
         return {"ok": True, "path": str(target), "masked": True}

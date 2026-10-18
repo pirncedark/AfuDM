@@ -7,14 +7,34 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReleaseToolsTest(unittest.TestCase):
-    def test_ci_workflows_build_pyinstaller_before_packaging(self):
-        for workflow in ("release.yml", "ci.yml"):
+    def test_ci_workflows_build_executable_before_packaging(self):
+        for workflow in ("ci.yml",):
             source = (ROOT / ".github" / "workflows" / workflow).read_text(
                 encoding="utf-8"
             )
             build_at = source.index("python -m PyInstaller --noconfirm --clean AfuDM.spec")
             package_at = source.index("build_release.ps1")
             self.assertLess(build_at, package_at, workflow)
+
+        release = (ROOT / ".github" / "workflows" / "release.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertLess(
+            release.index("scripts\\build_release_rust.ps1"),
+            release.index("Compress-Archive"),
+        )
+        rust = (ROOT / "scripts" / "build_release_rust.ps1").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('"build", "--release", "--locked"', rust)
+        self.assertIn('"--manifest-path", "rs/app/Cargo.toml"', rust)
+        build_at = rust.index("& cargo @cargoArgs")
+        check_at = rust.index("if ($LASTEXITCODE -ne 0)", build_at)
+        copy_at = rust.index("Copy-Item -LiteralPath $binary")
+        self.assertIn('throw "Rust release derlemesi basarisiz"', rust[check_at:copy_at])
+        self.assertLess(build_at, check_at)
+        self.assertLess(check_at, copy_at)
+        self.assertLess(copy_at, rust.index("Compress-Archive"))
 
     def test_build_release_rejects_missing_or_stale_executable(self):
         source = (ROOT / "scripts" / "build_release.ps1").read_text(encoding="utf-8")

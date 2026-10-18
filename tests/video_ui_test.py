@@ -28,12 +28,30 @@ ALANLAR = {
 
 
 def blok(metin: str, baslangic: str) -> str:
-    i = metin.index(baslangic) + len(baslangic) - 1
+    # Only bind to a language object key at the start of a source line.
+    dil = re.escape(baslangic.split(":", 1)[0].strip())
+    eslesme = re.search(rf"^\s*{dil}\s*:\s*\{{", metin, re.M)
+    if not eslesme:
+        raise AssertionError(f"blok bulunamadi: {baslangic}")
+    i = eslesme.end() - 1
     derinlik = 0
+    quote = None
+    escaped = False
     for j in range(i, len(metin)):
-        if metin[j] == "{":
+        char = metin[j]
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in ("'", '"', "`"):
+            quote = char
+        elif char == "{":
             derinlik += 1
-        elif metin[j] == "}":
+        elif char == "}":
             derinlik -= 1
             if derinlik == 0:
                 return metin[i:j + 1]

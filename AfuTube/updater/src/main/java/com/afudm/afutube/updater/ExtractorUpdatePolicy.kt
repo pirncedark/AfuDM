@@ -65,6 +65,12 @@ object DownloadRecoveryPolicy {
         isYoutube -> listOf(Step.LOCAL, Step.YOUTUBE_EMBEDDED, Step.UPDATE_ENGINE, Step.LOCAL, Step.YOUTUBE_FALLBACK)
         else -> listOf(Step.ARIA2C, Step.LOCAL, Step.UPDATE_ENGINE, Step.LOCAL)
     }
+
+    /** Keep completed/current attempts, then append recovery steps after the initial step. */
+    fun stepsAfter403(currentSteps: List<Step>, index: Int, isYoutube: Boolean): List<Step> {
+        val recovery = steps(isYoutube, initialHttp403 = true)
+        return currentSteps.take(index + 1) + recovery.drop(1)
+    }
 }
 
 class ExtractorUpdateCoordinator<C>(

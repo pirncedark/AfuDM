@@ -24,7 +24,7 @@ object UrlClassifier {
         val trimmed = url.trim()
         return try {
             val uri  = URI(trimmed)
-            val host = uri.host?.removePrefix("www.")?.lowercase() ?: return UrlType.UNSUPPORTED
+            val host = uri.host?.lowercase()?.removePrefix("www.") ?: return UrlType.UNSUPPORTED
             val path = uri.path?.lowercase() ?: ""
 
             when {
@@ -42,6 +42,13 @@ object UrlClassifier {
         } catch (_: Exception) {
             UrlType.UNSUPPORTED
         }
+    }
+
+    fun isYouTubeHost(url: String): Boolean = try {
+        val host = URI(url.trim()).host?.lowercase()?.removePrefix("www.")
+        host != null && host in YOUTUBE_HOSTS
+    } catch (_: Exception) {
+        false
     }
 
     fun isValid(url: String): Boolean =

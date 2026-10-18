@@ -9,6 +9,7 @@ import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -89,84 +90,55 @@ def hata_sozlesmesi(port: int, token: str, manager: SahteManager, uc: str, hata_
 
 def rest_sozlesmesi() -> None:
     print("A) REST sozlesmesi (gercek HTTP, sahte manager)")
-    # LocalAPI.start() api_endpoint.json'u EZER; AfuDM aciksa uzanti yanlis
-    # porta gider. Yedekle, sonda geri yaz.
-    endpoint = ROOT / "data" / "api_endpoint.json"
-    try:
-        endpoint_backup = endpoint.read_text("utf-8") if endpoint.exists() else None
-        endpoint_izinli = True
-    except PermissionError:
-        # Bazı izole CI ortamları, canlı anahtar dosyasını kasıtlı olarak
-        # okumaya kapatır. Aynı yazma yan etkisini geçici veri dizininde tut.
-        endpoint_backup = None
-        endpoint_izinli = False
-    eski_data = None
-    eski_token_dosyasi = None
-    eski_izin_kisitla = None
-    gecici_data = None
-    if not endpoint_izinli:
-        from api import server as api_server
+    from api import server as api_server
 
-        gecici_data = tempfile.TemporaryDirectory()
-        eski_data = api_server.paths.DATA
-        eski_token_dosyasi = api_server.paths.API_TOKEN_FILE
-        eski_izin_kisitla = api_server._dosya_iznini_kisitla
-        api_server.paths.DATA = Path(gecici_data.name)
-        api_server.paths.API_TOKEN_FILE = api_server.paths.DATA / "api_token.txt"
-        # Canli dosya degil, test gecici dizini: Windows ACL yan etkisi test
-        # sonunda dizinin silinmesini engellemesin.
-        api_server._dosya_iznini_kisitla = lambda _yol: None
-    manager = SahteManager()
-    api = LocalAPI(manager, port=16811)
-    port = api.start()
-    try:
-        status, body = request(port, "/torrent/dosyalar?gid=X", token=api.token)
-        expected = {"ok", "gid", "hazir_degil", "neden", "dosyalar"}
-        check("A1 torrent/dosyalar duz bes anahtari tasir", expected.issubset(body) and isinstance(body.get("dosyalar"), list), str(body))
-        check("A2 hazir olmayan magnet nedeni korunur", status == 200 and body.get("hazir_degil") is True and bool(body.get("neden", "").strip()), str(body))
+    # Endpoint ve token dosyalari her kosulda gecici dizinde kalir.
+    with tempfile.TemporaryDirectory() as folder, \
+            patch.object(api_server.paths, "DATA", Path(folder)), \
+            patch.object(api_server.paths, "API_TOKEN_FILE", Path(folder) / "api_token.txt"), \
+            patch.object(api_server, "_dosya_iznini_kisitla", lambda _yol: None):
+        # Gecici dosyalarda Windows ACL degisikligi temizligi engellemesin.
+        manager = SahteManager()
+        api = LocalAPI(manager, port=16811)
+        try:
+            port = api.start()
+            status, body = request(port, "/torrent/dosyalar?gid=X", token=api.token)
+            expected = {"ok", "gid", "hazir_degil", "neden", "dosyalar"}
+            check("A1 torrent/dosyalar duz bes anahtari tasir", expected.issubset(body) and isinstance(body.get("dosyalar"), list), str(body))
+            check("A2 hazir olmayan magnet nedeni korunur", status == 200 and body.get("hazir_degil") is True and bool(body.get("neden", "").strip()), str(body))
 
-        status, body = request(port, "/torrent/dosyalar?gid=", token=api.token)
-        check("A3 bos gid GID_GEREKLI ile reddedilir", status == 400 and body.get("code") == "GID_GEREKLI", str(body))
+            status, body = request(port, "/torrent/dosyalar?gid=", token=api.token)
+            check("A3 bos gid GID_GEREKLI ile reddedilir", status == 400 and body.get("code") == "GID_GEREKLI", str(body))
 
-        status, body = request(port, "/torrent/dosyalar?gid=X")
-        # Sunucunun genel korumali yolu GECERSIZ_TOKEN doner; ANAHTAR_GEREKLI
-        # yalniz /klasorler ucuna ozeldir (api/server.py:175 vs 228/313).
-        # Bu tutarsizlik bilinerek KILITLENIYOR: degistirmek mobil/CLI
-        # istemcilerini etkiler, v2.3 Reliability & Security isi.
-        check("A4 tokensiz istek 401 GECERSIZ_TOKEN ile reddedilir", status == 401 and body.get("code") == "GECERSIZ_TOKEN", str(body))
+            status, body = request(port, "/torrent/dosyalar?gid=X")
+            # Sunucunun genel korumali yolu GECERSIZ_TOKEN doner; ANAHTAR_GEREKLI
+            # yalniz /klasorler ucuna ozeldir (api/server.py:175 vs 228/313).
+            # Bu tutarsizlik bilinerek KILITLENIYOR: degistirmek mobil/CLI
+            # istemcilerini etkiler, v2.3 Reliability & Security isi.
+            check("A4 tokensiz istek 401 GECERSIZ_TOKEN ile reddedilir", status == 401 and body.get("code") == "GECERSIZ_TOKEN", str(body))
 
-        status, body = request(port, "/torrent/secim", token=api.token, body={"gid": "X", "indeksler": "1,2"})
-        check("A5 liste olmayan indeksler reddedilir", status == 400 and body.get("code") == "GECERSIZ_SECIM", str(body))
+            status, body = request(port, "/torrent/secim", token=api.token, body={"gid": "X", "indeksler": "1,2"})
+            check("A5 liste olmayan indeksler reddedilir", status == 400 and body.get("code") == "GECERSIZ_SECIM", str(body))
 
-        status, body = request(port, "/torrent/secim", token=api.token, body={"gid": "X", "indeksler": [1, 2, -3, 0]})
-        check("A6 negatif ve sifir indeksler ayiklanir", status == 200 and manager.alinan_secim == [1, 2], str(body))
+            status, body = request(port, "/torrent/secim", token=api.token, body={"gid": "X", "indeksler": [1, 2, -3, 0]})
+            check("A6 negatif ve sifir indeksler ayiklanir", status == 200 and manager.alinan_secim == [1, 2], str(body))
 
-        status, body = request(port, "/torrent/secim", token=api.token, body={"gid": "X", "indeksler": [True]})
-        check("A7 boolean indeks reddedilir", status == 400 and body.get("code") == "GECERSIZ_SECIM", str(body))
+            status, body = request(port, "/torrent/secim", token=api.token, body={"gid": "X", "indeksler": [True]})
+            check("A7 boolean indeks reddedilir", status == 400 and body.get("code") == "GECERSIZ_SECIM", str(body))
 
-        status_metrik, body_metrik = request(port, "/torrent/metrik?gid=X", token=api.token)
-        status_seed, body_seed = request(port, "/seed?gid=X", token=api.token)
-        check("A8 metrik ve seed uclari basarili yanit verir", status_metrik == 200 and body_metrik.get("ok") is True and status_seed == 200 and body_seed.get("ok") is True)
+            status_metrik, body_metrik = request(port, "/torrent/metrik?gid=X", token=api.token)
+            status_seed, body_seed = request(port, "/seed?gid=X", token=api.token)
+            check("A8 metrik ve seed uclari basarili yanit verir", status_metrik == 200 and body_metrik.get("ok") is True and status_seed == 200 and body_seed.get("ok") is True)
 
-        check("A9 dosyalar ValueError hata sozlesmesini korur", hata_sozlesmesi(port, api.token, manager, "/torrent/dosyalar?gid=X", "dosyalar"))
-        check("A9 metrik ValueError hata sozlesmesini korur", hata_sozlesmesi(port, api.token, manager, "/torrent/metrik?gid=X", "metrik"))
-        check("A9 seed ValueError hata sozlesmesini korur", hata_sozlesmesi(port, api.token, manager, "/seed?gid=X", "seed"))
+            check("A9 dosyalar ValueError hata sozlesmesini korur", hata_sozlesmesi(port, api.token, manager, "/torrent/dosyalar?gid=X", "dosyalar"))
+            check("A9 metrik ValueError hata sozlesmesini korur", hata_sozlesmesi(port, api.token, manager, "/torrent/metrik?gid=X", "metrik"))
+            check("A9 seed ValueError hata sozlesmesini korur", hata_sozlesmesi(port, api.token, manager, "/seed?gid=X", "seed"))
 
-        status, body = request(port, "/capabilities", token=api.token)
-        capabilities = set(body.get("ozellikler", []))
-        check("A10 torrent mobil yetenekleri duyurulur", status == 200 and {"torrent_dosya_secimi", "seed_durumu", "tracker_tarama"}.issubset(capabilities), str(body))
-    finally:
-        api.stop()
-        if endpoint_backup is not None:
-            endpoint.write_text(endpoint_backup, encoding="utf-8")
-        if eski_data is not None:
-            from api import server as api_server
-
-            api_server.paths.DATA = eski_data
-            api_server.paths.API_TOKEN_FILE = eski_token_dosyasi
-            api_server._dosya_iznini_kisitla = eski_izin_kisitla
-        if gecici_data is not None:
-            gecici_data.cleanup()
+            status, body = request(port, "/capabilities", token=api.token)
+            capabilities = set(body.get("ozellikler", []))
+            check("A10 torrent mobil yetenekleri duyurulur", status == 200 and {"torrent_dosya_secimi", "seed_durumu", "tracker_tarama"}.issubset(capabilities), str(body))
+        finally:
+            api.stop()
 
 
 def mobil_ui_sozlesmesi() -> None:

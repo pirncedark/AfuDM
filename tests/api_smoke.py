@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from api.server import LocalAPI, _boolean_al  # noqa: E402
+from core import paths
 from core.manager import Manager  # noqa: E402
 
 TEST_URL = "https://download.thinkbroadband.com/100MB.zip"
@@ -47,11 +48,12 @@ def main() -> int:
            _boolean_al({"deger": "false"}, "deger") is False)
     # LocalAPI.start() api_endpoint.json'u EZER; AfuDM aciksa uzanti yanlis
     # porta gider. Yedekle, sonda geri yaz.
-    endpoint = Path(__file__).resolve().parent.parent / "data" / "api_endpoint.json"
+    endpoint = paths.DATA / "api_endpoint.json"
     endpoint_backup = endpoint.read_text("utf-8") if endpoint.exists() else None
     manager = Manager()
     manager.start()
-    api = LocalAPI(manager, port=6811)
+    record("Otomatik kabul varsayilan acik", manager.store.get("kaydetme_penceresi") is False)
+    api = LocalAPI(manager, port=0)
     port = api.start()
     try:
         status, body = request(port, "/ping")

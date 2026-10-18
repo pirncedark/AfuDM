@@ -334,11 +334,14 @@ class EklentiHost:
         return [sys.executable, "-u", "-m", "core.eklenti_host"], ortam
 
     def baslat(self, zaman_asimi: float = BASLATMA_ZAMAN_ASIMI) -> dict:
-        with self._kilit:
-            if self._proc and self._proc.poll() is None:
+        if self._proc and self._proc.poll() is None:
+            if self.durum == "calisiyor":
                 return {"ok": True, "zaten": True, "durum": self.durum}
+            self.durdur(kibar_sure=1.0)
+        with self._kilit:
             self.durum = "baslatiliyor"
             self.son_hata = ""
+            self.gunluk = []
             self.gunluk = []
             komut, ortam = self._komut()
             try:
@@ -451,6 +454,11 @@ class EklentiHost:
         if yanit.get("ok"):
             return {"ok": True, "sonuc": yanit.get("sonuc")}
         self.durum = "hata"
+        ham = str(yanit.get("hata") or "")
+        self.son_hata = "Eklenti islem yapamadi, ayarlardan tanilama gunlugunu kontrol edin" if ham else "Bilinmeyen eklenti hatasi"
+        if ham:
+            self._gunluk_ekle("sistem", f"[HATA] {ham[:400]}")
+        return {"ok": False, "error": self.son_hata, "durum": self.durum}
         self.son_hata = str(yanit.get("hata") or "bilinmeyen eklenti hatasi")[:400]
         return {"ok": False, "error": self.son_hata, "durum": self.durum}
 
@@ -925,12 +933,13 @@ class EklentiServisi:
                 import shutil
                 shutil.copytree(yedek, hedef)
 
+                # Tum kaydi degistirmeden once yedekteki manifesti oku
                 eski = dict(kayit)
-                eski["surum"] = kayit["onceki_surum"]
-                eski["onceki_surum"] = kayit["surum"]
+                eski.update(paket_incele(str(hedef / MANIFEST_ADI)))
+                eski["surum"] = kayit.get("onceki_surum", "")
+                eski["onceki_surum"] = kayit.get("surum", "")
                 eski["son_hata"] = ""
                 self.store.eklenti_yaz(eski)
-
                 if calisiyordu:
                     yeni_host = self._host(self.store.eklenti(ad) or eski)
                     yeni_host.baslat()
@@ -944,7 +953,7 @@ class EklentiServisi:
                 i.bitis = time.time()
 
         import threading
-        threading.Thread(target=kosucu, daemon=True).start()
+        threading.Thread(target=kosucu, args=(islem,), daemon=True).start()
         return {"ok": True, "islem": islem.ozet()}
 
 

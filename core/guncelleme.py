@@ -87,10 +87,17 @@ def _guvenli_zip_yolu(ad: str) -> bool:
 def indir_ve_dogrula(bilgi: dict, ilerleme=None) -> dict:
     hedef_klasor = paths.DATA / "guncelleme"
     zip_path = hedef_klasor / "AfuDM-guncelleme.zip"
+    hazir_kaydi = hedef_klasor / "hazir.json"
     try:
+        hazir_kaydi.unlink(missing_ok=True)
         if not bilgi.get("ok") or not bilgi.get("var"):
             raise ValueError
+        if not all(str(bilgi.get(key, "")).startswith(IZINLI_ONEK)
+                   for key in ("zip_url", "sha_url")):
+            raise ValueError("Untrusted release URL")
         surum_yeni = ".".join(str(n) for n in _parcala(bilgi.get("yeni", "")))
+        if _parcala(surum_yeni) <= _parcala(surum.SURUM):
+            raise ValueError("Update must be newer")
         zip_path = hedef_klasor / f"AfuDM-v{surum_yeni}-win64.zip"
         hedef_klasor.mkdir(parents=True, exist_ok=True)
         _indir(bilgi["zip_url"], zip_path, ilerleme)
@@ -114,6 +121,11 @@ def indir_ve_dogrula(bilgi: dict, ilerleme=None) -> dict:
             zf.extractall(yeni)
         if not (hedef_klasor / "yeni" / "AfuDM" / "AfuDM.exe").is_file():
             raise ValueError
+        paket = hedef_klasor / "yeni" / "AfuDM"
+        dosyalar = {p.relative_to(paket).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                    for p in paket.rglob("*") if p.is_file()}
+        hazir_kaydi.write_text(json.dumps({"surum": surum_yeni, "dosyalar": dosyalar}),
+                              encoding="utf-8")
         return {"ok": True, "yol": str(hedef_klasor / "yeni" / "AfuDM")}
     except Exception:
         try:
@@ -121,6 +133,24 @@ def indir_ve_dogrula(bilgi: dict, ilerleme=None) -> dict:
         except OSError:
             pass
         return {"ok": False, "hata": "Güncelleme indirilemedi veya dosya bozuk."}
+
+
+def hazir() -> bool:
+    """Only a fully verified, still unchanged newer package can be applied."""
+    try:
+        klasor = paths.DATA / "guncelleme"
+        kayit = json.loads((klasor / "hazir.json").read_text(encoding="utf-8"))
+        if _parcala(kayit["surum"]) <= _parcala(surum.SURUM):
+            return False
+        paket = klasor / "yeni" / "AfuDM"
+        dosyalar = kayit["dosyalar"]
+        if not isinstance(dosyalar, dict) or "AfuDM.exe" not in dosyalar:
+            return False
+        mevcut = {p.relative_to(paket).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                  for p in paket.rglob("*") if p.is_file() and not p.is_symlink()}
+        return mevcut == dosyalar
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
 
 
 def _ps_q(path: Path) -> str:
@@ -176,9 +206,11 @@ Start-Process -FilePath (Join-Path $base "AfuDM.exe")
 '''
 
 
-def uygula() -> dict:
+def uygula(son_kontrol=None) -> dict:
     if not getattr(sys, "frozen", False):
         return {"ok": False, "hata": "Güncelleme yalnız paketli sürümde çalışır."}
+    if not hazir():
+        return {"ok": False, "hata": "Güncelleme hazır değil. Yeniden indir."}
     try:
         script = paths.DATA / "guncelleme" / "uygula.ps1"
         script.parent.mkdir(parents=True, exist_ok=True)
@@ -188,6 +220,9 @@ def uygula() -> dict:
         if startup is not None:
             startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             startup.wShowWindow = 0
+        # Validation may take time; check transfers again immediately before launch.
+        if son_kontrol is not None and not son_kontrol():
+            return {"ok": True, "bekle": True}
         subprocess.Popen(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
                           "-WindowStyle", "Hidden", "-File", str(script)],
                          creationflags=flags, startupinfo=startup,

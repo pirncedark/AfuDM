@@ -7,6 +7,10 @@ on:
 
 permissions: {}
 
+concurrency:
+  group: release-afutube-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -26,6 +30,8 @@ jobs:
         working-directory: ./AfuTube
         run: |
           wget -q https://services.gradle.org/distributions/gradle-9.6.0-bin.zip -O /tmp/gradle.zip
+          wget -q https://services.gradle.org/distributions/gradle-9.6.0-bin.zip.sha256 -O /tmp/gradle.zip.sha256
+          echo "$(cat /tmp/gradle.zip.sha256)  /tmp/gradle.zip" | sha256sum --check --status
           unzip -q /tmp/gradle.zip -d /tmp
           export PATH="/tmp/gradle-9.6.0/bin:$PATH"
           gradle wrapper --gradle-version 9.6.0 --distribution-type bin
@@ -34,7 +40,12 @@ jobs:
       - name: Prepare signing keystore
         env:
           AFUTUBE_KEYSTORE_B64: ${{ secrets.AFUTUBE_KEYSTORE_B64 }}
-        run: echo "$AFUTUBE_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/afutube-release.jks"
+        run: |
+          if [[ -z "$AFUTUBE_KEYSTORE_B64" ]]; then
+            echo "::error::AFUTUBE_KEYSTORE_B64 secret is not configured"
+            exit 1
+          fi
+          echo "$AFUTUBE_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/afutube-release.jks"
 
       - name: Run unit tests and build signed universal APK
         working-directory: ./AfuTube
@@ -53,7 +64,7 @@ jobs:
         run: |
           mkdir -p release-assets
           cp AfuTube/app/build/outputs/apk/release/*universal*.apk release-assets/AfuTube-universal.apk
-          sha256sum release-assets/AfuTube-universal.apk > release-assets/AfuTube-universal.apk.sha256
+          (cd release-assets && sha256sum AfuTube-universal.apk > AfuTube-universal.apk.sha256)
           cp AfuTube/app/build/outputs/apk/release/*arm64-v8a*.apk release-assets/AfuTube-arm64-v8a.apk
           (cd release-assets && sha256sum AfuTube-arm64-v8a.apk > AfuTube-arm64-v8a.apk.sha256)
           VERSION_NAME="${GITHUB_REF_NAME#afutube-v}"

@@ -30,4 +30,33 @@ class AnalysisErrorClassifierTest {
 
         assertEquals(AnalysisErrorCategory.PARSE, error.category)
     }
+
+    @Test
+    fun `unsupported unavailable video takes precedence over yt-dlp exit code`() {
+        val error = AnalysisFailure(
+            message = "Video unavailable. This video is not available",
+            exitCode = 1
+        ).toAnalysisError("unknown")
+
+        assertEquals(AnalysisErrorCategory.UNSUPPORTED, error.category)
+    }
+
+    @Test
+    fun `yt-dlp exit errors take precedence over JSON words in traceback`() {
+        val error = AnalysisFailure(
+            message = "yt-dlp failed",
+            exitCode = 1,
+            traceback = "extractor returned invalid json"
+        ).toAnalysisError("unknown")
+        assertEquals(AnalysisErrorCategory.EXTRACTOR, error.category)
+    }
+
+    @Test
+    fun `JSON parser exception without yt-dlp exit is parse error`() {
+        val error = AnalysisFailure(
+            message = "Yanıt çözümlenemedi",
+            traceback = "org.json.JSONException: end of input"
+        ).toAnalysisError("unknown")
+        assertEquals(AnalysisErrorCategory.PARSE, error.category)
+    }
 }

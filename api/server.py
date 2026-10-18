@@ -18,6 +18,7 @@ import ntpath
 import os
 import secrets
 import socket
+import socketserver
 import subprocess
 import threading
 import time
@@ -27,6 +28,7 @@ from pathlib import Path
 
 from core import models, paths
 from core.hata import hata_json
+from core.paylasim_sunucusu import _range_coz
 
 _LOG = logging.getLogger(__name__)
 
@@ -145,9 +147,44 @@ def _boolean_al(data: dict, anahtar: str) -> bool:
         normal = deger.strip().lower()
         if normal in ("true", "1"):
             return True
-        if normal in ("false", "0"):
+        if normal in ("false", "0", "", "no"):
             return False
     raise ValueError(f"{anahtar} boolean olmali (true/false/1/0)")
+
+
+class _GovdeHatasi(ValueError):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+
+
+def _govde_oku(handler, limit: int = 8 * 1024 * 1024) -> dict:
+    try:
+        length = int(handler.headers.get("Content-Length") or 0)
+    except ValueError:
+        handler.close_connection = True
+        raise _GovdeHatasi(400, "Istek okunamadi. Yeniden dene.")
+    if length < 0 or length > limit:
+        handler.close_connection = True
+        raise _GovdeHatasi(413 if length > limit else 400,
+                           "Istek boyutu uygun degil. Daha kucuk bir istek gonder.")
+    if not length:
+        return {}
+    try:
+        raw = handler.rfile.read(length)
+    except (TimeoutError, OSError):
+        handler.close_connection = True
+        raise _GovdeHatasi(408, "Istek tamamlanamadi. Yeniden dene.")
+    if len(raw) != length:
+        handler.close_connection = True
+        raise _GovdeHatasi(400, "Istek eksik geldi. Yeniden dene.")
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise _GovdeHatasi(400, "Istek okunamadi. Yeniden dene.")
+    if not isinstance(data, dict):
+        raise _GovdeHatasi(400, "Istek bicimi uygun degil. Yeniden dene.")
+    return data
 
 
 def load_or_create_token() -> str:
@@ -189,6 +226,10 @@ class _Handler(BaseHTTPRequestHandler):
     _rate: dict[str, list[float]] = {}
     shared_files: dict[str, dict] = {}
 
+    def setup(self) -> None:
+        self.request.settimeout(15.0)
+        super().setup()
+
     # --- yardimcilar ------------------------------------------------------
     def log_message(self, fmt: str, *args) -> None:  # konsolu kirletmesin
         pass
@@ -202,6 +243,12 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 
     def _send(self, code: int, payload: dict) -> None:
+        if urlparse(self.path).path == "/add" and (code >= 400 or payload.get("ok") is False):
+            try:
+                self.manager.store.log("error", "Tarayici devretme istegi reddedildi: " +
+                                       str(getattr(self, "_handoff_error", "") or payload.get("error") or payload.get("message") or code)[:1000])
+            except Exception:
+                _LOG.exception("Tarayici devretme hatasi olay kaydina yazilamadi")
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -313,17 +360,13 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             file_size = yol.stat().st_size
             range_header = self.headers.get("Range", "")
-            start, end = 0, file_size - 1
-            if range_header.startswith("bytes="):
-                try:
-                    ranges = range_header.split("=")[1].split("-")
-                    start = int(ranges[0]) if ranges[0] else 0
-                    end = int(ranges[1]) if len(ranges) > 1 and ranges[1] else file_size - 1
-                except ValueError:
-                    pass
-            if start >= file_size:
+            try:
+                start, end = _range_coz(range_header, file_size)
+            except ValueError:
                 self.send_response(416)
                 self.send_header("Content-Range", f"bytes */{file_size}")
+                self.send_header("Content-Length", "0")
+                self._cors()
                 self.end_headers()
                 return
             chunk_size = end - start + 1
@@ -360,14 +403,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self._hata(500, "AKIS_HATASI", "Dosya aktarimi baslatilamadi")
 
     def _body(self) -> dict:
-        length = int(self.headers.get("Content-Length") or 0)
-        if not length:
-            return {}
-        raw = self.rfile.read(length)
-        try:
-            return json.loads(raw.decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            return {}
+        return _govde_oku(self)
 
     # --- yollar -----------------------------------------------------------
     def do_OPTIONS(self) -> None:  # noqa: N802
@@ -633,15 +669,75 @@ class _Handler(BaseHTTPRequestHandler):
         else:
             self._hata(404, "BILINMEYEN_YOL", "bilinmeyen yol")
 
+    def _add_blob(self, query):
+        """Authenticated binary body, bounded streaming, server-owned destination."""
+        from core.dosya_adi import guvenli_dosya_adi
+        target = None
+        try:
+            length = int(self.headers.get("Content-Length", "-1"))
+            if length > 512 * 1024 * 1024:
+                self.close_connection = True
+                self._hata(413, "DOSYA_BUYUK", "Dosya çok büyük; tarayıcıdan kaydedin.")
+                return
+            if length < 0 or self.headers.get("Transfer-Encoding"):
+                raise ValueError("Dosya boyutu eksik; yeniden indirin.")
+            raw = query.get("filename", ["download.png"])[0]
+            if not raw or any(c in raw for c in ("/", "\\", ":", "\x00")) or raw in (".", "..") or any(k != "filename" for k in query):
+                raise ValueError("Dosya adı geçersiz; yeniden indirin.")
+            name = guvenli_dosya_adi(raw)
+            root = Path(self.manager.current_download_dir()).resolve()
+            root.mkdir(parents=True, exist_ok=True)
+            root_text = os.path.normpath(str(root))
+            # Exclusive creation prevents overwrites, including symlinks and races.
+            for index in range(10000):
+                leaf = name if index == 0 else f"{Path(name).stem} ({index}){Path(name).suffix}"
+                candidate = os.path.normpath(os.path.join(root_text, leaf))
+                if os.path.dirname(candidate) != root_text or not candidate.startswith(root_text + os.sep):
+                    raise ValueError("Dosya adı geçersiz; yeniden indirin.")
+                try:
+                    output = open(candidate, "xb")
+                    target = candidate
+                    break
+                except FileExistsError:
+                    continue
+            else:
+                raise ValueError("Dosya kaydedilemedi; yeniden indirin.")
+            self.connection.settimeout(30)
+            with output:
+                remaining = length
+                while remaining:
+                    chunk = self.rfile.read(min(256 * 1024, remaining))
+                    if not chunk:
+                        raise ValueError("Dosya aktarımı yarıda kaldı; yeniden indirin.")
+                    output.write(chunk)
+                    remaining -= len(chunk)
+            result = self.manager.add_completed_file(Path(target))
+            target = None
+            self._send(200, {"ok": True, **result})
+        except Exception:
+            self.close_connection = True
+            if target is not None:
+                try:
+                    os.unlink(target)
+                except OSError:
+                    pass
+            self._hata(400, "DOSYA_ALINAMADI", "Dosya alınamadı; tarayıcıdan yeniden indirin.")
+
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
+        self._handoff_error = ""
         if not self._rate_allowed(): self._hata(429, "RATE_LIMIT", "cok fazla istek; bir dakika sonra yeniden dene"); return
         if not self._authorized(query):
             self._hata(401, "GECERSIZ_TOKEN", "gecersiz token")
             return
-        data = self._body()
+        if parsed.path == "/add_blob":
+            self._add_blob(query)
+            return
         try:
+            data = self._body()
+            if not isinstance(data, dict):
+                raise ValueError("istek JSON nesnesi olmali")
             if parsed.path == "/add":
                 url = data.get("url") or data.get("source") or ""
                 hedef = data.get("dest_dir")
@@ -652,8 +748,10 @@ class _Handler(BaseHTTPRequestHandler):
                         return
                     hedef = str(Path(hedef).resolve())
                 if (_boolean_al(data, "interactive") and _Handler.on_ask and url.strip()
-                        and self.manager.store.get("kaydetme_penceresi")):
+                        and (data.get("prompt_source") == "desktop" or self.manager.store.get("kaydetme_penceresi"))):
                     kimlik = _Handler.on_ask(data)
+                    if not kimlik:
+                        raise ValueError("indirme onay penceresi istegi kabul etmedi")
                     self._send(200, {"ok": True, "pending": True, "id": kimlik})
                     return
                 if not hedef and data.get("kategori"):
@@ -737,7 +835,6 @@ class _Handler(BaseHTTPRequestHandler):
                 if not yol_str:
                     self._hata(404, "HAZIR_DEGIL", "Dosya hazir degil veya yolu bulunamadi")
                     return
-                from pathlib import Path
                 if not _yol_kok_icinde(yol_str, self.manager.current_download_dir()):
                     self._hata(403, "HEDEF_DISARIDA", "dosya indirme kokunun disinda")
                     return
@@ -748,6 +845,10 @@ class _Handler(BaseHTTPRequestHandler):
                 token = secrets.token_urlsafe(12)
                 _Handler.shared_files[token] = {"path": yol, "created": time.time()}
                 self._send(200, {"ok": True, "token": token, "filename": yol.name})
+            elif parsed.path == "/handoff/error":
+                mesaj = str(data.get("error") or "Tarayici devretme istegi basarisiz")[:500]
+                self.manager.store.log("error", "Tarayici devretme hatasi: " + mesaj)
+                self._send(200, {"ok": True})
             elif parsed.path == "/settings":
                 self._send(200, {"ok": True, "settings": self.manager.update_settings(data)})
             elif parsed.path == "/rules":
@@ -889,7 +990,10 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(200, {"ok": True, "pending": True})
             else:
                 self._hata(404, "BILINMEYEN_YOL", "bilinmeyen yol")
+        except _GovdeHatasi as exc:
+            self._hata(exc.status, "GOVDE_HATASI", str(exc))
         except Exception as exc:
+            self._handoff_error = f"{type(exc).__name__}: {exc}"
             govde = hata_json(exc)
             # Icin-de kodlar 400, INTERNAL 500 ile doner
             durum = 400 if govde.get("code") != "INTERNAL" else 500
@@ -910,7 +1014,11 @@ class _ExclusiveServer(ThreadingHTTPServer):
     def server_bind(self) -> None:
         if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-        super().server_bind()
+        # HTTPServer.server_bind calls getfqdn synchronously. This numeric-only
+        # listener must start even when the machine's DNS service is unavailable.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = self.server_address[0]
+        self.server_port = self.server_address[1]
 
 
 class LocalAPI:

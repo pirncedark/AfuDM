@@ -13,6 +13,7 @@ KOK = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(KOK))
 
 from core.manager import Manager  # noqa: E402
+from core.rpc import Aria2Error  # noqa: E402
 from video.ytdlp import VideoJob  # noqa: E402
 
 fails: list[str] = []
@@ -69,6 +70,35 @@ for iyi in ("https://a.com/f.zip", "http://a.com/f.zip", "ftp://a.com/f.zip",
 for kotu in ("Ternet Ninja 3 2025 WEB DL 1080p DUAL.mp4", "merhaba dunya",
              "C:/yok/olmayan.torrent", "www.ornek.com/f.zip"):
     check(f"red: {kotu[:28]}", Manager.is_supported_source(kotu) is False)
+
+print("3a) RPC durum kenar durumlari")
+class _StoreStub:
+    def __init__(self, row):
+        self.row = row
+        self.updates = []
+
+    def by_gid(self, _gid):
+        return self.row
+
+    def update_by_gid(self, gid, **fields):
+        self.updates.append((gid, fields))
+
+
+shaper = Manager.__new__(Manager)
+shaper.store = _StoreStub({"id": 1, "kind": "http", "title": "dosya", "source": "", "error": None})
+shaper._auth_required_gids = set()
+shaped = shaper._shape_aria2({"gid": "g1", "status": "active"})
+check("snapshot errorMessage her zaman metin", shaped["errorMessage"] == "")
+
+pauser = Manager.__new__(Manager)
+pauser.store = _StoreStub({"id": 2, "gid": "g2", "status": "complete"})
+class _RpcStub:
+    def pause(self, _gid, force=False):
+        raise Aria2Error("cannot be paused now")
+
+pauser.rpc = _RpcStub()
+check("bitmis GID pause hatasi False doner", pauser.pause("g2") is False)
+check("basarisiz pause kayit durumunu degistirmez", not pauser.store.updates)
 
 print("4) Dosya ve Klasor Silme (delete_targets)")
 import tempfile

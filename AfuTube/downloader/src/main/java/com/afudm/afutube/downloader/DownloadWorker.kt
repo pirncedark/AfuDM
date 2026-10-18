@@ -4,6 +4,8 @@ import com.afudm.afutube.runtime.MediaRuntime
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import com.afudm.afutube.core.extractor.InstagramCookies
+import com.afudm.afutube.core.diagnostics.SensitiveDataRedactor
 import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationCompat
@@ -72,7 +74,13 @@ class DownloadWorker(
 
         setForeground(createForegroundInfo("Hazırlanıyor…", 0))
 
+        val cookieFile = InstagramCookies.writeFor(applicationContext, url)
+        val storyPk = if (InstagramCookies.isInstagram(url) && java.net.URI(url).path.orEmpty().startsWith("/stories/"))
+            InstagramCookies.storyMediaCode(url) else null
+
         fun request(useAria2c: Boolean, extractorArgs: String? = null) = YoutubeDLRequest(url).apply {
+            cookieFile?.let { addOption("--cookies", it.absolutePath) }
+            storyPk?.let { addOption("--match-filters", "id=$it") }
             addOption("-f", formatId)
             extractorArgs?.let { addOption("--extractor-args", it) }
             val safeTitle = requestedTitle.replace(Regex("[\\\\/:*?\"<>|\\r\\n]"), "_").trim().take(100)
@@ -116,6 +124,8 @@ class DownloadWorker(
         val firstStep = if (youtube) DownloadRecoveryPolicy.Step.LOCAL else DownloadRecoveryPolicy.Step.ARIA2C
         var finalError = ""
         var saw403 = false
+        var networkRetryUsed = false
+        var recoveryStarted = false
         var success = false
         var steps = listOf(firstStep)
         var index = 0
@@ -148,10 +158,22 @@ class DownloadWorker(
             } catch (e: Exception) {
                 finalError = e.message.orEmpty()
             }
+            cookieFile?.let { finalError = finalError.replace(it.absolutePath, "[gizli]") }
+            finalError = SensitiveDataRedactor.redact(finalError)
             if (DownloadRecoveryPolicy.isHttp403(finalError)) saw403 = true
+            if (!saw403 && !networkRetryUsed && isRetryableNetworkError(finalError)) {
+                networkRetryUsed = true
+                kotlinx.coroutines.delay(1_000)
+                steps = listOf(step, step)
+                index++
+                continue
+            }
             // Kurtarma basladiktan sonra baska hata da gelse (or. gomulemeyen video) kalan adimlar denenir.
             if (!saw403) break
-            if (index == 0) steps = DownloadRecoveryPolicy.steps(youtube, initialHttp403 = true)
+            if (!recoveryStarted) {
+                steps = DownloadRecoveryPolicy.stepsAfter403(steps, index, youtube)
+                recoveryStarted = true
+            }
             index++
         }
 
@@ -178,6 +200,10 @@ class DownloadWorker(
             Result.failure(workDataOf("error" to error))
         }
     }
+
+    private fun isRetryableNetworkError(message: String): Boolean =
+        Regex("(?i)timed? out|timeout|connection reset|connection refused|connection aborted|\"connection error\"|network is unreachable|temporary failure in name resolution|unable to resolve host")
+            .containsMatchIn(message)
 
     /** yt-dlp stderr'inden kartta gosterilecek kisa neden (son ERROR satiri). */
     private fun okunurHata(err: String?, sensitiveValues: List<String> = emptyList()): String {

@@ -64,14 +64,31 @@ class FormatSimplifierTest {
     }
 
     @Test
+    fun usesShortEdgeForPortraitAndLandscapeVideoQuality() {
+        assertEquals("1080p", simplifyResolution("1080x1920").videoOptions.first().label)
+        assertEquals("1080p", simplifyResolution("1920x1080").videoOptions.first().label)
+        assertEquals("720p", simplifyResolution("720x1280").videoOptions.first().label)
+        assertEquals("480p", FormatSimplifier.simplify(listOf(format("unknown", null, quality = "480p"))).videoOptions.single().label)
+        val portraitFormatId = simplifyResolution("1080x1920").videoOptions.first().formatId
+        assertTrue(portraitFormatId.contains("bestvideo[width<=1080][ext=mp4]"))
+        assertFalse(portraitFormatId.contains("height<="))
+        val landscapeFormatId = simplifyResolution("1920x1080").videoOptions.first().formatId
+        assertFalse(landscapeFormatId.contains("width<="))
+    }
+
+    @Test
     fun directLinkWithUnknownCodecsStillOffersMp3() {
         val direct = format("direct", null, codec = "avc1", audioCodec = "none")
         val result = FormatSimplifier.simplify(listOf(direct))
         assertEquals(listOf("MP3"), result.audioOptions.map { it.label })
     }
 
-    private fun format(id: String, height: Int?, fps: Int = 30, codec: String = "avc1", audioCodec: String = "none", size: Long = 0) =
-        MediaFormat(id, "mp4", height?.let { "${it}p" } ?: "direct", height?.let { "1920x$it" } ?: "", fps,
+    private fun simplifyResolution(resolution: String) = FormatSimplifier.simplify(listOf(
+        MediaFormat("video", "mp4", "1920p", resolution, 30, "avc1", "none", 0, "https://example.com/video")
+    ))
+
+    private fun format(id: String, height: Int?, fps: Int = 30, codec: String = "avc1", audioCodec: String = "none", size: Long = 0, quality: String? = null) =
+        MediaFormat(id, "mp4", quality ?: (height?.let { "${it}p" } ?: "direct"), height?.let { "1920x$it" } ?: "", fps,
             codec, audioCodec, size, "https://example.com/$id")
 
     private fun audio(id: String, ext: String, size: Long) =

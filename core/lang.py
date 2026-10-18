@@ -18,6 +18,7 @@ DESTEKLENEN = ("tr", "en")
 _TEXTS = {
     "tr": {
         "window.title": "AfuDM — indirme yöneticisi",
+        "window.download": "AfuDM — İndirme",
         "tray.show": "Pencereyi göster",
         "tray.hidden": (
             "AfuDM tepside çalışmaya devam ediyor. Simge görev çubuğundaki "
@@ -69,6 +70,7 @@ _TEXTS = {
     },
     "en": {
         "window.title": "AfuDM — download manager",
+        "window.download": "AfuDM — Download",
         "tray.show": "Show window",
         "tray.hidden": (
             "AfuDM keeps running in the tray. The icon sits under the ^ arrow on "

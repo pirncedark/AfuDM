@@ -14,23 +14,18 @@ class SahteManager:
     store = SahteStore()
     def current_download_dir(self): return "."
 
-gecici_data = None
+gecici_data = tempfile.TemporaryDirectory()
 eski_data = api_server.paths.DATA
 eski_token_dosyasi = api_server.paths.API_TOKEN_FILE
 eski_izin_kisitla = api_server._dosya_iznini_kisitla
-try:
-    # CI/sandbox, canli token dosyasini bilincli olarak okunamaz kilitleyebilir.
-    # PWA testi kimlik bilgisini degil, herkese acik statik uc noktalari sinar;
-    # bu nedenle yalitilmis gecici token kullanir.
-    api_server.load_or_create_token()
-except PermissionError:
-    gecici_data = tempfile.TemporaryDirectory()
-    api_server.paths.DATA = Path(gecici_data.name)
-    api_server.paths.API_TOKEN_FILE = api_server.paths.DATA / "api_token.txt"
-    api_server._dosya_iznini_kisitla = lambda _yol: None
+# Always isolate both the token and endpoint file from the running app.
+api_server.paths.DATA = Path(gecici_data.name)
+api_server.paths.API_TOKEN_FILE = api_server.paths.DATA / "api_token.txt"
+api_server._dosya_iznini_kisitla = lambda _yol: None
 
-api = LocalAPI(SahteManager(), port=6899, lan=False)
-port = api.start()
+api = LocalAPI(SahteManager(), port=0, lan=False)
+api.start()
+port = api.httpd.server_port
 kok = f"http://127.0.0.1:{port}"
 gecti = dusen = 0
 

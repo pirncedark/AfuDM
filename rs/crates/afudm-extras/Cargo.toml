@@ -1,0 +1,29 @@
+[package]
+name = "afudm-extras"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+afudm-types.workspace = true
+afudm-api.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+log.workspace = true
+axum.workspace = true
+afudm-engine.workspace = true
+base64.workspace = true
+rand.workspace = true
+futures-util = "0.3"
+tokio = { workspace = true, features = ["fs", "io-util"] }
+rusqlite.workspace = true
+sha2.workspace = true
+sha1 = "0.10"
+md-5 = "0.10"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+regex = "1"
+chrono = "0.4"
+ureq = { version = "3", features = ["json"] }
+afudm-db.workspace = true
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"

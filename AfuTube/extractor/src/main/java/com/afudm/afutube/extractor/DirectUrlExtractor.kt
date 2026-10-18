@@ -11,7 +11,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Doğrudan indirilebilir URL'ler için fallback extractor.
+ * Doğrudan indirilebilir URL'ler için ilk tercih edilen extractor.
  * HEAD isteği atarak dosya boyutu ve tipini alır.
  */
 class DirectUrlExtractor : MediaExtractor {

@@ -30,7 +30,7 @@ data class AnalysisError(
         appendLine("Exit code: ${exitCode ?: "yok"}")
         appendLine("Mesaj: $message")
         appendLine("Traceback:")
-        append(traceback)
+        append(SensitiveDataRedactor.redact(traceback))
     }
 }
 
@@ -46,8 +46,10 @@ data class AnalysisFailure(
             "timeout" in text || "timed out" in text || "network is unreachable" in text ||
                 "unable to resolve host" in text || "connection reset" in text -> AnalysisErrorCategory.NETWORK_TIMEOUT
             "unsupported" in text || "not available" in text || "does not support" in text -> AnalysisErrorCategory.UNSUPPORTED
-            "parse" in text || "json" in text || "traceback" in text -> AnalysisErrorCategory.PARSE
-            "extractor" in text || "youtube" in text || "yt-dlp" in text -> AnalysisErrorCategory.EXTRACTOR
+            exitCode != null || "extractorerror" in text || "extractor error" in text -> AnalysisErrorCategory.EXTRACTOR
+            "jsonexception" in text || "json syntax" in text || "unexpected character" in text ||
+                "end of input" in text || "parse" in text -> AnalysisErrorCategory.PARSE
+            "yt-dlp" in text || "youtube-dl" in text -> AnalysisErrorCategory.EXTRACTOR
             else -> AnalysisErrorCategory.OTHER
         }
         return AnalysisError(

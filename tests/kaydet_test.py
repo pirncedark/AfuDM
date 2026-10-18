@@ -105,7 +105,10 @@ with tempfile.TemporaryDirectory() as gecici:
           len({o["yol"].lower() for o in kisa}) == len(kisa))
 
 print("5) Bekleyen istekler")
-b = kaydet.Bekleyenler()
+pending_tmp = tempfile.TemporaryDirectory()
+from unittest.mock import patch
+with patch.object(kaydet.paths, "DATA", Path(pending_tmp.name)):
+    b = kaydet.Bekleyenler()
 kimlik = b.ekle({
     "url": "https://ornek.com/f.zip", "filename": "f.zip", "kind": "http",
     "cookies": [{"name": "sid", "value": "GIZLI"}], "headers": {"Referer": "https://ornek.com/"},
@@ -125,8 +128,9 @@ eski = b.ekle({"url": "https://ornek.com/eski.zip"})
 b._isler[eski]["zaman"] = time.time() - kaydet.Bekleyenler.SURE - 1
 taze = b.ekle({"url": "https://ornek.com/taze.zip"})
 kalanlar = [o["id"] for o in b.ozet()]
-check("suresi gecen istek atildi", kalanlar == [taze], str(kalanlar))
-check("suresi gecenin istegi de gitti", b.al(eski) is None)
+check("suresi gecen indirme kaybolmadi", kalanlar == [eski, taze], str(kalanlar))
+check("suresi gecenin istegi alinabilir", b.al(eski) is not None)
+pending_tmp.cleanup()
 
 print("6) Ag konumlari (modem/NAS paylasimi)")
 # OLCULDU 2026-09-18: aria2c UNC yoluna sorunsuz iniyor (5 MB, cikis 0).

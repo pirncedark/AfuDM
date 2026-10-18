@@ -70,7 +70,9 @@ class UIUXGateTest(unittest.TestCase):
                     port_durumu: async () => window.fakeBackendState.port_status,
                     api_info: async () => ({ port: 6811 }),
                     rules_list: async () => ({ rules: [] }),
-                    surum_bilgi: async () => ({ surum: "2.4.0" }),
+                    surum_bilgi: async () => ({ surum: "2.9.1", uzanti: "2.9.1" }),
+                    butunluk_tara: async () => ({ok: true, durum: "saglam"}),
+                    butunluk_hepsini_tara: async () => ({ok: true, taranan: 0}),
                     motor_durumu: async () => ({ motorlar: {}, ilerleme: {} }),
                     reliability_integrity: async () => "OK",
                     reliability_restart_engine: async () => ({ ok: window.fakeBackendState.engine_ok, message: "motor yeniden baslatildi" }),
@@ -105,6 +107,100 @@ class UIUXGateTest(unittest.TestCase):
         # Check for unclosed tags by seeing if fundamental elements exist
         expect(self.page.locator("#list")).to_be_visible()
         expect(self.page.locator(".rail")).to_be_visible()
+
+    def test_automation_settings_are_accessible_without_advanced_mode(self):
+        self.page.locator("#openSettings").click()
+        tab = self.page.locator("#setVeil [data-stab='otomasyon']")
+        expect(tab).to_be_visible()
+        expect(tab).to_have_text("Automation" if self.test_lang == "en" else "Otomasyon")
+        tab.click()
+        pane = self.page.locator("#sPaneOtomasyon")
+        for selector in ("#sShutdown", "#sSleep", "#sAutoEnabled", "#sAutoPower", "#sAutoSeconds"):
+            expect(pane.locator(selector)).to_be_visible()
+        pane.locator("#sShutdown").check()
+        expect(pane.locator("#sShutdown")).to_be_checked()
+        pane.locator("#sAutoPower").select_option("sleep")
+        self.assertEqual(pane.locator("#sAutoPower").input_value(), "sleep")
+        expect(pane.locator("#sAutoScript")).to_be_hidden()
+        pane.locator(".adv-accordion summary").click()
+        expect(pane.locator("#sAutoScript")).to_be_visible()
+        self.assertEqual(self.page.locator("#sShutdown").count(), 1)
+        self.assertEqual(self.errors, [])
+
+    def test_auto_update_downloads_cached_release_and_waits_for_idle(self):
+        result = self.page.evaluate("""async () => {
+            const events = [];
+            const api = window.pywebview.api;
+            api.guncelleme_son_kontrol = async () => ({aktif:true, paketli:true,
+                zaman:Date.now()/1000, bilgi:{ok:true,var:true,yeni:'2.10.0'}});
+            api.guncelleme_kontrol = async () => { throw new Error('cached check should be reused'); };
+            api.guncelleme_indir = async b => { events.push('download:' + b.yeni); return {ok:true}; };
+            api.guncelleme_durum = async () => ({durum:'bitti'});
+            api.guncelleme_uygula = async automatic => {
+                events.push('apply:' + automatic);
+                return events.filter(x => x.startsWith('apply:')).length === 1
+                    ? {ok:true,bekle:true} : {ok:true};
+            };
+            const delay = window.setTimeout;
+            window.setTimeout = (f, ms, ...args) => delay(f, ms >= 2000 ? 0 : ms, ...args);
+            try { await guncellemeOtomatikKontrol(); } finally { window.setTimeout = delay; }
+            return events;
+        }""")
+        self.assertEqual(result, ['download:2.10.0', 'apply:true', 'apply:true'])
+        self.assertEqual(self.errors, [])
+
+    def test_update_waiting_for_approval_can_be_skipped_with_button(self):
+        result = self.page.evaluate("""async () => {
+            const calls = [];
+            guncellemeBilgisi = {ok:true,var:true,yeni:'2.10.0'};
+            const api = window.pywebview.api;
+            api.guncelleme_indir = async () => ({ok:true});
+            api.guncelleme_durum = async () => ({durum:'bitti'});
+            api.guncelleme_uygula = async (automatic, force) => {
+                calls.push(!!force);
+                return force ? {ok:true} : {ok:true,bekle:true,neden:'bekleyen'};
+            };
+            const delay = window.setTimeout;
+            window.setTimeout = (f, ms, ...args) => delay(f, ms >= 2000 ? 20 : ms, ...args);
+            try {
+                const run = guncellemeBaslat(false);
+                await new Promise(resolve => delay(resolve, 150));
+                const button = document.getElementById('guncellemeBtn');
+                const waiting = {disabled: button.disabled, label: button.textContent.trim()};
+                button.click();
+                await run;
+                return {waiting, calls};
+            } finally { window.setTimeout = delay; }
+        }""")
+        self.assertFalse(result['waiting']['disabled'])
+        self.assertNotIn(result['waiting']['label'], ('Güncelle', 'Update'))
+        self.assertFalse(result['calls'][0])
+        self.assertTrue(result['calls'][-1])
+        self.assertEqual(self.errors, [])
+
+    def test_auto_update_opt_out_does_not_download(self):
+        result = self.page.evaluate("""async () => {
+            let downloads = 0;
+            window.pywebview.api.guncelleme_son_kontrol = async () => ({aktif:false,paketli:true});
+            window.pywebview.api.guncelleme_indir = async () => { downloads++; return {ok:true}; };
+            await guncellemeOtomatikKontrol();
+            return downloads;
+        }""")
+        self.assertEqual(result, 0)
+        self.assertEqual(self.errors, [])
+
+    def test_update_rejected_download_stops_without_apply(self):
+        result = self.page.evaluate("""async () => {
+            let applied = false;
+            guncellemeBilgisi = {ok:true,var:true,yeni:'2.10.0'};
+            window.pywebview.api.guncelleme_indir = async () => ({ok:false,hata:'download rejected'});
+            window.pywebview.api.guncelleme_durum = async () => ({durum:'bitti'});
+            window.pywebview.api.guncelleme_uygula = async () => {applied=true; return {ok:true};};
+            await guncellemeBaslat(false);
+            return {applied, locked:guncellemeIsliyor, disabled:document.getElementById('guncellemeBtn').disabled};
+        }""")
+        self.assertEqual(result, {'applied': False, 'locked': False, 'disabled': False})
+        self.assertEqual(self.errors, [])
 
     def test_share_filename_is_rendered_as_text_without_script_execution(self):
         self.page.evaluate("""() => {
@@ -225,7 +321,92 @@ class UIUXGateTest(unittest.TestCase):
         self.page.locator("#rulesOpen").click()
         expect(self.page.locator("#rulesVeil")).to_be_visible()
         self.page.keyboard.press("Escape")
-        expect(self.page.locator("#globalModel")).to_contain_text("AfuDM v2.4.0")
+        expect(self.page.locator("#globalModel")).to_contain_text("AfuDM v2.9.1")
+
+    def test_rules_delayed_response_opens_once_then_loads(self):
+        self.page.evaluate("""() => {
+            window.rulesCalls = 0;
+            window.pywebview.api.rules_list = () => {
+                window.rulesCalls++;
+                return new Promise(resolve => window.finishRules = resolve);
+            };
+            document.querySelector('#rulesOpen').click();
+        }""")
+        expect(self.page.locator("#rulesVeil")).to_be_visible(timeout=150)
+        self.assertEqual(self.page.locator(".veil.open").count(), 1)
+        self.assertEqual(self.page.evaluate("window.rulesCalls"), 1)
+        self.page.evaluate("window.finishRules({rules: [{name: 'Test rule', active: true, conditions: [], actions: {}}]})")
+        expect(self.page.locator("#rulesList [data-name='0']")).to_have_value("Test rule")
+        expect(self.page.locator("#rulesErr")).to_be_empty()
+
+    def test_rules_missing_engine_has_translated_action(self):
+        self.page.evaluate("delete window.pywebview.api.rules_list")
+        self.page.locator("#rulesOpen").click()
+        expect(self.page.locator("#rulesErr")).to_have_text(
+            self.page.evaluate("t('rules.engineMissing')"))
+        self.assertEqual(self.errors, [])
+
+    def test_rules_missing_bridge_has_translated_error(self):
+        self.page.evaluate("""() => {
+            const bridge = window.pywebview;
+            delete window.pywebview;
+            document.querySelector('#rulesOpen').click();
+            window.pywebview = bridge;
+        }""")
+        expect(self.page.locator("#rulesVeil")).to_be_visible()
+        expect(self.page.locator("#rulesErr")).to_have_text(self.page.evaluate("t('err.bridge')"))
+        self.assertEqual(self.errors, [])
+
+    def test_version_delayed_bridge_failure_and_visible_retry(self):
+        self.page.evaluate("""() => {
+            surumBilgisi = null;
+            document.querySelector('#brandSurum').textContent = '';
+            document.querySelector('#globalModel').textContent = '';
+            window.pywebview.api.surum_bilgi = () => new Promise(resolve => window.finishVersion = resolve);
+            window.dispatchEvent(new Event('pywebviewready'));
+        }""")
+        expect(self.page.locator("#list")).to_be_visible()
+        expect(self.page.locator("#globalModel")).to_be_empty()
+        self.page.evaluate("window.finishVersion({surum: '2.9.1', uzanti: '2.9.1'})")
+        expect(self.page.locator("#brandSurum")).to_have_text("v2.9.1")
+        expect(self.page.locator("#globalModel")).to_have_text("AfuDM v2.9.1")
+        self.page.locator("#openSettings").click()
+        expect(self.page.locator("#sSurum b")).to_have_text(["2.9.1", "2.9.1"])
+        self.page.keyboard.press("Escape")
+        self.page.evaluate("""async () => {
+            surumBilgisi = null;
+            document.querySelector('#brandSurum').textContent = '';
+            document.querySelector('#globalModel').textContent = '';
+            delete window.pywebview.api.surum_bilgi;
+            await surumuYukle();
+        }""")
+        self.page.locator("#openSettings").click()
+        expect(self.page.locator("#sSurum")).to_have_text(self.page.evaluate("t('set.surumYok')"))
+        self.page.keyboard.press("Escape")
+        self.page.evaluate("window.pywebview.api.surum_bilgi = async () => ({surum: '2.9.1', uzanti: '2.9.1'})")
+        self.page.locator("#openSettings").click()
+        expect(self.page.locator("#globalModel")).to_have_text("AfuDM v2.9.1")
+        expect(self.page.locator("#sSurum b")).to_have_text(["2.9.1", "2.9.1"])
+        self.page.keyboard.press("Escape")
+        self.page.reload()
+        self.page.evaluate("window.dispatchEvent(new Event('pywebviewready'))")
+        expect(self.page.locator("#globalModel")).to_have_text("AfuDM v2.9.1")
+        self.assertEqual(self.errors, [])
+
+    def test_version_badge_narrow_window_does_not_cover_primary_action(self):
+        for width in (640, 800, 1280):
+            with self.subTest(width=width):
+                self.page.set_viewport_size({"width": width, "height": 600})
+                badge = self.page.locator("#globalModel")
+                expect(badge).to_have_text("AfuDM v2.9.1")
+                box = badge.bounding_box()
+                button = self.page.locator("#addBtn").bounding_box()
+                self.assertLessEqual(box["x"] + box["width"], width)
+                self.assertLessEqual(box["y"] + box["height"], 600)
+                self.assertTrue(box["y"] >= button["y"] + button["height"] or
+                                box["x"] >= button["x"] + button["width"])
+                self.assertEqual(badge.evaluate("el => getComputedStyle(el).position"), "fixed")
+                self.assertEqual(badge.evaluate("el => getComputedStyle(el).pointerEvents"), "none")
 
     def test_trace_has_no_divider_below_the_speed_readout(self):
         """The trace/status junction is intentionally seamless."""
@@ -394,6 +575,8 @@ class UIUXGateTest(unittest.TestCase):
                         snapshot: async () => ({ items: [], settings: {}, stat: {}, engine_ok: true, lang: "tr" }),
                         port_durumu: async () => ({ calisan: 6811 }), api_info: async () => ({ port: 6811 }),
                         motor_durumu: async () => ({ motorlar: {}, ilerleme: {} }), reliability_integrity: async () => "OK",
+                        butunluk_tara: async () => ({ok: true, durum: "saglam"}),
+                        butunluk_hepsini_tara: async () => ({ok: true, taranan: 0}),
                         telefon_durumu: async () => ({ acik: false, adres: "" }), seed_dosyalari: async () => ({ eklenebilir: [], uygulanan: [] })
                     }};
                 """)

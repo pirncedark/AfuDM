@@ -1,0 +1,12 @@
+target/
+app/target/
+app/node_modules/
+app/gen/
+.cargo-home/
+/app/target/
+/app/node_modules/
+/tests_parity/rapor/
+*.log
+docs/sonuc/*.json
+tests_hata/rapor/
+tests_hata/bin/

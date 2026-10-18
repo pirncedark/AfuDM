@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import android.util.Log
 
 class AfuTubeApplication : Application() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -26,7 +27,7 @@ class AfuTubeApplication : Application() {
                 } else {
                     ExtractorUpdater.maybeAutoUpdate(this@AfuTubeApplication)
                 }
-            }
+            }.onFailure { Log.w("AfuTube", "Arka plan yt-dlp g\u00fcncellemesi ba\u015far\u0131s\u0131z", it) }
         }
     }
 }

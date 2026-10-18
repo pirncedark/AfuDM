@@ -12,14 +12,15 @@
         veritabanina yazmaz (core/cerez.py).
 */
 
-importScripts("header-policy.js");
+importScripts("header-policy.js", "download-handoff.js");
 
 const DEFAULTS = {
   enabled: true,
   port: 6811,
   token: "",
-  minSizeMB: 1,
-  skipExtensions: "html,htm,css,js,json,xml,svg,ico,woff,woff2,txt",
+  minSizeMB: 0,
+  skipExtensions: "",
+  downloadContract: 0,
   videoCatch: true,
   sendCookies: true,
   /* ANA ANAHTAR: kapaliyken uzanti HICBIR SEYE dokunmaz — indirme devralmaz,
@@ -45,6 +46,10 @@ chrome.storage.onChanged.addListener((degisen) => {
 
 async function config() {
   const stored = await chrome.storage.local.get(DEFAULTS);
+  if (stored.downloadContract !== 1) {
+    Object.assign(stored, { minSizeMB: 0, skipExtensions: "", downloadContract: 1 });
+    await chrome.storage.local.set({ minSizeMB: 0, skipExtensions: "", downloadContract: 1 });
+  }
   return { ...DEFAULTS, ...stored };
 }
 
@@ -106,24 +111,87 @@ async function cookiesFor(cfg, url) {
   }
 }
 
+async function reportHandoffError(cfg, error) {
+  // Best effort: the API may be unreachable; never replace the original error.
+  try {
+    if (!(await ping(cfg.port))) await portTara(cfg);
+    await fetch(endpoint(cfg, "/handoff/error"), {
+      method: "POST",
+      signal: AbortSignal.timeout(3000),
+      headers: { "Content-Type": "application/json", "X-AfuDM-Token": cfg.token },
+      body: JSON.stringify({ error: String(error.message || error) }),
+    });
+  } catch (_) {}
+}
+
 async function sendToAfudm(cfg, body) {
   /* interactive: AfuDM indirmeyi HEMEN baslatmaz, once kaydetme penceresini
      acar (klasor/ad/kategori secimi). Ayar kapaliysa uygulama yok sayar ve
      dogrudan baslatir; karar AfuDM'in, uzantinin degil. */
-  const payload = { user_agent: navigator.userAgent, interactive: true, ...body };
-  if (!payload.cookies) payload.cookies = await cookiesFor(cfg, payload.url);
-  // Port kaymis olabilir: gondermeden once dogrula (tarama gerekirse cfg.port guncellenir)
-  if (!(await ping(cfg.port))) await portTara(cfg);
-  const response = await fetch(endpoint(cfg, "/add"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-AfuDM-Token": cfg.token },
-    body: JSON.stringify(payload),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error || chrome.i18n.getMessage("msgNoResponse", [String(response.status)]));
+  try {
+    const payload = { user_agent: navigator.userAgent, interactive: true, ...body };
+    if (!payload.cookies) payload.cookies = await cookiesFor(cfg, payload.url);
+    // Port kaymis olabilir: gondermeden once dogrula (tarama gerekirse cfg.port guncellenir)
+    if (!(await ping(cfg.port))) await portTara(cfg);
+    const response = await fetch(endpoint(cfg, "/add"), {
+      method: "POST",
+      signal: AbortSignal.timeout(10000),
+      headers: { "Content-Type": "application/json", "X-AfuDM-Token": cfg.token },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data?.ok !== true) {
+      throw new Error(data?.error || chrome.i18n.getMessage("msgNoResponse", [String(response.status)]));
+    }
+    return data;
+  } catch (error) {
+    await reportHandoffError(cfg, error);
+    throw error;
   }
-  return data;
+}
+
+// Page-owned objects travel in bounded messages; never send their URL to aria2.
+async function sendLocalFile(cfg, download, url) {
+  const filename = download.filename ? download.filename.split(/[\\/]/).pop() : "download.png";
+  let body;
+  const limit = 512 * 1024 * 1024;
+  try {
+    if (/^data:/i.test(url)) {
+      if (url.length > 48 * 1024 * 1024) throw new Error("Dosya çok büyük; tarayıcıdan kaydedin.");
+      body = await (await fetch(url)).blob();
+      if (body.size > 32 * 1024 * 1024) throw new Error("Dosya çok büyük; tarayıcıdan kaydedin.");
+    } else {
+      const tabs = await chrome.tabs.query({});
+      let source;
+      for (const tab of tabs) {
+        const frames = await chrome.webNavigation.getAllFrames({tabId:tab.id}).catch(() => []);
+        for (const frame of frames || []) {
+          const reply = await chrome.tabs.sendMessage(tab.id, {type:"afudmBlobOpen", url}, {frameId:frame.frameId}).catch(() => null);
+          if (reply?.ok) { source = {tabId:tab.id, frameId:frame.frameId, ...reply}; break; }
+        }
+        if (source) break;
+      }
+      if (!source || source.size > limit) throw new Error("Görsel alınamadı; tarayıcıdan kaydedin.");
+      const chunks = [];
+      try {
+        for (let offset = 0; offset < source.size; offset += 256 * 1024) {
+          const chunk = await chrome.tabs.sendMessage(source.tabId, {type:"afudmBlobRead", id:source.id, offset}, {frameId:source.frameId});
+          if (!chunk?.ok || chunk.bytes.length !== Math.min(256 * 1024, source.size-offset)) throw new Error("Görsel alınamadı; tarayıcıdan kaydedin.");
+          chunks.push(new Uint8Array(chunk.bytes));
+        }
+        body = new Blob(chunks);
+      } finally {
+        await chrome.tabs.sendMessage(source.tabId, {type:"afudmBlobClose", id:source.id}, {frameId:source.frameId}).catch(() => {});
+      }
+    }
+    const response = await fetch(endpoint(cfg, "/add_blob?filename=" + encodeURIComponent(filename)), {
+      method:"POST", headers:{"X-AfuDM-Token":cfg.token, "Content-Type":"application/octet-stream"}, body,
+      signal:AbortSignal.timeout(120000),
+    });
+    const result = await response.json();
+    if (!response.ok || result.ok !== true) throw new Error(result.error || "Görsel alınamadı; tarayıcıdan kaydedin.");
+    return result;
+  } catch (error) { await reportHandoffError(cfg, error); throw error; }
 }
 
 function notify(message, title = "AfuDM") {
@@ -167,38 +235,171 @@ function extensionOf(url) {
   }
 }
 
-/* --- 1) Tarayici indirmesini devral --------------------------------- */
-chrome.downloads.onCreated.addListener(async (item) => {
-  const cfg = await config();
-  // Yonlendirmelerden SONRAKI adres: cerezler de bu adrese gore secilir,
-  // boylece aria2 yonlendirme zincirinde cerezi baska alana tasimaz.
-  const url = item.finalUrl || item.url;
-  if (!cfg.uzantiAcik || !cfg.enabled || !url || url.startsWith("blob:") || url.startsWith("data:")) {
-    return;
-  }
-  const skip = cfg.skipExtensions.split(",").map((s) => s.trim()).filter(Boolean);
-  if (skip.includes(extensionOf(url))) return;
-  if (item.fileSize > 0 && item.fileSize < cfg.minSizeMB * 1048576) return;
-  if (!(await afudmAlive(cfg))) return; // AfuDM kapali: tarayici devam etsin
+/* --- 1a) Ikinci yol: AfuDM indiremezse dosyayi tarayici kendisi alir ----
+   AfuDM devraldiktan sonra is "error" durumuna duserse (401/403, cerez,
+   oturum...) eklenti ayni adresi tarayici baglaminda ceker ve /add_blob ile
+   AfuDM'in klasorune koyar. Kullanici sildiyse ya da duraklattiysa dokunmaz.
+   Kayitlar storage.session'da: MV3 service worker uyusa da kaybolmaz.
+   Chrome'in kendi indirmesi GERI BASLATILMAZ; bu yol chrome.downloads kullanmaz. */
+const IKINCI_YOL_ALARMI = "afudm-ikinci-yol";
+const IKINCI_YOL_SINIR_MS = 24 * 60 * 60 * 1000;
+const IKINCI_YOL_ANAHTAR = "ikinciYolIzleme";
+const IKINCI_YOL_MAKS_BYTE = 512 * 1024 * 1024;
+let ikinciYolZinciri = Promise.resolve();
 
-  try {
-    const sonuc = await sendToAfudm(cfg, {
-      url,
-      kind: "http",
-      filename: item.filename ? item.filename.split(/[\\/]/).pop() : undefined,
-      headers: item.referrer ? { Referer: item.referrer } : {},
-    });
-    chrome.downloads.cancel(item.id, () => chrome.downloads.erase({ id: item.id }));
-    notify(chrome.i18n.getMessage(sonuc.pending ? "msgPending" : "notifyResumed"));
-    chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
-      if (tabs.length && tabs[0].id) {
-        const ad = item.filename ? item.filename.split(/[\\/]/).pop() : chrome.i18n.getMessage("msgToastSingle");
-        sayfaToast(tabs[0].id, "AfuDM", ad);
-      }
-    }).catch(() => {});
-  } catch (error) {
-    notify(chrome.i18n.getMessage("notifyHandoffFailed") + error.message);
+function ikinciYolSirala(islem) {
+  const sonuc = ikinciYolZinciri.then(islem);
+  ikinciYolZinciri = sonuc.catch(() => {});
+  return sonuc;
+}
+
+async function ikinciYolListesi() {
+  return (await chrome.storage.session.get(IKINCI_YOL_ANAHTAR))[IKINCI_YOL_ANAHTAR] || [];
+}
+
+function ikinciYolDosyaAdi(url, filename) {
+  let ad = String(filename || "").split(/[\\/]/).pop();
+  if (!ad) {
+    try { ad = decodeURIComponent(new URL(url).pathname.split("/").pop() || ""); } catch (_) { ad = ""; }
   }
+  return (ad || "download").replace(/[\\/:\x00]/g, "_");
+}
+
+function ikinciYolEkle(url, referrer, filename) {
+  return ikinciYolSirala(async () => {
+    const liste = (await ikinciYolListesi()).filter((kayit) => kayit.url !== url);
+    liste.push({ url, referrer: referrer || "", filename: ikinciYolDosyaAdi(url, filename),
+                 ts: Date.now(), goruldu: false });
+    await chrome.storage.session.set({ [IKINCI_YOL_ANAHTAR]: liste });
+    chrome.alarms.create(IKINCI_YOL_ALARMI, { periodInMinutes: 0.5 });
+  });
+}
+
+/* AfuDM'e bakar. Yalniz "error" olan kayitlari dondurur (ve listeden cikarir).
+   AfuDM kapaliysa kayitlar oldugu gibi kalir. */
+function ikinciYolKontrol() {
+  return ikinciYolSirala(async () => {
+    const liste = await ikinciYolListesi();
+    if (!liste.length) { chrome.alarms.clear(IKINCI_YOL_ALARMI); return { cfg: null, indirilecek: [] }; }
+    const cfg = await config();
+    let snapshot;
+    try {
+      const yanit = await fetch(endpoint(cfg, "/snapshot"), {
+        headers: { "X-AfuDM-Token": cfg.token }, signal: AbortSignal.timeout(5000),
+      });
+      snapshot = await yanit.json();
+    } catch (_) {
+      return { cfg, indirilecek: [] };
+    }
+    const kalan = [];
+    const indirilecek = [];
+    for (const kayit of liste) {
+      if (Date.now() - kayit.ts > IKINCI_YOL_SINIR_MS) continue;
+      const satir = (snapshot.items || []).find((item) => item.source === kayit.url);
+      if (!satir) {
+        // Once gorulup sonra kaybolan: kullanici silmistir ya da tamamlanip temizlenmistir.
+        // Hic gorulmediyse henuz onay bekliyordur: kayit kalir.
+        if (!kayit.goruldu) kalan.push(kayit);
+        continue;
+      }
+      if (satir.status === "error") { indirilecek.push(kayit); continue; }
+      if (satir.status === "complete") continue;
+      kalan.push({ ...kayit, goruldu: true });   // indiriyor ya da duraklatilmis: dokunma
+    }
+    await chrome.storage.session.set({ [IKINCI_YOL_ANAHTAR]: kalan });
+    if (!kalan.length) chrome.alarms.clear(IKINCI_YOL_ALARMI);
+    return { cfg, indirilecek };
+  });
+}
+
+async function ikinciYolIndir(cfg, kayit) {
+  notify("İndirme ikinci yoldan sürüyor.");
+  try {
+    const yanit = await fetch(kayit.url, {
+      credentials: "include",
+      referrer: kayit.referrer || undefined,
+    });
+    if (!yanit.ok) throw new Error("HTTP " + yanit.status);
+    const govde = await yanit.blob();
+    if (govde.size > IKINCI_YOL_MAKS_BYTE) throw new Error("Dosya çok büyük; tarayıcıdan kaydedin.");
+    if (!(await ping(cfg.port))) await portTara(cfg);
+    const cevap = await fetch(endpoint(cfg, "/add_blob?filename=" + encodeURIComponent(kayit.filename)), {
+      method: "POST",
+      headers: { "X-AfuDM-Token": cfg.token, "Content-Type": "application/octet-stream" },
+      body: govde,
+    });
+    const veri = await cevap.json().catch(() => ({}));
+    if (!cevap.ok || veri.ok !== true) throw new Error(veri.error || "HTTP " + cevap.status);
+  } catch (_) {
+    notify("İkinci yol da indiremedi; dosyayı tarayıcıdan kaydedin.");
+  }
+}
+
+async function ikinciYolTurla() {
+  const { cfg, indirilecek } = await ikinciYolKontrol();
+  for (const kayit of indirilecek) await ikinciYolIndir(cfg, kayit);
+}
+
+/* --- 1) Tarayici indirmesini devral --------------------------------- */
+chrome.downloads.onCreated.addListener((item) => {
+  // Extension fully disabled means no pause, no inspection, and no takeover.
+  if (!uzantiAcik) return;
+  AfuDownloadHandoff.handle(item, {
+    pause: (id) => new Promise((resolve, reject) => chrome.downloads.pause(id, () => {
+      const error = chrome.runtime.lastError;
+      error ? reject(new Error(error.message)) : resolve();
+    })),
+    state: (id) => new Promise((resolve) => chrome.downloads.search({ id }, (rows) => resolve(rows[0] || {}))),
+    cancel: (id) => new Promise((resolve, reject) => chrome.downloads.cancel(id, () => {
+      const error = chrome.runtime.lastError;
+      error ? reject(new Error(error.message)) : resolve();
+    })),
+    removeFile: (id) => new Promise((resolve, reject) => chrome.downloads.removeFile(id, () => {
+      const error = chrome.runtime.lastError;
+      error ? reject(new Error(error.message)) : resolve();
+    })),
+    erase: (id) => new Promise((resolve, reject) => chrome.downloads.erase({ id }, () => {
+      const error = chrome.runtime.lastError;
+      error ? reject(new Error(error.message)) : resolve();
+    })),
+    resume: (id) => new Promise((resolve, reject) => chrome.downloads.resume(id, () => {
+      const error = chrome.runtime.lastError;
+      error ? reject(new Error(error.message)) : resolve();
+    })),
+    download: (download, url) => new Promise((resolve, reject) => chrome.downloads.download({
+      url,
+    }, (id) => {
+      const error = chrome.runtime.lastError;
+      error ? reject(new Error(error.message)) : resolve(id);
+    })),
+    eligible: async (download, url) => {
+      const cfg = await config();
+      if (!cfg.uzantiAcik || !cfg.enabled) return false;
+      // file:// gibi AfuDM'in acamayacagi adresler tarayicida kalsin (yerel PDF indirilemiyordu).
+      if (!/^(https?|ftp|magnet|blob|data):/i.test(url)) return false;
+      const skip = cfg.skipExtensions.split(",").map((s) => s.trim()).filter(Boolean);
+      if (skip.includes(extensionOf(url))) return false;
+      if (download.fileSize > 0 && download.fileSize < cfg.minSizeMB * 1048576) return false;
+      return (await afudmAlive(cfg)) ? cfg : false;
+    },
+    timeoutMs: 120000,
+    send: async (download, url) => {
+      const cfg = await config();
+      const sonuc = /^(blob|data):/i.test(url) ? await sendLocalFile(cfg, download, url) : await sendToAfudm(cfg, {
+        url, kind: /^magnet:/i.test(url) || /\.torrent(?:\?|$)/i.test(url) ? "torrent" : "http",
+        filename: download.filename ? download.filename.split(/[\\/]/).pop()
+          : (String(download.mime || "").toLowerCase() === "application/pdf" ? "download.pdf" : undefined),
+        headers: download.referrer ? { Referer: download.referrer, Origin: new URL(download.referrer).origin } : {},
+      });
+      // Kayit hatasi devri bozmasin: AfuDM kabul etti, Chrome kopyasi silinecek.
+      if (/^https?:/i.test(url)) await ikinciYolEkle(url, download.referrer, download.filename).catch(() => {});
+      notify(sonuc.pending ? chrome.i18n.getMessage("msgPending")
+        : (chrome.i18n.getUILanguage().startsWith("tr") ? "İndirme başladı." : "Download started."));
+      return true;
+    },
+  }).catch((error) => {
+    notify("AfuDM indirmeyi alamadı; tarayıcıdaki indirmeyi kontrol edin.");
+  });
 });
 
 /* --- 2) Sayfadaki medyayi izle ------------------------------------- */
@@ -318,6 +519,7 @@ chrome.runtime.onInstalled.addListener(async () => {
 chrome.runtime.onStartup.addListener(() => { kendiligindenEslesme(); });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ESLESME_ALARMI) kendiligindenEslesme();
+  if (alarm.name === IKINCI_YOL_ALARMI) ikinciYolTurla();
 });
 
 /* --- 3) Sag tik menusu -------------------------------------------- */
@@ -696,7 +898,7 @@ async function videoIndir(cfg, sender, secenek, frameUrl) {
   }
   const referer = secenek.referer || frameUrl || sender.tab?.url || "";
   try {
-    await sendToAfudm(cfg, {
+    const sonuc = await sendToAfudm(cfg, {
       url: secenek.url,
       kind: secenek.kind,
       quality: secenek.quality,
@@ -708,24 +910,57 @@ async function videoIndir(cfg, sender, secenek, frameUrl) {
          basliklari maestro tarafinda zaten ayiklanir. */
       headers: { ...(referer ? { Referer: referer } : {}), ...temizBaslik(secenek.ekBaslik) },
     });
-    return { ok: true };
+    return { ok: true, pending: !!sonuc.pending };
   } catch (error) {
     return { ok: false, error: error.message };
   }
 }
 
 /* --- 5) Acilir pencere istekleri ---------------------------------- */
+const preflightActive = new Map();
+const preflightRecent = new Map();
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   (async () => {
     const cfg = await config();
-    if (message.type === "status") {
+    if (message.type === "downloadPreflight") {
+      const url = String(message.payload?.url || '');
+      if (!cfg.enabled || !cfg.uzantiAcik || !/^(https?:|magnet:)/i.test(url)) {
+        reply({ok:false}); return;
+      }
+      const key = `${sender.tab?.id}:${sender.frameId}:${url}`;
+      const recent = preflightRecent.get(key);
+      if (recent && Date.now() - recent.at < 5000) {reply(recent.result); return;}
+      let operation = preflightActive.get(key);
+      if (!operation) {
+        operation = (async () => {
+          try {
+            const result = await sendToAfudm(cfg, {
+              url, interactive:true, request_id:message.payload?.request_id,
+              filename:message.payload?.filename,
+              kind:/^magnet:/i.test(url) || /\.torrent(?:\?|$)/i.test(url) ? 'torrent' : 'http',
+              headers:sender.url ? {Referer:sender.url, Origin:new URL(sender.url).origin} : {},
+            });
+            const accepted = {ok:true,...result};
+            preflightRecent.set(key,{at:Date.now(),result:accepted});
+            for (const [old, value] of preflightRecent) if (Date.now()-value.at > 5000) preflightRecent.delete(old);
+            return accepted;
+          } catch (_) {
+            notify(chrome.i18n.getMessage('handoffRetry'));
+            return {ok:false,retryable:true};
+          }
+        })();
+        preflightActive.set(key,operation);
+      }
+      try {reply(await operation);} finally {if (preflightActive.get(key)===operation) preflightActive.delete(key);}
+    } else if (message.type === "status") {
       reply({ alive: await afudmAlive(cfg), cfg });
     } else if (message.type === "media") {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       reply({ media: await medyaListesi(tab?.id ?? -1), pageUrl: tab?.url || "" });
     } else if (message.type === "add") {
       try {
-        reply({ ok: true, result: await sendToAfudm(cfg, message.payload) });
+        const result = await sendToAfudm(cfg, message.payload);
+        reply({ ok: true, result, pending: !!result.pending });
       } catch (error) {
         reply({ ok: false, error: error.message });
       }

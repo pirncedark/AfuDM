@@ -174,14 +174,18 @@ def dosya_sil(ad: str) -> dict:
 
 
 def _udp_scrape(adres: str, info_hash: str) -> tuple[str, int, int]:
-    ayrik = urllib.parse.urlparse(adres)
-    if not ayrik.hostname or not ayrik.port:
+    try:
+        ayrik = urllib.parse.urlparse(adres)
+        host, port = ayrik.hostname, ayrik.port
+    except ValueError:
+        return ("hata", 0, 0)
+    if not host or not port:
         return ("hata", 0, 0)
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.settimeout(ZAMAN_ASIMI)
     try:
         islem = random.randint(0, 2 ** 31 - 1)
-        s.sendto(struct.pack(">QII", MAGIC, 0, islem), (ayrik.hostname, ayrik.port))
+        s.sendto(struct.pack(">QII", MAGIC, 0, islem), (host, port))
         veri, _ = s.recvfrom(64)
         if len(veri) < 16:
             return ("hata", 0, 0)
@@ -192,7 +196,7 @@ def _udp_scrape(adres: str, info_hash: str) -> tuple[str, int, int]:
             return ("canli", 0, 0)          # yalniz ayakta mi diye bakiyorduk
         islem2 = random.randint(0, 2 ** 31 - 1)
         s.sendto(struct.pack(">QII", baglanti, 2, islem2) + bytes.fromhex(info_hash),
-                 (ayrik.hostname, ayrik.port))
+                 (host, port))
         veri2, _ = s.recvfrom(256)
         if len(veri2) < 20:
             return ("canli", 0, 0)
@@ -208,9 +212,44 @@ def _udp_scrape(adres: str, info_hash: str) -> tuple[str, int, int]:
         s.close()
 
 
+def _bencode_oku(veri: bytes):
+    """Boyut ve derinligi sinirli scrape yanitini anahtarlariyla cozer."""
+    def oku(i, derinlik=0):
+        if i >= len(veri) or derinlik > 32:
+            raise ValueError("eksik veya fazla derin bencode")
+        tur = veri[i:i + 1]
+        if tur == b"i":
+            son = veri.index(b"e", i + 1)
+            return int(veri[i + 1:son]), son + 1
+        if tur in (b"d", b"l"):
+            sonuc = {} if tur == b"d" else []
+            i += 1
+            while veri[i:i + 1] != b"e":
+                deger, i = oku(i, derinlik + 1)
+                if tur == b"d":
+                    if not isinstance(deger, bytes):
+                        raise ValueError("bencode anahtari metin olmali")
+                    sonuc[deger], i = oku(i, derinlik + 1)
+                else:
+                    sonuc.append(deger)
+            return sonuc, i + 1
+        if tur.isdigit():
+            son = veri.index(b":", i)
+            boyut = int(veri[i:son])
+            bitis = son + 1 + boyut
+            if bitis > len(veri):
+                raise ValueError("eksik bencode metni")
+            return veri[son + 1:bitis], bitis
+        raise ValueError("gecersiz bencode")
+    sonuc, bitis = oku(0)
+    if bitis != len(veri):
+        raise ValueError("bencode sonrasi fazla veri")
+    return sonuc
+
+
 def _http_scrape(adres: str, info_hash: str) -> tuple[str, int, int]:
     """HTTP tracker: /announce -> /scrape. Cevabi bencode; yalniz ayakta mi ve
-    (varsa) kac seed dedigi okunur — tam bencode cozucu gerekmez."""
+    (varsa) istenen torrentin seed sayisi okunur."""
     hedef = adres.replace("/announce", "/scrape")
     if info_hash:
         try:
@@ -224,20 +263,22 @@ def _http_scrape(adres: str, info_hash: str) -> tuple[str, int, int]:
             govde = yanit.read(4096)
     except (urllib.error.URLError, OSError, ValueError):
         return ("sessiz", 0, 0)
-    seed = leech = 0
-    for anahtar, ad in ((b"completei", "seed"), (b"incompletei", "leech")):
-        yer = govde.find(anahtar)
-        if yer >= 0:
-            son = govde.find(b"e", yer + len(anahtar))
-            try:
-                deger = int(govde[yer + len(anahtar):son])
-            except ValueError:
-                deger = 0
-            if ad == "seed":
-                seed = deger
-            else:
-                leech = deger
-    return ("canli", seed, leech)
+    try:
+        cevap = _bencode_oku(govde)
+        if not isinstance(cevap, dict) or b"failure reason" in cevap:
+            return ("hata", 0, 0)
+        dosyalar = cevap.get(b"files", {})
+        if not isinstance(dosyalar, dict):
+            return ("hata", 0, 0)
+        kayit = dosyalar.get(bytes.fromhex(info_hash), {}) if info_hash else {}
+        if not isinstance(kayit, dict):
+            return ("hata", 0, 0)
+        seed, leech = kayit.get(b"complete", 0), kayit.get(b"incomplete", 0)
+        if not isinstance(seed, int) or not isinstance(leech, int) or min(seed, leech) < 0:
+            return ("hata", 0, 0)
+        return ("canli", seed, leech)
+    except (ValueError, IndexError):
+        return ("hata", 0, 0)
 
 
 def sor(adres: str, info_hash: str = "") -> tuple[str, int, int]:

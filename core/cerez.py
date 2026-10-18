@@ -58,7 +58,7 @@ def temizle(cerezler: object) -> list[dict]:
             break
         try:
             bitis = max(0, int(float(ham.get("expirationDate") or 0)))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             bitis = 0
         sonuc.append({
             "name": ad,

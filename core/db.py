@@ -97,7 +97,7 @@ DEFAULTS: dict[str, Any] = {
     "api_listen_port": 6811,
     "api_port": 6811,
     # Tarayicidan gelen indirmede once kaydetme penceresi (IDM gibi)
-    "kaydetme_penceresi": True,
+    "kaydetme_penceresi": False,
     # Bos hedefte indirmeler downloads/Video, downloads/Muzik... altina
     "kategori_klasorleri": True,
     # qBittorrent gibi: kucult gorev cubuguna, X sistem tepsisine gitsin
@@ -368,6 +368,10 @@ class Store:
                 )
             self.conn.commit()
             _guncelle_sema(self.conn)
+            if not self.get("auto_accept_migrated", False):
+                self.conn.execute("UPDATE settings SET value = 'false' WHERE key = 'kaydetme_penceresi'")
+                self.conn.execute("INSERT OR REPLACE INTO settings(key,value) VALUES('auto_accept_migrated','true')")
+                self.conn.commit()
 
     # --- ayarlar ----------------------------------------------------------
     def get(self, key: str, default: Any = None) -> Any:
@@ -409,10 +413,20 @@ class Store:
 
     def rules_save(self, rules: list[dict]) -> None:
         with self._lock:
-            self.conn.execute("BEGIN"); self.conn.execute("DELETE FROM rules")
-            for priority, rule in enumerate(rules, 1):
-                self.conn.execute("INSERT INTO rules(id,name,active,priority,match_type,conditions,actions) VALUES(?,?,?,?,?,?,?)", (rule["id"],rule["name"],int(bool(rule.get("active",True))),priority,rule.get("match_type","all"),json.dumps(rule.get("conditions") or []),json.dumps(rule.get("actions") or {})))
-            self.conn.commit()
+            # BEGIN sonrasi INSERT hatasi (eksik "id"/"name" gibi) islemi ACIK
+            # birakirdi; sonraki commit yarim/bos kurallari kalicilastirirdi.
+            # Bu yuzden hata halinde rollback + yeniden yukseltilir.
+            try:
+                self.conn.execute("BEGIN"); self.conn.execute("DELETE FROM rules")
+                for priority, rule in enumerate(rules, 1):
+                    self.conn.execute("INSERT INTO rules(id,name,active,priority,match_type,conditions,actions) VALUES(?,?,?,?,?,?,?)", (rule["id"],rule["name"],int(bool(rule.get("active",True))),priority,rule.get("match_type","all"),json.dumps(rule.get("conditions") or []),json.dumps(rule.get("actions") or {})))
+                self.conn.commit()
+            except Exception:
+                try:
+                    self.conn.rollback()
+                except sqlite3.Error:
+                    pass
+                raise
 
     # --- indirmeler -------------------------------------------------------
     def add(

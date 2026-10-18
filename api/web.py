@@ -32,6 +32,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from api.server import _GovdeHatasi, _boolean_al, _govde_oku
 from core import erisim, paths
 from core.hata import hata_json
 
@@ -116,6 +117,11 @@ class _Handler(BaseHTTPRequestHandler):
     server_version = "AfuDM-Panel"
     sunucu = None  # YonetimSunucusu — calisma aninda atanir
 
+    def setup(self) -> None:
+        # Baglanti hareketsizligi siniri: uzun sessiz istemci thread'i tutmasin.
+        self.request.settimeout(15.0)
+        super().setup()
+
     # --- gunluk: TAMAMEN KAPALI ------------------------------------------
     def log_message(self, fmt: str, *args) -> None:
         """Erisim gunlugu YOKTUR.
@@ -145,9 +151,15 @@ class _Handler(BaseHTTPRequestHandler):
         return ip
 
     def _izinli_originler(self) -> set[str]:
-        """Bos ayar = EN SIKI: yalnizca sunucunun kendi adresleri."""
-        ayar = str(self._servis.store.get("sunucu_izinli_originler") or "")
-        ozel = {p.strip().rstrip("/") for p in ayar.replace(",", "\n").split("\n")
+        """Bos ayar = EN SIKI: yalnizca sunucunun kendi adresleri.
+
+        Tek kaynak `servis.sunucu_ayarlari()`: etkin profil varsa ONUN origin
+        listesi gecerlidir, genel ayardaki eski origin izinli kalmaz."""
+        try:
+            ham = str((self._servis.sunucu_ayarlari() or {}).get("originler") or "")
+        except Exception:
+            ham = str(self._servis.store.get("sunucu_izinli_originler") or "")
+        ozel = {p.strip().rstrip("/") for p in ham.replace(",", "\n").split("\n")
                 if p.strip()}
         port = self.sunucu.port
         kendi = {"http://127.0.0.1:%d" % port, "http://localhost:%d" % port}
@@ -202,16 +214,8 @@ class _Handler(BaseHTTPRequestHandler):
                            "error": mesaj}, ek)
 
     def _govde(self) -> dict:
-        try:
-            uzunluk = int(self.headers.get("Content-Length") or 0)
-        except ValueError:
-            return {}
-        if uzunluk <= 0 or uzunluk > 2_000_000:
-            return {}
-        try:
-            return json.loads(self.rfile.read(uzunluk).decode("utf-8")) or {}
-        except (json.JSONDecodeError, UnicodeDecodeError, OSError):
-            return {}
+        """Govde: en fazla 2.000.000 bayt. Hatalar `_GovdeHatasi` ile atilir."""
+        return _govde_oku(self, 2_000_000)
 
     # --- kimlik + rol -----------------------------------------------------
     def _kimlik(self) -> tuple[dict | None, str]:
@@ -366,7 +370,11 @@ class _Handler(BaseHTTPRequestHandler):
         kayit = self._yetkilendir(izin, yazma=True)
         if kayit is None:
             return
-        veri = self._govde()
+        try:
+            veri = self._govde()
+        except _GovdeHatasi as exc:
+            self._hata(exc.status, "GOVDE_HATASI", str(exc))
+            return
         try:
             self._send(200, self._post_calistir(yol, veri, kayit))
         except Exception as exc:
@@ -397,7 +405,7 @@ class _Handler(BaseHTTPRequestHandler):
         if yol == "/api/kontrol":
             return s.kontrol(veri.get("action") or veri.get("eylem") or "",
                              veri.get("gid") or "",
-                             bool(veri.get("delete_files")))
+                             _boolean_al(veri, "delete_files"))
         if yol == "/api/baglanti-ayarla":
             return s.baglanti_ayarla(veri.get("gid") or "",
                                      baglanti=veri.get("baglanti"),
