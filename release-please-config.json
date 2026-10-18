@@ -21,6 +21,71 @@
           "jsonpath": "$.package.version"
         },
         {
+          "type": "toml",
+          "path": "rs/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='afudm-types')].version"
+        },
+        {
+          "type": "toml",
+          "path": "rs/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='afudm-db')].version"
+        },
+        {
+          "type": "toml",
+          "path": "rs/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='afudm-engine')].version"
+        },
+        {
+          "type": "toml",
+          "path": "rs/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='afudm-core')].version"
+        },
+        {
+          "type": "toml",
+          "path": "rs/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='afudm-api')].version"
+        },
+        {
+          "type": "toml",
+          "path": "rs/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='afudm-extras')].version"
+        },
+        {
+          "type": "toml",
+          "path": "rs/app/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='afudm-types')].version"
+        },
+        {
+          "type": "toml",
+          "path": "rs/app/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='afudm-db')].version"
+        },
+        {
+          "type": "toml",
+          "path": "rs/app/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='afudm-engine')].version"
+        },
+        {
+          "type": "toml",
+          "path": "rs/app/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='afudm-core')].version"
+        },
+        {
+          "type": "toml",
+          "path": "rs/app/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='afudm-api')].version"
+        },
+        {
+          "type": "toml",
+          "path": "rs/app/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='afudm-extras')].version"
+        },
+        {
+          "type": "toml",
+          "path": "rs/app/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='afudm-app')].version"
+        },
+        {
           "type": "json",
           "path": "rs/app/tauri.conf.json",
           "jsonpath": "$.version"

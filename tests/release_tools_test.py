@@ -1,5 +1,7 @@
 """Static release-tool contracts that are safe to run without Windows UI access."""
+import json
 from pathlib import Path
+import tomllib
 import unittest
 
 
@@ -7,6 +9,46 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReleaseToolsTest(unittest.TestCase):
+    def test_release_please_updates_only_workspace_packages_in_cargo_locks(self):
+        def read_toml(path):
+            return tomllib.loads((ROOT / path).read_text(encoding="utf-8"))
+
+        workspace = read_toml("rs/Cargo.toml")["workspace"]
+        workspace_names = {
+            read_toml(f"rs/{member}/Cargo.toml")["package"]["name"]
+            for member in workspace["members"]
+        }
+        app_name = read_toml("rs/app/Cargo.toml")["package"]["name"]
+        expected_by_lock = {
+            "rs/Cargo.lock": workspace_names,
+            "rs/app/Cargo.lock": workspace_names | {app_name},
+        }
+        config = json.loads(
+            (ROOT / "release-please-config.json").read_text(encoding="utf-8")
+        )
+        extra_files = config["packages"]["."]["extra-files"]
+        for lock_path, expected_names in expected_by_lock.items():
+            with self.subTest(lock=lock_path):
+                packages = read_toml(lock_path)["package"]
+                local_packages = [p for p in packages if "source" not in p]
+                self.assertCountEqual(
+                    [p["name"] for p in local_packages], expected_names
+                )
+                # Exact name filters prevent wildcard/index selectors from
+                # silently bumping registry or git dependencies after reordering.
+                self.assertCountEqual(
+                    [entry for entry in extra_files
+                     if isinstance(entry, dict) and entry.get("path") == lock_path],
+                    [
+                        {
+                            "type": "toml",
+                            "path": lock_path,
+                            "jsonpath": f"$.package[?(@.name.value=='{name}')].version",
+                        }
+                        for name in expected_names
+                    ],
+                )
+
     def test_ci_workflows_build_executable_before_packaging(self):
         for workflow in ("ci.yml",):
             source = (ROOT / ".github" / "workflows" / workflow).read_text(
