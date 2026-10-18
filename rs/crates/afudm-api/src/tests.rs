@@ -464,6 +464,9 @@ impl ManagerApi for FakeManager {
     fn resolve_item_path(&self, gid: &str) -> Result<Option<PathBuf>> {
         Ok(Some(self.root.join(gid)))
     }
+    fn phone_download_path(&self, gid: &str) -> Result<Option<PathBuf>> {
+        Ok(Some(self.root.join(gid)))
+    }
     #[allow(unused_variables)]
     fn pause_all(&self) -> Result<()> {
         Ok(())

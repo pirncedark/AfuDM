@@ -8,6 +8,7 @@ pub mod proxy;
 mod rules;
 mod settings;
 mod shaping;
+mod sync;
 #[cfg(test)]
 mod tests;
 
@@ -119,6 +120,10 @@ pub fn start(m: &Manager) -> Result<()> {
 
 pub fn stop(m: &Manager) -> Result<()> {
     crate::video::aktif_isleri_kapat(m);
+    sync_aria2(m)?;
+    if !m.rpc().sleeping() {
+        let _ = m.rpc().call("aria2.purgeDownloadResult", vec![]);
+    }
     let _ = m.rpc().save_session();
     let _ = m.rpc().shutdown(false);
     let mut s = state(m)?;
@@ -170,13 +175,11 @@ pub fn baglanti_ayarla(
         );
     }
     if !sec.is_empty() {
-        m.rpc()
-            .change_option(gid, &sec)
-            .map_err(|e| {
-                // Python manager.py: "canli degistirilemedi: %s" % str(exc)[:160]
-                let neden: String = e.to_string().chars().take(160).collect();
-                invalid(format!("canli degistirilemedi: {neden}"))
-            })?;
+        m.rpc().change_option(gid, &sec).map_err(|e| {
+            // Python manager.py: "canli degistirilemedi: %s" % str(exc)[:160]
+            let neden: String = e.to_string().chars().take(160).collect();
+            invalid(format!("canli degistirilemedi: {neden}"))
+        })?;
         let mut opts = options(&row);
         if let Some(n) = baglanti {
             opts.insert("baglanti".into(), json!(n));
@@ -611,6 +614,9 @@ pub fn remove(m: &Manager, gid: &str, delete_files: bool) -> Result<bool> {
 pub fn resolve_item_path(m: &Manager, gid: &str) -> Result<Option<PathBuf>> {
     files::resolve(m, gid)
 }
+pub fn phone_download_path(m: &Manager, gid: &str) -> Result<Option<PathBuf>> {
+    files::phone_path(m, gid)
+}
 
 pub fn pause_all(m: &Manager) -> Result<()> {
     let _ = m.rpc().pause_all();
@@ -835,6 +841,19 @@ fn clear_auth(m: &Manager, gid: &str) -> Result<()> {
         m.data_dir.join("aria2.auth-required.json"),
         serde_json::to_vec(&remaining)?,
     )?;
+    Ok(())
+}
+
+/// Python _sync_aria2: persist engine progress without requiring a snapshot reader.
+pub fn sync_aria2(m: &Manager) -> Result<()> {
+    let completed = {
+        let _guard = m
+            .kilit
+            .lock()
+            .map_err(|_| AfuError::Other("yonetici kilidi kullanilamiyor".into()))?;
+        sync::collect(m)?
+    };
+    sync::notify(m, completed);
     Ok(())
 }
 

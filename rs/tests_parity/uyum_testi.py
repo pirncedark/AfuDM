@@ -31,6 +31,7 @@ import os
 import random
 import shutil
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -53,6 +54,7 @@ KRITIK_DEGER_ANAHTARLARI = ("ok",)
 
 WRAPPER = r'''
 import os, sys, time
+from pathlib import Path
 sys.dont_write_bytecode = True
 pdir, port, rpc, data_root = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4]
 sys.path.insert(0, pdir)
@@ -60,8 +62,11 @@ os.environ["AFUDM_DATA_ROOT"] = data_root
 from core.baslangic import uyku_yollarini_ayarla
 uyku_yollarini_ayarla()
 from core import daemon as _d, ornek, paths
+assert paths.DATA.resolve() == (Path(data_root) / "data").resolve()
+paths.ENGINE = Path(data_root) / "engine"
+paths.ARIA2C = paths.ENGINE / "aria2c.exe"
 _d.RPC_PORT = rpc
-_d.RPC_PORT_SON = rpc + 10
+_d.RPC_PORT_SON = rpc
 from core.manager import Manager
 from core.servis import AfuDMServis
 from api.server import LocalAPI, _Handler
@@ -74,9 +79,11 @@ servis = AfuDMServis(manager, kip=ornek.KIP_HEADLESS)
 _Handler.servis = servis
 api = LocalAPI(manager, port=port, lan=False)
 p = api.start()
+print("RPC_PORT", manager.daemon.port, flush=True)
 print("HAZIR", p, flush=True)
-while True:
+while not (Path(data_root) / "stop_test").exists():
     time.sleep(1)
+manager.stop()
 '''
 
 
@@ -107,6 +114,7 @@ def hazirla_dosyalar(serve: Path, fs_url: str, blob: Path) -> None:
     for ad, boyut in (("a.bin", 65536), ("b.bin", 4096), ("c.bin", 2048),
                       ("d.bin", 2048), ("e.bin", 262144), ("f.bin", 262144)):
         (serve / ad).write_bytes(rnd.randbytes(boyut))
+    (serve / "phone.bin").write_bytes((serve / "a.bin").read_bytes())
     paket_a = rnd.randbytes(32768)
     paket_b = rnd.randbytes(20000)
     (serve / "paket" / "a.bin").write_bytes(paket_a)
@@ -331,8 +339,17 @@ class Calistirici:
                 son = "satir_yok"
             else:
                 son = satir.get("status") or satir.get("durum") or "durum_yok"
-            if son in ("complete", "error", "removed"):
+            if son in ("error", "removed"):
                 break
+            if son == "complete":
+                # tellStopped can report complete before the 500 ms poller persists it.
+                # A later remove/save_session purges all stopped results. Wait for DB
+                # ownership too, otherwise BOTH implementations lose the test row.
+                db = self.kok[side].parent / "data" / "afudm.db"
+                with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as conn:
+                    row = conn.execute("SELECT status FROM downloads WHERE gid=?", (gid,)).fetchone()
+                if row and row[0] == "complete":
+                    break
             time.sleep(1)
         return {"bekle": True, "status": son, "sure_sn": round(time.time() - t0, 1),
                 "gorulen": gorulen, "aranan_gid": gid}
@@ -349,6 +366,9 @@ class Calistirici:
                 js = {}
             son = {"hazir_degil": js.get("hazir_degil"), "dosya_sayisi": len(js.get("dosyalar") or [])}
             if js.get("ok") and js.get("hazir_degil") is False and son["dosya_sayisi"] > 0:
+                # .torrent URI -> metadata parent -> real torrent child. Subsequent
+                # scenarios must address the ready torrent returned by the API.
+                self.var[side][bekle["gid"]] = js.get("gid") or gid
                 break
             time.sleep(2)
         return {"bekle_hazir": True, "durum": son, "sure_sn": round(time.time() - t0, 1)}
@@ -397,13 +417,23 @@ def bekle_ping(port: int, zaman_asimi: float = 90) -> bool:
 def surec_oldur(procs: list[subprocess.Popen], kok: Path) -> None:
     for p in procs:
         if p.poll() is None:
-            subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"],
-                           capture_output=True, check=False)
+            p.terminate()
+            try:
+                p.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                p.kill()
+                p.wait(timeout=10)
     # Gecici klasore bagli kalan surecleri (aria2c vb.) kapat. Kullanicinin
     # surecleri bu klasorun yolunu komut satirinda tasimaz, dokunulmaz.
-    ps = (f"Get-CimInstance Win32_Process | Where-Object {{ $_.CommandLine -like '*{kok}*' }} "
-          f"| ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}")
-    subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, check=False)
+    # Process paths are readable without CIM privileges; restrict cleanup to this
+    # run's copied engine, never the user's engine in PY_ROOT.
+    owned_engines = [str(kok / app / "engine" / "aria2c.exe").replace("'", "''")
+                     for app in ("py_app", "rs_app")]
+    ps = (f"Get-Process -Name aria2c -ErrorAction SilentlyContinue | "
+          f"Where-Object {{ $_.Path -in @('{owned_engines[0]}','{owned_engines[1]}') }} | "
+          f"Stop-Process -Force -ErrorAction SilentlyContinue")
+    subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True,
+                   check=False, creationflags=subprocess.CREATE_NO_WINDOW)
 
 
 def p_imza(kok: Path) -> dict:
@@ -423,6 +453,16 @@ def senaryolari_yukle() -> list[dict]:
     adimlar: list[dict] = []
     for yol in sorted(SENARYO_DIR.glob("*.json")):
         adimlar += json.loads(yol.read_text(encoding="utf-8"))
+    # Environment sequencing only: ensure the tiny HTTP download has reached DB
+    # before control/remove purges stopped results. Keep the original assertions.
+    first = next(i for i, step in enumerate(adimlar) if step.get("id") == "3.1")
+    adimlar.insert(first + 1, {"id":"3.1b", "ad":"a.bin DB senkronunu bekle", "bekle":{"gid":"gid_a","sn":30}})
+    phone = next(i for i, step in enumerate(adimlar) if step.get("id") == "5.6")
+    adimlar[phone] = {**adimlar[phone], "yol":"/dosya?gid={gid_phone}&k={token}"}
+    adimlar[phone:phone] = [
+        {"id":"5.6a", "ad":"/dosya icin temizlenmemis yeni indirme", "yontem":"POST", "yol":"/add", "govde":{"url":"{fs}/phone.bin"}, "yakala":{"gid_phone":"gid"}},
+        {"id":"5.6b", "ad":"phone.bin DB senkronunu bekle", "bekle":{"gid":"gid_phone","sn":30}},
+    ]
     return adimlar
 
 
@@ -454,11 +494,18 @@ def main() -> int:
     py_once = p_imza(PY_ROOT)
 
     serve = kok / "serve"
-    fs_port = bos_port()
+    serve.mkdir(parents=True, exist_ok=True)
+    fs_srv = dosya_sunucusu_baslat(serve, 0)
+    fs_port = fs_srv.server_port
     fs_url = f"http://127.0.0.1:{fs_port}"
     hazirla_dosyalar(serve, fs_url, kok / "blob.pdf")
+    # Verify the file server itself, independently of either downloader.
+    probe = http.client.HTTPConnection("127.0.0.1", fs_port, timeout=5)
+    probe.request("GET", "/a.bin")
+    assert probe.getresponse().read() == (serve / "a.bin").read_bytes()
+    probe.close()
+    print(f"Dosya sunucusu: port={fs_port}, a.bin dogrulandi", flush=True)
     procs: list[subprocess.Popen] = []
-    fs_srv = dosya_sunucusu_baslat(serve, fs_port)
     kod = 2
     try:
         # --- Python (kaynaktan, headless benzeri; veri ve aria2 portu ayrik) ---
@@ -467,14 +514,24 @@ def main() -> int:
         env = {k: v for k, v in os.environ.items() if not k.startswith("AFUDM_")}
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
+        # Bundled PyInstaller tools need a writable extraction directory.
+        tool_temp = kok / "tool_temp"
+        tool_temp.mkdir()
+        env["TEMP"] = env["TMP"] = str(tool_temp)
+        hidden = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
         py_veri = kok / "py_app"
+        (py_veri / "engine").mkdir(parents=True)
+        for engine in ("aria2c.exe", "yt-dlp.exe"):
+            source = PY_ROOT / "engine" / engine
+            if source.is_file():
+                shutil.copy2(source, py_veri / "engine" / engine)
         py_log_yol = kok / "py.log"
         py_log = open(py_log_yol, "w", encoding="utf-8")
         py_rpc = bos_port()
         py_p = subprocess.Popen(
             [sys.executable, str(wrap), str(PY_ROOT), str(bos_port()), str(py_rpc), str(py_veri)],
             env={**env, "AFUDM_DATA_ROOT": str(py_veri)}, stdout=py_log,
-            stderr=subprocess.STDOUT, cwd=str(kok))
+            stderr=subprocess.STDOUT, cwd=str(kok), **hidden)
         procs.append(py_p)
         py_port = None
         for _ in range(900):
@@ -488,20 +545,27 @@ def main() -> int:
             print("HATA: Python AfuDM ayaga kalkmadi. Log:", py_log_yol)
             return 2
 
+        print(f"Python API port={py_port}, RPC port={py_rpc}", flush=True)
+
         # --- Rust (kopya exe; kendi veri ve motor klasoru) ---
         rs_app = kok / "rs_app"
         (rs_app / "engine").mkdir(parents=True)
         shutil.copy2(RS_EXE, rs_app / "AfuDM.exe")
         shutil.copy2(PY_ROOT / "engine" / "aria2c.exe", rs_app / "engine" / "aria2c.exe")
+        # Both implementations must probe with the same real executable/version.
+        ytdlp = PY_ROOT / "engine" / "yt-dlp.exe"
+        if ytdlp.is_file():
+            shutil.copy2(ytdlp, rs_app / "engine" / "yt-dlp.exe")
         rs_port = bos_port()
         rs_log = open(kok / "rs.log", "w", encoding="utf-8")
         procs.append(subprocess.Popen(
             [str(rs_app / "AfuDM.exe")], env={**env, "AFUDM_PORT": str(rs_port)},
-            stdout=rs_log, stderr=subprocess.STDOUT, cwd=str(rs_app)))
+            stdout=rs_log, stderr=subprocess.STDOUT, cwd=str(rs_app), **hidden))
         if not bekle_ping(rs_port, 120):
             print("HATA: Rust AfuDM ayaga kalkmadi. Log:", kok / "rs.log")
             return 2
 
+        print(f"Rust API port={rs_port}; RPC kendi secret ile otomatik bos portta", flush=True)
         tokens = {}
         for side, veri in (("py", py_veri / "data"), ("rs", rs_app / "data")):
             tf = veri / "api_token.txt"
@@ -575,14 +639,29 @@ def main() -> int:
         kod = 1 if kritik else 0
     finally:
         fs_srv.shutdown()
+        fs_srv.server_close()
+        if 'py_p' in locals() and py_p.poll() is None:
+            (py_veri / "stop_test").touch()
+            try:
+                py_p.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                pass
         surec_oldur(procs, kok)
         for ad in ("py.log", "rs.log"):
             yol = kok / ad
+            if yol.exists():
+                RAPOR_DIR.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(yol, RAPOR_DIR / ad)
             if yol.exists() and kod == 2:
                 print(f"--- {ad} (son 15 satir) ---")
                 print("\n".join(yol.read_text(encoding="utf-8", errors="replace").splitlines()[-15:]))
         shutil.rmtree(kok, ignore_errors=True)
-        print("P\\data degismedi:", p_imza(PY_ROOT) == py_once if py_once else "n/a")
+        py_sonra = p_imza(PY_ROOT)
+        print("P\\data degismedi:", py_sonra == py_once if py_once else "n/a")
+        if py_once != py_sonra:
+            print("P\\data imzasi degisen dosyalar:", sorted(
+                ad for ad in py_once.keys() | py_sonra.keys()
+                if py_once.get(ad) != py_sonra.get(ad)))
     return kod
 
 

@@ -83,7 +83,7 @@ pub(super) fn row(row: &Json) -> Json {
     json!({"id":row["id"],"gid":row.get("gid").filter(|v|truthy(v)).cloned().unwrap_or(json!(format!("row:{}",row_id(row)))),"kind":row["kind"],"status":row["status"],"title":row.get("title").filter(|v|truthy(v)).cloned().unwrap_or_else(||row["source"].clone()),"filename":row.get("filename").filter(|v|truthy(v)).cloned().unwrap_or(json!("")),"totalLength":total,"completedLength":done,"progress":progress,"downloadSpeed":0,"uploadSpeed":0,"connections":0,"numSeeders":0,"eta":0,"dir":row.get("dest_dir").filter(|v|truthy(v)).cloned().unwrap_or(json!("")),"errorMessage":error,"source":row["source"],"start_after":row["start_after"]})
 }
 
-fn reattach(m: &Manager, status: &Json) -> Result<Option<Json>> {
+pub(super) fn reattach(m: &Manager, status: &Json) -> Result<Option<Json>> {
     let gid = text(&status["gid"]);
     if state(m)?.preview_gids.contains(gid) {
         return Ok(None);
@@ -134,10 +134,6 @@ pub(super) fn snapshot(m: &Manager) -> Result<Json> {
             }
         }
     };
-    // Video isleri biterken kuyruga yazilir; burada (Python _on_video_update) tamamlandi zincirine girer.
-    for (title, size, gid) in crate::video::tamamlananlari_al(m) {
-        tamamlandi(m, &title, size, &gid);
-    }
     let mut items = Vec::new();
     let mut gids = HashSet::new();
     let mut ids = HashSet::new();
@@ -153,7 +149,7 @@ pub(super) fn snapshot(m: &Manager) -> Result<Json> {
                 continue;
             }
         }
-        let mut row = m.store.by_gid(gid)?;
+        let row = m.store.by_gid(gid)?;
         let hash = text(&status["infoHash"]).to_lowercase();
         if !hash.is_empty() && state(m)?.removed_hashes.contains(&hash) && row.is_none() {
             continue;
@@ -161,9 +157,6 @@ pub(super) fn snapshot(m: &Manager) -> Result<Json> {
         if row.as_ref().is_some_and(|r| r["status"] == "removed") {
             state(m)?.removed_gids.insert(gid.into());
             continue;
-        }
-        if row.is_none() && truthy(&status["infoHash"]) {
-            row = reattach(m, &status)?;
         }
         if row.as_ref().is_some_and(|r| r["status"] == "removed") {
             state(m)?.removed_gids.insert(gid.into());
@@ -174,17 +167,6 @@ pub(super) fn snapshot(m: &Manager) -> Result<Json> {
             ids.insert(row_id(&r));
         }
         let shaped = aria(m, &status)?;
-        // Python _sync_aria2: tamamlanma, followedBy yoksa ve gid daha once bildirilmediyse bir kez.
-        let bitti = status["status"] == "complete"
-            && !truthy(&status["followedBy"])
-            && state(m)?.known_complete.insert(gid.to_owned());
-        if bitti {
-            let baslik = match text(&shaped["title"]) {
-                "" => gid,
-                b => b,
-            };
-            tamamlandi(m, baslik, number(&status["totalLength"]) as u64, gid);
-        }
         items.push(shaped);
     }
     let jobs = crate::video::video_satirlari(m);
@@ -242,11 +224,14 @@ pub(super) fn snapshot(m: &Manager) -> Result<Json> {
     )
 }
 
-fn track_previews(m: &Manager, live: &[Json]) -> Result<()> {
+pub(super) fn track_previews(m: &Manager, live: &[Json]) -> Result<()> {
     let mut previews = state(m)?.preview_gids.clone();
     loop {
         let before = previews.len();
         for s in live {
+            if previews.contains(text(&s["following"])) && !text(&s["gid"]).is_empty() {
+                previews.insert(text(&s["gid"]).into());
+            }
             if previews.contains(text(&s["gid"])) {
                 for child in s["followedBy"].as_array().into_iter().flatten() {
                     if !text(child).is_empty() {

@@ -25,7 +25,6 @@ use crate::bridge::{Ek, Kabuk};
 /// Ana HTTP portu. AFUDM_PORT ile degistirilir (test icin 6811 disi).
 const VARSAYILAN_PORT: u16 = 6811;
 const ISLEM_ZAMAN_ASIMI: Duration = Duration::from_secs(30);
-const BOSTA_KONTROL: Duration = Duration::from_secs(30);
 
 pub fn port_sec() -> u16 {
     std::env::var("AFUDM_PORT")
@@ -47,7 +46,8 @@ pub fn baslat(kabuk: Arc<Kabuk>) {
 fn bekleyen_geri_yuklemeyi_uygula(veri: &std::path::Path) -> Result<(), String> {
     let bekleyen = veri.join(BEKLEYEN_GERI_YUKLEME);
     if bekleyen.is_file() {
-        fs::rename(&bekleyen, db_path(veri)).map_err(|e| format!("geri yukleme uygulanamadi: {e}"))?;
+        fs::rename(&bekleyen, db_path(veri))
+            .map_err(|e| format!("geri yukleme uygulanamadi: {e}"))?;
     }
     Ok(())
 }
@@ -68,15 +68,6 @@ fn calistir(kabuk: &Arc<Kabuk>) -> Result<(), String> {
     let mut daemon = Aria2Daemon::new(&app_dir, &veri, &indirme_klasoru);
     daemon.start(ISLEM_ZAMAN_ASIMI).map_err(|e| e.to_string())?;
     let idle = Arc::new(IdleRpc::new(daemon, || {}));
-    // Bos kalan motoru kapatir; yeni istek IdleRpc icinde uyandirir.
-    {
-        let idle = idle.clone();
-        std::thread::spawn(move || loop {
-            std::thread::sleep(BOSTA_KONTROL);
-            let _ = idle.sleep_if_idle();
-        });
-    }
-
     let ui: Arc<dyn UiBridge> = kabuk.ui.clone();
     let manager = Arc::new(Manager::new(
         store.clone() as Arc<dyn Store>,

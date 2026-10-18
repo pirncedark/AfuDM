@@ -15,6 +15,8 @@ struct MemoryRpc {
     statuses: Mutex<BTreeMap<String, Json>>,
     calls: Mutex<Vec<(String, Vec<Json>)>>,
     offline: Mutex<bool>,
+    asleep: Mutex<bool>,
+    status_reads: Mutex<usize>,
 }
 
 fn manager() -> Manager {
@@ -553,7 +555,16 @@ impl Aria2 for MemoryRpc {
             return Err(AfuError::Engine("offline".into()));
         }
         self.calls.lock().unwrap().push((method.into(), params));
+        if method == "aria2.purgeDownloadResult" {
+            self.statuses
+                .lock()
+                .unwrap()
+                .retain(|_, s| !["complete", "error", "removed"].contains(&text(&s["status"])));
+        }
         Ok(json!("OK"))
+    }
+    fn sleeping(&self) -> bool {
+        *self.asleep.lock().unwrap()
     }
     fn alive(&self) -> bool {
         !*self.offline.lock().unwrap()
@@ -569,6 +580,7 @@ impl Aria2 for MemoryRpc {
         Ok(gid)
     }
     fn tell_status(&self, gid: &str, _keys: &[&str]) -> Result<Json> {
+        *self.status_reads.lock().unwrap() += 1;
         if *self.offline.lock().unwrap() {
             return Err(AfuError::Engine("offline".into()));
         }
@@ -704,32 +716,29 @@ fn tamamlandi_kancalari_dogru_yukle_calisir() {
 }
 
 #[test]
-fn aria2_tamamlanmasi_snapshotta_bir_kez_zincire_girer() {
+fn snapshot_does_not_process_completion() {
     let f = Fixture::new();
     let gid = f.add("tamam")["gid"].as_str().unwrap().to_string();
     f.rpc.statuses.lock().unwrap().get_mut(&gid).unwrap()["status"] = json!("complete");
     let kayit = kanca_kaydi(&f.m);
     snapshot(&f.m).unwrap();
-    snapshot(&f.m).unwrap();
-    let kayit = kayit.lock().unwrap();
-    assert_eq!(
-        kayit.len(),
-        1,
-        "known_complete ikinci tur bildirimi engeller"
+    assert!(
+        kayit.lock().unwrap().is_empty(),
+        "snapshot must only read completion"
     );
-    assert_eq!(kayit[0]["gid"], gid.as_str());
+    assert_ne!(
+        f.m.store.by_gid(&gid).unwrap().unwrap()["status"],
+        "complete"
+    );
 }
 
 #[test]
-fn video_tamamlanmasi_snapshotta_bir_kez_zincire_girer() {
+fn video_completion_waits_for_sync_not_snapshot() {
     let f = Fixture::new();
     let kayit = kanca_kaydi(&f.m);
     crate::video::test_tamamlandi_ekle(&f.m, "Klip", 4096, "yt:9");
     snapshot(&f.m).unwrap();
-    snapshot(&f.m).unwrap();
-    let kayit = kayit.lock().unwrap();
-    assert_eq!(kayit.len(), 1);
-    assert_eq!(kayit[0], json!({"title":"Klip","size":4096,"gid":"yt:9"}));
+    assert!(kayit.lock().unwrap().is_empty());
 }
 
 #[test]
@@ -945,4 +954,120 @@ fn hiz_limiti_ve_gecmis_kaynaklar_ayarlara_gore_doner() {
     let _ = f.add("gecmis");
     let kaynaklar = gecmis_sources(&f.m, 10).unwrap();
     assert!(kaynaklar.iter().any(|s| s == "https://example.test/gecmis"));
+}
+
+#[test]
+fn phone_path_uses_engine_before_db_without_filename_guessing() {
+    let f = Fixture::new();
+    let gid = f.add("phone.bin")["gid"].as_str().unwrap().to_string();
+    let engine = f.root.join("engine.bin");
+    let fallback = f.root.join("db.bin");
+    std::fs::write(&engine, "engine").unwrap();
+    std::fs::write(&fallback, "db").unwrap();
+    f.m.store
+        .update_by_gid(&gid, &map(json!({"path":fallback})))
+        .unwrap();
+    f.rpc.statuses.lock().unwrap().get_mut(&gid).unwrap()["files"] =
+        json!([{"path":""},{"path":engine}]);
+    assert_eq!(phone_download_path(&f.m, &gid).unwrap(), Some(engine));
+    f.rpc.statuses.lock().unwrap().clear();
+    assert_eq!(phone_download_path(&f.m, &gid).unwrap(), Some(fallback));
+    f.m.store
+        .update_by_gid(&gid, &map(json!({"path":null,"filename":"db.bin"})))
+        .unwrap();
+    assert_eq!(phone_download_path(&f.m, &gid).unwrap(), None);
+}
+
+#[test]
+fn sync_persists_completion_once_before_purge_and_snapshot_reads_db() {
+    let f = Fixture::new();
+    let gid = f.add("done.bin")["gid"].as_str().unwrap().to_string();
+    let other = f.add("other.bin")["gid"].as_str().unwrap().to_string();
+    f.rpc.statuses.lock().unwrap().get_mut(&gid).unwrap().as_object_mut().unwrap().extend(map(json!({"status":"complete","totalLength":"123","completedLength":"123","files":[{"path":f.root.join("done.bin")}]})));
+    let kayit = kanca_kaydi(&f.m);
+    // remove/save_session must synchronize before purging even without a poll tick.
+    remove(&f.m, &other, false).unwrap();
+    sync_aria2(&f.m).unwrap();
+    sync_aria2(&f.m).unwrap();
+    let row = f.m.store.by_gid(&gid).unwrap().unwrap();
+    assert_eq!(row["status"], "complete");
+    assert_eq!(row["total_bytes"], 123);
+    assert_eq!(row["done_bytes"], 123);
+    assert_eq!(row["filename"], "done.bin");
+    assert!(row["finished_at"].as_f64().unwrap() > 0.0);
+    assert!(f.rpc.statuses.lock().unwrap().get(&gid).is_none());
+    assert_eq!(kayit.lock().unwrap().len(), 1);
+    let items = snapshot(&f.m).unwrap()["items"].as_array().unwrap().clone();
+    let item = items.iter().find(|r| r["gid"] == gid).unwrap();
+    assert!(item.get("start_after").is_some());
+    assert_eq!(item["status"], "complete");
+}
+
+#[test]
+fn sync_persists_errors_and_does_not_wake_sleeping_engine() {
+    let f = Fixture::new();
+    let gid = f.add("error.bin")["gid"].as_str().unwrap().to_string();
+    let kayit = kanca_kaydi(&f.m);
+    f.rpc
+        .statuses
+        .lock()
+        .unwrap()
+        .get_mut(&gid)
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .extend(map(
+            json!({"status":"error","errorMessage":"failure","completedLength":"12"}),
+        ));
+    *f.rpc.asleep.lock().unwrap() = true;
+    *f.rpc.offline.lock().unwrap() = true;
+    sync_aria2(&f.m).unwrap();
+    assert_ne!(f.m.store.by_gid(&gid).unwrap().unwrap()["status"], "error");
+    *f.rpc.asleep.lock().unwrap() = false;
+    *f.rpc.offline.lock().unwrap() = false;
+    sync_aria2(&f.m).unwrap();
+    let row = f.m.store.by_gid(&gid).unwrap().unwrap();
+    assert_eq!(row["error"], "failure");
+    assert_eq!(row["done_bytes"], 12);
+    assert!(row["finished_at"].as_f64().unwrap() > 0.0);
+    assert!(kayit.lock().unwrap().is_empty());
+}
+
+#[test]
+fn sync_dispatches_video_completion_once() {
+    let f = Fixture::new();
+    let kayit = kanca_kaydi(&f.m);
+    crate::video::test_tamamlandi_ekle(&f.m, "Klip", 4096, "yt:9");
+    sync_aria2(&f.m).unwrap();
+    sync_aria2(&f.m).unwrap();
+    assert_eq!(
+        *kayit.lock().unwrap(),
+        vec![json!({"title":"Klip","size":4096,"gid":"yt:9"})]
+    );
+}
+
+#[test]
+fn sleeping_video_completion_does_not_query_or_wake_aria2() {
+    let f = Fixture::new();
+    f.m.store
+        .add(
+            "video",
+            "https://example.test/video",
+            Some("Klip"),
+            f.root.to_str(),
+            None,
+            None,
+            Some("yt:9"),
+        )
+        .unwrap();
+    let kayit = kanca_kaydi(&f.m);
+    *f.rpc.asleep.lock().unwrap() = true;
+    crate::video::test_tamamlandi_ekle(&f.m, "Klip", 4096, "yt:9");
+    sync_aria2(&f.m).unwrap();
+    assert_eq!(kayit.lock().unwrap().len(), 1);
+    assert_eq!(
+        *f.rpc.status_reads.lock().unwrap(),
+        0,
+        "completion integrity checks must not wake aria2"
+    );
 }

@@ -100,6 +100,10 @@ impl ManagerApi for Manager {
     fn remove(&self, gid: &str, delete_files: bool) -> Result<bool> {
         queue::remove(self, gid, delete_files)
     }
+    fn phone_download_path(&self, gid: &str) -> Result<Option<PathBuf>> {
+        queue::phone_download_path(self, gid)
+    }
+
     fn resolve_item_path(&self, gid: &str) -> Result<Option<PathBuf>> {
         queue::resolve_item_path(self, gid)
     }

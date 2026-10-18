@@ -128,14 +128,9 @@ async fn file_response(ctx: ApiCtx, req: Request, phone: bool) -> Response {
         return fault(400, "GID_GEREKLI", "gid gerekli");
     }
     let path = if phone {
-        // No Aria2 handle is exposed by ApiCtx. Stored `path` mirrors the fallback.
-        match ctx.store.by_gid(gid) {
-            Ok(Some(row)) => row
-                .get("path")
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .map(PathBuf::from),
-            Ok(None) => None,
+        // Python /dosya sirasi: aria2 tellStatus.files -> DB path.
+        match ctx.manager.phone_download_path(gid) {
+            Ok(path) => path,
             Err(e) => return error(e),
         }
     } else {

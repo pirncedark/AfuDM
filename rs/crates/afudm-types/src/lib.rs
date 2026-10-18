@@ -153,6 +153,8 @@ pub trait ManagerApi: Send + Sync {
     fn remove(&self, gid: &str, delete_files: bool) -> Result<bool>;
     /// manager.py:1048
     fn resolve_item_path(&self, gid: &str) -> Result<Option<PathBuf>>;
+    /// Python api/server.py /dosya (telefona indir): once aria2 tellStatus.files[].path, sonra DB `path`.
+    fn phone_download_path(&self, gid: &str) -> Result<Option<PathBuf>>;
     /// manager.py:1283
     fn pause_all(&self) -> Result<()>;
     /// manager.py:1297

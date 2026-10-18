@@ -43,6 +43,20 @@ pub(super) fn remove(m: &Manager, gid: &str, delete_files: bool) -> Result<bool>
         .kilit
         .lock()
         .map_err(|_| AfuError::Other("yonetici kilidi kullanilamiyor".into()))?;
+    // Persist every stopped job before save_session purges the engine results.
+    let mut completed = Vec::new();
+    let result = remove_locked(m, gid, delete_files, &mut completed);
+    drop(_guard);
+    sync::notify(m, completed);
+    result
+}
+
+fn remove_locked(
+    m: &Manager,
+    gid: &str,
+    delete_files: bool,
+    completed: &mut Vec<(String, u64, String)>,
+) -> Result<bool> {
     if !gid.is_empty() {
         state(m)?.removed_gids.insert(gid.into());
     }
@@ -118,10 +132,12 @@ pub(super) fn remove(m: &Manager, gid: &str, delete_files: bool) -> Result<bool>
                 }
             }
         }
+        completed.extend(sync::collect(m)?);
         for g in &gids {
             let _ = m.rpc().remove(g, true);
             let _ = m.rpc().remove_result(g);
         }
+        let _ = m.rpc().call("aria2.purgeDownloadResult", vec![]);
         let _ = m.rpc().save_session();
     }
     state(m)?.removed_gids.extend(gids);
@@ -277,9 +293,35 @@ fn outputs(dir: &Path, filename: &str, candidates: &mut Vec<PathBuf>) {
     }
 }
 
+/// Python /dosya (telefona indir): once aria2 dosya yolu, sonra DB `path`.
+pub(super) fn phone_path(m: &Manager, gid: &str) -> Result<Option<PathBuf>> {
+    if let Ok(status) = m.rpc().tell_status(gid, &[]) {
+        if let Some(path) = status["files"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|f| f["path"].as_str())
+            .find(|p| !p.is_empty())
+        {
+            return Ok(Some(PathBuf::from(path)));
+        }
+    }
+    Ok(m.store.by_gid(gid)?.and_then(|r| {
+        r["path"]
+            .as_str()
+            .filter(|p| !p.is_empty())
+            .map(PathBuf::from)
+    }))
+}
+
 pub(super) fn resolve(m: &Manager, gid: &str) -> Result<Option<PathBuf>> {
     let mut candidates = Vec::new();
-    if let Ok(status) = m.rpc().tell_status(gid, &[]) {
+    let status = if m.rpc().sleeping() {
+        None
+    } else {
+        m.rpc().tell_status(gid, &[]).ok()
+    };
+    if let Some(status) = status {
         for file in status["files"].as_array().into_iter().flatten() {
             if !text(&file["path"]).is_empty() {
                 candidates.push(PathBuf::from(text(&file["path"])));
