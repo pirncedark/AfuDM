@@ -10,7 +10,7 @@
 
 Bu doküman, AfuDM'in **v1.7.5** ile **v2.3.0** arasındaki yol haritasında yer alan tüm özelliklerin masaüstü ve mobil arayüz karşılıklarını ayrıntılı olarak şartnameye bağlar. Yeni mimari icat edilmemiş; AfuDM'in mevcut **koyu temalı (#16181d zemin, #3b82f6 vurgu rengi)** sol menü (rail), üst araç çubuğu (bar), indirme listesi (list), alt detay çekmecesi (drawer) ve ayarlar modalı (sheet/veil) şablonu genişletilmiştir.
 
-### 1.1 Varlık ve İkon Eşleştirmesi (`assets/afudm-menu-icon-set.svg`)
+### 1.1 Varlık ve İkon Eşleştirmesi (`media/assets/afudm-menu-icon-set.svg`)
 Hazır bulunan 8 vektörel menü ikonu, UI bileşenleri ve gezinme noktalarıyla birebir eşleştirilmiştir:
 
 | İkon Adı | SVG Glifi / Karakteri | Kullanıldığı UI Yeri | İşlev / Karşılık |
@@ -28,7 +28,7 @@ Hazır bulunan 8 vektörel menü ikonu, UI bileşenleri ve gezinme noktalarıyla
 
 ## 2. Global Arayüz Mimarisi Genişletmesi
 
-Mevcut HTML (`ui/index.html`), stil (`ui/style.css`) ve JS mimarisine entegre edilecek üç ana genişleme noktası tanımlanmıştır:
+Mevcut HTML (`rs/app/ui/index.html`), stil (`rs/app/ui/style.css`) ve JS mimarisine entegre edilecek üç ana genişleme noktası tanımlanmıştır:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -290,7 +290,7 @@ Masaüstü uygulaması kapalıyken veya uzaktaki bir sunucuya bağlanırken tara
 
 ## 5. Eksiksiz i18n Dil Sözlüğü Tasarımı (TR & EN)
 
-Tüm yeni özellikler için `ui/i18n.js` içine eklenecek anahtar aileleri aşağıda tam karşılıklarıyla tanımlanmıştır. Kod içinde sabit/hardcoded metin bulunamaz.
+Tüm yeni özellikler için `rs/app/ui/i18n.js` içine eklenecek anahtar aileleri aşağıda tam karşılıklarıyla tanımlanmıştır. Kod içinde sabit/hardcoded metin bulunamaz.
 
 ```javascript
 /* =========================================================================
@@ -577,11 +577,11 @@ Bir geliştirici bu yol haritasından bir sürüm aldığında aşağıdaki kont
    - Kullanıcı bu özelliği çalışırken detay çekmecesinde (`#drawer`) veya ana listede anlık olarak izleyebiliyor mu?
    - Özellik hata verdiğinde kullanıcıya anlaşılır bir toast/rozet mesajı dönüyor mu?
 2. **İki Dilli (i18n) Bütünlük:**
-   - `ui/i18n.js` içine hem Türkçe (`tr`) hem İngilizce (`en`) anahtar eklenmiş mi?
+   - `rs/app/ui/i18n.js` içine hem Türkçe (`tr`) hem İngilizce (`en`) anahtar eklenmiş mi?
    - HTML tarafında `data-i18n`, `data-i18n-ph` ve `data-i18n-title` etiketleri dışında tek bir İngilizce veya Türkçe sabit metin bırakılmış mı?
 3. **Mevcut UI Mimarisine Sadakat:**
    - Yeni pencereler `class="veil"` ve `class="sheet"` yapısını kullanıyor mu?
    - Vurgu rengi `#3b82f6` ve koyu zemin `#16181d` renk değişkenleriyle uyumlu mu?
-   - `assets/afudm-menu-icon-set.svg` içindeki 8 ilgili ikon doğru yerlerde kullanıldı mı?
+   - `media/assets/afudm-menu-icon-set.svg` içindeki 8 ilgili ikon doğru yerlerde kullanıldı mı?
 4. **Kullanıcı Kararı Teyidi:**
    - Özellik arka planda gizli kalmadı; UI üzerinden ayarlanabilir, test edilebilir ve izlenebilir kılındı.

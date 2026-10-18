@@ -43,9 +43,15 @@ repos:
 
   - repo: local
     hooks:
-      - id: afudm-offline-tests
-        name: AfuDM cevrimdisi testleri
-        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pre_push_test.ps1
+      - id: afudm-rust-tests
+        name: AfuDM Rust testleri
+        entry: cargo test --locked --manifest-path rs/Cargo.toml
+        language: system
+        stages: [pre-push]
+        pass_filenames: false
+      - id: afudm-app-tests
+        name: AfuDM Rust uygulama testleri
+        entry: cargo test --locked --manifest-path rs/app/Cargo.toml
         language: system
         stages: [pre-push]
         pass_filenames: false

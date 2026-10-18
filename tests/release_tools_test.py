@@ -1,14 +1,28 @@
-"""Static release-tool contracts that are safe to run without Windows UI access."""
+"""Rust release contracts; no GUI, live instance or network access."""
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tomllib
 import unittest
 
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReleaseToolsTest(unittest.TestCase):
+    def test_version_reader_matches_all_product_versions(self):
+        version = subprocess.check_output(
+            [sys.executable, "-B", str(ROOT / "scripts/surum_oku.py")], text=True
+        ).strip()
+        for path, table in (("rs/Cargo.toml", "workspace"), ("rs/app/Cargo.toml", None)):
+            data = tomllib.loads((ROOT / path).read_text(encoding="utf-8"))
+            if table:
+                data = data[table]
+            self.assertEqual(version, data["package"]["version"])
+        self.assertEqual(version, json.loads((ROOT / "rs/app/tauri.conf.json").read_text())["version"])
+
     def test_release_please_updates_only_workspace_packages_in_cargo_locks(self):
         def read_toml(path):
             return tomllib.loads((ROOT / path).read_text(encoding="utf-8"))
@@ -49,99 +63,35 @@ class ReleaseToolsTest(unittest.TestCase):
                     ],
                 )
 
-    def test_ci_workflows_build_executable_before_packaging(self):
-        for workflow in ("ci.yml",):
-            source = (ROOT / ".github" / "workflows" / workflow).read_text(
-                encoding="utf-8"
-            )
-            build_at = source.index("python -m PyInstaller --noconfirm --clean AfuDM.spec")
-            package_at = source.index("build_release.ps1")
-            self.assertLess(build_at, package_at, workflow)
+    def test_quality_gate_collects_every_job(self):
+        jobs = yaml.safe_load((ROOT / ".github/workflows/quality-gate.yml").read_text())["jobs"]
+        self.assertEqual(set(jobs["quality-gate"]["needs"]), set(jobs) - {"quality-gate"})
+        self.assertTrue({"rust", "extension-tests", "android-build", "security"} <= jobs.keys())
 
-        release = (ROOT / ".github" / "workflows" / "release.yml").read_text(
-            encoding="utf-8"
-        )
-        self.assertLess(
-            release.index("scripts\\build_release_rust.ps1"),
-            release.index("Compress-Archive"),
-        )
-        rust = (ROOT / "scripts" / "build_release_rust.ps1").read_text(
-            encoding="utf-8"
-        )
+    def test_release_builds_before_packaging_and_waits_for_gate(self):
+        source = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+        self.assertIn("needs: quality-gate", source)
+        self.assertLess(source.index("scripts\\build_release_rust.ps1"), source.index("Compress-Archive"))
+        rust = (ROOT / "scripts/build_release_rust.ps1").read_text(encoding="utf-8")
         self.assertIn('"build", "--release", "--locked"', rust)
         self.assertIn('"--manifest-path", "rs/app/Cargo.toml"', rust)
         build_at = rust.index("& cargo @cargoArgs")
         check_at = rust.index("if ($LASTEXITCODE -ne 0)", build_at)
         copy_at = rust.index("Copy-Item -LiteralPath $binary")
-        self.assertIn('throw "Rust release derlemesi basarisiz"', rust[check_at:copy_at])
         self.assertLess(build_at, check_at)
         self.assertLess(check_at, copy_at)
+        self.assertIn('throw "Rust release derlemesi basarisiz"', rust[check_at:copy_at])
         self.assertLess(copy_at, rust.index("Compress-Archive"))
 
-    def test_build_release_rejects_missing_or_stale_executable(self):
-        source = (ROOT / "scripts" / "build_release.ps1").read_text(encoding="utf-8")
-        self.assertIn("dist\\AfuDM.exe", source)
-        self.assertIn("LastWriteTimeUtc", source)
-        self.assertIn("core\\surum.py", source)
-        self.assertIn("app.py", source)
-        self.assertIn("GATE HATA", source)
-
-    def test_verify_release_checks_embedded_executable_module(self):
-        source = (ROOT / "scripts" / "verify_release.ps1").read_text(encoding="utf-8")
-        self.assertIn("verify_exe.py", source)
-        verifier = (ROOT / "scripts" / "verify_exe.py").read_text(encoding="utf-8")
-        self.assertIn("CArchiveReader", verifier)
-        self.assertIn("core.surum", verifier)
-        self.assertIn("app", verifier)
-
-    def test_release_package_includes_support_launchers(self):
-        source = (ROOT / "paketle.py").read_text(encoding="utf-8")
-        for name in ("tani.bat", "web_panel_baslat.bat", "debug_modu.bat"):
-            self.assertIn(f'"{name}"', source)
-        self.assertIn("make_archive", source)
-
-    def test_diagnostics_collects_and_redacts_one_zip_report(self):
-        source = (ROOT / "tani.bat").read_text(encoding="utf-8")
-        for required in (
-            "systeminfo", "aria2c.exe", "last error", "REDACTED",
-            "Compress-Archive", "support-report", "redact", "error summary",
-            "Users\\REDACTED", "api_token.txt", "rpc_secret.txt",
-        ):
-            self.assertIn(required, source)
-        self.assertNotIn("2^>", source)
-        self.assertNotIn("^|", source)
-
-    def test_test_runner_executes_ui_gates(self):
-        source = (ROOT / "scripts" / "test.ps1").read_text(encoding="utf-8")
-        self.assertIn('"tests/ui_startup_test.py"', source)
-        self.assertIn('"tests/ui_ux_gate_test.py"', source)
-
-    def test_desktop_api_exposes_the_global_version(self):
-        source = (ROOT / "app.py").read_text(encoding="utf-8")
-        self.assertIn("def surum_bilgi", source)
-
-    def test_quality_gate_workflow_covers_all_release_checks(self):
-        source = (ROOT / ".github" / "workflows" / "quality-gate.yml").read_text(encoding="utf-8")
-        android = (ROOT / ".github" / "workflows" / "android-debug.yml").read_text(encoding="utf-8")
-        security = (ROOT / ".github" / "workflows" / "security.yml").read_text(encoding="utf-8")
-        ui_test = (ROOT / "tests" / "ui_ux_gate_test.py").read_text(encoding="utf-8")
-        source += android + security + ui_test
-        for required in (
-            "pull_request:", "push:", "workflow_call:",
-            "desktop-tests:", "ui-gate:", "deletion-recovery:",
-            "android-build:", "security:", "package-verify:",
-            "quality-gate:", "scripts/test.ps1", "assembleDebug",
-            "gitleaks", "build_exe.ps1", "build_release.ps1",
-            "verify_release.ps1", "smoke_test.ps1", "AFUDM_TEST_VIEWPORT",
-            "AFUDM_TEST_DPR", "AFUDM_TEST_LANG", "console.error",
-        ):
-            self.assertIn(required, source)
-
-    def test_release_workflow_waits_for_quality_gate(self):
-        source = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-        self.assertIn("quality-gate:", source)
-        self.assertIn("uses: ./.github/workflows/quality-gate.yml", source)
-        self.assertIn("needs: quality-gate", source)
+    def test_rust_only_package_verification(self):
+        for name in ("verify_release.ps1", "smoke_test.ps1"):
+            source = (ROOT / "scripts" / name).read_text(encoding="utf-8")
+            self.assertIn('[ValidateSet("Rust")]', source)
+            self.assertNotIn("verify_exe.py", source)
+            self.assertNotIn("core/surum.py", source)
+        source = (ROOT / "scripts/verify_release.ps1").read_text(encoding="utf-8")
+        for check in ("ProductVersion", "engine/aria2c.exe", "extension/download-handoff.js", "34404"):
+            self.assertIn(check, source)
 
 
 if __name__ == "__main__":

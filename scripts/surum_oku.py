@@ -1,21 +1,20 @@
 # -*- coding: utf-8 -*-
-"""core/surum.py icindeki SURUM'u stdout'a yazdirir (tek satir).
+"""rs/Cargo.toml [workspace.package].version degerini stdout'a yazdirir (tek satir).
 
-Release hatti ve CI betikleri seklinde inline `python -c "<regex>"` yazmaz:
-Windows PowerShell 5.1 tirnak/is kaçış farkliliklari yuzunden ayni regex'i
-surekli bozuyordu. Bu dosya herkes icin TEK ve dogru kaynai olur.
+Release hatti ve CI betikleri inline `python -c` yazmaz; bu dosya tek kaynaktir.
+Surum tek kaynagi Rust workspace'tir (release-please da rs/Cargo.toml'i gunceller).
 """
 from __future__ import annotations
 
-import re
 import sys
+import tomllib
 from pathlib import Path
 
 if __name__ == "__main__":
     kok = Path(__file__).resolve().parent.parent
-    metin = (kok / "core" / "surum.py").read_text(encoding="utf-8")
-    eslesme = re.search(r'SURUM = "([0-9.]+)"', metin)
-    if not eslesme:
-        print("surum.py icinde SURUM bulunamadi", file=sys.stderr)
+    with (kok / "rs" / "Cargo.toml").open("rb") as f:
+        surum = tomllib.load(f).get("workspace", {}).get("package", {}).get("version")
+    if not surum:
+        print("rs/Cargo.toml icinde [workspace.package].version bulunamadi", file=sys.stderr)
         sys.exit(3)
-    print(eslesme.group(1))
+    print(surum)

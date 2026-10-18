@@ -4,7 +4,7 @@ data/
 
 # --- Buyuk ikililer: depoya konmaz, kullanici indirir ---
 # ffmpeg 97 MB + yt-dlp 17 MB + aria2c 5.4 MB. GitHub'da 100 MB dosya siniri var
-# ve bu dosyalar zaten Ayarlar > Motorlar'dan indiriliyor (core/engines.py).
+# ve bu dosyalar zaten Ayarlar > Motorlar'dan indiriliyor (scripts/aria2_indir.py).
 engine/*.exe
 engine/*.dll
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 param(
     [string]$ZipPath = "",
-    [ValidateSet("Python", "Rust")][string]$PackageType = "Python"
+    [ValidateSet("Rust")][string]$PackageType = "Rust"
 )
 
 # Yayinlanan paketin "aci ve calis" sinayan hafif duman testi.
@@ -28,22 +28,4 @@ if ($PackageType -eq "Rust") {
     # kapsami rs/tests_hata (test-kapisi exe, izole veri/port) ile saglanir.
     Write-Host "smoke OK (yapi): $ZipPath Rust paketi dogrulandi; EXE baslatilmadi"
     exit 0
-}
-
-$gecici = Join-Path $env:TEMP ("afudm_smoke_" + [guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Path $gecici | Out-Null
-try {
-    Expand-Archive -Path $ZipPath -DestinationPath $gecici -Force
-    $ic = Join-Path $gecici "AfuDM"
-    $exe = Join-Path $ic "AfuDM.exe"
-    if (-not (Test-Path $exe)) { Write-Host "GATE HATA: AfuDM.exe yok"; exit 1 }
-    $core = Join-Path $ic "core"
-    if (-not (Test-Path (Join-Path $core "surum.py"))) { Write-Host "GATE HATA: core/surum.py yok"; exit 1 }
-    $ui = Join-Path $ic "ui\index.html"
-    if (-not (Test-Path $ui)) { Write-Host "GATE HATA: ui/index.html yok"; exit 1 }
-
-    Write-Host "smoke OK: $ZipPath acildi, yapi yerinde ($gecici)"
-    exit 0
-} finally {
-    Remove-Item -LiteralPath $gecici -Recurse -Force -ErrorAction SilentlyContinue
 }
