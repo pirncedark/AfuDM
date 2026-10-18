@@ -208,6 +208,45 @@ fn parent_child_remove_hides_orphans_and_allows_hash_readd() {
 }
 
 #[test]
+fn readded_torrent_db_row_survives_stale_hash_when_engine_is_offline() {
+    let f = Fixture::new();
+    let hash = "0123456789012345678901234567890123456789";
+    state(&f.m).unwrap().removed_hashes.insert(hash.into());
+    let id =
+        f.m.store
+            .add(
+                "torrent",
+                &format!("magnet:?xt=urn:btih:{hash}"),
+                Some("again"),
+                f.root.to_str(),
+                None,
+                None,
+                Some("new"),
+            )
+            .unwrap();
+    f.m.store
+        .update_by_id(id, &map(json!({"status":"paused"})))
+        .unwrap();
+    *f.rpc.offline.lock().unwrap() = true;
+    let snap = snapshot(&f.m).unwrap();
+    assert_eq!(snap["items"].as_array().unwrap().len(), 1);
+    assert_eq!(snap["items"][0]["id"], id);
+}
+
+#[test]
+fn intentional_magnet_readd_clears_removed_hash() {
+    let f = Fixture::new();
+    let hash = "0123456789012345678901234567890123456789";
+    state(&f.m).unwrap().removed_hashes.insert(hash.into());
+    add(
+        &f.m,
+        &map(json!({"source":format!("magnet:?xt=urn:btih:{hash}")})),
+    )
+    .unwrap();
+    assert!(!state(&f.m).unwrap().removed_hashes.contains(hash));
+}
+
+#[test]
 fn remove_rejects_outside_files_and_root_directory() {
     let f = Fixture::new();
     let sibling = Fixture::new();

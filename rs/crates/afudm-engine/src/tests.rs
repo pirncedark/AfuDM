@@ -342,7 +342,7 @@ pub(crate) fn aria_binary() -> std::path::PathBuf {
     let path = std::env::var_os("AFUDM_ARIA2_TEST_EXE")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
-            std::path::PathBuf::from(r"C:\Users\afuuu\Desktop\afuproject\AfuDM\engine\aria2c.exe")
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../engine/aria2c.exe")
         });
     assert!(
         path.is_file(),
