@@ -941,7 +941,7 @@ fn tarayicidan_sor(k: &Kabuk, istek: JsonMap) -> Json {
 // --- motor, butunluk, guc, kurtarma, token, tracker -----------------------
 
 /// Python `motor_indir`: arka planda indirir; ilerleme MOTOR_ILERLEME'de tutulur.
-fn motor_indir(k: &Kabuk, ad: &str) -> Json {
+pub(crate) fn motor_indir(k: &Kabuk, ad: &str) -> Json {
     {
         let mut ilerleme = kilit(&MOTOR_ILERLEME);
         let suruyor = ilerleme

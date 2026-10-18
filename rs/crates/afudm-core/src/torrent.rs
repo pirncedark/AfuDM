@@ -79,7 +79,56 @@ fn kes(s: &str, n: usize) -> String {
 
 /// Python: except Aria2Error/ValueError -> {"ok": False, "error": str(exc)[:200]}.
 fn hata_json(e: &AfuError) -> Json {
-    json!({"ok": false, "error": kes(&e.to_string(), 200)})
+    let metin = e.to_string();
+    let metin = if metin.to_ascii_lowercase().contains("not enough space") {
+        DISK_DOLU
+    } else {
+        &metin
+    };
+    json!({"ok": false, "error": kes(metin, 200)})
+}
+
+const DISK_DOLU: &str = "Diskte yer yok. Başka bir klasör seçin ya da yer açın.";
+
+fn torrent_hatasi(e: AfuError) -> AfuError {
+    if e.to_string()
+        .to_ascii_lowercase()
+        .contains("not enough space")
+    {
+        AfuError::Invalid(DISK_DOLU.into())
+    } else {
+        e
+    }
+}
+
+fn torrent_kok_adi(veri: &[u8]) -> Option<String> {
+    let bencode::Bc::Sozluk(ust) = bencode::coz(veri).ok()? else {
+        return None;
+    };
+    let bencode::Bc::Sozluk(info) = ust.get(b"info".as_slice())? else {
+        return None;
+    };
+    let bencode::Bc::Metin(ad) = info.get(b"name".as_slice())? else {
+        return None;
+    };
+    String::from_utf8(ad.clone()).ok()
+}
+
+fn mevcut_kok_butunlugu(secenekler: &mut JsonMap, hedef: &str, ad: Option<&str>) {
+    let Some(ad) = ad else { return };
+    // Noktali adlar (Game.v1.2) gecerli; yalniz "." / ".." ve yol ayiraclari reddedilir.
+    if !ad.is_empty()
+        && ad != "."
+        && ad != ".."
+        && !ad.contains(['/', '\\', ':', '\0'])
+        && Path::new(hedef).join(ad).exists()
+    {
+        secenekler.insert("check-integrity".into(), json!("true"));
+    }
+}
+
+fn durum_kok_adi(durum: &Json) -> Option<&str> {
+    durum.get("bittorrent")?.get("info")?.get("name")?.as_str()
 }
 
 /// aria2 select-file degeri: 1-tabanli indeksler, virgullu liste.
@@ -423,6 +472,7 @@ pub fn seed_tazele(m: &Manager, gid: &str) -> Result<Json> {
     let mut secenekler = JsonMap::new();
     secenekler.insert("dir".to_string(), json!(hedef));
     secenekler.insert("bt-save-metadata".to_string(), json!("false"));
+    mevcut_kok_butunlugu(&mut secenekler, &hedef, durum_kok_adi(&status));
     if m.store.torrent_dosya_secimi_var(gid)? {
         let secim = m.store.torrent_dosya_secimleri(gid)?;
         secenekler.insert("select-file".to_string(), json!(select_degeri(&secim)));
@@ -433,6 +483,7 @@ pub fn seed_tazele(m: &Manager, gid: &str) -> Result<Json> {
 
     let yeni = if kaynak.to_lowercase().ends_with(".torrent") && Path::new(&kaynak).exists() {
         let bayt = std::fs::read(&kaynak)?;
+        mevcut_kok_butunlugu(&mut secenekler, &hedef, torrent_kok_adi(&bayt).as_deref());
         rpc.add_torrent(
             &base64::engine::general_purpose::STANDARD.encode(bayt),
             Some(&secenekler),
@@ -907,9 +958,18 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
         let mut dizin = JsonMap::new();
         dizin.insert("dir".to_string(), json!(dest_dir));
         dizin.insert("bt-save-metadata".to_string(), json!("false"));
+        if let Ok(durum) = rpc.tell_status(&gid, &["bittorrent"]) {
+            mevcut_kok_butunlugu(&mut dizin, &dest_dir, durum_kok_adi(&durum));
+        }
         if let Err(e) = rpc.change_option(&gid, &dizin) {
             m.store
                 .log("error", &format!("kayit dizini degistirilemedi: {e}"), &gid);
+            if e.to_string()
+                .to_ascii_lowercase()
+                .contains("not enough space")
+            {
+                return Err(torrent_hatasi(e));
+            }
             return Err(AfuError::Invalid(
                 "Secilen klasore kaydedilemiyor, baska bir klasor secin.".to_string(),
             ));
@@ -937,6 +997,11 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
     let yerel = Path::new(&source);
     let sonuc = if yerel.exists() && uzanti_kucuk(&dosya_adi_of(yerel)) == ".torrent" {
         let bayt = std::fs::read(yerel)?;
+        mevcut_kok_butunlugu(
+            &mut secenekler,
+            &dest_dir,
+            torrent_kok_adi(&bayt).as_deref(),
+        );
         rpc.add_torrent(
             &base64::engine::general_purpose::STANDARD.encode(bayt),
             Some(&secenekler),
@@ -950,7 +1015,7 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
             if e.to_string().to_lowercase().contains("already registered") {
                 return Err(AfuError::Invalid("bu torrent zaten kuyrukta".to_string()));
             }
-            Err(e)
+            Err(torrent_hatasi(e))
         }
     }
 }
@@ -1048,4 +1113,80 @@ fn base32_hex(metin: &str) -> Option<String> {
         }
     }
     Some(cikti)
+}
+
+#[cfg(test)]
+mod oto_motor_hiz_testleri {
+    use super::*;
+
+    #[test]
+    fn butunluk_yalniz_mevcut_guvenli_kokte_acilir() {
+        let hedef = std::env::temp_dir().join(format!(
+            "afudm-integrity-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        ));
+        std::fs::create_dir_all(hedef.join("Game")).unwrap();
+        std::fs::write(hedef.join("single"), b"existing").unwrap();
+        std::fs::create_dir_all(hedef.join("Game.v1.2")).unwrap();
+        for (ad, beklenen) in [
+            ("Game", true),
+            ("single", true),
+            ("Game.v1.2", true),
+            ("missing", false),
+            ("", false),
+            (".", false),
+            ("..", false),
+            ("../Game", false),
+            ("a/Game", false),
+            ("a\\Game", false),
+            ("C:Game", false),
+            ("Game\0", false),
+            ("Game.bak", false),
+        ] {
+            let mut opts = JsonMap::new();
+            mevcut_kok_butunlugu(&mut opts, &hedef.to_string_lossy(), Some(ad));
+            assert_eq!(
+                opts.get("check-integrity"),
+                beklenen.then(|| json!("true")).as_ref(),
+                "{ad:?}"
+            );
+        }
+        std::fs::remove_dir_all(hedef).unwrap();
+    }
+
+    #[test]
+    fn torrent_kok_adi_bencodedan_okunur() {
+        assert_eq!(
+            torrent_kok_adi(b"d4:infod4:name4:Gameee").as_deref(),
+            Some("Game")
+        );
+        for veri in [
+            b"invalid".as_slice(),
+            b"d4:infodee",
+            b"d4:infod4:namei1eee",
+            b"d4:infod4:name1:\xffee",
+        ] {
+            assert_eq!(torrent_kok_adi(veri), None);
+        }
+    }
+
+    #[test]
+    fn disk_dolu_hatasi_anlasilir() {
+        let e = AfuError::Engine("Not enough space on disk".into());
+        assert_eq!(
+            hata_json(&e)["error"],
+            "Diskte yer yok. Başka bir klasör seçin ya da yer açın."
+        );
+        assert_eq!(
+            torrent_hatasi(e).to_string(),
+            AfuError::Invalid("Diskte yer yok. Başka bir klasör seçin ya da yer açın.".into())
+                .to_string()
+        );
+        let e = AfuError::Engine("offline".into());
+        assert_eq!(
+            torrent_hatasi(e).to_string(),
+            AfuError::Engine("offline".into()).to_string()
+        );
+    }
 }

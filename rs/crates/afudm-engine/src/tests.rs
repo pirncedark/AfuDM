@@ -326,6 +326,7 @@ fn daemon_arguments_and_listener_detection_match_python() {
         "--save-session-interval=0",
         "--split=64",
         "--bt-max-peers=100",
+        "--seed-time=0",
         "--rpc-listen-all=false",
     ] {
         assert!(args.iter().any(|a| a == arg));

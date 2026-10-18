@@ -73,6 +73,82 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn torrent_existing_root_integrity_for_local_adopted_and_refreshed_jobs() {
+    let f = Fixture::new();
+    f.m.store
+        .set(
+            "canli_trackerlar",
+            json!("udp://tracker.example.org:1337/announce"),
+        )
+        .unwrap();
+    std::fs::create_dir(f.root.join("Game")).unwrap();
+    let torrent = f.root.join("game.torrent");
+    std::fs::write(&torrent, b"d4:infod4:name4:Gameee").unwrap();
+    crate::torrent::torrent_ekle_ic(
+        &f.m,
+        json!({"source": torrent, "dest_dir": f.root})
+            .as_object()
+            .unwrap(),
+    )
+    .unwrap();
+    {
+        let calls = f.rpc.calls.lock().unwrap();
+        let (_, params) = calls
+            .iter()
+            .rev()
+            .find(|(m, _)| m == "add_torrent")
+            .unwrap();
+        assert_eq!(params[1]["check-integrity"], "true");
+    }
+    f.rpc.statuses.lock().unwrap().insert(
+        "preview".into(),
+        json!({"gid":"preview", "followedBy":["child"]}),
+    );
+    f.rpc.statuses.lock().unwrap().insert("child".into(), json!({"gid":"child", "bittorrent":{"info":{"name":"Game"}}, "infoHash":"abc", "dir":f.root}));
+    crate::torrent::torrent_ekle_ic(
+        &f.m,
+        json!({"source":"magnet:?xt=urn:btih:abc", "adopt_gid":"preview", "dest_dir": f.root})
+            .as_object()
+            .unwrap(),
+    )
+    .unwrap();
+    {
+        let calls = f.rpc.calls.lock().unwrap();
+        let (_, params) = calls
+            .iter()
+            .rev()
+            .find(|(m, _)| m == "change_option")
+            .unwrap();
+        assert_eq!(params[0], "child");
+        assert_eq!(params[1]["check-integrity"], "true");
+    }
+    assert_eq!(
+        crate::torrent::seed_tazele(&f.m, "child").unwrap()["ok"],
+        true
+    );
+    {
+        let calls = f.rpc.calls.lock().unwrap();
+        let (_, params) = calls.iter().rev().find(|(m, _)| m == "add_uri").unwrap();
+        assert_eq!(params[1]["check-integrity"], "true");
+    }
+    std::fs::write(&torrent, b"d4:infod4:name7:Missingee").unwrap();
+    crate::torrent::torrent_ekle_ic(
+        &f.m,
+        json!({"source": torrent, "dest_dir": f.root})
+            .as_object()
+            .unwrap(),
+    )
+    .unwrap();
+    let calls = f.rpc.calls.lock().unwrap();
+    let (_, params) = calls
+        .iter()
+        .rev()
+        .find(|(m, _)| m == "add_torrent")
+        .unwrap();
+    assert!(params[1].get("check-integrity").is_none());
+}
+
+#[test]
 fn http_add_duplicate_controls_and_retry() {
     let f = Fixture::new();
     let result = f.add("test.zip");
@@ -644,7 +720,7 @@ impl Aria2 for MemoryRpc {
     }
     #[allow(unused_variables)]
     fn add_torrent(&self, torrent_b64: &str, options: Option<&JsonMap>) -> Result<String> {
-        self.call("add_torrent", vec![])?;
+        self.call("add_torrent", vec![json!(torrent_b64), json!(options)])?;
         Ok("OK".into())
     }
     #[allow(unused_variables)]
@@ -703,12 +779,12 @@ impl Aria2 for MemoryRpc {
     }
     #[allow(unused_variables)]
     fn change_option(&self, gid: &str, options: &JsonMap) -> Result<String> {
-        self.call("change_option", vec![])?;
+        self.call("change_option", vec![json!(gid), json!(options)])?;
         Ok("OK".into())
     }
     #[allow(unused_variables)]
     fn change_global_option(&self, options: &JsonMap) -> Result<String> {
-        self.call("change_global_option", vec![])?;
+        self.call("change_global_option", vec![json!(options)])?;
         Ok("OK".into())
     }
     #[allow(unused_variables)]
@@ -1341,4 +1417,32 @@ fn omniget_html_content_type_does_not_skip_binary_integrity() {
     f.m.tamamlandi_kancasi_ekle(Box::new(move |_| *count.lock().unwrap() += 1));
     sync_aria2(&f.m).unwrap();
     assert_eq!(*hooks.lock().unwrap(), 0);
+}
+
+#[test]
+fn upload_global_default_and_live_changes() {
+    let f = Fixture::new();
+    apply_settings(&f.m).unwrap();
+    let last_options = || {
+        f.rpc
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find(|(name, _)| name == "change_global_option")
+            .unwrap()
+            .1[0]
+            .clone()
+    };
+    assert_eq!(last_options()["max-overall-upload-limit"], "100K");
+    for (kb, expected) in [(250, "250K"), (0, "0")] {
+        update_settings(&f.m, json!({"max_upload_kb": kb}).as_object().unwrap()).unwrap();
+        assert_eq!(last_options()["max-overall-upload-limit"], expected);
+    }
+    for invalid in [json!(-1), json!(true), json!(1.5), json!("bad")] {
+        assert!(
+            update_settings(&f.m, json!({"max_upload_kb": invalid}).as_object().unwrap()).is_err()
+        );
+    }
 }

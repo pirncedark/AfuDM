@@ -305,14 +305,16 @@ pub fn qr_uri(metin: &str) -> String {
 
 // --- internet paylasimi (dar sunucu + cloudflared) -------------------------
 
-fn dar_baslat() -> std::result::Result<u16, &'static str> {
+fn dar_baslat(ctx: &ApiCtx) -> std::result::Result<u16, &'static str> {
     if let Some((_, port)) = kilit(&DAR).as_ref() {
         return Ok(*port);
     }
     let (dinleyici, port) = bagla("127.0.0.1", 0, 1).map_err(|_| "share.tunnelError")?;
     let (kapat, rx) = tokio::sync::oneshot::channel();
     // Dar sunucu YALNIZ /s/{token} yolunu sunar; tune acilan yuzey yonetim paneli degildir.
-    let yonlendirici = Router::new().route("/s/{token}", get(paylasim::s_ana));
+    let yonlendirici = Router::new()
+        .route("/s/{token}", get(paylasim::s_ana))
+        .with_state(ctx.clone());
     sun(dinleyici, yonlendirici, rx);
     *kilit(&DAR) = Some((kapat, port));
     Ok(port)
@@ -332,7 +334,7 @@ pub fn internet_baslat(ctx: &ApiCtx) -> std::result::Result<String, &'static str
         }
     }
     let exe = tunel::cloudflared_yolu(&ctx.app_dir).ok_or("share.cloudflaredMissing")?;
-    let port = dar_baslat()?;
+    let port = dar_baslat(ctx)?;
     if let Some(eski) = kilit(&TUNEL).take() {
         eski.durdur();
     }

@@ -23,6 +23,7 @@ pub(super) fn speed_limit(settings: &JsonMap) -> i64 {
 pub(super) fn apply(m: &Manager) -> Result<()> {
     let settings = m.store.all_settings()?;
     let limit = speed_limit(&settings);
+    let upload = number(settings.get("max_upload_kb").unwrap_or(&json!(100))).max(0);
     let seed = settings
         .get("seed_ratio")
         .and_then(|v| {
@@ -31,7 +32,7 @@ pub(super) fn apply(m: &Manager) -> Result<()> {
         })
         .unwrap_or(1.0);
     let options = map(
-        json!({"max-concurrent-downloads":number(settings.get("max_concurrent").unwrap_or(&json!(5))).to_string(),"split":number(settings.get("split").unwrap_or(&json!(64))).to_string(),"max-connection-per-server":number(settings.get("max_conn_per_server").unwrap_or(&json!(16))).to_string(),"max-overall-download-limit":if limit>0{format!("{limit}K")}else{"0".into()},"seed-ratio":format!("{seed:?}")}),
+        json!({"max-concurrent-downloads":number(settings.get("max_concurrent").unwrap_or(&json!(5))).to_string(),"split":number(settings.get("split").unwrap_or(&json!(64))).to_string(),"max-connection-per-server":number(settings.get("max_conn_per_server").unwrap_or(&json!(16))).to_string(),"max-overall-download-limit":if limit>0{format!("{limit}K")}else{"0".into()},"max-overall-upload-limit":if upload>0{format!("{upload}K")}else{"0".into()},"seed-ratio":format!("{seed:?}")}),
     );
     if m.rpc().change_global_option(&options).is_err() {
         state(m)?.last_error = "motor ayarlari uygulanamadi".into();
@@ -90,6 +91,7 @@ fn normalize(key: &str, value: &Json) -> std::result::Result<Json, &'static str>
         "api_port" | "api_listen_port" => Some((1024, 65535, "err.portRange")),
         "snail_speed_kb" => Some((1, 1000000, "err.snailRange")),
         "max_concurrent" => Some((1, 20, "err.invalidValue")),
+        "max_upload_kb" => Some((0, 1_000_000, "err.invalidValue")),
         _ => None,
     };
     if let Some((min, max, error)) = range {
