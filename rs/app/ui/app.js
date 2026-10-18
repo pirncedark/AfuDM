@@ -892,8 +892,13 @@ $("addGo").onclick = async () => {
 
   if ($("addModeMobile").checked) {
     lines.forEach(url => {
+      let downloadUrl;
+      try { downloadUrl = new URL(url, document.baseURI); }
+      catch (_) { return; }
+      if (downloadUrl.protocol !== "http:" && downloadUrl.protocol !== "https:" &&
+          downloadUrl.protocol !== "ftp:" && downloadUrl.protocol !== "blob:") return;
       const a = document.createElement("a");
-      a.href = url;
+      a.href = downloadUrl.href;
       a.download = "";
       a.target = "_blank";
       document.body.appendChild(a);

@@ -1813,9 +1813,26 @@ function applyStatic(root) {
   scope.querySelectorAll("[data-i18n]").forEach((node) => {
     node.textContent = t(node.getAttribute("data-i18n"));
   });
-  // Yalniz bu dosyadaki SABIT metinler (<b>/<em> icerir); kullanici verisi degil.
+  // Only b/em formatting is supported; DOM keys and text never enter an HTML sink.
   scope.querySelectorAll("[data-i18n-html]").forEach((node) => {
-    node.innerHTML = t(node.getAttribute("data-i18n-html"));
+    const key = node.getAttribute("data-i18n-html");
+    if (!Object.hasOwn(DICT.tr, key)) {
+      node.textContent = key;
+      return;
+    }
+    node.replaceChildren();
+    const parents = [node];
+    for (const part of t(key).split(/(<\/?(?:b|em)>)/g)) {
+      if (part === "<b>" || part === "<em>") {
+        const child = document.createElement(part === "<b>" ? "b" : "em");
+        parents[parents.length - 1].appendChild(child);
+        parents.push(child);
+      } else if (part === "</b>" || part === "</em>") {
+        if (parents.length > 1) parents.pop();
+      } else {
+        parents[parents.length - 1].appendChild(document.createTextNode(part));
+      }
+    }
   });
   scope.querySelectorAll("[data-i18n-ph]").forEach((node) => {
     node.placeholder = t(node.getAttribute("data-i18n-ph"));

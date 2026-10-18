@@ -10,6 +10,10 @@ fn real_database_byte_copy_preserves_python_table_counts() {
         .nth(4)
         .unwrap()
         .join("AfuDM/data");
+    if !source.join("afudm.db").is_file() {
+        eprintln!("Gerçek veritabanı bulunamadı; kopya doğrulama testi atlandı.");
+        return;
+    }
     let temporary = tempfile::tempdir().unwrap();
     for name in ["afudm.db", "afudm.db-wal", "afudm.db-shm"] {
         let original = source.join(name);
