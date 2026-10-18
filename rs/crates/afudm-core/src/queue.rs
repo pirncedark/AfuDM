@@ -6,6 +6,7 @@ pub(crate) mod netcheck;
 mod probe;
 pub mod proxy;
 mod rules;
+mod safety;
 mod settings;
 mod shaping;
 mod sync;
@@ -102,10 +103,7 @@ pub fn start(m: &Manager) -> Result<()> {
         return Ok(());
     }
     let auth = m.data_dir.join("aria2.auth-required.json");
-    let saved: Vec<Json> = std::fs::read(auth)
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default();
+    let saved: Vec<Json> = afudm_db::kaydet::read_json_or_default(&auth);
     state(m)?.auth_required_gids = saved
         .iter()
         .filter_map(Json::as_str)
@@ -523,7 +521,10 @@ fn launch(m: &Manager, row: &Json) -> Result<Json> {
             }
             aria.insert("out".into(), json!(ad));
         }
-        let headers = request_headers(&opts, &cookies);
+        let mut headers = request_headers(&opts, &cookies);
+        if opts.get("browser_retry") == Some(&json!(true)) {
+            safety::browser_headers(&mut aria, &mut headers);
+        }
         if !headers.is_empty() {
             aria.insert("header".into(), json!(headers));
         }
@@ -1018,7 +1019,22 @@ pub(crate) fn tamamlandi(m: &Manager, title: &str, size: u64, gid: &str) {
     let bildirim = setting(m, "windows_notifications", json!(true))
         .map(|v| truthy(&v))
         .unwrap_or(true);
-    let tara = crate::butunluk::butunluk_tara(m, gid).unwrap_or(Json::Null);
+    // Explicitly requested HTML is a valid payload even with a non-HTML filename.
+    let requested_html = m
+        .store
+        .by_gid(gid)
+        .ok()
+        .flatten()
+        .is_some_and(|r| r["kind"] == "http" && safety::html_requested(&options(&r)))
+        && resolve_item_path(m, gid)
+            .ok()
+            .flatten()
+            .is_some_and(|p| safety::is_html_file(&p));
+    let tara = if requested_html {
+        Json::Null
+    } else {
+        crate::butunluk::butunluk_tara(m, gid).unwrap_or(Json::Null)
+    };
     if tara["ok"] == true && tara["durum"] == "bozuk" {
         m.store.log(
             "warn",

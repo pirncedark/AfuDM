@@ -2,6 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#14181f">
 <meta name="mobile-web-app-capable" content="yes">
@@ -198,22 +199,40 @@ input[type="text"], select {
 setLang((navigator.language || "tr").toLowerCase().startsWith("tr") ? "tr" : "en");
 /* ---- anahtar: adresten gelir, telefonda kalir ---- */
 const ANAHTAR_AD = "afudm_anahtar";
-function anahtarAl() {
-  const u = new URL(location.href);
-  const gelen = u.searchParams.get("k");
-  if (gelen) {
-    try { localStorage.setItem(ANAHTAR_AD, gelen); } catch (_) {}
-    // Anahtar adres cubugunda durmasin (baskasi omzundan okumasin)
-    u.searchParams.delete("k");
-    history.replaceState(null, "", u.pathname + (u.search || "") );
-    return gelen;
+const ilkAdres = new URL(location.href);
+const ilkKod = ilkAdres.searchParams.get("code");
+const eskiAnahtar = ilkAdres.searchParams.get("k");
+// Eski kalici anahtari ve yeni tek kullanimlik kodu hemen adresten sil.
+ilkAdres.searchParams.delete("k");
+ilkAdres.searchParams.delete("code");
+history.replaceState(null, "", ilkAdres.pathname + ilkAdres.search + ilkAdres.hash);
+let anahtar = "";
+let eslemeHazir = Promise.resolve();
+try { anahtar = localStorage.getItem(ANAHTAR_AD) || ""; } catch (_) {}
+
+async function kodDegistir(kod) {
+  const yanit = await fetch("/pair?code=" + encodeURIComponent(kod), {
+    cache: "no-store", redirect: "error", credentials: "omit",
+  });
+  const veri = await yanit.json();
+  if (!yanit.ok || veri.ok !== true || !veri.token) {
+    throw new Error("Baglanti suresi doldu. Bilgisayardaki QR kodunu yeniden okut.");
   }
-  try { return localStorage.getItem(ANAHTAR_AD) || ""; } catch (_) { return ""; }
+  anahtarKaydet(veri.token);
 }
-let anahtar = anahtarAl();
-if (!anahtar) {
-  document.getElementById("anahtarUyari").style.display = "";
-  document.getElementById("baglantiUyari").style.display = "";
+
+async function eslemeBaslat() {
+  if (ilkKod) {
+    anahtar = "";
+    await kodDegistir(ilkKod);
+  } else if (eskiAnahtar) {
+    // 3.0.1 gecisi: eski baglantiyi mevcut saklama/header akisina aktar.
+    anahtarKaydet(eskiAnahtar);
+  }
+  if (!anahtar) {
+    document.getElementById("anahtarUyari").style.display = "";
+    document.getElementById("baglantiUyari").style.display = "";
+  }
 }
 
 const $ = (id) => document.getElementById(id);
@@ -236,6 +255,7 @@ function anahtarKaydet(yeni) {
 }
 
 async function api(yol, secenek = {}) {
+  await eslemeHazir;
   const yanit = await fetch(yol, {
     ...secenek,
     headers: { "Content-Type": "application/json", "X-AfuDM-Token": anahtar,
@@ -561,25 +581,35 @@ pwaKur.addEventListener("click", async () => {
   }
 });
 
-/* Yeniden baglan: adresin tamami (?k=… dahil) ya da yalniz anahtar.
-   Yalniz anahtar girilir ve /m?k=… adresi degisti diye localStorage
-   kullanilmazsa bile yeni anahtar hemen gecerli olur. */
-$("baglanBtn").addEventListener("click", () => {
+/* Yeni QR adresleri ve bir surum boyunca eski anahtarlar kabul edilir. */
+$("baglanBtn").addEventListener("click", async () => {
   const girilen = $("baglantiAdres").value.trim();
   if (!girilen) return;
-  let yeni = girilen;
-  if (/^https?:\/\//i.test(girilen)) {
-    try {
-      yeni = new URL(girilen).searchParams.get("k") || "";
-    } catch (_) { yeni = ""; }
+  try {
+    let yeni = girilen;
+    if (/^https?:\/\//i.test(girilen)) {
+      const adres = new URL(girilen);
+      if (adres.origin !== location.origin) {
+        throw new Error("Bu baglanti baska bir bilgisayara ait. Baglantiyi tarayicida ac.");
+      }
+      const kod = adres.searchParams.get("code");
+      if (kod) {
+        await kodDegistir(kod);
+        yeni = "";
+      } else {
+        yeni = adres.searchParams.get("k") || "";
+        if (!yeni) throw new Error("Baglanti gecersiz. Bilgisayardaki QR kodunu yeniden okut.");
+      }
+    }
+    if (yeni) anahtarKaydet(yeni);
+    // Basarisiz ilk QR denemesinden sonra yeniden baglanmaya izin ver.
+    eslemeHazir = Promise.resolve();
+    bildir("Bağlanılıyor…");
+    yenile(true);
+    klasorleriDoldur();
+  } catch (hata) {
+    bildir(hata.message, true);
   }
-  if (!yeni) {
-    bildir("Anahtar bulunamadi. Adresin sonundaki ?k=… dahil olmali.", true);
-    return;
-  }
-  anahtarKaydet(yeni);
-  bildir("Bağlanılıyor…");
-  yenile(true);
 });
 
 /* Worker kaydi basarisiz olsa bile telefon arayuzu normal calismaya devam eder. */
@@ -589,8 +619,14 @@ if ("serviceWorker" in navigator) {
   })();
 }
 
-yenile();
-klasorleriDoldur();
+eslemeHazir = eslemeBaslat();
+eslemeHazir.then(() => {
+  yenile();
+  klasorleriDoldur();
+}).catch((hata) => {
+  baglantiPaneli(true);
+  bildir(hata.message, true);
+});
 </script>
 </body>
 </html>

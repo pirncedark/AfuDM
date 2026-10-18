@@ -86,7 +86,13 @@ pub fn rotate_token(dir: &Path) -> Result<()> {
     std::fs::write(&path, &value)?;
     private_file(&path);
     if let Ok(raw) = std::fs::read(dir.join("api_endpoint.json")) {
-        let record: serde_json::Value = serde_json::from_slice(&raw)?;
+        let record: serde_json::Value = match serde_json::from_slice(&raw) {
+            Ok(value) => value,
+            Err(_) => {
+                afudm_engine::daemon::quarantine_json(&dir.join("api_endpoint.json"));
+                serde_json::Value::Null
+            }
+        };
         if let Some(port) = record["port"].as_u64().and_then(|p| u16::try_from(p).ok()) {
             endpoint(dir, port, &value)?;
         }

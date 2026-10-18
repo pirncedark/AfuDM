@@ -299,12 +299,7 @@ fn guvenli_zip_yolu(ad: &str) -> bool {
 /// Python: hazir() — yalniz tam dogrulanmis, degismemis, daha yeni paket uygulanabilir.
 pub fn hazir(data: &Path) -> bool {
     let klasor = data.join("guncelleme");
-    let Ok(metin) = fs::read_to_string(klasor.join("hazir.json")) else {
-        return false;
-    };
-    let Ok(kayit) = serde_json::from_str::<Json>(&metin) else {
-        return false;
-    };
+    let kayit: Json = afudm_db::kaydet::read_json_or_default(&klasor.join("hazir.json"));
     let Some(surum) = kayit["surum"].as_str().and_then(parcala) else {
         return false;
     };
@@ -514,13 +509,9 @@ impl Guncelleme {
             m.extend(durum.as_object().cloned().unwrap_or_default());
             Value::Object(m)
         };
-        let metin = match fs::read_to_string(self.data.join("guncelleme").join("kontrol.json")) {
-            Ok(m) => m,
-            Err(_) => return Ok(sifir()),
-        };
-        let Ok(once) = serde_json::from_str::<Json>(&metin) else {
-            return Ok(sifir());
-        };
+        let once: Json = afudm_db::kaydet::read_json_or_default(
+            &self.data.join("guncelleme").join("kontrol.json"),
+        );
         if once["bilgi"]["mevcut"].as_str() != Some(MEVCUT_SURUM) {
             return Ok(sifir());
         }
@@ -644,6 +635,23 @@ fn simdi() -> f64 {
 mod tests {
     use super::*;
     use crate::g1::test_sunucu;
+
+    #[test]
+    fn omniget_corrupt_update_state_is_quarantined() {
+        let d = gecici("omniget-json");
+        let folder = d.join("guncelleme");
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("hazir.json"), "broken").unwrap();
+        assert!(!hazir(&d));
+        assert!(!folder.join("hazir.json").exists());
+        fs::write(folder.join("kontrol.json"), "broken").unwrap();
+        let g = Guncelleme::new(d.clone(), d.clone(), false);
+        let store = afudm_db::SqliteStore::open_in_memory().unwrap();
+        assert_eq!(g.son_kontrol(&store).unwrap()["zaman"], 0);
+        assert!(!folder.join("kontrol.json").exists());
+        assert_eq!(fs::read_dir(&folder).unwrap().count(), 2);
+        fs::remove_dir_all(&d).unwrap();
+    }
 
     #[test]
     fn fix8_ps_tum_tirnaklari_kacirir() {

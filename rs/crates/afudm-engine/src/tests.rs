@@ -541,3 +541,18 @@ fn rpc_default_status_keys_match_python_for_each_poll() {
     }
     assert_eq!(rpc::hata_metni(&json!({"error":true})), "True");
 }
+
+#[test]
+fn omniget_corrupt_session_marker_is_quarantined() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("aria2.session"), "").unwrap();
+    std::fs::write(dir.path().join("aria2.auth-required.json"), "broken").unwrap();
+    assert!(crate::daemon::sanitize_session_file(dir.path())
+        .unwrap()
+        .is_empty());
+    assert!(std::fs::read_dir(dir.path()).unwrap().any(|e| e
+        .unwrap()
+        .file_name()
+        .to_string_lossy()
+        .starts_with("aria2.auth-required.json.corrupt-")));
+}

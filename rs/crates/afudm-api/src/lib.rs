@@ -67,10 +67,18 @@ pub fn write_endpoint(ctx: &ApiCtx, port: u16) -> Result<()> {
 }
 
 /// Start in the background on loopback; try the requested port and the next nine.
-/// A UI child may only bind its requested port. No DNS lookup is performed.
+/// A UI child binds an OS-selected port and reports it through its stdout pipe.
 pub async fn serve(r: Router, port: u16) -> Result<u16> {
-    let listener = bind(port).await?;
+    let child = std::env::var("AFUDM_UI_CHILD").as_deref() == Ok("1");
+    let listener = bind(if child { 0 } else { port }).await?;
     let actual = listener.local_addr()?.port();
+    if child {
+        use std::io::Write;
+        // Port ancak socket baglandiktan sonra, yalniz ebeveynin borusuna yazilir.
+        let mut output = std::io::stdout().lock();
+        writeln!(output, "AFUDM_CHILD_BOUND:{actual}")?;
+        output.flush()?;
+    }
     tokio::spawn(async move {
         if axum::serve(
             listener,

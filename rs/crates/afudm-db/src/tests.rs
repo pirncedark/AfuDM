@@ -595,3 +595,50 @@ fn pending_expiry_corruption_and_failed_write_preserve_request() {
     assert!(b.al(id).is_err());
     assert!(b.bak(id).unwrap().is_some());
 }
+
+#[test]
+fn omniget_corrupt_pending_uses_calendar_quarantine_and_defaults() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pending_downloads.json");
+    std::fs::write(&path, b"broken").unwrap();
+    kaydet::Bekleyenler::new(dir.path()).unwrap();
+    let files: Vec<_> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    let name = files
+        .iter()
+        .find(|n| n.starts_with("pending_downloads.json.corrupt-"))
+        .unwrap();
+    let stamp = name
+        .strip_prefix("pending_downloads.json.corrupt-")
+        .unwrap();
+    assert_eq!(stamp.len(), 15);
+    assert_eq!(&stamp[8..9], "-");
+    assert_eq!(std::fs::read(dir.path().join(name)).unwrap(), b"broken");
+}
+
+#[test]
+fn omniget_json_reader_preserves_valid_and_repeated_corrupt_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("state.json");
+    let missing: Vec<String> = kaydet::read_json_or_default(&path);
+    assert!(missing.is_empty());
+    std::fs::write(&path, br#"["keep"]"#).unwrap();
+    let valid: Vec<String> = kaydet::read_json_or_default(&path);
+    assert_eq!(valid, ["keep"]);
+    assert!(path.exists());
+    for body in ["{broken", "[broken"] {
+        std::fs::write(&path, body).unwrap();
+        let value: Vec<String> = kaydet::read_json_or_default(&path);
+        assert!(value.is_empty());
+        assert!(!path.exists());
+    }
+    let backups: Vec<_> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .map(|e| std::fs::read_to_string(e.unwrap().path()).unwrap())
+        .collect();
+    assert_eq!(backups.len(), 2);
+    assert!(backups.contains(&"{broken".into()));
+    assert!(backups.contains(&"[broken".into()));
+}
