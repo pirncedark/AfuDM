@@ -1,0 +1,650 @@
+{
+  "windows": {
+    "args": [
+      "invalid-t2"
+    ],
+    "skip": "window property or method"
+  },
+  "reliability_integrity": {
+    "args": []
+  },
+  "reliability_backup": {
+    "args": []
+  },
+  "reliability_backups": {
+    "args": []
+  },
+  "reliability_restore": {
+    "args": [
+      "__T2_BASE__/missing"
+    ]
+  },
+  "reliability_diagnostics_preview": {
+    "args": []
+  },
+  "reliability_diagnostics_export": {
+    "args": []
+  },
+  "reliability_health": {
+    "args": []
+  },
+  "reliability_restart_engine": {
+    "args": []
+  },
+  "reliability_recovery_preview": {
+    "args": [
+      0
+    ]
+  },
+  "security_rotate_token": {
+    "args": []
+  },
+  "snapshot": {
+    "args": []
+  },
+  "motor_durumu": {
+    "args": []
+  },
+  "motor_indir": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "api_info": {
+    "args": []
+  },
+  "surum_bilgi": {
+    "args": []
+  },
+  "guncelleme_kontrol": {
+    "args": []
+  },
+  "guncelleme_otomatik_ayarla": {
+    "args": [
+      false
+    ]
+  },
+  "guncelleme_son_kontrol": {
+    "args": []
+  },
+  "guncelleme_indir": {
+    "args": [
+      {}
+    ]
+  },
+  "guncelleme_durum": {
+    "args": []
+  },
+  "guncelleme_uygula": {
+    "args": [
+      false,
+      false
+    ]
+  },
+  "peers": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "start_pairing": {
+    "args": [
+      120
+    ]
+  },
+  "kaydet_bilgi": {
+    "args": [
+      "__T2_URL__/missing",
+      "",
+      ""
+    ]
+  },
+  "probe_link": {
+    "args": [
+      "__T2_URL__/missing"
+    ]
+  },
+  "rules_list": {
+    "args": []
+  },
+  "rules_save": {
+    "args": [
+      []
+    ]
+  },
+  "rules_simulate": {
+    "args": [
+      "__T2_URL__/missing",
+      "",
+      0,
+      "http",
+      ""
+    ]
+  },
+  "download_rules": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "linkgrabber_analiz": {
+    "args": [
+      "invalid-t2",
+      null
+    ]
+  },
+  "linkgrabber_suz": {
+    "args": [
+      [],
+      null
+    ]
+  },
+  "linkgrabber_iptal": {
+    "args": []
+  },
+  "linkgrabber_onceki": {
+    "args": [
+      []
+    ]
+  },
+  "linkgrabber_probe": {
+    "args": [
+      [],
+      8
+    ]
+  },
+  "linkgrabber_ekle": {
+    "args": [
+      [],
+      null
+    ]
+  },
+  "klasor_kisayollar": {
+    "args": []
+  },
+  "ag_konumu_ekle": {
+    "args": [
+      "__T2_BASE__/missing"
+    ]
+  },
+  "ag_konumu_sil": {
+    "args": [
+      "__T2_BASE__/missing"
+    ]
+  },
+  "klasor_alt": {
+    "args": [
+      "__T2_BASE__/missing"
+    ]
+  },
+  "klasor_yeni": {
+    "args": [
+      "__T2_BASE__/missing",
+      "invalid-t2"
+    ]
+  },
+  "klasor_gozat": {
+    "args": [
+      ""
+    ]
+  },
+  "yerelden_sor": {
+    "args": [
+      {}
+    ]
+  },
+  "tarayicidan_sor": {
+    "args": [
+      {}
+    ]
+  },
+  "bekleyen_listesi": {
+    "args": []
+  },
+  "bekleyen_iptal": {
+    "args": [
+      0
+    ]
+  },
+  "bekleyen_onayla": {
+    "args": [
+      0,
+      {}
+    ]
+  },
+  "sistem_durumu": {
+    "args": []
+  },
+  "baslangic_ayarla": {
+    "args": [
+      false,
+      true
+    ]
+  },
+  "varsayilan_uygulama_ekrani": {
+    "args": []
+  },
+  "torrent_iliskilendir": {
+    "args": [
+      false
+    ]
+  },
+  "windows_integration_status": {
+    "args": []
+  },
+  "windows_integration_apply": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "windows_integration_remove": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "windows_integration_test": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "defender_scan": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "seed_bilgi": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "seed_tazele": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "torrent_on_ekle": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "torrent_on_iptal": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "torrent_dosyalari": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "torrent_secimi_ayarla": {
+    "args": [
+      "invalid-t2",
+      []
+    ]
+  },
+  "torrent_metrikleri": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "loglar": {
+    "args": [
+      ""
+    ]
+  },
+  "tracker_tara": {
+    "args": [
+      ""
+    ]
+  },
+  "tracker_klasoru_ac": {
+    "args": []
+  },
+  "seed_dosyalari": {
+    "args": []
+  },
+  "seed_dosya_ekle": {
+    "args": [
+      ""
+    ]
+  },
+  "seed_dosya_sil": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "seed_tracker_kaydet": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "eklenti_listesi": {
+    "args": []
+  },
+  "eklenti_incele": {
+    "args": [
+      ""
+    ]
+  },
+  "eklenti_kur": {
+    "args": [
+      "__T2_BASE__/missing",
+      null
+    ]
+  },
+  "eklenti_guncelle": {
+    "args": [
+      "invalid-t2",
+      "__T2_BASE__/missing"
+    ]
+  },
+  "eklenti_kaldir": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "eklenti_etkinlestir": {
+    "args": [
+      "invalid-t2",
+      false
+    ]
+  },
+  "eklenti_yeniden_baslat": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "eklenti_ayar_kaydet": {
+    "args": [
+      "invalid-t2",
+      null
+    ]
+  },
+  "eklenti_gunluk": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "eklenti_islem": {
+    "args": []
+  },
+  "eklenti_islem_iptal": {
+    "args": []
+  },
+  "eklenti_klasoru_ac": {
+    "args": []
+  },
+  "telefon_durumu": {
+    "args": []
+  },
+  "telefon_ayarla": {
+    "args": [
+      false
+    ]
+  },
+  "guc_durumu": {
+    "args": []
+  },
+  "simdi_uyu": {
+    "args": []
+  },
+  "add_links": {
+    "args": [
+      {}
+    ]
+  },
+  "control": {
+    "args": [
+      "invalid-t2",
+      "invalid-t2",
+      false
+    ]
+  },
+  "retry": {
+    "args": [
+      0
+    ]
+  },
+  "link_yenile": {
+    "args": [
+      "invalid-t2",
+      "__T2_URL__/missing"
+    ]
+  },
+  "butunluk_tara": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "butunluk_onar": {
+    "args": [
+      "invalid-t2",
+      "__T2_URL__/missing"
+    ]
+  },
+  "butunluk_hepsini_tara": {
+    "args": []
+  },
+  "clear_finished": {
+    "args": []
+  },
+  "automation_jobs": {
+    "args": [
+      ""
+    ]
+  },
+  "automation_retry": {
+    "args": [
+      0
+    ]
+  },
+  "automation_cancel": {
+    "args": [
+      0
+    ]
+  },
+  "settings_save": {
+    "args": [
+      {}
+    ]
+  },
+  "ayarlari_dogrula_kaydet": {
+    "args": [
+      {}
+    ]
+  },
+  "proxy_testi": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "port_durumu": {
+    "args": []
+  },
+  "ag_konumlari_listele": {
+    "args": []
+  },
+  "ayar_rozetleri": {
+    "args": []
+  },
+  "sunucu_durumu": {
+    "args": []
+  },
+  "sunucu_ayarla": {
+    "args": [
+      false
+    ]
+  },
+  "sunucu_yeniden": {
+    "args": []
+  },
+  "sunucu_panel_ac": {
+    "args": []
+  },
+  "sunucu_anahtarlar": {
+    "args": []
+  },
+  "sunucu_anahtar_olustur": {
+    "args": [
+      "invalid-t2",
+      "invalid-t2",
+      ""
+    ]
+  },
+  "sunucu_anahtar_rotasyon": {
+    "args": [
+      0
+    ]
+  },
+  "sunucu_anahtar_iptal": {
+    "args": [
+      0
+    ]
+  },
+  "sunucu_anahtar_sil": {
+    "args": [
+      0
+    ]
+  },
+  "sunucu_anahtar_rol": {
+    "args": [
+      0,
+      "invalid-t2"
+    ]
+  },
+  "sunucu_istemciler": {
+    "args": [
+      0
+    ]
+  },
+  "sunucu_istemci_iptal": {
+    "args": [
+      0
+    ]
+  },
+  "sunucu_istemci_temizle": {
+    "args": [
+      7
+    ]
+  },
+  "sunucu_kilit_temizle": {
+    "args": []
+  },
+  "sunucu_profiller": {
+    "args": []
+  },
+  "sunucu_profil_kaydet": {
+    "args": [
+      {}
+    ]
+  },
+  "sunucu_profil_sil": {
+    "args": [
+      0
+    ]
+  },
+  "sunucu_profil_etkinlestir": {
+    "args": [
+      0
+    ]
+  },
+  "open_download_dir": {
+    "args": []
+  },
+  "open_item_folder": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "share_create": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "agda_paylas": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "share_list": {
+    "args": []
+  },
+  "share_delete": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "dosya_sec_ve_paylas": {
+    "args": []
+  },
+  "paylasim_stop": {
+    "args": []
+  },
+  "dosya_ac": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "item_yolu": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "panoya_kopyala": {
+    "args": [
+      ""
+    ]
+  },
+  "panodan_oku": {
+    "args": []
+  },
+  "pencere_kucult": {
+    "args": [],
+    "skip": "window property or method"
+  },
+  "pencere_buyut": {
+    "args": [],
+    "skip": "window property or method"
+  },
+  "ana_pencere_kapandi": {
+    "args": []
+  },
+  "pencere_kapat": {
+    "args": [],
+    "skip": "window property or method"
+  },
+  "pencere_durumu": {
+    "args": [],
+    "skip": "window property or method"
+  },
+  "pencere_kenar": {
+    "args": [
+      "invalid-t2"
+    ],
+    "skip": "window property or method"
+  },
+  "chrome_durum": {
+    "args": []
+  },
+  "chrome_hazirla": {
+    "args": []
+  },
+  "chrome_otomatik": {
+    "args": []
+  },
+  "chrome_ilerleme": {
+    "args": []
+  },
+  "chrome_kopyala": {
+    "args": [
+      "invalid-t2"
+    ]
+  },
+  "chrome_ac": {
+    "args": []
+  },
+  "probe": {
+    "args": [
+      "__T2_URL__/missing"
+    ]
+  }
+}

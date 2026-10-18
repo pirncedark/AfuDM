@@ -1,6 +1,6 @@
 """T2 scenarios. Every status is asserted; missing evidence is a failure."""
 from __future__ import annotations
-import ast, collections, hashlib, json, re, sqlite3, time
+import collections, hashlib, json, re, sqlite3, time
 from pathlib import Path
 from common import *
 
@@ -40,7 +40,7 @@ def resource(apps,server,idle=300):
     server.limit=0
     summary=[]
     for phase in ('idle','1GiB','3_concurrent'):
-        for side in ('py','rs'):
+        for side in ('rs',):
             rr=[r for r in rows if r['phase']==phase and r['side']==side]
             summary.append({'phase':phase,'side':side,'samples':len(rr),
                 'working_set_mib_avg':sum(r['working_set'] for r in rr)/len(rr)/2**20,
@@ -50,17 +50,6 @@ def resource(apps,server,idle=300):
                 'max_processes':max(r['processes'] for r in rr)})
     ok=idle>=300 and all(r['json'].get('ok') and r.get('sha_ok') and r.get('complete') for _,_,_,r in outputs)
     emit('resources',{'status':'GECTI' if ok else 'KALDI','idle_seconds':idle,'summary':summary})
-
-def fuzz_sig(r):
-    # Sekil imzasi (tests_parity ile ayni mantik): durum kodu + anahtar kumesi + tipler.
-    # gid/id/zaman gibi degisken degerler fark sayilmaz; "code" degeri (BAD_REQUEST / GOVDE_HATASI)
-    # ise sabit sozlesmedir, o yuzden degeri de karsilastirilir.
-    if not isinstance(r,dict): return r
-    govde={k:v for k,v in r.items() if k not in ('status','exception')}
-    j=govde.get('json')
-    kod=j.get('code') if isinstance(j,dict) else None
-    return {'status':r.get('status'),'exception':r.get('exception') is not None,
-            'code':kod,'shape':shape(govde)}
 
 def fuzz(apps,server):
     # Route inventory is derived from production Rust routers (including chained .post()).
@@ -106,9 +95,9 @@ def fuzz(apps,server):
                 row[a.kind]=redact(r)
                 # /rotate is body-independent; always refresh current credential.
                 a.token=(a.base/'data/api_token.txt').read_text().strip()
-            row['difference']=fuzz_sig(row['py'])!=fuzz_sig(row['rs'])
-            # Python dev govdede baglantiyi keser (bilinen davranis); Rust 413 doner (FIX6 karari).
-            row['failure']=any((row[a.kind]['status']==0 and not (a.kind=='py' and name=='huge')) or row[a.kind]['status']>=500 or a.proc.poll() is not None for a in apps)
+            row['difference']=False  # Rust-only: no archived implementation comparison
+            # Disconnects, server errors and process exits always fail the Rust check.
+            row['failure']=any(row[a.kind]['status']==0 or row[a.kind]['status']>=500 or a.proc.poll() is not None for a in apps)
             row['masked_429']=any(row[a.kind]['status']==429 for a in apps)
             rows.append(row);sent+=1
         print(f'FUZZ {route}: {len(rows)} requests/side',flush=True)
@@ -145,10 +134,8 @@ SKIP={
  'reliability_restart_engine':'Rust daemon scans production RPC port range',
 }
 
-# Kopru vaka listesi (yalniz bridge): Python gecersiz girdide istisna firlatir (__exception__).
-# Gecersiz vaka 'muaf' olarak isaretlenir (Rust zarif hata); gecerli vaka ayri satir olarak olculur.
+# Valid recovery inputs are checked separately from invalid-input robustness.
 BRIDGE_ATLA={'windows_integration_apply','windows_integration_remove'}
-BRIDGE_GECERSIZ_MUAF={'reliability_restore','reliability_recovery_preview','windows_integration_test'}
 BRIDGE_GECERLI={'reliability_restore','reliability_recovery_preview','windows_integration_test'}
 
 def hazirla_indirme(a,server,timeout=60):
@@ -195,29 +182,12 @@ def bridge(apps,server):
             r=request(a.gate,'/_test/api_call',token=tok,headers=headers,raw=raw,method='POST')
             gate_checks.append({'case':label,'status':r['status'],'expected':expected,'passed':r['status']==expected})
     emit('gate_security',gate_checks)
-    tree=ast.parse((SOURCE/'app.py').read_text(encoding='utf-8'))
-    cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='Api')
-    methods={n.name:n for n in cls.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)) and not n.name.startswith('_')}
+    methods=json.loads((ROOT/'tests_hata/bridge_cases.json').read_text(encoding='utf-8'))
     rows=[]
-    for name,n in sorted(methods.items()):
-        reason=SKIP.get(name) or ('window property, not callable' if n.decorator_list else 'window method' if name.startswith('pencere_') else None)
+    for name,case in sorted(methods.items()):
+        reason=SKIP.get(name) or case.get('skip')
         if reason: rows.append({'name':name,'skip':reason});continue
-        req=n.args.args[1:];defaults=[None]*(len(req)-len(n.args.defaults))+n.args.defaults
-        args=[]
-        for arg,default in zip(req,defaults):
-            if default is not None:
-                try:args.append(ast.literal_eval(default));continue
-                except Exception:pass
-            key=arg.arg
-            if key in ('payload','ayarlar','veri','istek','secim','bilgi','filtre'):v={}
-            elif key in ('rules','ogeler','urller','indeksler','onaylanan_izinler'):v=[]
-            elif key in ('acik','aktif','tepside'):v=False
-            elif key in ('row_id','job_id','kimlik','key_id','client_id','profil_id','size_bytes','seconds'):v=0
-            elif key in ('url','yeni_url'):v=server.url+'/missing'
-            elif key in ('yol','ust','archive'):v='__T2_BASE__/missing'
-            elif key=='ident':v='invalid-t2'
-            else:v='invalid-t2'
-            args.append(v)
+        args=json.loads(json.dumps(case['args']).replace('__T2_URL__',server.url))
         if name=='klasor_yeni':args=['__T2_BASE__','nested-t2']
         if name=='eklenti_incele':args=['__T2_BASE__/missing.zip']
         if name=='motor_indir':args=['invalid-t2']
@@ -235,13 +205,11 @@ def bridge(apps,server):
                          'ok':r.get('json',{}).get('ok') if isinstance(r.get('json'),dict) else None,
                          'exception':r.get('json',{}).get('__exception__') if isinstance(r.get('json'),dict) else None}
             a.token=(a.base/'data/api_token.txt').read_text().strip()
-        row['shape_equal']=row['py']['shape']==row['rs']['shape']
-        if name in BRIDGE_GECERSIZ_MUAF:
-            row['skip']='muaf: Python istisna, Rust zarif hata (gecersiz girdi)'
+        row['passed']=row['rs']['status']==200 and not row['rs']['exception']
         rows.append(row)
-        print(f'BRIDGE {name}: equal={row["shape_equal"]}',flush=True)
+        print(f'BRIDGE {name}: passed={row["passed"]}',flush=True)
         emit('bridge_rows',rows)
-    # Gecerli vaka: Python'un istisna firlatmadigi girdi; biçim Python ile ayni olmali.
+    # Gecerli girdiler Rust bridge tarafindan istisnasiz islenmeli.
     for name in sorted(BRIDGE_GECERLI):
         row={'name':name+' [gecerli]','args':'per-app'}
         for a in apps:
@@ -254,13 +222,13 @@ def bridge(apps,server):
                          'ok':r.get('json',{}).get('ok') if isinstance(r.get('json'),dict) else None,
                          'exception':r.get('json',{}).get('__exception__') if isinstance(r.get('json'),dict) else None}
             a.token=(a.base/'data/api_token.txt').read_text().strip()
-        row['shape_equal']=row['py']['shape']==row['rs']['shape'] and row['py']['shape'] is not None
+        row['passed']=row['rs']['status']==200 and row['rs']['shape'] is not None and not row['rs']['exception']
         rows.append(row)
-        print(f'BRIDGE {row["name"]}: equal={row["shape_equal"]}',flush=True)
+        print(f'BRIDGE {row["name"]}: passed={row["passed"]}',flush=True)
         emit('bridge_rows',rows)
     called=[r for r in rows if 'skip' not in r]
-    emit('bridge',{'status':'GECTI' if all(c['passed'] for c in gate_checks) and all(r['shape_equal'] and r['py']['status']==200 and r['rs']['status']==200 and not r['py']['exception'] for r in called) else 'KALDI',
-                  'unique_public_methods':len(methods),'called':len(called),'skipped':len(rows)-len(called),'differences':sum(not r['shape_equal'] for r in called)})
+    emit('bridge',{'status':'GECTI' if all(c['passed'] for c in gate_checks) and bool(called) and all(r['passed'] for r in called) else 'KALDI',
+                  'unique_public_methods':len(methods),'called':len(called),'skipped':len(rows)-len(called),'differences':sum(not r['passed'] for r in called)})
 
 def scan_dosya(path,limit):
     """Dosyayi 64 KiB parcalarla BLOCK ile karsilastirir; yazilmamis (sifir) ve bozuk parcalari sayar."""

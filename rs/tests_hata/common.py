@@ -6,7 +6,7 @@ from contextlib import closing
 from pathlib import Path
 import psutil
 ROOT=Path(__file__).resolve().parents[1]
-SOURCE=Path(r'C:\Users\afuuu\Desktop\afuproject\AfuDM')
+ENGINE=ROOT.parent/'engine'
 OUT=ROOT/'tests_hata/rapor'
 OUT.mkdir(exist_ok=True)
 HIDDEN={'creationflags':subprocess.CREATE_NO_WINDOW} if os.name=='nt' else {}
@@ -79,13 +79,14 @@ def integrity(base):
 
 class App:
     def __init__(self,kind,root,exe=None):
+        assert kind == 'rs', 'Only isolated Rust instances are supported'
         self.kind=kind; self.base=Path(root)/kind; self.base.mkdir(exist_ok=True)
         self.secret=secrets.token_hex(32); self.port=port(); self.rpcport=port(); self.gate=port(); self.panelport=port()
         self.proc=None; self.handles=[]; self.owned_history={}; self.exe=exe or ROOT/'tests_hata/bin/AfuDM_test.exe'
         (self.base/'engine').mkdir(exist_ok=True)
         for name in ('aria2c.exe','yt-dlp.exe'):
-            if (SOURCE/'engine'/name).exists(): shutil.copy2(SOURCE/'engine'/name,self.base/'engine'/name)
-        if kind=='rs': shutil.copy2(self.exe,self.base/'AfuDM.exe')
+            if (ENGINE/name).exists(): shutil.copy2(ENGINE/name,self.base/'engine'/name)
+        shutil.copy2(self.exe,self.base/'AfuDM.exe')
     def start(self):
         env={k:v for k,v in os.environ.items() if not k.startswith('AFUDM_')}
         env.update(PYTHONDONTWRITEBYTECODE='1',PYTHONIOENCODING='utf-8',AFUDM_PORT=str(self.port),AFUDM_TEST_TOKEN=self.secret,AFUDM_TEST_RPC_PORT=str(self.rpcport))
@@ -100,8 +101,7 @@ class App:
                 db.execute('INSERT OR REPLACE INTO settings VALUES (?,?)',(k,json.dumps(v)))
         db.close()
         log=open(OUT/(self.kind+'_runtime.log'),'a',encoding='utf-8');self.handles.append(log)
-        cmd=([sys.executable,'-B',str(ROOT/'tests_hata/py_child.py'),str(SOURCE),str(self.base),str(self.port),str(self.rpcport),str(self.gate),self.secret]
-             if self.kind=='py' else [str(self.base/'AfuDM.exe')])
+        cmd=[str(self.base/'AfuDM.exe')]
         (self.base/'stop').unlink(missing_ok=True)
         for f in ('ready.json','data/test_endpoint.json'):(self.base/f).unlink(missing_ok=True)
         (data/'test_boot_error.json').unlink(missing_ok=True)
@@ -111,11 +111,10 @@ class App:
             if self.proc.poll() is not None: raise RuntimeError(f'{self.kind} exited {self.proc.returncode}, see runtime log')
             if (data/'test_boot_error.json').exists():
                 raise RuntimeError(f'{self.kind}: '+(data/'test_boot_error.json').read_text())
-            f=self.base/('ready.json' if self.kind=='py' else 'data/test_endpoint.json')
+            f=self.base/'data/test_endpoint.json'
             if f.exists():
                 try:
-                    v=json.loads(f.read_text());self.gate=v['gate'] if self.kind=='py' else v['port']
-                    if self.kind=='py': self.port=v['port']
+                    v=json.loads(f.read_text());self.gate=v['port']
                     if self.call('surum_bilgi',[])['status']==200:
                         self.token=(data/'api_token.txt').read_text().strip()
                         return

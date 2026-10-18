@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 param(
     [string]$ZipPath = "",
-    [ValidateSet("Python", "Rust")][string]$PackageType = "Python"
+    [ValidateSet("Rust")][string]$PackageType = "Rust"
 )
 
 # Release zipsinin gereken dosyalari icerdigini dogrular.
@@ -32,19 +32,6 @@ $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
 $tempDir = Join-Path ([IO.Path]::GetTempPath()) ("afudm-verify-" + [guid]::NewGuid().ToString("N"))
 try {
     $adlar = $zip.Entries | ForEach-Object { $_.FullName.Replace('\', '/') }
-    $gerekli = @(
-        "AfuDM.exe",
-        "afuadm.py",
-        "README.md",
-        "ui/index.html",
-        "ui/download.html",
-        "ui/download.js",
-        "extension/manifest.json",
-        "extension/download-handoff.js",
-        "extension/download-preflight.js",
-        "core/surum.py",
-        "engine/aria2c.exe"
-    )
     if ($PackageType -eq "Rust") {
         $gerekli = @("AfuDM.exe", "engine/aria2c.exe", "extension/manifest.json", "extension/download-handoff.js", "extension/download-preflight.js")
         foreach ($name in $adlar) {
@@ -81,9 +68,7 @@ try {
         if ($pe -lt 64 -or $pe -gt $bytes.Length - 26 -or [BitConverter]::ToUInt32($bytes, $pe) -ne 17744 -or [BitConverter]::ToUInt16($bytes, $pe + 4) -ne 34404) { throw "EXE win64 PE degil" }
         $info = [Diagnostics.FileVersionInfo]::GetVersionInfo($exePath)
         if ($info.ProductVersion -ne $surum) { throw "EXE surumu uyusmuyor: $($info.ProductVersion) / $surum" }
-    } else {
-        & python (Join-Path $kok "scripts\verify_exe.py") --exe $exePath --version $surum
-        if ($LASTEXITCODE -ne 0) { Write-Host "GATE HATA: embedded EXE verification failed"; exit 1 }
+
     }
     $boyut = (Get-Item $ZipPath).Length / 1MB
     $boyutMetin = "{0:N1} MB" -f $boyut

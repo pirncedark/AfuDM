@@ -12,3 +12,9 @@
 *.zip binary
 *.mp3 binary
 *.mp4 binary
+
+# Documentation and test harnesses are not shipped product code.
+docs/** linguist-documentation
+rs/docs/** linguist-documentation
+rs/tests_hata/** linguist-vendored
+tests/** linguist-vendored

@@ -4,8 +4,9 @@ import vm from "node:vm";
 
 const src = await readFile(new URL("../extension/download-handoff.js", import.meta.url), "utf8");
 const background = await readFile(new URL("../extension/background.js", import.meta.url), "utf8");
-const app = await readFile(new URL("../app.py", import.meta.url), "utf8");
-const prompt = await readFile(new URL("../ui/download.js", import.meta.url), "utf8");
+const app = await readFile(new URL("../rs/app/src/kopru_h.rs", import.meta.url), "utf8");
+const window = await readFile(new URL("../rs/app/src/window.rs", import.meta.url), "utf8");
+const prompt = await readFile(new URL("../rs/app/ui/download.js", import.meta.url), "utf8");
 const context = { setTimeout, clearTimeout };
 vm.runInNewContext(src + "\nglobalThis.handoff = AfuDownloadHandoff;", context);
 const handle = context.handoff.handle;
@@ -156,13 +157,12 @@ completedRace.deps.pause = async () => { throw new Error("already complete"); };
 assert.equal(await handle({ id: 230, url: "https://site.test/complete-race.pdf" }, completedRace.deps), true);
 assert.ok(completedRace.calls.some(([name]) => name === "removeFile"), "completed race leaves only AfuDM copy");
 
-const handoff = app.slice(app.indexOf("def tarayicidan_sor"), app.indexOf("def bekleyen_listesi"));
-assert.match(handoff, /indirme_penceresi\.goster\(\)/, "browser handoff opens the dedicated prompt");
-assert.doesNotMatch(handoff, /one_getir\(self\._window\)/, "browser handoff does not activate the main panel");
-assert.match(app, /paths\.UI\s*\/\s*"download\.html"/, "dedicated prompt window loads its own UI");
+const handoff = app.slice(app.indexOf("fn tarayicidan_sor"), app.indexOf("// --- motor, butunluk"));
+assert.match(handoff, /window::indirme_goster/, "browser handoff opens the dedicated prompt");
+assert.doesNotMatch(handoff, /window::ana_goster/, "browser handoff does not activate the main panel");
+assert.match(window, /WebviewUrl::App\("download\.html"/, "dedicated prompt window loads its own UI");
 assert.match(prompt, /bekleyen_onayla/, "download prompt can approve the queued download");
 assert.match(prompt, /indirme_durumu/, "download prompt keeps showing live progress after approval");
-assert.match(app, /def indirme_durumu\(/, "download window has an isolated progress bridge");
 
 // Exercise the actual service-worker listener without launching a browser window.
 const listeners = {};
