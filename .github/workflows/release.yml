@@ -85,6 +85,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Rust test ve clippy
+        env:
+          AFUDM_ARIA2_TEST_EXE: ${{ github.workspace }}/engine/aria2c.exe
         shell: pwsh
         run: |
           foreach ($manifest in @("rs/Cargo.toml", "rs/app/Cargo.toml")) {

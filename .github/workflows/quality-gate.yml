@@ -190,7 +190,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           rustup override set 1.98.1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+      - name: aria2c motorunu indir
+        run: python -c "from core import engines; engines.indir('aria2c')"
       - name: Rust kapilari (iki workspace)
+        env:
+          AFUDM_ARIA2_TEST_EXE: ${{ github.workspace }}/engine/aria2c.exe
         shell: pwsh
         run: |
           foreach ($manifest in @("rs/Cargo.toml", "rs/app/Cargo.toml")) {
