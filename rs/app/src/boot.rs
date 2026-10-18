@@ -46,8 +46,17 @@ pub fn baslat(kabuk: Arc<Kabuk>) {
 fn bekleyen_geri_yuklemeyi_uygula(veri: &std::path::Path) -> Result<(), String> {
     let bekleyen = veri.join(BEKLEYEN_GERI_YUKLEME);
     if bekleyen.is_file() {
-        fs::rename(&bekleyen, db_path(veri))
-            .map_err(|e| format!("geri yukleme uygulanamadi: {e}"))?;
+        let hedef = db_path(veri);
+        for ek in ["-wal", "-shm"] {
+            let mut yan = hedef.as_os_str().to_os_string();
+            yan.push(ek);
+            match fs::remove_file(yan) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(format!("geri yukleme uygulanamadi: {e}")),
+            }
+        }
+        fs::rename(&bekleyen, hedef).map_err(|e| format!("geri yukleme uygulanamadi: {e}"))?;
     }
     Ok(())
 }
@@ -136,4 +145,26 @@ fn calistir(kabuk: &Arc<Kabuk>) -> Result<(), String> {
     // Sunucu bu runtime uzerinde yasar; surec kapaninca biter.
     runtime.block_on(std::future::pending::<()>());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fix8_restore_eski_wal_shm_temizler() {
+        let d = std::env::temp_dir().join(format!("afudm-fix8-boot-{}", std::process::id()));
+        fs::create_dir_all(&d).unwrap();
+        fs::write(db_path(&d), b"eski").unwrap();
+        fs::write(d.join(BEKLEYEN_GERI_YUKLEME), b"yeni").unwrap();
+        for ek in ["-wal", "-shm"] {
+            fs::write(d.join(format!("afudm.db{ek}")), b"eski").unwrap();
+        }
+        bekleyen_geri_yuklemeyi_uygula(&d).unwrap();
+        assert_eq!(fs::read(db_path(&d)).unwrap(), b"yeni");
+        for ek in ["-wal", "-shm"] {
+            assert!(!d.join(format!("afudm.db{ek}")).exists());
+        }
+        fs::remove_dir_all(d).unwrap();
+    }
 }

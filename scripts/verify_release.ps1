@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 param(
-    [string]$ZipPath = ""
+    [string]$ZipPath = "",
+    [ValidateSet("Python", "Rust")][string]$PackageType = "Python"
 )
 
 # Release zipsinin gereken dosyalari icerdigini dogrular.
@@ -44,9 +45,18 @@ try {
         "core/surum.py",
         "engine/aria2c.exe"
     )
+    if ($PackageType -eq "Rust") {
+        $gerekli = @("AfuDM.exe", "engine/aria2c.exe", "extension/manifest.json", "extension/download-handoff.js", "extension/download-preflight.js")
+        foreach ($name in $adlar) {
+            if (-not $name.StartsWith("AfuDM/") -or $name -match '(^|/)(\.\.?|data|_internal)(/|$)' -or $name.Contains(":")) {
+                throw "Rust paketinde yasak veya kok disi yol: $name"
+            }
+        }
+        if (($adlar | Select-Object -Unique).Count -ne $adlar.Count) { throw "Tekrarlanan zip yolu" }
+    }
     $eksik = @()
     foreach ($g in $gerekli) {
-        $eSiz = $adlar | Where-Object { $_ -like "*$g" }
+        $eSiz = if ($PackageType -eq "Rust") { $adlar | Where-Object { $_ -ceq "AfuDM/$g" } } else { $adlar | Where-Object { $_ -like "*$g" } }
         if (-not $eSiz) { $eksik += $g }
     }
     if ($eksik.Count -gt 0) {
@@ -56,12 +66,25 @@ try {
         $adlar | ForEach-Object { Write-Host "  $_" }
         exit 1
     }
-    $exeEntry = $zip.Entries | Where-Object { $_.FullName -like "*AfuDM.exe" } | Select-Object -First 1
+    $exeEntry = if ($PackageType -eq "Rust") {
+        $zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -ceq "AfuDM/AfuDM.exe" } | Select-Object -First 1
+    } else {
+        $zip.Entries | Where-Object { $_.FullName -like "*AfuDM.exe" } | Select-Object -First 1
+    }
     New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
     $exePath = Join-Path $tempDir "AfuDM.exe"
     [System.IO.Compression.ZipFileExtensions]::ExtractToFile($exeEntry, $exePath)
-    & python (Join-Path $kok "scripts\verify_exe.py") --exe $exePath --version $surum
-    if ($LASTEXITCODE -ne 0) { Write-Host "GATE HATA: embedded EXE verification failed"; exit 1 }
+    if ($PackageType -eq "Rust") {
+        $bytes = [IO.File]::ReadAllBytes($exePath)
+        if ($bytes.Length -lt 64 -or $bytes[0] -ne 77 -or $bytes[1] -ne 90) { throw "EXE PE degil" }
+        $pe = [BitConverter]::ToInt32($bytes, 60)
+        if ($pe -lt 64 -or $pe -gt $bytes.Length - 26 -or [BitConverter]::ToUInt32($bytes, $pe) -ne 17744 -or [BitConverter]::ToUInt16($bytes, $pe + 4) -ne 34404) { throw "EXE win64 PE degil" }
+        $info = [Diagnostics.FileVersionInfo]::GetVersionInfo($exePath)
+        if ($info.ProductVersion -ne $surum) { throw "EXE surumu uyusmuyor: $($info.ProductVersion) / $surum" }
+    } else {
+        & python (Join-Path $kok "scripts\verify_exe.py") --exe $exePath --version $surum
+        if ($LASTEXITCODE -ne 0) { Write-Host "GATE HATA: embedded EXE verification failed"; exit 1 }
+    }
     $boyut = (Get-Item $ZipPath).Length / 1MB
     $boyutMetin = "{0:N1} MB" -f $boyut
     Write-Host "verify OK: $ZipPath ($boyutMetin), gerekli dosyalar mevcut"

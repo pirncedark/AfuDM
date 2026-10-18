@@ -77,3 +77,29 @@ jobs:
             build_out/AfuDM-v*-win64.zip
             build_out/*.sha256
           if-no-files-found: error
+
+  rust:
+    name: Rust fmt, test, clippy
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Sabit Rust arac zinciri
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup override set 1.98.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Rust kapilari (iki workspace)
+        shell: pwsh
+        run: |
+          foreach ($manifest in @("rs/Cargo.toml", "rs/app/Cargo.toml")) {
+            cargo fmt --manifest-path $manifest --all -- --check
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            cargo test --locked --manifest-path $manifest
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            cargo clippy --locked --manifest-path $manifest --all-targets -- -D warnings
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }

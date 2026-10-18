@@ -79,6 +79,13 @@ fn yayini_degerlendir(veri: &Json, mevcut: &str) -> std::result::Result<Json, St
     }
     let yeni_p = parcala(&yeni).ok_or("Gecersiz surum")?;
     let mevcut_p = parcala(mevcut).ok_or("Gecersiz surum")?;
+    let zip_size = veri["assets"]
+        .as_array()
+        .and_then(|a| {
+            a.iter()
+                .find(|a| a["name"].as_str() == Some(zip_ad.as_str()))
+        })
+        .and_then(|a| a["size"].as_u64());
     let notlar: String = veri["body"]
         .as_str()
         .unwrap_or("")
@@ -87,7 +94,7 @@ fn yayini_degerlendir(veri: &Json, mevcut: &str) -> std::result::Result<Json, St
         .collect();
     Ok(
         json!({"ok": true, "var": yeni_p > mevcut_p, "mevcut": mevcut, "yeni": yeni,
-        "notlar": notlar, "zip_url": zip_url, "sha_url": sha_url}),
+        "notlar": notlar, "zip_url": zip_url, "sha_url": sha_url, "zip_size": zip_size}),
     )
 }
 
@@ -145,7 +152,12 @@ fn adimlar(
     fs::create_dir_all(hedef).map_err(|e| e.to_string())?;
     let zip_url = bilgi["zip_url"].as_str().unwrap_or("");
     let sha_url = bilgi["sha_url"].as_str().unwrap_or("");
-    indir(zip_url, zip_path.as_path(), ilerleme)?;
+    indir(
+        zip_url,
+        zip_path.as_path(),
+        ilerleme,
+        bilgi["zip_size"].as_u64(),
+    )?;
 
     let sha_metin = sha_metni_al(sha_url)?;
     let re = Regex::new(r"^\s*([0-9a-fA-F]{64})\s+(.+?)\s*$").map_err(|e| e.to_string())?;
@@ -195,14 +207,19 @@ fn indir(
     url: &str,
     hedef: &Path,
     ilerleme: Option<&dyn Fn(u64, u64)>,
+    beklenen: Option<u64>,
 ) -> std::result::Result<(), String> {
     let mut yanit = istek(url)?;
-    let toplam: u64 = yanit
+    let uzunluk: Option<u64> = yanit
         .headers()
         .get("content-length")
         .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(0);
+        .and_then(|s| s.trim().parse().ok());
+    let sinir = match (beklenen, uzunluk) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    };
+    let toplam = beklenen.or(uzunluk).unwrap_or(0);
     let mut out = fs::File::create(hedef).map_err(|e| e.to_string())?;
     let mut okuyucu = yanit.body_mut().as_reader();
     let mut tampon = vec![0u8; 128 * 1024];
@@ -212,8 +229,12 @@ fn indir(
         if n == 0 {
             break;
         }
+        let yeni = inen.checked_add(n as u64).ok_or("indirme boyutu tasti")?;
+        if sinir.is_some_and(|s| yeni > s) {
+            return Err("indirme beklenen boyutu asiyor".into());
+        }
         out.write_all(&tampon[..n]).map_err(|e| e.to_string())?;
-        inen += n as u64;
+        inen = yeni;
         if let Some(f) = ilerleme {
             f(inen, toplam);
         }
@@ -241,6 +262,7 @@ fn ajan() -> ureq::Agent {
     let yapi = ureq::Agent::config_builder()
         .timeout_connect(Some(ZAMAN_ASIMI))
         .timeout_recv_response(Some(ZAMAN_ASIMI))
+        .timeout_recv_body(Some(Duration::from_secs(15 * 60)))
         .build();
     ureq::Agent::new_with_config(yapi)
 }
@@ -338,7 +360,15 @@ fn tarama(kok: &Path) -> std::io::Result<BTreeMap<String, String>> {
 }
 
 fn ps_q(yol: &Path) -> String {
-    format!("'{}'", yol.to_string_lossy().replace('\'', "''"))
+    let mut sonuc = String::from("'");
+    for c in yol.to_string_lossy().chars() {
+        sonuc.push(c);
+        if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201a}' | '\u{201b}') {
+            sonuc.push(c);
+        }
+    }
+    sonuc.push('\'');
+    sonuc
 }
 
 /// Python: _uygulama_betigi. Sablon `uygula.ps1` dosyasindadir; yer tutucular doldurulur.
@@ -614,6 +644,40 @@ fn simdi() -> f64 {
 mod tests {
     use super::*;
     use crate::g1::test_sunucu;
+
+    #[test]
+    fn fix8_ps_tum_tirnaklari_kacirir() {
+        assert_eq!(
+            ps_q(Path::new("a'\u{2018}\u{2019}\u{201a}\u{201b}b")),
+            "'a''\u{2018}\u{2018}\u{2019}\u{2019}\u{201a}\u{201a}\u{201b}\u{201b}b'"
+        );
+    }
+
+    #[test]
+    fn fix8_govde_zaman_asimi_sinirli() {
+        assert_eq!(
+            ajan().config().timeouts().recv_body,
+            Some(Duration::from_secs(900))
+        );
+    }
+
+    #[test]
+    fn fix8_beklenen_boyut_asimi_reddedilir() {
+        let d = gecici("fix8-boyut");
+        let (bayt, sha) = paket_zip();
+        let base = test_sunucu::baslat(vec![
+            ("/z.zip", bayt),
+            (
+                "/z.sha256",
+                format!("{sha}  AfuDM-v3.0.1-win64.zip").into_bytes(),
+            ),
+        ]);
+        let mut bilgi = yayin_bilgisi(&base, "3.0.1");
+        bilgi["zip_size"] = json!(1);
+        let sonuc = indir_ve_dogrula_onekli(&bilgi, &d, None, &base);
+        assert_eq!(sonuc["ok"], false);
+        assert!(!hazir(&d));
+    }
 
     fn gecici(ad: &str) -> PathBuf {
         let d =

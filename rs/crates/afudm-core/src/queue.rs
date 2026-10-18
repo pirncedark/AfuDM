@@ -509,14 +509,19 @@ fn launch(m: &Manager, row: &Json) -> Result<Json> {
         }
         let mut aria = connection_options(&opts);
         aria.insert("dir".into(), json!(dest));
-        for (a, b) in [
-            ("filename", "out"),
-            ("user_agent", "user-agent"),
-            ("checksum", "checksum"),
-        ] {
+        for (a, b) in [("user_agent", "user-agent"), ("checksum", "checksum")] {
             if let Some(v) = opts.get(a).filter(|v| truthy(v)) {
                 aria.insert(b.into(), v.clone());
             }
+        }
+        if let Some(v) = opts.get("filename").filter(|v| truthy(v)) {
+            let ad = probe::guvenli_dosya_adi(v.as_str().unwrap_or(""));
+            if ad.is_empty() {
+                return Err(AfuError::Invalid(
+                    "Dosya adi uygun degil. Baska bir ad sec.".into(),
+                ));
+            }
+            aria.insert("out".into(), json!(ad));
         }
         let headers = request_headers(&opts, &cookies);
         if !headers.is_empty() {

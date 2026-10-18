@@ -39,6 +39,8 @@ jobs:
             Write-Host "GATE HATA: beklenen: v$surum, gelen: $tag"
             exit 1
           }
+          python -c "import json,pathlib,tomllib; v='$surum'; r=pathlib.Path('.'); versions=[tomllib.loads((r/'rs/Cargo.toml').read_text(encoding='utf-8'))['workspace']['package']['version'],tomllib.loads((r/'rs/app/Cargo.toml').read_text(encoding='utf-8'))['package']['version'],json.loads((r/'rs/app/tauri.conf.json').read_text(encoding='utf-8'))['version']]; print('Rust/Tauri:', versions); assert all(x==v for x in versions), 'Rust/Tauri version mismatch'"
+          if ($LASTEXITCODE -ne 0) { throw "Rust surum kapisi basarisiz" }
           git fetch origin main
           $head = git rev-parse HEAD
           $mainHead = git rev-parse origin/main
@@ -65,7 +67,7 @@ jobs:
           python-version: "3.11"
 
       - name: Cevrimdisi kutuphaneler
-        run: python -m pip install --quiet pywebview pystray pillow qrcode pyinstaller playwright
+        run: python -m pip install --quiet pywebview pystray pillow qrcode playwright
 
       # daemon_test gercek aria2c ister; testlerden ONCE indirilmeli (v2.9.2 release burada dustu)
       - name: Motorlari indir
@@ -74,14 +76,29 @@ jobs:
       - name: Cevrimdisi testler
         run: powershell -ExecutionPolicy Bypass -File scripts/test.ps1
 
-      - name: PyInstaller ile EXE derle
-        run: python -m PyInstaller --noconfirm --clean AfuDM.spec
+      - name: Sabit Rust arac zinciri
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup override set 1.98.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Rust test ve clippy
+        shell: pwsh
+        run: |
+          foreach ($manifest in @("rs/Cargo.toml", "rs/app/Cargo.toml")) {
+            cargo test --locked --manifest-path $manifest
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            cargo clippy --locked --manifest-path $manifest --all-targets -- -D warnings
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
       - name: Surum kapisi + paket
         shell: pwsh
         run: |
           $surum = & python scripts\surum_oku.py
-          powershell -ExecutionPolicy Bypass -File scripts\build_release.ps1 -Tag "v$surum"
+          powershell -ExecutionPolicy Bypass -File scripts\build_release_rust.ps1 -Tag "v$surum"
 
       - name: Zip + dogrulama + duman + checksum
         shell: pwsh
@@ -89,9 +106,9 @@ jobs:
           $surum = & python scripts\surum_oku.py
           $zip = "build_out\AfuDM-v$surum-win64.zip"
           Compress-Archive -Path build_out\paket\AfuDM -DestinationPath $zip -Force
-          powershell -ExecutionPolicy Bypass -File scripts\verify_release.ps1 $zip
+          powershell -ExecutionPolicy Bypass -File scripts\verify_release.ps1 $zip -PackageType Rust
           if ($LASTEXITCODE -ne 0) { throw "verify_release basarisiz ($LASTEXITCODE)" }
-          powershell -ExecutionPolicy Bypass -File scripts\smoke_test.ps1 $zip
+          powershell -ExecutionPolicy Bypass -File scripts\smoke_test.ps1 $zip -PackageType Rust
           if ($LASTEXITCODE -ne 0) { throw "smoke_test basarisiz ($LASTEXITCODE)" }
           powershell -ExecutionPolicy Bypass -File scripts\make_checksums.ps1 $zip
           if ($LASTEXITCODE -ne 0) { throw "make_checksums basarisiz ($LASTEXITCODE)" }

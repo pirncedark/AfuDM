@@ -48,6 +48,14 @@ def db_snapshot(path):
                 'user_version':db.execute('pragma user_version').fetchone()[0]}
 
 def main():
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--release-zip',type=Path)
+    parser.add_argument('--output-dir',type=Path)
+    args=parser.parse_args()
+    if args.output_dir:
+        import common
+        globals()['OUT']=common.OUT=args.output_dir.resolve()
+        OUT.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='afudm_t2_update_') as tmp:
         root=Path(tmp);base=root/'install';(base/'data').mkdir(parents=True)
         oldexe=base/'AfuDM.exe';oldexe.write_bytes(b'T2-legacy-2.9.8-installation-placeholder')
@@ -72,12 +80,16 @@ def main():
         (upgrade/'engine/user-extra.bin').write_bytes(b'preserve-user-engine')
         (upgrade/'data/keep.txt').write_text('preserve-user-data')
         serve=root/'serve';serve.mkdir();zpath=serve/'AfuDM-v3.0.0-win64.zip'
-        exe=ROOT/'app/target/debug/AfuDM.exe';want=digest_file(exe)
-        with zipfile.ZipFile(zpath,'w',zipfile.ZIP_DEFLATED) as z:
-            z.write(exe,'AfuDM/AfuDM.exe')
-            z.write(SOURCE/'engine/aria2c.exe','AfuDM/engine/aria2c.exe')
-            for ui in (ROOT/'app/ui').rglob('*'):
-                if ui.is_file():z.write(ui,'AfuDM/ui/'+ui.relative_to(ROOT/'app/ui').as_posix())
+        if args.release_zip:
+            shutil.copyfile(args.release_zip.resolve(),zpath)
+            with zipfile.ZipFile(zpath) as z:want=hashlib.sha256(z.read('AfuDM/AfuDM.exe')).hexdigest()
+        else:
+            exe=ROOT/'app/target/debug/AfuDM.exe';want=digest_file(exe)
+            with zipfile.ZipFile(zpath,'w',zipfile.ZIP_DEFLATED) as z:
+                z.write(exe,'AfuDM/AfuDM.exe')
+                z.write(SOURCE/'engine/aria2c.exe','AfuDM/engine/aria2c.exe')
+                for ui in (ROOT/'app/ui').rglob('*'):
+                    if ui.is_file():z.write(ui,'AfuDM/ui/'+ui.relative_to(ROOT/'app/ui').as_posix())
         (serve/(zpath.name+'.sha256')).write_text(digest_file(zpath)+'  '+zpath.name)
         class Handler(http.server.SimpleHTTPRequestHandler):
             def __init__(self,*a,**kw):super().__init__(*a,directory=str(serve),**kw)

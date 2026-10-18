@@ -14,6 +14,10 @@
   },
   "bundle": {
     "active": false,
-    "icon": ["icons/icon.ico", "icons/icon.png"]
-  }
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.png"
+    ]
+  },
+  "version": "3.0.0"
 }

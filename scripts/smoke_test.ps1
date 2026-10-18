@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 param(
-    [string]$ZipPath = ""
+    [string]$ZipPath = "",
+    [ValidateSet("Python", "Rust")][string]$PackageType = "Python"
 )
 
 # Yayinlanan paketin "aci ve calis" sinayan hafif duman testi.
@@ -18,6 +19,16 @@ if (-not $ZipPath) {
     $ZipPath = $sira.FullName
 }
 if (-not (Test-Path $ZipPath)) { Write-Host "zip yok: $ZipPath"; exit 1 }
+
+if ($PackageType -eq "Rust") {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "verify_release.ps1") $ZipPath -PackageType Rust
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    # Python paketindeki gibi yalniz yapi denetimi: EXE burada baslatilmaz (uretim
+    # aria2 6810..6830 araligini ve tek-ornek kilidini kullanir). Calisma zamani
+    # kapsami rs/tests_hata (test-kapisi exe, izole veri/port) ile saglanir.
+    Write-Host "smoke OK (yapi): $ZipPath Rust paketi dogrulandi; EXE baslatilmadi"
+    exit 0
+}
 
 $gecici = Join-Path $env:TEMP ("afudm_smoke_" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $gecici | Out-Null

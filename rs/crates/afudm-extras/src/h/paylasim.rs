@@ -20,10 +20,10 @@ use std::io::SeekFrom;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::sync::oneshot;
 
-/// Python `_Handler.shared_files` (token -> {"path"}). Ana sunucu ve dar sunucu ayni depoyu okur.
-static PAYLASIMLAR: Mutex<BTreeMap<String, PathBuf>> = Mutex::new(BTreeMap::new());
+/// Python `_Handler.shared_files`: token -> (path, created). HTTP ve UI tek defteri kullanir.
+static PAYLASIMLAR: Mutex<BTreeMap<String, (PathBuf, f64)>> = Mutex::new(BTreeMap::new());
 
-fn kilit() -> MutexGuard<'static, BTreeMap<String, PathBuf>> {
+fn kilit() -> MutexGuard<'static, BTreeMap<String, (PathBuf, f64)>> {
     PAYLASIMLAR.lock().unwrap_or_else(|e| e.into_inner())
 }
 
@@ -33,13 +33,22 @@ pub fn paylasim_ekle(yol: PathBuf) -> String {
     let mut bayt = [0u8; 12];
     rand::rng().fill_bytes(&mut bayt);
     let token = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bayt);
-    kilit().insert(token.clone(), yol);
+    let created = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+    kilit().insert(token.clone(), (yol, created));
     token
 }
 
 /// Tokenin dosya yolunu doner; yoksa None.
 pub fn paylasim_bul(token: &str) -> Option<PathBuf> {
-    kilit().get(token).cloned()
+    kilit().get(token).map(|(yol, _)| yol.clone())
+}
+
+/// HTTP ve UI paylasimlarinin yol ve olusturulma zamaniyla anlik kopyasi.
+pub fn paylasim_listesi() -> BTreeMap<String, (PathBuf, f64)> {
+    kilit().clone()
 }
 
 /// Paylasimi kaldirir; varsa true.
@@ -441,6 +450,18 @@ mod tests {
         let yol = klasor.join(ad);
         std::fs::write(&yol, icerik).unwrap();
         yol
+    }
+
+    #[test]
+    fn fix8_ortak_defter_yol_zaman_ve_silmeyi_tutar() {
+        let yol = PathBuf::from("fix8-telefon.txt");
+        let token = paylasim_ekle(yol.clone());
+        let kayit = paylasim_listesi().remove(&token).unwrap();
+        assert_eq!(kayit.0, yol);
+        assert!(kayit.1 > 0.0);
+        assert_eq!(paylasim_bul(&token), Some(yol));
+        assert!(paylasim_sil(&token));
+        assert!(!paylasim_listesi().contains_key(&token));
     }
 
     #[test]

@@ -9,7 +9,22 @@
       "skip-github-release": true,
       "extra-files": [
         "core/surum.py",
-        "extension/manifest.json"
+        "extension/manifest.json",
+        {
+          "type": "toml",
+          "path": "rs/Cargo.toml",
+          "jsonpath": "$.workspace.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "rs/app/Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
+        {
+          "type": "json",
+          "path": "rs/app/tauri.conf.json",
+          "jsonpath": "$.version"
+        }
       ],
       "include-component-in-tag": false
     }

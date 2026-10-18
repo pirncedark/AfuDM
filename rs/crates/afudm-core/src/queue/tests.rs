@@ -1094,3 +1094,35 @@ fn sleeping_video_completion_does_not_query_or_wake_aria2() {
         "completion integrity checks must not wake aria2"
     );
 }
+
+#[test]
+fn fix8_filename_motor_kokunden_cikamaz() {
+    for ad in [
+        r"..\..\Startup\x.exe",
+        "../../x",
+        "C:x.exe",
+        "a\0b",
+        ".",
+        "..",
+    ] {
+        let f = Fixture::new();
+        let sonuc = add(
+            &f.m,
+            json!({"source":"https://example.test/f", "filename":ad})
+                .as_object()
+                .unwrap(),
+        );
+        if sonuc.is_ok() {
+            for (ad, params) in f.rpc.calls.lock().unwrap().iter() {
+                if ad == "add_uri" {
+                    if let Some(out) = params[1]["out"].as_str() {
+                        assert!(
+                            !out.contains(['/', '\\', ':', '\0']) && out != "." && out != "..",
+                            "{out:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}

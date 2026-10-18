@@ -11,7 +11,6 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use afudm_api::erisim::{ErisimDeposu, HizSinirlayici};
 use afudm_core::butunluk;
@@ -27,8 +26,6 @@ use crate::bridge::{self, cevap, hata, kilit, Kabuk};
 use crate::window::{self, ANA};
 use crate::yonetim;
 
-/// Python `shared_files` (kopru tarafi): token -> (yol, olusturulma zamani, unix sn).
-static PAYLASIMLAR: Mutex<BTreeMap<String, (PathBuf, f64)>> = Mutex::new(BTreeMap::new());
 /// Python `shared_files` icindeki SMB alanlari (share_name, staging_path). Yalniz Windows'ta dolar.
 static SMB_PAYLASIMLAR: Mutex<BTreeMap<String, smb::SmbPaylasim>> = Mutex::new(BTreeMap::new());
 /// Python `_motor_ilerleme`: motor adi -> durum.
@@ -186,13 +183,6 @@ fn ctx_ile(k: &Kabuk, f: impl FnOnce(&ApiCtx) -> Json) -> Json {
 
 fn port(k: &Kabuk) -> u16 {
     k.port.get().copied().unwrap_or(0)
-}
-
-fn simdi() -> f64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0)
 }
 
 fn harita(v: Json) -> JsonMap {
@@ -628,9 +618,7 @@ fn paylasim_sonucu(k: &Kabuk, c: &ApiCtx, token: &str, yol: &Path, uyari: &str) 
 }
 
 fn paylasim_kaydet(yol: &Path) -> String {
-    let token = paylasim::paylasim_ekle(yol.to_path_buf());
-    kilit(&PAYLASIMLAR).insert(token.clone(), (yol.to_path_buf(), simdi()));
-    token
+    paylasim::paylasim_ekle(yol.to_path_buf())
 }
 
 fn share_create(k: &Kabuk, c: &ApiCtx, gid: &str) -> Result<Json> {
@@ -673,10 +661,13 @@ fn agda_paylas(k: &Kabuk, c: &ApiCtx, gid: &str) -> Result<Json> {
     Ok(sonuc)
 }
 
-/// Python `share_list`: bu kopru uzerinden olusturulan paylasimlar, yeniler en ustte.
-/// Telefon (HTTP /share_create) ile acilan tokenlar bu listede yer almaz (bkz. SONUC_F4b).
+/// Python `share_list`: telefon ve UI paylasimlari, yeniler en ustte.
+fn paylasim_kayitlari() -> BTreeMap<String, (PathBuf, f64)> {
+    paylasim::paylasim_listesi()
+}
+
 fn share_list(k: &Kabuk) -> Json {
-    let kayitlar = kilit(&PAYLASIMLAR).clone();
+    let kayitlar = paylasim_kayitlari();
     let tunel = yonetim::tunel_url();
     let mut satirlar: Vec<(f64, Json)> = kayitlar
         .iter()
@@ -724,8 +715,7 @@ fn smb_temizle(token: &str) -> Vec<String> {
 
 /// Python `share_delete`. Paylasim kalmazsa tunel ve dar sunucu kapanir.
 fn share_delete(token: &str) -> Json {
-    let kayitli = kilit(&PAYLASIMLAR).contains_key(token);
-    if !kayitli && paylasim::paylasim_bul(token).is_none() {
+    if paylasim::paylasim_bul(token).is_none() {
         return json!({"ok": false, "error": "Paylaşım bulunamadı."});
     }
     let sorunlar = smb_temizle(token);
@@ -736,8 +726,7 @@ fn share_delete(token: &str) -> Json {
         });
     }
     paylasim::paylasim_sil(token);
-    kilit(&PAYLASIMLAR).remove(token);
-    if kilit(&PAYLASIMLAR).is_empty() {
+    if paylasim::paylasim_listesi().is_empty() {
         yonetim::tuneli_durdur();
     }
     json!({"ok": true})
@@ -776,12 +765,11 @@ fn dosya_sec_ve_paylas(k: &Kabuk, c: &ApiCtx) -> Result<Json> {
 /// Python `paylasim_stop`: SMB temizligi basarili olan paylasimlar kaldirilir; hatalilar kalir.
 /// Tunel ve dar sunucu her durumda kapanir (Python ile ayni).
 fn paylasim_durdur(c: &ApiCtx) {
-    let tokenler: Vec<String> = kilit(&PAYLASIMLAR).keys().cloned().collect();
+    let tokenler: Vec<String> = paylasim::paylasim_listesi().keys().cloned().collect();
     for token in tokenler {
         let sorunlar = smb_temizle(&token);
         if sorunlar.is_empty() {
             paylasim::paylasim_sil(&token);
-            kilit(&PAYLASIMLAR).remove(&token);
         } else {
             c.store.log(
                 "error",
@@ -1137,6 +1125,22 @@ fn seed_tracker_kaydet(c: &ApiCtx, metin: &str) -> Result<Json> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fix8_telefon_paylasimi_ui_defterinde() {
+        let telefon = paylasim::paylasim_ekle(PathBuf::from("telefon.txt"));
+        let ui = paylasim_kaydet(Path::new("ui.txt"));
+        let liste = paylasim_kayitlari();
+        assert!(
+            liste.contains_key(&telefon),
+            "telefon paylasimi UI listesinde yok"
+        );
+        assert!(liste[&telefon].1 > 0.0);
+        assert_eq!(share_delete(&ui)["ok"], true);
+        assert!(paylasim_kayitlari().contains_key(&telefon));
+        assert_eq!(share_delete(&telefon)["ok"], true);
+        assert!(!paylasim_kayitlari().contains_key(&telefon));
+    }
 
     #[test]
     fn ok_birlestir_alanlari_ekler() {

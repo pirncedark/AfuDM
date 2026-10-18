@@ -152,20 +152,48 @@ pub fn restore(store: &dyn Store, data: &Path, arsiv: &str) -> Result<Json> {
         return Err(AfuError::Invalid("yedekte veritabani yok".into()));
     }
     let gecici = data.join("restore.tmp.db");
-    {
-        let mut girdi = zip.by_name("afudm.db").map_err(io_hata)?;
-        let mut veri = Vec::new();
-        girdi.read_to_end(&mut veri)?;
-        fs::write(&gecici, veri)?;
-    }
-    let saglik = rusqlite::Connection::open(&gecici)
-        .and_then(|c| c.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0)));
-    match saglik {
-        Ok(s) if s == "ok" => {}
-        _ => {
-            let _ = fs::remove_file(&gecici);
+    let dogrulama = (|| -> Result<()> {
+        const EN_FAZLA_DB: u64 = 2 * 1024 * 1024 * 1024;
+        let girdi = zip.by_name("afudm.db").map_err(io_hata)?;
+        let boyut = girdi.size();
+        if boyut > EN_FAZLA_DB {
+            return Err(AfuError::Invalid(
+                "yedek veritabani boyutu siniri asiyor".into(),
+            ));
+        }
+        let mut cikti = fs::File::create(&gecici)?;
+        let yazilan = io::copy(&mut girdi.take(EN_FAZLA_DB + 1), &mut cikti)?;
+        if yazilan > EN_FAZLA_DB || yazilan != boyut {
+            return Err(AfuError::Invalid(
+                "yedek veritabani boyutu uygun degil".into(),
+            ));
+        }
+        drop(cikti);
+        let c = rusqlite::Connection::open(&gecici).map_err(io_hata)?;
+        let saglik: String = c
+            .query_row("PRAGMA integrity_check", [], |r| r.get(0))
+            .map_err(|_| AfuError::Invalid("yedek butun degil".into()))?;
+        if saglik != "ok" {
             return Err(AfuError::Invalid("yedek butun degil".into()));
         }
+        let surum: i64 = c
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .map_err(io_hata)?;
+        // Migration siniri db crate'inde ozel; yeni bellek DB'si ayni siniri verir.
+        let desteklenen = afudm_db::SqliteStore::open_in_memory()?;
+        let en_yeni = desteklenen.query("PRAGMA user_version", &[])?;
+        let en_yeni = en_yeni
+            .first()
+            .and_then(|r| r["user_version"].as_i64())
+            .ok_or_else(|| AfuError::Invalid("sema surumu okunamadi".into()))?;
+        if surum > en_yeni {
+            return Err(AfuError::Invalid("yedek daha yeni bir surumden".into()));
+        }
+        Ok(())
+    })();
+    if let Err(e) = dogrulama {
+        let _ = fs::remove_file(&gecici);
+        return Err(e);
     }
     let hedef = data.join(BEKLEYEN_GERI_YUKLEME);
     fs::rename(&gecici, &hedef)?;
@@ -397,6 +425,35 @@ mod tests {
     use super::*;
     use crate::g1::test_sunucu;
     use std::path::PathBuf;
+
+    #[test]
+    fn fix8_yeni_sema_reddedilir() {
+        let d = gecici("fix8-sema");
+        let store = bellek_db();
+        store.execute("PRAGMA user_version=999", &[]).unwrap();
+        let y = backup(&store, &d, "future").unwrap();
+        let r = restore(&store, &d, y["path"].as_str().unwrap());
+        assert!(r.is_err(), "yeni sema kabul edildi");
+        assert!(r.unwrap_err().to_string().contains("daha yeni"));
+        assert!(!d.join(BEKLEYEN_GERI_YUKLEME).exists());
+        assert!(!d.join("restore.tmp.db").exists());
+    }
+
+    #[test]
+    fn fix8_buyuk_zip_girdisi_reddedilir() {
+        let d = gecici("fix8-buyuk");
+        let store = bellek_db();
+        let y = backup(&store, &d, "large").unwrap();
+        let yol = PathBuf::from(y["path"].as_str().unwrap());
+        let mut bytes = fs::read(&yol).unwrap();
+        let pos = bytes.windows(4).position(|b| b == b"PK\x01\x02").unwrap();
+        bytes[pos + 24..pos + 28].copy_from_slice(&(2_147_483_649u32).to_le_bytes());
+        fs::write(&yol, bytes).unwrap();
+        let r = restore(&store, &d, yol.to_str().unwrap());
+        assert!(r.is_err(), "buyuk girdi kabul edildi");
+        assert!(r.unwrap_err().to_string().contains("boyutu"));
+        assert!(!d.join(BEKLEYEN_GERI_YUKLEME).exists());
+    }
 
     fn gecici(ad: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("afudm-g1-rel-{ad}-{}", std::process::id()));
