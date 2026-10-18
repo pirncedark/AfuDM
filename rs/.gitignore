@@ -8,3 +8,5 @@ app/gen/
 /tests_parity/rapor/
 *.log
 docs/sonuc/*.json
+tests_hata/rapor/
+tests_hata/bin/
