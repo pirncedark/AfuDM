@@ -10,7 +10,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "afudm-api"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "afudm-engine",
  "afudm-types",
@@ -36,7 +36,7 @@ dependencies = [
 
 [[package]]
 name = "afudm-app"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "afudm-api",
  "afudm-core",
@@ -60,7 +60,7 @@ dependencies = [
 
 [[package]]
 name = "afudm-core"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "afudm-db",
  "afudm-types",
@@ -80,7 +80,7 @@ dependencies = [
 
 [[package]]
 name = "afudm-db"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "afudm-types",
  "log",
@@ -94,7 +94,7 @@ dependencies = [
 
 [[package]]
 name = "afudm-engine"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "afudm-types",
  "base64 0.22.1",
@@ -111,7 +111,7 @@ dependencies = [
 
 [[package]]
 name = "afudm-extras"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "afudm-api",
  "afudm-db",
@@ -138,7 +138,7 @@ dependencies = [
 
 [[package]]
 name = "afudm-types"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "serde",
  "serde_json",

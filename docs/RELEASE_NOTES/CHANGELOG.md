@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.1](https://github.com/pirncedark/AfuDM/compare/v3.1.0...v3.1.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **ui:** show upload/sharing speed limit next to download limit with a clear label ([#135](https://github.com/pirncedark/AfuDM/issues/135)) ([3608fa8](https://github.com/pirncedark/AfuDM/commit/3608fa899efa3d514223481ceefa4ee73260c0e1))
+
 ## [3.1.0](https://github.com/pirncedark/AfuDM/compare/v3.0.1...v3.1.0) (2026-10-18)
 
 
