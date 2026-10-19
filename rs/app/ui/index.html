@@ -366,6 +366,13 @@
               </select>
             </div>
           </div>
+          <div class="grid2" style="margin-top: 12px;">
+            <div>
+              <label for="sUploadSpeed" data-i18n="set.uploadSpeed">Gönderim / paylaşım hızı — upload (KB/s, 0 = sınırsız)</label>
+              <input id="sUploadSpeed" type="number" min="0" max="1000000" step="1" value="100">
+              <div class="hint" data-i18n="set.uploadSpeedHint">Torrent gönderimi ve paylaşım linklerinden giden veri bu hızı geçmez.</div>
+            </div>
+          </div>
           <details class="adv-accordion" style="margin-top: 15px;">
             <summary data-i18n="set.advToggle">Gelişmiş Ayarlar</summary>
             <div class="adv-content">
@@ -375,10 +382,6 @@
                   <input id="sSnailSpeed" type="number" min="1">
                   <div class="hint" data-i18n="set.speed.snailHint">Salyangoz profili seçiliyken kullanılan hız. Düşük
                     tut: internet başkasına kalsın.</div>
-                </div>
-                <div>
-                  <label for="sUploadSpeed" data-i18n="set.uploadSpeed">Yükleme hız sınırı (KB/s, 0 = sınırsız)</label>
-                  <input id="sUploadSpeed" type="number" min="0" max="1000000" step="1" value="100">
                 </div>
                 <div>
                   <label for="sRatio" data-i18n="set.ratio">Seed oranı (torrent)</label>
