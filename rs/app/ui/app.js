@@ -3195,9 +3195,15 @@ $("sGuncellemeOto").onchange = async () => {
 
 async function surumuYukle() {
   if (surumBilgisi) return surumBilgisi;
-  try {
-    surumBilgisi = await call("surum_bilgi");
-  } catch (_) { return null; }
+  for (let deneme = 0; deneme < 3; deneme++) {
+    try {
+      surumBilgisi = await call("surum_bilgi");
+      break;
+    } catch (_) {
+      if (deneme === 2) return null;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  }
   $("brandSurum").textContent = "v" + surumBilgisi.surum;
   if ($("globalModel")) $("globalModel").textContent = "AfuDM v" + surumBilgisi.surum;
   return surumBilgisi;

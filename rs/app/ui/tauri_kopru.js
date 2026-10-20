@@ -32,5 +32,10 @@
   });
 
   // Arayuz pywebviewready olayini bekler; dinleyiciler kurulduktan sonra tetiklenir.
-  setTimeout(() => window.dispatchEvent(new Event("pywebviewready")), 0);
+  const hazir = () => window.dispatchEvent(new Event("pywebviewready"));
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", hazir, { once: true });
+  } else {
+    setTimeout(hazir, 0);
+  }
 })();
