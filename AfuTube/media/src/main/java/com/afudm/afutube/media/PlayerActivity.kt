@@ -23,6 +23,11 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.RepeatOne
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -62,8 +67,13 @@ class PlayerActivity : ComponentActivity() {
     private var audioOnly by mutableStateOf(false)
     private var sourceAudioOnly by mutableStateOf(false)
     private var playbackError by mutableStateOf<String?>(null)
+    private var playbackState by mutableIntStateOf(Player.STATE_IDLE)
+    private var repeatMode by mutableIntStateOf(Player.REPEAT_MODE_OFF)
+    private var queueSize by mutableIntStateOf(0)
+    private var hasPrevious by mutableStateOf(false)
+    private var hasNext by mutableStateOf(false)
     private lateinit var path: String
-    private lateinit var title: String
+    private var title by mutableStateOf("")
     private var explicitPath = false
     private var visible = false
 
@@ -99,13 +109,46 @@ class PlayerActivity : ComponentActivity() {
                         else -> sourceAudioOnly
                     }
                     player.addListener(object : Player.Listener {
+                        override fun onEvents(player: Player, events: Player.Events) {
+                            updatePlaybackState(player)
+                        }
+
+                        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                            mediaItem ?: return
+                            val previousSourceAudioOnly = sourceAudioOnly
+                            path = mediaItem.mediaId
+                            title = mediaItem.mediaMetadata.title?.toString()?.takeIf(String::isNotBlank)
+                                ?: File(path).nameWithoutExtension
+                            sourceAudioOnly = MediaFileTypeDetector.fromPath(path, this@PlayerActivity) == MediaFileType.AUDIO
+                            if (sourceAudioOnly) audioOnly = true
+                            else if (previousSourceAudioOnly) {
+                                audioOnly = getSharedPreferences(PREFERENCES, MODE_PRIVATE)
+                                    .getBoolean(PREF_LISTEN_MODE, intent.getBooleanExtra(EXTRA_LISTEN, false))
+                            }
+                            playbackError = null
+                            // Watch mode must not start playing in the background after an audio track.
+                            if (!visible && !audioOnly) player.pause()
+                        }
+
                         override fun onPlayerError(error: PlaybackException) {
                             playbackError = "Oynatılamadı: ${error.message?.lineSequence()?.firstOrNull()?.take(120) ?: "Medya dosyası açılamadı"}"
                         }
                     })
+                    updatePlaybackState(player)
                     setContent { PlayerScreen() }
                     if (explicitPath && player.currentMediaItem?.mediaId != requestedPath) {
-                        player.setMediaItem(MediaItem.Builder().setMediaId(requestedPath).setUri(requestedPath).setMediaMetadata(MediaMetadata.Builder().setTitle(title).build()).build())
+                        val playlist = PlaylistBuilder.build(File(requestedPath))
+                        val items = playlist.files.map { file ->
+                            MediaItem.Builder().setMediaId(file.path).setUri(android.net.Uri.fromFile(file))
+                                .setMediaMetadata(MediaMetadata.Builder()
+                                    .setTitle(if (file.path == requestedPath) title else file.nameWithoutExtension).build())
+                                .build()
+                        }
+                        if (items.isEmpty()) {
+                            showMissingFile()
+                            return@runCatching
+                        }
+                        player.setMediaItems(items, playlist.startIndex, 0L)
                         player.prepare()
                         player.play()
                     } else if (explicitPath && (player.playbackState == Player.STATE_ENDED || player.playbackState == Player.STATE_IDLE)) {
@@ -119,6 +162,14 @@ class PlayerActivity : ComponentActivity() {
                 }.onFailure { Log.e("AfuTubePlayer", "Oynatıcı bağlantısı başarısız", it) }
             }, Executor { it.run() })
         }
+    }
+
+    private fun updatePlaybackState(player: Player) {
+        playbackState = player.playbackState
+        repeatMode = player.repeatMode
+        queueSize = player.mediaItemCount
+        hasPrevious = player.hasPreviousMediaItem()
+        hasNext = player.hasNextMediaItem()
     }
 
     private fun showMissingFile() {
@@ -214,12 +265,55 @@ class PlayerActivity : ComponentActivity() {
                             Icon(Icons.Default.Replay10, contentDescription = "10 saniye geri", tint = AfuColors.text, modifier = Modifier.size(30.dp))
                         }
                         Spacer(Modifier.width(24.dp))
-                        IconButton(onClick = { if (player?.isPlaying == true) player.pause() else player?.play() }, modifier = Modifier.size(64.dp).border(1.dp, AfuColors.accent, RoundedCornerShape(50)), colors = IconButtonDefaults.iconButtonColors(containerColor = AfuColors.surface, contentColor = Color.White)) {
-                            Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = if (playing) "Duraklat" else "Oynat", modifier = Modifier.size(38.dp))
+                        IconButton(onClick = {
+                            if (player?.playbackState == Player.STATE_ENDED) {
+                                player.seekTo(0L)
+                                player.play()
+                            } else if (player?.isPlaying == true) player.pause() else player?.play()
+                        }, modifier = Modifier.size(64.dp).border(1.dp, AfuColors.accent, RoundedCornerShape(50)), colors = IconButtonDefaults.iconButtonColors(containerColor = AfuColors.surface, contentColor = Color.White)) {
+                            Icon(when {
+                                playbackState == Player.STATE_ENDED -> Icons.Default.Replay
+                                playing -> Icons.Default.Pause
+                                else -> Icons.Default.PlayArrow
+                            }, contentDescription = when {
+                                playbackState == Player.STATE_ENDED -> "Yeniden çal"
+                                playing -> "Duraklat"
+                                else -> "Oynat"
+                            }, modifier = Modifier.size(38.dp))
                         }
                         Spacer(Modifier.width(24.dp))
                         IconButton(onClick = { player?.seekTo((player.currentPosition + 10_000L).coerceAtMost(duration)) }, modifier = Modifier.size(52.dp)) {
                             Icon(Icons.Default.Forward10, contentDescription = "10 saniye ileri", tint = AfuColors.text, modifier = Modifier.size(30.dp))
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                        if (queueSize > 1) {
+                            IconButton(onClick = { player?.seekToPreviousMediaItem() }, enabled = hasPrevious) {
+                                Icon(Icons.Default.SkipPrevious, "Önceki parça", tint = if (hasPrevious) AfuColors.text else AfuColors.textMuted)
+                            }
+                        }
+                        val repeatLabel = when (repeatMode) {
+                            Player.REPEAT_MODE_ONE -> "Bunu tekrarla"
+                            Player.REPEAT_MODE_ALL -> "Hepsini tekrarla"
+                            else -> "Tekrar kapalı"
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(152.dp)) {
+                            IconButton(onClick = {
+                                player?.repeatMode = when (repeatMode) {
+                                    Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ONE
+                                    Player.REPEAT_MODE_ONE -> Player.REPEAT_MODE_ALL
+                                    else -> Player.REPEAT_MODE_OFF
+                                }
+                            }) {
+                                Icon(if (repeatMode == Player.REPEAT_MODE_ONE) Icons.Default.RepeatOne else Icons.Default.Repeat,
+                                    repeatLabel, tint = if (repeatMode == Player.REPEAT_MODE_OFF) AfuColors.textMuted else AfuColors.accent)
+                            }
+                            Text(repeatLabel, color = AfuColors.textMuted, fontSize = 12.sp)
+                        }
+                        if (queueSize > 1) {
+                            IconButton(onClick = { player?.seekToNextMediaItem() }, enabled = hasNext) {
+                                Icon(Icons.Default.SkipNext, "Sonraki parça", tint = if (hasNext) AfuColors.text else AfuColors.textMuted)
+                            }
                         }
                     }
                 }
@@ -267,7 +361,8 @@ class PlayerActivity : ComponentActivity() {
         const val EXTRA_PATH = "media_path"
         const val EXTRA_TITLE = "media_title"
         const val EXTRA_LISTEN = "start_listen"
-        private const val PREFERENCES = "playback_preferences"
+        internal const val PREFERENCES = "playback_preferences"
+        internal const val PREF_REPEAT_MODE = "repeat_mode"
         private const val PREF_LISTEN_MODE = "listen_mode"
         private const val STATE_FULLSCREEN = "fullscreen"
         private const val STATE_LISTEN_MODE = "listen_mode_state"
