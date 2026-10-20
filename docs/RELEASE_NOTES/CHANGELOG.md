@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.2.0](https://github.com/pirncedark/AfuDM/compare/v3.1.1...v3.2.0) (2026-10-20)
+
+
+### Features
+
+* **afutube:** replay, repeat one/all and play folder as playlist ([#137](https://github.com/pirncedark/AfuDM/issues/137)) ([e99c390](https://github.com/pirncedark/AfuDM/commit/e99c390db6d83ef8e627ce8329d513daec77455d))
+
+
+### Bug Fixes
+
+* **ui:** show app version reliably on startup ([#139](https://github.com/pirncedark/AfuDM/issues/139)) ([d43dc66](https://github.com/pirncedark/AfuDM/commit/d43dc66d50be3b56be8da1934ab779316387e46b))
+
 ## [3.1.1](https://github.com/pirncedark/AfuDM/compare/v3.1.0...v3.1.1) (2026-10-19)
 
 
