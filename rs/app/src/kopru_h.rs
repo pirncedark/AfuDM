@@ -914,28 +914,22 @@ fn yerelden_sor(k: &Kabuk, mut istek: JsonMap) -> Json {
     };
     istek.insert("source".into(), json!("desktop"));
     let (kimlik, rx) = k.ui.kuyruga_ekle(istek);
-    onay_bekle(ctx, rx);
-    window::goster(&k.app);
-    if let Some(w) = k.app.get_webview_window(ANA) {
-        let _ = w.eval("window.afudmBekleyen && window.afudmBekleyen()");
+    if let Some(rx) = rx {
+        onay_bekle(ctx, rx);
     }
-    json!(kimlik)
+    let app = k.app.clone();
+    let _ = k.app.run_on_main_thread(move || {
+        window::goster(&app);
+        if let Some(w) = app.get_webview_window(ANA) {
+            let _ = w.eval("window.afudmBekleyen && window.afudmBekleyen()");
+        }
+    });
+    json!({"ok":true,"pending":kimlik != 0,"kimlik":kimlik})
 }
 
-/// Python `tarayicidan_sor`: uzanti istegini bekletir; yalniz ayri indirme penceresini gosterir.
-fn tarayicidan_sor(k: &Kabuk, istek: JsonMap) -> Json {
-    if istek.get("prompt_source").and_then(Json::as_str) == Some("desktop") {
-        return yerelden_sor(k, istek);
-    }
-    let Some(ctx) = k.ctx.get().cloned() else {
-        return bridge::motor_hazir_degil();
-    };
-    let mut istek = istek;
-    istek.insert("source".into(), json!("browser"));
-    let (kimlik, rx) = k.ui.kuyruga_ekle(istek);
-    onay_bekle(ctx, rx);
-    let _ = window::indirme_goster(&k.app);
-    json!(kimlik)
+/// All interactive sources share the main window's download information dialog.
+pub(crate) fn tarayicidan_sor(k: &Kabuk, istek: JsonMap) -> Json {
+    yerelden_sor(k, istek)
 }
 
 // --- motor, butunluk, guc, kurtarma, token, tracker -----------------------

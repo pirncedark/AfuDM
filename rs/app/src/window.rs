@@ -2,14 +2,9 @@
 //! yok edilir (gizlenmez), tepsi ve motor calismaya devam eder.
 //! Python karsiligi: core/pencere.py (pencere_boyutu, kapatinca_gizle).
 
-use std::sync::Arc;
-
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
-
-use crate::bridge::Kabuk;
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 pub const ANA: &str = "ana";
-pub const INDIRME: &str = "indirme";
 
 /// Python PENCERE_HEDEF / PENCERE_MIN (mantiksal piksel).
 const HEDEF: (f64, f64) = (1600.0, 980.0);
@@ -62,28 +57,6 @@ fn ana_olustur(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     Ok(pencere)
 }
 
-/// Indirme sorusu penceresi (download.html). Kapaninca bekleyen istekler iptal edilir.
-pub fn indirme_goster(app: &AppHandle) -> tauri::Result<()> {
-    if let Some(w) = app.get_webview_window(INDIRME) {
-        let _ = w.show();
-        let _ = w.set_focus();
-        return Ok(());
-    }
-    let pencere = WebviewWindowBuilder::new(app, INDIRME, WebviewUrl::App("download.html".into()))
-        .title("AfuDM")
-        .inner_size(520.0, 540.0)
-        .resizable(false)
-        .center()
-        .build()?;
-    let uygulama = app.clone();
-    pencere.on_window_event(move |olay| {
-        if let WindowEvent::Destroyed = olay {
-            uygulama.state::<Arc<Kabuk>>().ui.iptal_hepsi();
-        }
-    });
-    Ok(())
-}
-
 pub fn ana_kapat(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(ANA) {
         let _ = w.close();
@@ -91,7 +64,7 @@ pub fn ana_kapat(app: &AppHandle) {
 }
 
 pub fn indirme_kapat(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window(INDIRME) {
-        let _ = w.close();
+    if let Some(w) = app.get_webview_window(ANA) {
+        let _ = w.eval("document.getElementById('kayCancel')?.click()");
     }
 }

@@ -423,6 +423,9 @@ async fn add(State(ctx): State<ApiCtx>, req: Request) -> Response {
                 .as_ref()
                 .is_some_and(request::truthy))
     {
+        if let Some(queued) = ctx.ui.queue_save_location(&data) {
+            return Json(queued).into_response();
+        }
         return match ctx.ui.ask_save_location(&data) {
             Some(accepted) => result(ctx.manager.add(&accepted)),
             None => error(AfuError::Invalid(

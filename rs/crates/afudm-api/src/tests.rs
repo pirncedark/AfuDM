@@ -631,3 +631,38 @@ fn omniget_corrupt_endpoint_does_not_break_token_rotation() {
         .to_string_lossy()
         .starts_with("api_endpoint.json.corrupt-")));
 }
+
+// Interactive HTTP handoff returns before approval, so browser retries cannot
+// leave blocked requests that later create a second confirmation window.
+#[tokio::test]
+async fn interactive_handoff_queues_once_without_starting_the_manager() {
+    struct QueuedUi;
+    impl afudm_types::UiBridge for QueuedUi {
+        fn queue_save_location(&self, req: &JsonMap) -> Option<Value> {
+            assert_eq!(req["url"], "https://example.test/app.exe");
+            Some(json!({"ok":true,"pending":true,"kimlik":42}))
+        }
+        fn ask_save_location(&self, _: &JsonMap) -> Option<JsonMap> {
+            panic!("queued handoff must not open a second synchronous prompt");
+        }
+    }
+    let (_dir, mut ctx, manager) = fixture();
+    ctx.ui = Arc::new(QueuedUi);
+    for source in ["desktop", "browser"] {
+        ctx.store.set("kaydetme_penceresi", json!(true)).unwrap();
+        let (status, body) = request(
+            &ctx,
+            "POST",
+            "/add",
+            &json!({
+                "url":"https://example.test/app.exe", "interactive":true, "prompt_source":source
+            })
+            .to_string(),
+            true,
+        )
+        .await;
+        assert_eq!(status, 200);
+        assert_eq!(body, json!({"ok":true,"pending":true,"kimlik":42}));
+    }
+    assert!(manager.calls.lock().unwrap().is_empty());
+}

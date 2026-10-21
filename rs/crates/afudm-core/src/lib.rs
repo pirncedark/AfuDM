@@ -5,6 +5,7 @@
 
 pub mod butunluk;
 pub mod queue;
+pub mod prompt;
 pub mod torrent;
 pub mod video;
 

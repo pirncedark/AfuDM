@@ -4,7 +4,6 @@
 //! - Motor (Manager), store ve kabuk (klasor, baslangic, iliskilendirme) metotlari baglanir.
 //! - Bagli olmayan her ad "henüz yok" doner (SONUC_F.md listesi).
 
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -107,17 +106,12 @@ fn sayilar(a: &[Json], i: usize) -> Vec<i64> {
 
 // --- kabuk durumu --------------------------------------------------------------
 
-struct Bekleyen {
-    istek: JsonMap,
-    yanit: mpsc::Sender<Option<JsonMap>>,
-}
-
 /// Indirme sorusu (Python: bekleyen_*). `ask_save_location` cagiran thread'i
 /// kullanici yanitlayana dek bekletir; pencere kapanirsa None (iptal) doner.
 pub struct TauriUi {
     app: AppHandle,
-    sayac: Mutex<i64>,
-    bekleyen: Mutex<BTreeMap<i64, Bekleyen>>,
+    bekleyen: Mutex<afudm_core::prompt::PromptQueue>,
+    bildirim: Mutex<Option<Json>>,
     pub lg: Arc<LinkGrabberDurum>,
 }
 
@@ -143,22 +137,42 @@ fn lg_teslim_et(app: &AppHandle, lg: &LinkGrabberDurum) {
 
 impl TauriUi {
     /// Python `_bekleyenler.ekle`: istegi kuyruga koyar, onay/iptal yanitini alicidan verir (bekletmez).
-    pub(crate) fn kuyruga_ekle(&self, istek: JsonMap) -> (i64, mpsc::Receiver<Option<JsonMap>>) {
-        let (tx, rx) = mpsc::channel();
-        let kimlik = {
-            let mut s = kilit(&self.sayac);
-            *s += 1;
-            *s
-        };
-        kilit(&self.bekleyen).insert(kimlik, Bekleyen { istek, yanit: tx });
-        (kimlik, rx)
+    pub(crate) fn kuyruga_ekle(
+        &self,
+        istek: JsonMap,
+    ) -> (i64, Option<mpsc::Receiver<Option<JsonMap>>>) {
+        use afudm_core::prompt::Admission;
+        let k = self.app.state::<Arc<Kabuk>>();
+        let rows = k
+            .ctx
+            .get()
+            .and_then(|c| c.store.list(None, i64::MAX as usize).ok())
+            .unwrap_or_default();
+        match kilit(&self.bekleyen).admit(istek, &rows, afudm_core::prompt::now()) {
+            Admission::New(id, rx) => (id, Some(rx)),
+            Admission::Duplicate(id) => (id, None),
+            admission => {
+                if let Admission::Existing(row) = admission {
+                    let gid = row["gid"]
+                        .as_str()
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| format!("row:{}", row["id"]));
+                    *kilit(&self.bildirim) =
+                        Some(json!({"gid":gid,"message": if row["status"] == "complete" {
+                        "Bu dosya zaten indirildi"
+                    } else { "Bu dosya zaten iniyor" }}));
+                }
+                (0, None)
+            }
+        }
     }
 
     fn new(app: AppHandle) -> Self {
         Self {
             app,
-            sayac: Mutex::new(0),
-            bekleyen: Mutex::new(BTreeMap::new()),
+            bekleyen: Mutex::new(Default::default()),
+            bildirim: Mutex::new(None),
             lg: Arc::new(LinkGrabberDurum {
                 bekleyen: Mutex::new(None),
                 hazir: AtomicBool::new(false),
@@ -166,55 +180,24 @@ impl TauriUi {
         }
     }
 
-    /// Indirme penceresi kapandi: bekleyen tum istekler iptal.
-    pub fn iptal_hepsi(&self) {
-        for (_, b) in std::mem::take(&mut *kilit(&self.bekleyen)) {
-            let _ = b.yanit.send(None);
-        }
-    }
-
     pub(crate) fn listele(&self) -> Vec<Json> {
-        kilit(&self.bekleyen)
-            .iter()
-            .map(|(kimlik, b)| {
-                let mut oge = b.istek.clone();
-                oge.insert("kimlik".into(), json!(kimlik));
-                Json::Object(oge)
-            })
-            .collect()
+        kilit(&self.bekleyen).list()
     }
 
     fn onayla(&self, kimlik: i64, secim: JsonMap) -> bool {
-        let Some(b) = kilit(&self.bekleyen).remove(&kimlik) else {
-            return false;
-        };
-        let mut sonuc = b.istek;
-        sonuc.extend(secim);
-        let _ = b.yanit.send(Some(sonuc));
-        self.bos_ise_kapat();
-        true
+        kilit(&self.bekleyen).approve(kimlik, secim, afudm_core::prompt::now())
     }
 
     fn iptal(&self, kimlik: i64) -> bool {
-        let Some(b) = kilit(&self.bekleyen).remove(&kimlik) else {
-            return false;
-        };
-        let _ = b.yanit.send(None);
-        self.bos_ise_kapat();
-        true
-    }
-
-    fn bos_ise_kapat(&self) {
-        if kilit(&self.bekleyen).is_empty() {
-            let app = self.app.clone();
-            let _ = self
-                .app
-                .run_on_main_thread(move || window::indirme_kapat(&app));
-        }
+        kilit(&self.bekleyen).cancel(kimlik, afudm_core::prompt::now())
     }
 }
 
 impl UiBridge for TauriUi {
+    fn queue_save_location(&self, req: &JsonMap) -> Option<Json> {
+        let k = self.app.state::<Arc<Kabuk>>();
+        Some(crate::kopru_h::tarayicidan_sor(&k, req.clone()))
+    }
     fn show_window(&self) {
         let app = self.app.clone();
         let _ = self.app.run_on_main_thread(move || window::goster(&app));
@@ -233,28 +216,20 @@ impl UiBridge for TauriUi {
     }
 
     fn ask_save_location(&self, req: &JsonMap) -> Option<JsonMap> {
-        let (tx, rx) = mpsc::channel();
-        let kimlik = {
-            let mut s = kilit(&self.sayac);
-            *s += 1;
-            *s
-        };
-        kilit(&self.bekleyen).insert(
-            kimlik,
-            Bekleyen {
-                istek: req.clone(),
-                yanit: tx,
-            },
-        );
+        let (kimlik, rx) = self.kuyruga_ekle(req.clone());
+        let rx = rx?;
         let app = self.app.clone();
         let acildi = self
             .app
             .run_on_main_thread(move || {
-                let _ = window::indirme_goster(&app);
+                window::goster(&app);
+                if let Some(w) = app.get_webview_window(ANA) {
+                    let _ = w.eval("window.afudmBekleyen && window.afudmBekleyen()");
+                }
             })
             .is_ok();
         if !acildi {
-            kilit(&self.bekleyen).remove(&kimlik);
+            self.iptal(kimlik);
             return None;
         }
         rx.recv().ok().flatten()
@@ -466,7 +441,8 @@ fn motor_cagri_ile(
 pub(crate) fn gezgin_ac(yol: &Path, sec: bool) {
     let mut komut = Command::new("explorer.exe");
     if sec {
-        komut.arg(format!("/select,{}", yol.display()));
+        use std::os::windows::process::CommandExt;
+        komut.raw_arg(format!("/select,\"{}\"", yol.display()));
     } else {
         komut.arg(yol);
     }
@@ -767,7 +743,9 @@ fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Json {
             window::indirme_kapat(&k.app);
             json!({"ok": true})
         }
-        "bekleyen_listesi" => json!({"ok": true, "ogeler": k.ui.listele()}),
+        "bekleyen_listesi" => {
+            json!({"ok": true, "ogeler": k.ui.listele(), "bildirim": kilit(&k.ui.bildirim).take()})
+        }
         "bekleyen_onayla" => {
             let secim = a
                 .get(1)
@@ -921,7 +899,13 @@ fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Json {
                 gezgin_ac(&yol, true);
                 json!({"ok": true})
             }
-            Some(Ok(_)) => hata("dosya bulunamadi"),
+            Some(Ok(Some(yol))) => {
+                if let Some(ust) = yol.parent() {
+                    gezgin_ac(ust, false);
+                }
+                json!({"ok":true,"message":"Dosya taşınmış veya silinmiş; kaydedildiği klasör açıldı."})
+            }
+            Some(Ok(None)) => hata("Dosyanın konumu bulunamadı; indirmeyi yeniden başlatın."),
             Some(Err(e)) => hata(e.to_string()),
             None => motor_hazir_degil(),
         },
