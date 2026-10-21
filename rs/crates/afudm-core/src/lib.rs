@@ -4,8 +4,8 @@
 //! Ekip ici yardimci fonksiyonlar `pub(crate)` olur ve kendi dosyasinda durur.
 
 pub mod butunluk;
-pub mod queue;
 pub mod prompt;
+pub mod queue;
 pub mod torrent;
 pub mod video;
 

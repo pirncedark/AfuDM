@@ -1113,9 +1113,14 @@ fn completed_timestamp_does_not_advance_with_every_sync() {
     let gid = f.add("done.zip")["gid"].as_str().unwrap().to_string();
     f.rpc.statuses.lock().unwrap().get_mut(&gid).unwrap()["status"] = json!("complete");
     sync_aria2(&f.m).unwrap();
-    f.m.store.update_by_gid(&gid, &map(json!({"finished_at":10.0}))).unwrap();
+    f.m.store
+        .update_by_gid(&gid, &map(json!({"finished_at":10.0})))
+        .unwrap();
     sync_aria2(&f.m).unwrap();
-    assert_eq!(f.m.store.by_gid(&gid).unwrap().unwrap()["finished_at"], json!(10.0));
+    assert_eq!(
+        f.m.store.by_gid(&gid).unwrap().unwrap()["finished_at"],
+        json!(10.0)
+    );
 }
 
 #[test]
