@@ -1094,6 +1094,36 @@ fn phone_path_uses_engine_before_db_without_filename_guessing() {
 }
 
 #[test]
+fn folder_resolves_saved_path_outside_default_and_keeps_missing_target() {
+    let f = Fixture::new();
+    let gid = f.add("app.exe")["gid"].as_str().unwrap().to_string();
+    let actual = f.root.join("chosen folder").join("Antigravity IDE.exe");
+    std::fs::create_dir_all(actual.parent().unwrap()).unwrap();
+    std::fs::write(&actual, "program").unwrap();
+    f.m.store.update_by_gid(&gid, &map(json!({"dest_dir":actual.parent(),"filename":"Antigravity IDE.exe","status":"complete"}))).unwrap();
+    f.rpc.statuses.lock().unwrap().clear();
+    assert_eq!(resolve_item_path(&f.m, &gid).unwrap(), Some(actual.clone()));
+    std::fs::remove_file(&actual).unwrap();
+    assert_eq!(resolve_item_path(&f.m, &gid).unwrap(), Some(actual));
+}
+
+#[test]
+fn completed_timestamp_does_not_advance_with_every_sync() {
+    let f = Fixture::new();
+    let gid = f.add("done.zip")["gid"].as_str().unwrap().to_string();
+    f.rpc.statuses.lock().unwrap().get_mut(&gid).unwrap()["status"] = json!("complete");
+    sync_aria2(&f.m).unwrap();
+    f.m.store
+        .update_by_gid(&gid, &map(json!({"finished_at":10.0})))
+        .unwrap();
+    sync_aria2(&f.m).unwrap();
+    assert_eq!(
+        f.m.store.by_gid(&gid).unwrap().unwrap()["finished_at"],
+        json!(10.0)
+    );
+}
+
+#[test]
 fn sync_persists_completion_once_before_purge_and_snapshot_reads_db() {
     let f = Fixture::new();
     let gid = f.add("done.bin")["gid"].as_str().unwrap().to_string();

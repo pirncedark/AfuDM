@@ -6,7 +6,7 @@ const src = await readFile(new URL("../extension/download-handoff.js", import.me
 const background = await readFile(new URL("../extension/background.js", import.meta.url), "utf8");
 const app = await readFile(new URL("../rs/app/src/kopru_h.rs", import.meta.url), "utf8");
 const window = await readFile(new URL("../rs/app/src/window.rs", import.meta.url), "utf8");
-const prompt = await readFile(new URL("../rs/app/ui/download.js", import.meta.url), "utf8");
+const prompt = await readFile(new URL("../rs/app/ui/app.js", import.meta.url), "utf8");
 const context = { setTimeout, clearTimeout };
 vm.runInNewContext(src + "\nglobalThis.handoff = AfuDownloadHandoff;", context);
 const handle = context.handoff.handle;
@@ -158,11 +158,11 @@ assert.equal(await handle({ id: 230, url: "https://site.test/complete-race.pdf" 
 assert.ok(completedRace.calls.some(([name]) => name === "removeFile"), "completed race leaves only AfuDM copy");
 
 const handoff = app.slice(app.indexOf("fn tarayicidan_sor"), app.indexOf("// --- motor, butunluk"));
-assert.match(handoff, /window::indirme_goster/, "browser handoff opens the dedicated prompt");
-assert.doesNotMatch(handoff, /window::ana_goster/, "browser handoff does not activate the main panel");
-assert.match(window, /WebviewUrl::App\("download\.html"/, "dedicated prompt window loads its own UI");
-assert.match(prompt, /bekleyen_onayla/, "download prompt can approve the queued download");
-assert.match(prompt, /indirme_durumu/, "download prompt keeps showing live progress after approval");
+assert.match(handoff, /yerelden_sor\(k, istek\)/, "browser and desktop share the main dialog queue");
+assert.doesNotMatch(window, /download\.html|indirme_goster|pub const INDIRME/, "no secondary download window can be built");
+assert.equal((window.match(/WebviewWindowBuilder::new/g) || []).length, 1, "only the main window has a builder");
+assert.match(prompt, /bekleyen_onayla/, "main dialog approves the queued download");
+assert.match(prompt, /istek\.kimlik/, "main dialog retains the backend identity");
 
 // Exercise the actual service-worker listener without launching a browser window.
 const listeners = {};

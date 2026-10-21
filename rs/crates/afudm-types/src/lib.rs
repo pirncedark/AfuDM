@@ -239,6 +239,11 @@ pub trait ManagerApi: Send + Sync {
 pub trait UiBridge: Send + Sync {
     /// Python: /show
     fn show_window(&self) {}
+    /// Queue interactive approval without holding the HTTP request open.
+    /// None preserves the synchronous contract for headless/test bridges.
+    fn queue_save_location(&self, _req: &JsonMap) -> Option<Json> {
+        None
+    }
     /// Tarayicidan gelen indirmede "nereye kaydedeyim" penceresi (Python: app.py indirme penceresi).
     /// Donus: kullanicinin onayladigi (klasor/ad degismis olabilir) istek; None = iptal.
     fn ask_save_location(&self, req: &JsonMap) -> Option<JsonMap> {

@@ -82,7 +82,9 @@ pub(super) fn collect(m: &Manager) -> Result<Completed> {
                 fields.insert("finished_at".into(), json!(now()));
             }
             if status_name == "complete" {
-                fields.insert("finished_at".into(), json!(now()));
+                if row["status"] != "complete" || !truthy(&row["finished_at"]) {
+                    fields.insert("finished_at".into(), json!(now()));
+                }
                 state(m)?.cookies.remove(&row_id(row));
                 clear_auth(m, gid)?;
             }

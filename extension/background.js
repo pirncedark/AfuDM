@@ -124,7 +124,30 @@ async function reportHandoffError(cfg, error) {
   } catch (_) {}
 }
 
+const afudmSendActive = new Map();
+const afudmSendRecent = new Map();
 async function sendToAfudm(cfg, body) {
+  let url = (body.url || "").trim();
+  try { const parsed = new URL(url); parsed.hash = ""; url = parsed.href; } catch (_) {}
+  const key = `${cfg.port}:${url}`;
+  const now = Date.now();
+  for (const [seen, entry] of afudmSendRecent) {
+    if (now - entry.at >= 10000) afudmSendRecent.delete(seen);
+  }
+  if (afudmSendRecent.has(key)) return afudmSendRecent.get(key).result;
+  if (afudmSendActive.has(key)) return afudmSendActive.get(key);
+  const operation = sendToAfudmOnce(cfg, body);
+  afudmSendActive.set(key, operation);
+  try {
+    const result = await operation;
+    afudmSendRecent.set(key, { at: Date.now(), result });
+    return result;
+  } finally {
+    if (afudmSendActive.get(key) === operation) afudmSendActive.delete(key);
+  }
+}
+
+async function sendToAfudmOnce(cfg, body) {
   /* interactive: AfuDM indirmeyi HEMEN baslatmaz, once kaydetme penceresini
      acar (klasor/ad/kategori secimi). Ayar kapaliysa uygulama yok sayar ve
      dogrudan baslatir; karar AfuDM'in, uzantinin degil. */

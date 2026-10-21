@@ -333,6 +333,9 @@ pub(super) fn resolve(m: &Manager, gid: &str) -> Result<Option<PathBuf>> {
         if !text(&row["target_path"]).is_empty() {
             candidates.push(PathBuf::from(text(&row["target_path"])));
         }
+        if !text(&row["path"]).is_empty() {
+            candidates.push(PathBuf::from(text(&row["path"])));
+        }
         let dir = row
             .get("dest_dir")
             .filter(|v| truthy(v))
@@ -341,7 +344,11 @@ pub(super) fn resolve(m: &Manager, gid: &str) -> Result<Option<PathBuf>> {
             .unwrap_or("");
         if !dir.is_empty() && !text(&row["filename"]).is_empty() {
             let before = candidates.len();
-            outputs(Path::new(dir), text(&row["filename"]), &mut candidates);
+            if row["kind"] == "video" {
+                outputs(Path::new(dir), text(&row["filename"]), &mut candidates);
+            } else {
+                candidates.push(Path::new(dir).join(text(&row["filename"])));
+            }
             if let Some(merged) = candidates.get(before).filter(|p| {
                 p.is_file() && p.file_name().is_some_and(|n| n != text(&row["filename"]))
             }) {
@@ -354,6 +361,14 @@ pub(super) fn resolve(m: &Manager, gid: &str) -> Result<Option<PathBuf>> {
         if let (Some(dir), Some(ad)) = (yol.parent(), yol.file_name()) {
             outputs(dir, &ad.to_string_lossy(), &mut candidates);
         }
+    }
+    // Known output paths must never fall back to a default/category directory.
+    // Keep a missing target too, so the shell can open its recorded parent.
+    if !candidates.is_empty() {
+        return Ok(candidates
+            .iter()
+            .find_map(|p| largest(p, &mut HashSet::new()))
+            .or_else(|| candidates.first().cloned()));
     }
     if let Ok(snapshot) = shaping::snapshot(m) {
         for item in snapshot["items"].as_array().into_iter().flatten() {

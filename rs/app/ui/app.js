@@ -736,7 +736,7 @@ $("list").addEventListener("click", async (event) => {
         }
         return;
       }
-      if (act === "open") await call("open_item_folder", gid);
+      if (act === "open") await dosyaKlasoruAc(gid);
       else if (act === "retry") {
         const rowId = Number(button.dataset.id);
         if (!rowId) throw new Error(t("err.noRetry"));
@@ -2566,6 +2566,10 @@ $("destPick").onclick = async () => {
    Link nereden gelirse gelsin (pano, uzanti) once burada durur: dosya adi,
    klasor, kategori ve ne zaman baslayacagi secilir. */
 const kayit = { kimlik: null, url: "", kind: "", klasorler: {}, ana: "" };
+let kayAciliyor = false;
+let kayKapatiliyor = false;
+let bekleyenMesgul = false;
+let kaySira = 0;
 
 function kategoriDoldur(bilgi) {
   const secici = $("kayCat");
@@ -2585,8 +2589,12 @@ function kayHedefYaz() {
 }
 
 async function kaydetAc(istek) {
+  if (kayAciliyor || kayKapatiliyor || $("kaydetVeil").classList.contains("open")) return;
+  kayAciliyor = true;
+  const sira = ++kaySira;
+  try {
   const bilgi = await call("kaydet_bilgi", istek.url || "");
-  kayit.kimlik = istek.id === undefined ? null : istek.id;
+  kayit.kimlik = istek.kimlik ?? istek.id ?? null;
   kayit.url = istek.url || "";
   kayit.kind = istek.kind || bilgi.kind;
   kayit.klasorler = bilgi.kategori_klasorleri ? bilgi.klasorler : {};
@@ -2644,6 +2652,7 @@ async function kaydetAc(istek) {
   if (kayit.kind === "http" && kayit.url && /^https?:\/\//i.test(kayit.url)) {
     const baslangicAd = $("kayName").value;
     call("probe_link", kayit.url).then((probe) => {
+      if (sira !== kaySira || !$("kaydetVeil").classList.contains("open")) return;
       if (!probe || !probe.ok) return;
       if ($("kayName").value === baslangicAd && probe.filename) {
         $("kayName").value = probe.filename;
@@ -2658,6 +2667,7 @@ async function kaydetAc(istek) {
       }
     }).catch(() => {});
   }
+  } finally { kayAciliyor = false; }
 }
 
 $("kayCat").onchange = kayHedefYaz;
@@ -2676,9 +2686,13 @@ const observer = new MutationObserver((mutations) => {
       }
       const kimlik = kayit.kimlik;
       kayit.kimlik = null;
+      ++kaySira;
       if (kimlik !== null) {
-        call("bekleyen_iptal", kimlik).catch(()=>{});
-        bekleyenYokla();
+        kayKapatiliyor = true;
+        call("bekleyen_iptal", kimlik).catch((err) => toast(err.message, true)).finally(() => {
+          kayKapatiliyor = false;
+          bekleyenYokla();
+        });
       }
     }
   });
@@ -2772,10 +2786,17 @@ $("kayGo").onclick = async () => {
 /* Tarayicidan gelen istek: Python pencereyi one getirip afudmBekleyen() cagirir.
    Cagri kaybolursa (sayfa henuz hazir degildi) tick yine de bulur. */
 async function bekleyenYokla() {
+  if (bekleyenMesgul || kayAciliyor || kayKapatiliyor) return;
+  bekleyenMesgul = true;
+  const sira = kaySira;
+  try {
   let ogeler = [];
   try {
-    ogeler = ((await call("bekleyen_listesi")).ogeler || []).filter((item) => item.source !== "browser");
+    const out = await call("bekleyen_listesi");
+    ogeler = out.ogeler || [];
+    if (out.bildirim) await window.afudmMevcut(out.bildirim);
   } catch (_) { return; }
+  if (kayKapatiliyor || sira !== kaySira) return;
   // Gosterilen istek listeden DUSMEZ (onay/iptalde duser): sayarken cikarilir.
   const kalan = ogeler.length - (kayit.kimlik === null ? 0 : 1);
   if ($("kaydetVeil").classList.contains("open")) {
@@ -2788,9 +2809,27 @@ async function bekleyenYokla() {
     await kaydetAc(ogeler[0]);
     $("kayQueue").textContent = ogeler.length > 1 ? t("kay.queue", { n: ogeler.length - 1 }) : "";
   } catch (err) { toast(err.message, true); }
+  } finally { bekleyenMesgul = false; }
 }
 
 window.afudmBekleyen = () => { bekleyenYokla(); };
+window.afudmMevcut = async ({ gid, message }) => {
+  state.filter = "all";
+  document.querySelectorAll(".filter").forEach(button => button.classList.toggle("on", button.dataset.f === "all"));
+  state.search = "";
+  $("search").value = "";
+  state.selected = gid;
+  await tick();
+  renderList();
+  const row = Array.from(document.querySelectorAll("#list .row[data-gid]")).find(el => el.dataset.gid === gid);
+  row?.scrollIntoView({ block: "center", behavior: "smooth" });
+  toast(message);
+};
+
+async function dosyaKlasoruAc(gid) {
+  const out = await call("open_item_folder", gid);
+  if (out.message) toast(out.message);
+}
 
 /* ---------- pano yakalama teklifi (Python cagirir) ---------- */
 window.afudmClipboard = async (url) => {
@@ -2801,7 +2840,8 @@ window.afudmClipboard = async (url) => {
     return;
   }
   try {
-    await kaydetAc({ url });
+    await call("yerelden_sor", { url });
+    await bekleyenYokla();
   } catch (err) { toast(err.message, true); }
 };
 
@@ -3013,7 +3053,7 @@ document.addEventListener("contextmenu", async (event) => {
     "ayrac",
     { etiket: t("ctx.openFile"), pasif: oge.status !== "complete",
       calis: () => call("dosya_ac", gid) },
-    { etiket: t("ctx.openFolder"), calis: () => call("open_item_folder", gid) },
+    { etiket: t("ctx.openFolder"), calis: () => dosyaKlasoruAc(gid) },
     "ayrac",
     { etiket: t("row.share"), pasif: oge.status !== "complete",
       calis: async () => {
