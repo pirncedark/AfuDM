@@ -37,6 +37,8 @@ tanilar/*.zip
 .afudm_codex_roadmap_plan.txt
 dist_test/
 .gradle/
+local.properties
+**/local.properties
 _yedek/
 
 # --- Ajan calisma notlari: gecici gorev/sonuc dosyalari, depoya girmez ---

@@ -80,6 +80,7 @@ class ExtractorUpdatePolicyTest {
         assertTrue(ExtractorUpdatePolicy.shouldUpdateForAnalysis(AnalysisErrorCategory.PARSE, old, now))
         assertFalse(ExtractorUpdatePolicy.shouldUpdateForAnalysis(AnalysisErrorCategory.ACCESS_403, old, now))
         assertFalse(ExtractorUpdatePolicy.shouldUpdateForAnalysis(AnalysisErrorCategory.NETWORK_TIMEOUT, old, now))
+        assertFalse(ExtractorUpdatePolicy.shouldUpdateForAnalysis(AnalysisErrorCategory.LOGIN_REQUIRED, old, now))
     }
 
     @Test

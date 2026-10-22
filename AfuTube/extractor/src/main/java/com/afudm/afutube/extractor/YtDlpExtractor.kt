@@ -37,7 +37,7 @@ class YtDlpExtractor(private val context: Context) : MediaExtractor {
             val withoutPath = cookieFile?.let { text.replace(it.absolutePath, "[gizli]") } ?: text
             return SensitiveDataRedactor.redact(withoutPath)
         }
-        val loginMessage = "Bu Instagram hikayesi için giriş gerekiyor. AfuTube tarayıcısında Instagram'a bir kez giriş yapıp tekrar dene."
+        val loginMessage = "Bu Instagram içeriği için giriş yapılması gerekiyor."
         val request = YoutubeDLRequest(url).apply {
             addOption("--dump-json")
             if (!stories) addOption("--no-playlist")

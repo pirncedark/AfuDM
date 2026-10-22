@@ -59,4 +59,15 @@ class AnalysisErrorClassifierTest {
         ).toAnalysisError("unknown")
         assertEquals(AnalysisErrorCategory.PARSE, error.category)
     }
+
+    @Test
+    fun `classifies login required errors from yt-dlp traceback`() {
+        val error = AnalysisFailure(
+            message = "ERROR: You need to log in to access this content.",
+            exitCode = 1,
+            traceback = "ERROR: You need to log in to access this content. Use --cookies-from-browser or --cookies for authentication."
+        ).toAnalysisError("2026.10.21")
+
+        assertEquals(AnalysisErrorCategory.LOGIN_REQUIRED, error.category)
+    }
 }
