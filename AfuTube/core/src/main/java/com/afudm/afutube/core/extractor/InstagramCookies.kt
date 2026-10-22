@@ -45,6 +45,38 @@ object InstagramCookies {
         }.reversed()
     }
 
+    fun hasSession(cookieHeader: String?): Boolean {
+        if (cookieHeader.isNullOrBlank()) return false
+        return cookieHeader.split(';').any { cookie ->
+            val sep = cookie.indexOf('=')
+            if (sep < 0) false
+            else {
+                val name = cookie.substring(0, sep).trim()
+                val value = cookie.substring(sep + 1).trim()
+                name == "sessionid" && value.isNotBlank()
+            }
+        }
+    }
+
+    fun hasSession(): Boolean = runCatching {
+        val cookies = CookieManager.getInstance().getCookie("https://www.instagram.com")
+        hasSession(cookies)
+    }.getOrDefault(false)
+
+    fun clearSession(context: Context? = null) {
+        runCatching {
+            val cm = CookieManager.getInstance()
+            cm.setCookie("https://www.instagram.com", "sessionid=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.instagram.com")
+            cm.setCookie("https://www.instagram.com", "ds_user_id=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.instagram.com")
+            cm.flush()
+        }
+        context?.let { ctx ->
+            runCatching {
+                File(ctx.cacheDir, "afutube-ig-cookies.txt").delete()
+            }
+        }
+    }
+
     fun writeFor(context: Context, url: String): File? {
         if (!isInstagram(url)) return null
         return runCatching {

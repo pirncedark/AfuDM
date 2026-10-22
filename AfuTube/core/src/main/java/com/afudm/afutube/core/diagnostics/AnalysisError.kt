@@ -3,7 +3,7 @@ package com.afudm.afutube.core.diagnostics
 import java.util.Locale
 
 enum class AnalysisErrorCategory {
-    EXTRACTOR, UNSUPPORTED, PARSE, ACCESS_403, NETWORK_TIMEOUT, OTHER
+    EXTRACTOR, UNSUPPORTED, PARSE, ACCESS_403, NETWORK_TIMEOUT, LOGIN_REQUIRED, OTHER
 }
 
 data class AnalysisError(
@@ -20,6 +20,7 @@ data class AnalysisError(
             AnalysisErrorCategory.PARSE -> "Yanıt ayrıştırılamadı"
             AnalysisErrorCategory.ACCESS_403 -> "Erişim reddedildi (403)"
             AnalysisErrorCategory.NETWORK_TIMEOUT -> "Ağ bağlantısı / zaman aşımı"
+            AnalysisErrorCategory.LOGIN_REQUIRED -> "Oturum açılması gerekiyor"
             AnalysisErrorCategory.OTHER -> "Diğer"
         }
 
@@ -42,6 +43,10 @@ data class AnalysisFailure(
     fun toAnalysisError(ytDlpVersion: String): AnalysisError {
         val text = "$message\n$traceback".lowercase(Locale.ROOT)
         val category = when {
+            "you need to log in" in text || "login to access this content" in text ||
+                "cookies-from-browser" in text || "requires authentication" in text ||
+                "this content is private" in text || "giriş gerekiyor" in text ||
+                "oturum aç" in text || "oturum gerekiyor" in text -> AnalysisErrorCategory.LOGIN_REQUIRED
             "403" in text || "forbidden" in text -> AnalysisErrorCategory.ACCESS_403
             "timeout" in text || "timed out" in text || "network is unreachable" in text ||
                 "unable to resolve host" in text || "connection reset" in text -> AnalysisErrorCategory.NETWORK_TIMEOUT

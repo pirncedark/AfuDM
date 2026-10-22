@@ -24,8 +24,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.afudm.afutube.core.diagnostics.AnalysisError
+import com.afudm.afutube.core.diagnostics.AnalysisErrorCategory
+import com.afudm.afutube.core.extractor.InstagramCookies
 import com.afudm.afutube.core.extractor.MediaInfo
+import com.afudm.afutube.core.extractor.UrlClassifier
 import com.afudm.afutube.core.extractor.UrlNormalizer
+import com.afudm.afutube.core.extractor.UrlType
 import com.afudm.afutube.core.theme.AfuColors
 
 data class SharedLinkEvent(val url: String?)
@@ -45,6 +49,17 @@ fun HomeScreen(
     val viewModel = remember(context) { HomeViewModel(context.applicationContext) }
     val state     by viewModel.state.collectAsState()
     val clipboard = LocalClipboardManager.current
+    var showInstagramLogin by remember { mutableStateOf(false) }
+
+    if (showInstagramLogin) {
+        InstagramLoginDialog(
+            onDismiss = { showInstagramLogin = false },
+            onLoginSuccess = {
+                showInstagramLogin = false
+                viewModel.analyzeUrl(state.url)
+            }
+        )
+    }
 
     // Share Intent'ten gelen URL'yi otomatik işle
     LaunchedEffect(sharedEventId, sharedLinkReady) {
@@ -112,10 +127,12 @@ fun HomeScreen(
                 exit    = fadeOut() + shrinkVertically()
             ) {
                 ErrorCard(
+                    url = state.url,
                     error = state.analysisError,
                     onRetry = { viewModel.analyzeUrl(state.url) },
                     onUpdate = onUpdateExtractor,
-                    onOpenBrowser = { onOpenBrowser(state.url) }
+                    onOpenBrowser = { onOpenBrowser(state.url) },
+                    onOpenLogin = { showInstagramLogin = true }
                 )
             }
 
@@ -246,38 +263,89 @@ private fun UrlInputCard(
 
 @Composable
 private fun ErrorCard(
+    url: String,
     error: AnalysisError?,
     onRetry: () -> Unit,
     onUpdate: () -> Unit,
-    onOpenBrowser: () -> Unit
+    onOpenBrowser: () -> Unit,
+    onOpenLogin: () -> Unit
 ) {
     if (error == null) return
     val clipboard = LocalClipboardManager.current
     var detailsVisible by remember { mutableStateOf(false) }
+    val isLoginRequired = error.category == AnalysisErrorCategory.LOGIN_REQUIRED
+    val isInstagram = InstagramCookies.isInstagram(url) || UrlClassifier.classify(url) == UrlType.INSTAGRAM
+
+    val title = when {
+        isLoginRequired && isInstagram -> "Bu Instagram içeriği için giriş yapılması gerekiyor."
+        isLoginRequired -> "Bu içeriği indirmek için oturum açılması gerekiyor."
+        isInstagram -> "Instagram içeriği analiz edilemedi."
+        UrlClassifier.isYouTubeHost(url) -> "YouTube videosu analiz edilemedi."
+        UrlClassifier.classify(url) == UrlType.TIKTOK -> "TikTok videosu analiz edilemedi."
+        UrlClassifier.classify(url) == UrlType.TWITTER_X -> "X (Twitter) videosu analiz edilemedi."
+        else -> "İçerik analiz edilemedi."
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors   = CardDefaults.cardColors(
             containerColor = AfuColors.bg
         ),
         shape    = RoundedCornerShape(12.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, AfuColors.error.copy(alpha = 0.7f))
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isLoginRequired) AfuColors.accent.copy(alpha = 0.7f) else AfuColors.error.copy(alpha = 0.7f)
+        )
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Warning, null, tint = AfuColors.error, modifier = Modifier.size(20.dp))
+                Icon(
+                    if (isLoginRequired) Icons.Default.Lock else Icons.Default.Warning,
+                    null,
+                    tint = if (isLoginRequired) AfuColors.accent else AfuColors.error,
+                    modifier = Modifier.size(20.dp)
+                )
                 Spacer(Modifier.width(10.dp))
-                Text("YouTube videosu analiz edilemedi.", color = AfuColors.error, fontSize = 13.sp)
+                Text(
+                    title,
+                    color = if (isLoginRequired) AfuColors.text else AfuColors.error,
+                    fontSize = 13.sp,
+                    fontWeight = if (isLoginRequired) FontWeight.Medium else FontWeight.Normal
+                )
             }
             Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onUpdate, modifier = Modifier.weight(1f)) { Text("Motoru güncelle") }
-                OutlinedButton(onClick = onRetry, modifier = Modifier.weight(1f)) { Text("Tekrar dene") }
+            if (isLoginRequired) {
+                Button(
+                    onClick = onOpenLogin,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = AfuColors.accent),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.Lock, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (isInstagram) "Instagram'a Giriş Yap" else "Giriş Yap")
+                }
+                Spacer(Modifier.height(6.dp))
+                OutlinedButton(
+                    onClick = onRetry,
+                    modifier = Modifier.fillMaxWidth(),
+                    border = BorderStroke(1.dp, AfuColors.textMuted.copy(alpha = 0.3f)),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Tekrar dene", color = AfuColors.text)
+                }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onUpdate, modifier = Modifier.weight(1f)) { Text("Motoru güncelle") }
+                    OutlinedButton(onClick = onRetry, modifier = Modifier.weight(1f)) { Text("Tekrar dene") }
+                }
             }
             OutlinedButton(
                 onClick = onOpenBrowser,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = AfuColors.textMuted),
-                border = BorderStroke(1.dp, AfuColors.textMuted.copy(alpha = 0.3f))
+                border = BorderStroke(1.dp, AfuColors.textMuted.copy(alpha = 0.3f)),
+                shape = RoundedCornerShape(10.dp)
             ) { Text("Tarayıcıda aç ve videoyu yakala") }
             TextButton(onClick = { detailsVisible = !detailsVisible }) {
                 Text(if (detailsVisible) "Detayları gizle" else "Detaylar >")

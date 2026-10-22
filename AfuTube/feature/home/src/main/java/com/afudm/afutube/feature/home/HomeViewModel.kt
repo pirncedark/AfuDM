@@ -96,6 +96,10 @@ class HomeViewModel(context: Context) : ViewModel() {
     }
 }
 
-internal fun analysisErrorMessage(url: String): String =
-    if (UrlClassifier.isYouTubeHost(url)) "YouTube ba\u011flant\u0131s\u0131 analiz edilemedi."
-    else "Bu ba\u011flant\u0131 analiz edilemedi."
+internal fun analysisErrorMessage(url: String): String = when {
+    com.afudm.afutube.core.extractor.InstagramCookies.isInstagram(url) -> "Instagram bağlantısı analiz edilemedi."
+    UrlClassifier.isYouTubeHost(url) -> "YouTube bağlantısı analiz edilemedi."
+    UrlClassifier.classify(url) == com.afudm.afutube.core.extractor.UrlType.TIKTOK -> "TikTok bağlantısı analiz edilemedi."
+    UrlClassifier.classify(url) == com.afudm.afutube.core.extractor.UrlType.TWITTER_X -> "X bağlantısı analiz edilemedi."
+    else -> "Bu bağlantı analiz edilemedi."
+}

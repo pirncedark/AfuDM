@@ -57,4 +57,14 @@ class InstagramCookiesTest {
         ))
         assertNull(InstagramCookies.storyMediaCode("https://instagram.com/"))
     }
+
+    @Test
+    fun `hasSession detects valid sessionid cookie`() {
+        assertTrue(InstagramCookies.hasSession("csrftoken=xyz; sessionid=12345%3Aabc; ds_user_id=123"))
+        assertTrue(InstagramCookies.hasSession("sessionid=abc"))
+        assertFalse(InstagramCookies.hasSession(null))
+        assertFalse(InstagramCookies.hasSession(""))
+        assertFalse(InstagramCookies.hasSession("csrftoken=xyz; ds_user_id=123"))
+        assertFalse(InstagramCookies.hasSession("sessionid="))
+    }
 }

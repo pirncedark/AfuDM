@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -134,6 +135,35 @@ fun SettingsScreen(
                     ) { Text(if (isUpdating) "Güncelleniyor…" else "Motoru güncelle") }
                     SettingSwitch("Otomatik güncelle", extractorAutoUpdate) {
                         extractorAutoUpdate = it; ExtractorUpdater.setAutoUpdateEnabled(context, it)
+                    }
+                }
+            }
+            item {
+                SettingsCard("Instagram Hesabı") {
+                    var hasIgSession by remember { mutableStateOf(com.afudm.afutube.core.extractor.InstagramCookies.hasSession()) }
+                    if (hasIgSession) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CheckCircle, null, tint = AfuColors.success, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Oturum açık (Hikaye ve özel içerikler erişilebilir)", color = AfuColors.text, fontSize = 13.sp)
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = {
+                                com.afudm.afutube.core.extractor.InstagramCookies.clearSession(context)
+                                hasIgSession = false
+                                Toast.makeText(context, "Instagram oturumu kapatıldı", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            border = BorderStroke(1.dp, AfuColors.error.copy(alpha = 0.5f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = AfuColors.error)
+                        ) { Text("Oturumu Kapat") }
+                    } else {
+                        Text(
+                            "Giriş yapılmadı. Hikaye ve özel profil içeriklerini indirebilmek için ana ekranda giriş yapabilirsin.",
+                            color = AfuColors.textMuted,
+                            fontSize = 13.sp
+                        )
                     }
                 }
             }
