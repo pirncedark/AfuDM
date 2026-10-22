@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.3.0](https://github.com/pirncedark/AfuDM/compare/v3.2.0...v3.3.0) (2026-10-22)
+
+
+### Features
+
+* **afutube:** Instagram oturum destegi, giris diyalogu ve dinamik hata basligi ([#142](https://github.com/pirncedark/AfuDM/issues/142)) ([e6cc415](https://github.com/pirncedark/AfuDM/commit/e6cc415ae87138979804abe53d8092b11e3f9786))
+
+
+### Bug Fixes
+
+* single download dialog, no duplicate prompts, correct Folder button ([#140](https://github.com/pirncedark/AfuDM/issues/140)) ([b5b02b1](https://github.com/pirncedark/AfuDM/commit/b5b02b1cf42510ca3d710c867a7aef0adc844cf6))
+
 ## [3.2.0](https://github.com/pirncedark/AfuDM/compare/v3.1.1...v3.2.0) (2026-10-20)
 
 
