@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
@@ -40,6 +41,7 @@ class TorrentWorker(
 
         private const val NOTIF_CHANNEL = "afutube_torrent"
         private const val NOTIF_ID      = 2001
+        private const val TAG = "AfuTubeTorrent"
     }
 
     override suspend fun getForegroundInfo(): ForegroundInfo =
@@ -55,14 +57,28 @@ class TorrentWorker(
         // WorkManager retries reuse this directory; partial files and .aria2 stay intact.
         val destination = File(outputRoot, "torrent-$id")
         val temporary = File(applicationContext.cacheDir, "torrent-$id")
+        val recentOutput = ArrayDeque<String>()
+        var stage = "initialization"
+        fun logFailure(message: String, error: Exception? = null) {
+            Log.e(TAG, "work=$id stage=$stage $message\naria2c last 30 lines:\n${recentOutput.joinToString("\n")}", error)
+        }
         try {
+            Log.i(TAG, "work=$id worker started magnet=${source.startsWith("magnet:", true)}")
             setForeground(buildForegroundInfo("$title hazırlanıyor…", 0))
-            MediaRuntime.ensureInitialized(applicationContext)
             val executable = File(applicationContext.applicationInfo.nativeLibraryDir, "libaria2c.so")
-            check(executable.isFile && executable.canExecute())
+            if (!executable.isFile) {
+                logFailure("Missing executable: $executable")
+                return@withContext failure("İndirme bileşeni eksik, uygulamayı güncelleyip yeniden dene.")
+            }
+            if (!executable.canExecute()) {
+                logFailure("Executable is not runnable: $executable")
+                return@withContext failure("İndirme bileşeni çalıştırılamıyor, uygulamayı güncelleyip yeniden dene.")
+            }
+            MediaRuntime.ensureInitialized(applicationContext)
             check(destination.isDirectory || destination.mkdirs())
             check(temporary.isDirectory || temporary.mkdirs())
             val magnet = source.startsWith("magnet:", ignoreCase = true)
+            stage = "input"
             val input = if (magnet) source else prepareTorrent(source, temporary).absolutePath
             if (magnet) {
                 setProgress(workDataOf(
@@ -75,15 +91,20 @@ class TorrentWorker(
             }
             val packages = File(applicationContext.noBackupFilesDir, "youtubedl-android/packages")
             val certificate = File(packages, "python/usr/etc/tls/cert.pem")
+            val trackers = applicationContext.assets.open("torrent-trackers.txt").bufferedReader().use {
+                parseTorrentTrackers(it.readText())
+            }
             val builder = ProcessBuilder(torrentArguments(executable.absolutePath, destination.absolutePath,
-                input, certificate.absolutePath))
+                input, certificate.absolutePath, File(applicationContext.filesDir, "dht.dat").absolutePath, trackers))
                 .directory(temporary).redirectErrorStream(true)
             // Match YoutubeDL 0.18.1's runtime paths, including its trusted certificate bundle.
             builder.environment()["LD_LIBRARY_PATH"] = listOf("python", "ffmpeg", "aria2c")
                 .joinToString(":") { File(packages, "$it/usr/lib").absolutePath } +
                 ":" + applicationContext.applicationInfo.nativeLibraryDir
             builder.environment()["SSL_CERT_FILE"] = certificate.absolutePath
+            stage = "process"
             val process = builder.start()
+            Log.i(TAG, "work=$id aria2c started trackers=${trackers.size}")
             val exitCode = coroutineScope {
                 val lines = Channel<String>(32)
                 val reader = launch(Dispatchers.IO) {
@@ -100,6 +121,8 @@ class TorrentWorker(
                 }
                 try {
                     for (line in lines) {
+                        if (recentOutput.size == 30) recentOutput.removeFirst()
+                        recentOutput.addLast(line)
                         ensureActive()
                         parseTorrentProgress(line)?.let { progress ->
                             // Metadata transfers also have a progress line, but no known total.
@@ -123,14 +146,17 @@ class TorrentWorker(
                 }
             }
             ensureActive()
+            Log.i(TAG, "work=$id aria2c exit=$exitCode")
             val files = destination.walkTopDown().filter { it.isFile }.toList()
             val payload = files.filter { file ->
                 !file.name.endsWith(".aria2", true) && !file.name.endsWith(".torrent", true)
             }
             if (exitCode != 0 || payload.none { it.length() > 0 } ||
                 files.any { it.name.endsWith(".aria2", true) }) {
+                logFailure("exit=$exitCode payload=${payload.size} incomplete=${files.any { it.name.endsWith(".aria2", true) }}")
                 failure("İndirme tamamlanamadı, bağlantıyı kontrol edip yeniden dene.")
             } else {
+                stage = "publish"
                 val outputPath = if (payload.size == 1) {
                     DownloadFolder.publish(applicationContext, payload.single())
                 } else {
@@ -140,22 +166,23 @@ class TorrentWorker(
                         ensureActive()
                         val copy = File(temporary, "publish/${file.name}")
                         try {
-                            runCatching {
-                                check(copy.parentFile!!.isDirectory || copy.parentFile!!.mkdirs())
-                                file.copyTo(copy, overwrite = true)
-                                DownloadFolder.publish(applicationContext, copy)
-                            }
+                            check(copy.parentFile!!.isDirectory || copy.parentFile!!.mkdirs())
+                            file.copyTo(copy, overwrite = true)
+                            val published = DownloadFolder.publish(applicationContext, copy)
+                            check(published != copy.absolutePath) { "Could not publish ${file.name}" }
                         } finally {
                             copy.delete()
                         }
                     }
                     destination.absolutePath
                 }
+                Log.i(TAG, "work=$id publish complete files=${payload.size}")
                 Result.success(workDataOf("output_path" to outputPath))
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            logFailure("Torrent failed", error)
             failure("İndirme başlatılamadı, bağlantıyı kontrol edip yeniden dene.")
         } finally {
             // Only the fetched descriptor is disposable; payload/.aria2 files allow resume.
@@ -283,10 +310,18 @@ internal fun parseTorrentProgress(line: String): TorrentProgress? {
     )
 }
 
-internal fun torrentArguments(executable: String, outputDir: String, source: String, certificate: String? = null): List<String> {
+internal fun parseTorrentTrackers(text: String): List<String> = text.lineSequence()
+    .map(String::trim).filter { it.startsWith("udp://") || it.startsWith("https://") || it.startsWith("http://") }
+    .filterNot { it.contains(',') || it.any(Char::isWhitespace) }.distinct().toList()
+
+internal fun torrentArguments(executable: String, outputDir: String, source: String, certificate: String? = null,
+    dhtPath: String? = null, trackers: List<String> = emptyList()): List<String> {
     require(source.isNotBlank() && !source.startsWith("-"))
     return listOf(executable, "--seed-time=0", "--bt-save-metadata=true", "--follow-torrent=true",
+        "--enable-dht=true", "--bt-enable-lpd=true", "--enable-peer-exchange=true", "--bt-max-peers=0",
         "--file-allocation=none", "--summary-interval=1", "--console-log-level=notice",
         "--enable-color=false", "--show-console-readout=false", "--continue=true",
-        "--dir=$outputDir") + listOfNotNull(certificate?.let { "--ca-certificate=$it" }) + source
+        "--dir=$outputDir") + listOfNotNull(certificate?.let { "--ca-certificate=$it" },
+        dhtPath?.let { "--dht-file-path=$it" },
+        trackers.takeIf { it.isNotEmpty() }?.let { "--bt-tracker=${it.joinToString(",")}" }) + source
 }

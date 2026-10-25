@@ -5,6 +5,21 @@ import org.junit.Test
 /** JVM checks discovered by the Android unit test task. */
 class TorrentWorkerTest {
     @Test
+    fun discoversPeersWithoutIncomingConnections() {
+        val args = torrentArguments("aria2c", "/out", "magnet:?xt=urn:btih:abc")
+        check("--enable-dht=true" in args)
+        check("--bt-enable-lpd=true" in args)
+        check("--enable-peer-exchange=true" in args)
+        check("--bt-max-peers=0" in args)
+        val trackers = parseTorrentTrackers("# comment\nudp://tracker:80/announce\n\nhttps://tracker/announce\nudp://tracker:80/announce\nfile:///bad\nhttp://bad,option\n")
+        check(trackers == listOf("udp://tracker:80/announce", "https://tracker/announce"))
+        val configured = torrentArguments("aria2c", "/out", "magnet:?xt=urn:btih:abc", null, "/files/a b/dht.dat", trackers)
+        check("--dht-file-path=/files/a b/dht.dat" in configured)
+        check("--bt-tracker=udp://tracker:80/announce,https://tracker/announce" in configured)
+        check("--seed-time=0" in configured)
+    }
+
+    @Test
     fun torrentProgressAndArguments() {
         val progress = checkNotNull(parseTorrentProgress(
             "[#abcd12 12MiB/100MiB(12%) CN:5 DL:2.1MiB ETA:1m]"))
