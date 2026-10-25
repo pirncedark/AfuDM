@@ -33,23 +33,33 @@ import com.afudm.afutube.updater.AppUpdate
 import com.afudm.afutube.updater.UpdateManager
 import com.afudm.afutube.runtime.MediaRuntime
 import com.afudm.afutube.downloader.DownloadEngine
+import com.afudm.afutube.media.MusicScreen
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val shareViewModel by lazy { ViewModelProvider(this)[ShareIntentViewModel::class.java] }
+    private var musicRequest by mutableLongStateOf(0L)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         shareViewModel.publish(intent)
+        if (intent.getBooleanExtra("open_music", false)) {
+            musicRequest++
+            intent.removeExtra("open_music")
+        }
 
-        setContent { AfuTubeApp(shareViewModel) }
+        setContent { AfuTubeApp(shareViewModel, musicRequest) }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         shareViewModel.publish(intent)
+        if (intent.getBooleanExtra("open_music", false)) {
+            musicRequest++
+            intent.removeExtra("open_music")
+        }
     }
 }
 
@@ -58,28 +68,24 @@ class MainActivity : ComponentActivity() {
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
     object Home      : Screen("home",      "Ana Ekran",   Icons.Default.Home)
     object Torrent   : Screen("torrent",   "Torrent",     Icons.Default.MoveToInbox)
+    object Music     : Screen("music",     "Müzik",       Icons.Default.MusicNote)
     object Downloads : Screen("downloads", "İndirmeler",  Icons.Default.Download)
     object Settings  : Screen("settings",  "Ayarlar",     Icons.Default.Settings)
 }
 
 @Composable
-fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
+fun AfuTubeApp(shareViewModel: ShareIntentViewModel, musicRequest: Long = 0L) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val runtimeStatus by MediaRuntime.status.collectAsState()
     val shareEvent by shareViewModel.events.collectAsState()
     val runtimeScope = rememberCoroutineScope()
 
-    if (runtimeStatus.state != MediaRuntime.RuntimeState.READY && shareEvent == null) {
-        MotorReadinessScreen(
-            status = runtimeStatus,
-            onRetry = { runtimeScope.launch { RuntimeBootstrap.prepare(context) } }
-        )
-        return
-    }
-
     val navController     = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute      = navBackStackEntry?.destination?.route
+    LaunchedEffect(musicRequest) {
+        if (musicRequest > 0) navController.navigate(Screen.Music.route) { launchSingleTop = true }
+    }
 
     var pendingMediaInfo by remember { mutableStateOf<MediaInfo?>(null) }
     var browserUrl by remember { mutableStateOf("") }
@@ -129,7 +135,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
         )
     }
 
-    val bottomScreens = listOf(Screen.Home, Screen.Torrent, Screen.Downloads, Screen.Settings)
+    val bottomScreens = listOf(Screen.Home, Screen.Torrent, Screen.Music, Screen.Downloads, Screen.Settings)
     val showBottomBar = currentRoute in bottomScreens.map { it.route }
 
     Scaffold(
@@ -150,6 +156,10 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
             modifier         = Modifier.padding(padding)
         ) {
             composable(Screen.Home.route) {
+                if (runtimeStatus.state != MediaRuntime.RuntimeState.READY && shareEvent == null) {
+                    MotorReadinessScreen(status = runtimeStatus,
+                        onRetry = { runtimeScope.launch { RuntimeBootstrap.prepare(context) } })
+                } else {
                 HomeScreen(
                     sharedUrl = shareEvent?.url,
                     sharedEventId = shareEvent?.sequence,
@@ -164,7 +174,9 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel) {
                         if (browserUrl.isNotBlank()) navController.navigate("browser")
                     }
                 )
+                }
             }
+            composable(Screen.Music.route) { MusicScreen() }
             composable("browser") {
                 BrowserScreen(
                     startUrl = browserUrl,
