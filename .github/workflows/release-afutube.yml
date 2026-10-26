@@ -19,6 +19,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 # zizmor: ignore[artipacked] gh release commands later in this job write releases
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Setup Java 17
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
@@ -73,18 +76,19 @@ jobs:
           SHA256=$(cut -d' ' -f1 release-assets/AfuTube-universal.apk.sha256)
           PRERELEASE=false
           if [[ "${GITHUB_REF_NAME#afutube-v}" == *-* ]]; then PRERELEASE=true; fi
-          cat > release-assets/AfuTube-update.json <<EOF
-          {
-            "versionName": "${VERSION_NAME}",
-            "versionCode": ${VERSION_CODE},
-            "tag": "${GITHUB_REF_NAME}",
-            "apk": "AfuTube-universal.apk",
-            "sha256": "${SHA256}",
-            "minSdk": 24,
-            "changelog": "${GITHUB_REF_NAME}",
-            "prerelease": ${PRERELEASE}
-          }
-          EOF
+          CHANGELOG="$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | sed '/^[[:space:]]*$/d')"
+          if [[ -z "$CHANGELOG" ]]; then
+            CHANGELOG="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json body --jq .body 2>/dev/null || true)"
+          fi
+          jq -n \
+            --arg versionName "$VERSION_NAME" \
+            --arg tag "$GITHUB_REF_NAME" \
+            --arg sha256 "$SHA256" \
+            --arg changelog "$CHANGELOG" \
+            --argjson versionCode "$VERSION_CODE" \
+            --argjson prerelease "$PRERELEASE" \
+            '{versionName:$versionName,versionCode:$versionCode,tag:$tag,apk:"AfuTube-universal.apk",sha256:$sha256,minSdk:24,changelog:$changelog,prerelease:$prerelease}' \
+            > release-assets/AfuTube-update.json
 
       - name: Prepare latest manifest release
         if: ${{ !contains(github.ref_name, '-test') && !contains(github.ref_name, '-rc') && !contains(github.ref_name, '-beta') && !contains(github.ref_name, '-alpha') }}

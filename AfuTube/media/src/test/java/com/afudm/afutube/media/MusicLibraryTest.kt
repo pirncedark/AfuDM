@@ -27,4 +27,18 @@ class MusicLibraryTest {
         assertEquals(listOf(second, third, first), prepareMusicList(listOf(first, second, first, third)))
         assertTrue(prepareMusicList(emptyList()).isEmpty())
     }
+
+    @Test fun groupsByFolderAlbumAndArtistWithFallback() {
+        val a = MusicTrack("1", "A", "Singer", "Album", "Folder")
+        val b = MusicTrack("2", "B", "", "", "Folder")
+        assertEquals("Folder", groupMusic(listOf(a, b), MusicGrouping.FOLDER).single().title)
+        assertEquals("Album", groupMusic(listOf(a), MusicGrouping.ALBUM).single().title)
+        assertEquals("Bilinmeyen albüm", groupMusic(listOf(b), MusicGrouping.ALBUM).single().title)
+        assertEquals("Singer", groupMusic(listOf(a), MusicGrouping.ARTIST).single().title)
+    }
+
+    @Test fun tenSecondSeekClampsToStartAndDuration() {
+        assertEquals(0L, seekPosition(5_000, 60_000, -10_000))
+        assertEquals(60_000L, seekPosition(55_000, 60_000, 10_000))
+    }
 }

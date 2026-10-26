@@ -36,6 +36,14 @@ class AppUpdateTest {
     }
 
     @Test
+    fun `manifest changelog preserves multiline release notes`() {
+        val notes = "Albüm kapakları eklendi.\nGüncelleme ekranı yenilendi."
+        val json = """{"versionName":"1.2.0","versionCode":1002000,"tag":"afutube-v1.2.0","sha256":"abc","minSdk":24,"changelog":"Albüm kapakları eklendi.\nGüncelleme ekranı yenilendi."}"""
+
+        assertEquals(notes, AppUpdateParser.fromManifest(json, 1001000, emptyList())?.releaseNotes)
+    }
+
+    @Test
     fun `manifest at current or older version has no update`() {
         assertEquals(null, AppUpdateParser.fromManifest(manifest, 1002000, emptyList()))
         assertEquals(null, AppUpdateParser.fromManifest(manifest, 1003000, emptyList()))
