@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import com.afudm.afutube.core.share.ShareHelper
 import com.afudm.afutube.core.diagnostics.LastAnalysisErrorStore
 import com.afudm.afutube.core.theme.AfuColors
+import com.afudm.afutube.core.ui.InstagramLoginDialog
 import com.afudm.afutube.updater.AppUpdate
 import com.afudm.afutube.updater.ExtractorUpdater
 import com.afudm.afutube.updater.UpdateManager
@@ -47,6 +48,7 @@ fun SettingsScreen(
     var appUpdateStatus by remember { mutableStateOf("") }
     var preparingApk by remember { mutableStateOf(false) }
     var errorExpanded by remember { mutableStateOf(false) }
+    var showInstagramLogin by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         UpdateManager.setIncludePrereleases(context, false)
@@ -141,6 +143,16 @@ fun SettingsScreen(
             item {
                 SettingsCard("Instagram Hesabı") {
                     var hasIgSession by remember { mutableStateOf(com.afudm.afutube.core.extractor.InstagramCookies.hasSession()) }
+                    if (showInstagramLogin) {
+                        InstagramLoginDialog(
+                            onDismiss = { showInstagramLogin = false },
+                            onLoginSuccess = {
+                                showInstagramLogin = false
+                                hasIgSession = true
+                                Toast.makeText(context, "Instagram oturumu açıldı", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
                     if (hasIgSession) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.CheckCircle, null, tint = AfuColors.success, modifier = Modifier.size(18.dp))
@@ -160,10 +172,16 @@ fun SettingsScreen(
                         ) { Text("Oturumu Kapat") }
                     } else {
                         Text(
-                            "Giriş yapılmadı. Hikaye ve özel profil içeriklerini indirebilmek için ana ekranda giriş yapabilirsin.",
+                            "Giriş yapılmadı. Hikaye ve özel içerikleri indirmek için giriş yap.",
                             color = AfuColors.textMuted,
                             fontSize = 13.sp
                         )
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = { showInstagramLogin = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = AfuColors.accent)
+                        ) { Text("Instagram'a giriş yap") }
                     }
                 }
             }

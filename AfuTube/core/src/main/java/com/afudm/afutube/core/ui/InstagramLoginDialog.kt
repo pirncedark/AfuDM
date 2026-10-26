@@ -1,10 +1,12 @@
-package com.afudm.afutube.feature.home
+package com.afudm.afutube.core.ui
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.view.ViewGroup
+import androidx.core.view.doOnLayout
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -107,6 +109,10 @@ fun InstagramLoginDialog(
                     AndroidView(
                         factory = { ctx ->
                             WebView(ctx).apply {
+                                layoutParams = ViewGroup.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ViewGroup.LayoutParams.MATCH_PARENT
+                                )
                                 val cm = CookieManager.getInstance()
                                 cm.setAcceptCookie(true)
                                 cm.setAcceptThirdPartyCookies(this, true)
@@ -136,7 +142,11 @@ fun InstagramLoginDialog(
                                     }
                                 }
 
-                                loadUrl("https://www.instagram.com/accounts/login/")
+                                doOnLayout { view ->
+                                    if (view.height > 0) {
+                                        this@apply.loadUrl("https://www.instagram.com/accounts/login/")
+                                    }
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxSize()
