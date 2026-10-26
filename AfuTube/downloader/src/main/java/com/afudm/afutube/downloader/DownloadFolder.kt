@@ -2,6 +2,7 @@ package com.afudm.afutube.downloader
 
 import android.content.ContentValues
 import android.content.Context
+import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -43,6 +44,7 @@ object DownloadFolder {
         val ad = benzersizAd(visibleDir().list()?.toList().orEmpty(), source.name)
         val target = File(visibleDir(), ad)
         if (copyTo(source, target)) {
+            MediaScannerConnection.scanFile(context, arrayOf(target.absolutePath), null, null)
             source.delete()
             return target.absolutePath
         }
