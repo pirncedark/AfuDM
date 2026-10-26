@@ -44,8 +44,7 @@ fun DownloadsScreen() {
     val context   = LocalContext.current
     val engine    = remember { DownloadEngine.getInstance(context) }
     val workInfos by engine.allDownloads().collectAsState(initial = emptyList())
-    var trimPath by remember { mutableStateOf<String?>(null) }
-    var musicPath by remember { mutableStateOf<String?>(null) }
+    var editPath by remember { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<Pair<File, WorkInfo>?>(null) }
     val deleteLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) pendingDelete?.let { (file, info) ->
@@ -124,14 +123,13 @@ fun DownloadsScreen() {
                         onRemove = { title ->
                             if (playable) pendingDelete = File(outputPath!!) to workInfo else engine.remove(workInfo.id, title, finished = false)
                         }
-                        , onTrim = { trimPath = it }, onAddMusic = { musicPath = it }
+                        , onEdit = { editPath = it }
                     )
                 }
             }
         }
     }
-    trimPath?.let { TrimDialog(it) { trimPath = null } }
-    musicPath?.let { AddMusicDialog(it) { musicPath = null } }
+    editPath?.let { EditDialog(it) { editPath = null } }
     pendingDelete?.let { (file, info) -> AlertDialog(onDismissRequest = { pendingDelete = null }, title = { Text("Dosyayı da sil?") },
         confirmButton = { TextButton(onClick = {
             if (Build.VERSION.SDK_INT >= 30) runCatching { MediaDelete.request(context, file) }.getOrNull()?.let { deleteLauncher.launch(androidx.activity.result.IntentSenderRequest.Builder(it).build()) } ?: run { pendingDelete = null }
@@ -149,7 +147,7 @@ private fun DownloadCard(
     onShare: (String, String) -> Unit,
     onCancel : () -> Unit,
     onRemove : (title: String) -> Unit
-    , onTrim: (String) -> Unit, onAddMusic: (String) -> Unit
+    , onEdit: (String) -> Unit
 ) {
     val percent = workInfo.progress.getInt("progress_percent", 0)
     val speed   = workInfo.progress.getString("progress_speed") ?: ""
@@ -234,8 +232,7 @@ private fun DownloadCard(
                 ActionRow {
                     if (!audioOnly) PlayPill(label = "İzle", icon = Icons.Default.PlayArrow, onClick = { onPlay(outputPath, false) })
                     PlayPill(label = "Dinle", icon = Icons.Default.Headphones, onClick = { onPlay(outputPath, true) })
-                    if (!audioOnly) PlayPill(label = "Kırp", icon = Icons.Default.ContentCut, onClick = { onTrim(outputPath) })
-                    if (!audioOnly) PlayPill(label = "Müzik ekle", icon = Icons.Default.MusicNote, onClick = { onAddMusic(outputPath) })
+                    if (!audioOnly) PlayPill(label = "Editle", icon = Icons.Default.Edit, onClick = { onEdit(outputPath) })
                 }
                 Spacer(Modifier.height(8.dp))
                 ActionRow {

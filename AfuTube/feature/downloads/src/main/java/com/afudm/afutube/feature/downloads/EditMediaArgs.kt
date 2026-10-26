@@ -8,6 +8,12 @@ internal fun trimArgs(input: File, output: File, startMs: Long, endMs: Long): Li
     return listOf("-y", "-ss", seconds(startMs), "-to", seconds(endMs), "-i", input.absolutePath, "-c", "copy", output.absolutePath)
 }
 internal fun musicOutput(input: File) = File(input.parentFile, "${input.nameWithoutExtension}_muzikli.mp4")
+internal fun muteOutput(input: File) = File(input.parentFile, "${input.nameWithoutExtension}_sessiz.${input.extension}")
+internal fun muteArgs(input: File, output: File): List<String> =
+    listOf("-y", "-i", input.absolutePath, "-c", "copy", "-an", output.absolutePath)
+internal fun audioOutput(input: File) = File(input.parentFile, "${input.nameWithoutExtension}_ses.m4a")
+internal fun audioArgs(input: File, output: File): List<String> =
+    listOf("-y", "-i", input.absolutePath, "-vn", "-c:a", "aac", "-b:a", "192k", output.absolutePath)
 internal fun addMusicArgs(video: File, music: File, output: File, lowerOriginal: Boolean, hasVideoAudio: Boolean = true): List<String> {
     val args = mutableListOf("-y", "-i", video.absolutePath, "-i", music.absolutePath)
     if (!hasVideoAudio) args += listOf("-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-shortest", "-c:a", "aac")

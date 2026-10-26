@@ -72,7 +72,7 @@ fun MusicScreen() {
     var next by remember { mutableStateOf(false) }
     var playbackPosition by remember { mutableLongStateOf(0L) }
     var dragging by remember { mutableStateOf(false) }
-    var grouping by remember { mutableStateOf(runCatching { MusicGrouping.valueOf(preferences.getString("grouping", "ALL") ?: "ALL") }.getOrDefault(MusicGrouping.ALL)) }
+    var openFolders by remember { mutableStateOf(preferences.getStringSet("open_folders", null)?.toSet()) }
     var trackToDelete by remember { mutableStateOf<MusicTrack?>(null) }
     val deleteLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { if (it.resultCode == android.app.Activity.RESULT_OK) { trackToDelete = null; refresh++ } }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -118,6 +118,13 @@ fun MusicScreen() {
             Log.e("AfuTubeMusic", "Cannot load music", failure)
             error = "Müzikler okunamadı, izni kontrol edip yeniden dene."
         } finally { loading = false }
+    }
+    LaunchedEffect(tracks) {
+        if (openFolders == null && tracks.isNotEmpty()) {
+            val groups = groupMusic(tracks)
+            openFolders = if (groups.size == 1) setOf(groups.single().title) else emptySet()
+            preferences.edit().putStringSet("open_folders", openFolders).apply()
+        }
     }
     DisposableEffect(context, connectionAttempt) {
         var disposed = false
@@ -193,21 +200,28 @@ fun MusicScreen() {
         } else if (loading) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = AfuColors.accent) }
         } else {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                listOf(MusicGrouping.ALL, MusicGrouping.FOLDER, MusicGrouping.ALBUM, MusicGrouping.ARTIST).forEach { mode ->
-                    FilterChip(selected = grouping == mode, onClick = { grouping = mode; preferences.edit().putString("grouping", mode.name).apply() },
-                        label = { Text(when (mode) { MusicGrouping.ALL -> "Tümü"; MusicGrouping.FOLDER -> "Klasör"; MusicGrouping.ALBUM -> "Albüm"; MusicGrouping.ARTIST -> "Sanatçı" }, maxLines = 1) })
-                }
-            }
             if (tracks.isEmpty() && error == null) Text("Henüz müzik yok; telefonuna müzik eklediğinde burada görünür.", color = AfuColors.textMuted)
             LazyColumn(Modifier.weight(1f)) {
-                groupMusic(tracks, grouping).forEach { group ->
-                if (grouping != MusicGrouping.ALL) item(key = "group-${group.title}") {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 10.dp, start = 12.dp)) {
-                        if (grouping == MusicGrouping.ALBUM) { AlbumArt(group.tracks.firstOrNull(), 36); Spacer(Modifier.width(10.dp)) }
-                        Text(group.title, color = AfuColors.accent, style = MaterialTheme.typography.titleSmall)
+                groupMusic(tracks).forEach { group ->
+                item(key = "folder-${group.title}") {
+                    val isOpen = group.title in (openFolders ?: emptySet())
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier
+                        .fillMaxWidth().clickable {
+                            val updated = (openFolders ?: emptySet()).toMutableSet().apply {
+                                if (isOpen) remove(group.title) else add(group.title)
+                            }.toSet()
+                            openFolders = updated
+                            preferences.edit().putStringSet("open_folders", updated).apply()
+                        }.padding(top = 10.dp, bottom = 6.dp, start = 12.dp, end = 8.dp)) {
+                        Icon(Icons.Default.Folder, null, tint = AfuColors.accent)
+                        Spacer(Modifier.width(10.dp))
+                        Text("${group.title} (${group.tracks.size} şarkı)", color = AfuColors.accent,
+                            style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                        Icon(if (isOpen) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            if (isOpen) "Klasörü kapat" else "Klasörü aç", tint = AfuColors.textMuted)
                     }
                 }
+                if (group.title in (openFolders ?: emptySet())) {
                 items(group.tracks, key = { it.uri }) { track ->
                     ListItem(
                         headlineContent = { Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -235,6 +249,7 @@ fun MusicScreen() {
                             }
                         })
                     )
+                }
                 }
                 }
             }
