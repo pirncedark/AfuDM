@@ -8,7 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
-data class MusicTrack(val uri: String, val title: String, val artist: String, val album: String = "", val folder: String = "", val durationMs: Long = 0)
+data class MusicTrack(val uri: String, val title: String, val artist: String, val album: String = "", val folder: String = "", val durationMs: Long = 0, val albumId: Long = 0)
 
 enum class MusicGrouping { ALL, FOLDER, ALBUM, ARTIST }
 data class MusicGroup(val title: String, val tracks: List<MusicTrack>)
@@ -39,7 +39,8 @@ suspend fun loadMusic(context: Context): List<MusicTrack> = withContext(Dispatch
         else MediaStore.Audio.Media.DATA
     val projection = arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE,
         MediaStore.Audio.Media.DISPLAY_NAME, MediaStore.Audio.Media.ARTIST,
-        MediaStore.Audio.Media.IS_MUSIC, pathColumn, MediaStore.Audio.Media.ALBUM, MediaStore.Audio.Media.DURATION)
+        MediaStore.Audio.Media.IS_MUSIC, pathColumn, MediaStore.Audio.Media.ALBUM, MediaStore.Audio.Media.DURATION,
+        MediaStore.Audio.Media.ALBUM_ID)
     val tracks = mutableListOf<MusicTrack>()
     val selection = if (Build.VERSION.SDK_INT >= 29) "${MediaStore.Audio.Media.IS_PENDING}=0" else null
     val cursor = context.contentResolver.query(collection, projection, selection, null, null)
@@ -52,7 +53,7 @@ suspend fun loadMusic(context: Context): List<MusicTrack> = withContext(Dispatch
                 it.getString(3)?.takeUnless { artist -> artist == "<unknown>" }.orEmpty(),
                 it.getString(6)?.takeUnless { album -> album == "<unknown>" }.orEmpty(),
                 it.getString(5).orEmpty().trimEnd('/').substringAfterLast('/').takeIf { folder -> folder.isNotBlank() } ?: "Müzik",
-                it.getLong(7))
+                it.getLong(7), it.getLong(8))
         }
     }
     prepareMusicList(tracks)

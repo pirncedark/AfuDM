@@ -1,6 +1,7 @@
 package com.afudm.afutube.media
 
 import android.content.ComponentName
+import android.content.ContentUris
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.ContentObserver
@@ -8,6 +9,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.util.Size
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
@@ -15,6 +19,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -25,6 +30,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -41,6 +47,8 @@ import androidx.media3.session.SessionToken
 import com.afudm.afutube.core.theme.AfuColors
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** The service owns playback; leaving this screen only disconnects its controller. */
 @Composable
@@ -59,6 +67,7 @@ fun MusicScreen() {
     var playing by remember { mutableStateOf(false) }
     var currentTitle by remember { mutableStateOf("") }
     var currentId by remember { mutableStateOf("") }
+    var currentTrack by remember { mutableStateOf<MusicTrack?>(null) }
     var previous by remember { mutableStateOf(false) }
     var next by remember { mutableStateOf(false) }
     var playbackPosition by remember { mutableLongStateOf(0L) }
@@ -118,6 +127,7 @@ fun MusicScreen() {
             playing = player.isPlaying
             currentTitle = player.currentMediaItem?.mediaMetadata?.title?.toString().orEmpty()
             currentId = player.currentMediaItem?.mediaId.orEmpty()
+            currentTrack = tracks.firstOrNull { it.uri == currentId }
             previous = player.hasPreviousMediaItem()
             next = player.hasNextMediaItem()
         }
@@ -192,12 +202,17 @@ fun MusicScreen() {
             if (tracks.isEmpty() && error == null) Text("Henüz müzik yok; telefonuna müzik eklediğinde burada görünür.", color = AfuColors.textMuted)
             LazyColumn(Modifier.weight(1f)) {
                 groupMusic(tracks, grouping).forEach { group ->
-                if (grouping != MusicGrouping.ALL) item(key = "group-${group.title}") { Text(group.title, color = AfuColors.accent, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 10.dp, start = 12.dp)) }
+                if (grouping != MusicGrouping.ALL) item(key = "group-${group.title}") {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 10.dp, start = 12.dp)) {
+                        if (grouping == MusicGrouping.ALBUM) { AlbumArt(group.tracks.firstOrNull(), 36); Spacer(Modifier.width(10.dp)) }
+                        Text(group.title, color = AfuColors.accent, style = MaterialTheme.typography.titleSmall)
+                    }
+                }
                 items(group.tracks, key = { it.uri }) { track ->
                     ListItem(
                         headlineContent = { Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         supportingContent = { Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        leadingContent = { Icon(if (track.uri == currentId && playing) Icons.Default.VolumeUp else Icons.Default.MusicNote, null) },
+                        leadingContent = { AlbumArt(track, 48) },
                         colors = ListItemDefaults.colors(containerColor = if (track.uri == currentId) AfuColors.card else AfuColors.bg,
                             headlineColor = AfuColors.text, supportingColor = AfuColors.textMuted, leadingIconColor = AfuColors.accent),
                         modifier = Modifier.combinedClickable(enabled = controller != null, onLongClick = { trackToDelete = track }, onClick = {
@@ -212,6 +227,7 @@ fun MusicScreen() {
                                 player.setMediaItems(queue.map {
                                     MediaItem.Builder().setMediaId(it.uri).setUri(it.uri)
                                         .setMediaMetadata(MediaMetadata.Builder().setTitle(it.title).setArtist(it.artist)
+                                            .setArtworkUri(Uri.withAppendedPath(Uri.parse("content://media/external/audio/albumart"), it.albumId.toString()))
                                             .setIsPlayable(true).setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC).build()).build()
                                 }, queue.indexOf(track), 0L)
                                 player.prepare()
@@ -226,6 +242,7 @@ fun MusicScreen() {
         if (currentTitle.isNotBlank()) {
             Text(currentTitle, color = AfuColors.text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 12.dp))
             Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                AlbumArt(currentTrack ?: tracks.firstOrNull { it.uri == currentId }, 64)
                 IconButton(onClick = { controller?.seekToPreviousMediaItem() }, enabled = previous) { Icon(Icons.Default.SkipPrevious, "Önceki", tint = AfuColors.textMuted) }
                 IconButton(onClick = { controller?.let { it.seekTo(seekPosition(it.currentPosition, it.duration.takeIf { d -> d > 0 } ?: Long.MAX_VALUE, -10_000)) } }) { Icon(Icons.Default.Replay10, "10 sn geri", tint = AfuColors.textMuted) }
                 Button(onClick = {
@@ -254,3 +271,32 @@ fun MusicScreen() {
 }
 
 private fun clock(ms: Long) = "%d:%02d".format(ms.coerceAtLeast(0) / 60_000, (ms.coerceAtLeast(0) / 1000) % 60)
+
+@Composable
+private fun AlbumArt(track: MusicTrack?, sizeDp: Int) {
+    val context = LocalContext.current
+    var bitmap by remember(track?.uri) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(track?.uri) {
+        bitmap = withContext(Dispatchers.IO) {
+            track?.let { selected ->
+                if (Build.VERSION.SDK_INT >= 29) runCatching {
+                    context.contentResolver.loadThumbnail(Uri.parse(selected.uri), Size(256, 256), null)
+                }.getOrNull() else null
+            } ?: track?.let { selected ->
+                runCatching {
+                    val albumUri = ContentUris.withAppendedId(MediaStore.Audio.Albums.EXTERNAL_CONTENT_URI, selected.albumId)
+                    context.contentResolver.query(albumUri, arrayOf(MediaStore.Audio.Albums.ALBUM_ART), null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(0)?.let { path -> BitmapFactory.decodeFile(path) } else null
+                    }
+                }.getOrNull()
+            }
+        }
+    }
+    if (bitmap != null) {
+        Image(bitmap!!.asImageBitmap(), contentDescription = "${track?.album.orEmpty()} albüm kapağı",
+            modifier = Modifier.size(sizeDp.dp))
+    } else {
+        Icon(Icons.Default.MusicNote, contentDescription = null, tint = AfuColors.accent,
+            modifier = Modifier.size(sizeDp.dp).padding(8.dp))
+    }
+}
