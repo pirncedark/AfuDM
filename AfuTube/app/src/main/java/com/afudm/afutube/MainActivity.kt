@@ -124,8 +124,8 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel, musicRequest: Long = 0L) {
     availableUpdate?.let { update ->
         AlertDialog(
             onDismissRequest = { availableUpdate = null },
-            title = { Text("Yeni AfuTube surumu bulundu") },
-            text = { Text("Surum: ${update.versionName}\n\n${update.releaseNotes.ifBlank { "Yeni hata duzeltmeleri ve gelistirmeler." }}") },
+            title = { Text("Önerilen güncelleme") },
+            text = { Text("Sürüm ${update.versionName}\n\n${update.releaseNotes.ifBlank { "Yeni hata düzeltmeleri ve geliştirmeler." }}") },
             confirmButton = { TextButton(onClick = {
                 availableUpdate = null
                 if (android.os.Build.VERSION.SDK_INT >= 33 &&
@@ -133,7 +133,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel, musicRequest: Long = 0L) {
                 ) notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                 UpdateManager.enqueueDownload(context, update)
                 android.widget.Toast.makeText(context, "Güncelleme indiriliyor — bildirimden takip edebilirsin", android.widget.Toast.LENGTH_LONG).show()
-            }) { Text("Indir ve kur") } },
+            }) { Text("Güncelle") } },
             dismissButton = { TextButton(onClick = { availableUpdate = null }) { Text("Daha sonra") } }
         )
     }
