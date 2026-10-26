@@ -12,6 +12,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,12 +34,26 @@ import com.afudm.afutube.core.share.ShareHelper
 import com.afudm.afutube.media.MediaFileType
 import com.afudm.afutube.media.MediaFileTypeDetector
 import com.afudm.afutube.media.PlayerActivity
+import com.afudm.afutube.media.MediaDelete
+import android.media.MediaScannerConnection
+import android.os.Build
+import java.io.File
 
 @Composable
 fun DownloadsScreen() {
     val context   = LocalContext.current
     val engine    = remember { DownloadEngine.getInstance(context) }
     val workInfos by engine.allDownloads().collectAsState(initial = emptyList())
+    var trimPath by remember { mutableStateOf<String?>(null) }
+    var musicPath by remember { mutableStateOf<String?>(null) }
+    var pendingDelete by remember { mutableStateOf<Pair<File, WorkInfo>?>(null) }
+    val deleteLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) pendingDelete?.let { (file, info) ->
+            MediaScannerConnection.scanFile(context, arrayOf(file.absolutePath), null, null)
+            engine.remove(info.id, file.name, finished = true)
+        }
+        pendingDelete = null
+    }
 
     Column(
         modifier = Modifier
@@ -106,13 +122,22 @@ fun DownloadsScreen() {
                         onCancel = { engine.cancel(workInfo.id) },
                         onShare = { path, title -> ShareHelper.shareFile(context, java.io.File(path), title) },
                         onRemove = { title ->
-                            engine.remove(workInfo.id, title, finished = workInfo.state == WorkInfo.State.SUCCEEDED)
+                            if (playable) pendingDelete = File(outputPath!!) to workInfo else engine.remove(workInfo.id, title, finished = false)
                         }
+                        , onTrim = { trimPath = it }, onAddMusic = { musicPath = it }
                     )
                 }
             }
         }
     }
+    trimPath?.let { TrimDialog(it) { trimPath = null } }
+    musicPath?.let { AddMusicDialog(it) { musicPath = null } }
+    pendingDelete?.let { (file, info) -> AlertDialog(onDismissRequest = { pendingDelete = null }, title = { Text("Dosyayı da sil?") },
+        confirmButton = { TextButton(onClick = {
+            if (Build.VERSION.SDK_INT >= 30) runCatching { MediaDelete.request(context, file) }.getOrNull()?.let { deleteLauncher.launch(androidx.activity.result.IntentSenderRequest.Builder(it).build()) } ?: run { pendingDelete = null }
+            else if (file.delete()) { MediaScannerConnection.scanFile(context, arrayOf(file.absolutePath), null, null); engine.remove(info.id, file.name, finished = true); pendingDelete = null }
+            else pendingDelete = null
+        }) { Text("Dosyayı da sil") } }, dismissButton = { TextButton(onClick = { engine.remove(info.id, file.name, finished = true); pendingDelete = null }) { Text("Yalnız listeden kaldır") } }) }
 }
 
 @Composable
@@ -124,6 +149,7 @@ private fun DownloadCard(
     onShare: (String, String) -> Unit,
     onCancel : () -> Unit,
     onRemove : (title: String) -> Unit
+    , onTrim: (String) -> Unit, onAddMusic: (String) -> Unit
 ) {
     val percent = workInfo.progress.getInt("progress_percent", 0)
     val speed   = workInfo.progress.getString("progress_speed") ?: ""
@@ -208,6 +234,8 @@ private fun DownloadCard(
                 ActionRow {
                     if (!audioOnly) PlayPill(label = "İzle", icon = Icons.Default.PlayArrow, onClick = { onPlay(outputPath, false) })
                     PlayPill(label = "Dinle", icon = Icons.Default.Headphones, onClick = { onPlay(outputPath, true) })
+                    if (!audioOnly) PlayPill(label = "Kırp", icon = Icons.Default.ContentCut, onClick = { onTrim(outputPath) })
+                    if (!audioOnly) PlayPill(label = "Müzik ekle", icon = Icons.Default.MusicNote, onClick = { onAddMusic(outputPath) })
                 }
                 Spacer(Modifier.height(8.dp))
                 ActionRow {
