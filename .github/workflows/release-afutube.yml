@@ -76,7 +76,12 @@ jobs:
           SHA256=$(cut -d' ' -f1 release-assets/AfuTube-universal.apk.sha256)
           PRERELEASE=false
           if [[ "${GITHUB_REF_NAME#afutube-v}" == *-* ]]; then PRERELEASE=true; fi
-          CHANGELOG="$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | sed '/^[[:space:]]*$/d')"
+          # checkout etiketi hafif (lightweight) yazar; açıklama için asıl etiket nesnesini çek.
+          git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          CHANGELOG=""
+          if [[ "$(git cat-file -t "refs/tags/${GITHUB_REF_NAME}")" == "tag" ]]; then
+            CHANGELOG="$(git for-each-ref --format='%(contents)' "refs/tags/${GITHUB_REF_NAME}" | sed '/^[[:space:]]*$/d')"
+          fi
           if [[ -z "$CHANGELOG" ]]; then
             CHANGELOG="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json body --jq .body 2>/dev/null || true)"
           fi

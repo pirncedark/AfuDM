@@ -20,6 +20,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.afudm.afutube.core.share.ShareHelper
+import com.afudm.afutube.core.stats.ActiveUserStats
+import com.afudm.afutube.core.stats.activeUserStats
 import com.afudm.afutube.core.diagnostics.LastAnalysisErrorStore
 import com.afudm.afutube.core.theme.AfuColors
 import com.afudm.afutube.core.ui.InstagramLoginDialog
@@ -183,6 +185,38 @@ fun SettingsScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = AfuColors.accent)
                         ) { Text("Instagram'a giriş yap") }
                     }
+                }
+            }
+            item {
+                SettingsCard("Topluluk") {
+                    val sayac = remember { activeUserStats(context, currentVersionName) }
+                    var sayacOn by remember { mutableStateOf(sayac.enabled) }
+                    var sayacStats by remember { mutableStateOf<ActiveUserStats.Stats?>(null) }
+                    var sayacLoading by remember { mutableStateOf(false) }
+                    LaunchedEffect(sayacOn) {
+                        sayacStats = null
+                        if (sayacOn) {
+                            sayacLoading = true
+                            sayacStats = sayac.fetchStats()
+                            sayacLoading = false
+                        }
+                    }
+                    if (sayacOn && sayacLoading) {
+                        Text("Son 7 günde … kişi AfuTube kullandı", color = AfuColors.textMuted, fontSize = 13.sp)
+                    }
+                    sayacStats?.let {
+                        Text("Son 7 günde ${it.aktif7} kişi AfuTube kullandı", color = AfuColors.text, fontSize = 14.sp)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    SettingSwitch("Sayaca katıl", sayacOn) { checked ->
+                        sayac.enabled = checked
+                        sayacOn = checked
+                        if (checked) scope.launch { sayac.pingIfNeeded() }
+                    }
+                    Text(
+                        "Yalnız rastgele bir numara gönderilir; ad, konum veya hesap bilgisi gitmez.",
+                        color = AfuColors.textMuted, fontSize = 11.sp
+                    )
                 }
             }
             LastAnalysisErrorStore.get()?.let { error ->

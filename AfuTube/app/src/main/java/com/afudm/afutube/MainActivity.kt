@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.compose.*
 import com.afudm.afutube.core.extractor.MediaInfo
+import com.afudm.afutube.core.stats.activeUserStats
 import com.afudm.afutube.feature.downloads.DownloadsScreen
 import com.afudm.afutube.feature.formats.FormatPickerScreen
 import com.afudm.afutube.core.theme.AfuColors
@@ -35,6 +36,7 @@ import com.afudm.afutube.runtime.MediaRuntime
 import com.afudm.afutube.downloader.DownloadEngine
 import com.afudm.afutube.media.MusicScreen
 import kotlinx.coroutines.launch
+import androidx.lifecycle.lifecycleScope
 
 class MainActivity : ComponentActivity() {
     private val shareViewModel by lazy { ViewModelProvider(this)[ShareIntentViewModel::class.java] }
@@ -50,6 +52,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent { AfuTubeApp(shareViewModel, musicRequest) }
+        lifecycleScope.launch { activeUserStats(this@MainActivity, BuildConfig.VERSION_NAME).pingIfNeeded() }
     }
 
     override fun onNewIntent(intent: Intent) {
