@@ -20,4 +20,16 @@ class EditMediaArgsTest {
         assertTrue(args.contains("-shortest"))
         assertTrue(args.joinToString(" ").contains("volume=0.2"))
     }
+    @Test fun muteArgsCopyVideoWithoutAudio() {
+        val input = File("clip.mp4")
+        val output = muteOutput(input)
+        assertEquals("clip_sessiz.mp4", output.name)
+        assertEquals(listOf("-y", "-i", input.absolutePath, "-c", "copy", "-an", output.absolutePath), muteArgs(input, output))
+    }
+    @Test fun audioArgsExtractAacAt192Kbps() {
+        val input = File("clip.webm")
+        val output = audioOutput(input)
+        assertEquals("clip_ses.m4a", output.name)
+        assertEquals(listOf("-y", "-i", input.absolutePath, "-vn", "-c:a", "aac", "-b:a", "192k", output.absolutePath), audioArgs(input, output))
+    }
 }

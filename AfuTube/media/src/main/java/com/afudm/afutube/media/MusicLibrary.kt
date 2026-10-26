@@ -10,14 +10,11 @@ import java.util.Locale
 
 data class MusicTrack(val uri: String, val title: String, val artist: String, val album: String = "", val folder: String = "", val durationMs: Long = 0, val albumId: Long = 0)
 
-enum class MusicGrouping { ALL, FOLDER, ALBUM, ARTIST }
 data class MusicGroup(val title: String, val tracks: List<MusicTrack>)
-internal fun groupMusic(tracks: List<MusicTrack>, grouping: MusicGrouping): List<MusicGroup> = when (grouping) {
-    MusicGrouping.ALL -> listOf(MusicGroup("", tracks))
-    MusicGrouping.FOLDER -> tracks.groupBy { it.folder.ifBlank { "Bilinmeyen klasör" } }.map { MusicGroup(it.key, it.value) }
-    MusicGrouping.ALBUM -> tracks.groupBy { it.album.ifBlank { "Bilinmeyen albüm" } }.map { MusicGroup(it.key, it.value) }
-    MusicGrouping.ARTIST -> tracks.groupBy { it.artist.ifBlank { "Bilinmeyen sanatçı" } }.map { MusicGroup(it.key, it.value) }
-}.sortedBy { it.title.lowercase(Locale.ROOT) }
+internal fun groupMusic(tracks: List<MusicTrack>): List<MusicGroup> = tracks
+    .groupBy { it.folder.ifBlank { "Bilinmeyen klasör" } }
+    .map { MusicGroup(it.key, it.value) }
+    .sortedBy { it.title.lowercase(Locale.ROOT) }
 
 internal fun seekPosition(positionMs: Long, durationMs: Long, deltaMs: Long): Long =
     (positionMs + deltaMs).coerceIn(0L, durationMs.coerceAtLeast(0L))
