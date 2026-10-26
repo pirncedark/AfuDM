@@ -11,7 +11,7 @@ import java.util.Locale
 import java.util.TimeZone
 import java.util.UUID
 
-const val SAYAC_URL = "https://afu-sayac.REPLACE.workers.dev"
+const val SAYAC_URL = "https://afu-sayac.afu-sayac.workers.dev"
 
 /** Cihazda kalici tutulan sayac durumu. */
 interface SayacStore {
