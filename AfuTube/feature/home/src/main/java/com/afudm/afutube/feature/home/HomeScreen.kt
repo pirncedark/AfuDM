@@ -31,6 +31,7 @@ import com.afudm.afutube.core.extractor.UrlClassifier
 import com.afudm.afutube.core.extractor.UrlNormalizer
 import com.afudm.afutube.core.extractor.UrlType
 import com.afudm.afutube.core.theme.AfuColors
+import com.afudm.afutube.core.ui.InstagramLoginDialog
 
 data class SharedLinkEvent(val url: String?)
 
@@ -307,7 +308,7 @@ private fun ErrorCard(
                 )
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    title,
+                    analysisErrorDisplayMessage(isLoginRequired, isInstagram, title),
                     color = if (isLoginRequired) AfuColors.text else AfuColors.error,
                     fontSize = 13.sp,
                     fontWeight = if (isLoginRequired) FontWeight.Medium else FontWeight.Normal
@@ -363,3 +364,6 @@ private fun ErrorCard(
         }
     }
 }
+
+internal fun analysisErrorDisplayMessage(isLoginRequired: Boolean, isInstagram: Boolean, title: String): String =
+    if (isLoginRequired && isInstagram) "Instagram'a giriş gerekli. Ayarlar'dan giriş yap." else title
