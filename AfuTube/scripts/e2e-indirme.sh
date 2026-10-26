@@ -112,7 +112,11 @@ dump sil-oncesi
 adb exec-out screencap -p > "$OUT/sade-indirmeler.png"
 grep -q "Tamamlandı" "$OUT/sil-oncesi.xml" || { echo "HATA: Sil oncesi indirme listesi degisti"; bitir sil-liste-yok; exit 1; }
 tap tap-desc "$OUT/sil-oncesi.xml" "Sil" || { echo "HATA: Sil dugmesi yok"; bitir sil; exit 1; }
+sleep 2; dump sil-onay
+# Tamamlanmis indirmede Sil once "Dosyayi da sil?" sorar; kayit testi icin yalniz listeden kaldir.
+tap tap-text "$OUT/sil-onay.xml" "Yalnız listeden kaldır" || { echo "HATA: Sil onay penceresi yok"; bitir sil-onay; exit 1; }
 sleep 3; dump silindi
+grep -q "İndirmeler" "$OUT/silindi.xml" || { echo "HATA: Sil sonrasi indirme listesi gorunmuyor"; bitir sil-liste; exit 1; }
 if grep -q "Tamamlandı" "$OUT/silindi.xml"; then echo "HATA: Sil sonrasi kayit hala listede"; bitir sil2; exit 1; fi
 echo "BASARILI: Sil kaydi kaldirdi"
 bitir tamam
