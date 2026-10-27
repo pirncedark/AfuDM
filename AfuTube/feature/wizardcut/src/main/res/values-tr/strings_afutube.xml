@@ -87,4 +87,5 @@
     <string name="afu_edit_title">Edit</string>
     <string name="afu_advanced_title">Gelişmiş</string>
     <string name="afu_projects_new_video">Yeni video</string>
+    <string name="afu_export_save">Kaydet</string>
 </resources>
