@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<!-- AfuTube eklemesi: yalnız varsayılan (en) + tr; WizardCut es çevirisi bu anahtarları kapsamaz. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <string name="afu_ai_tools_subtitle">Stage on-device assists, model downloads, and clip-aware magic.</string>
     <string name="afu_ai_creative_stack">Creative stack</string>
     <string name="afu_ai_ready_count">%1$d ready</string>

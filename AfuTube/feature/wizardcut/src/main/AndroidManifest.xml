@@ -29,6 +29,7 @@
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density|uiMode"
             android:exported="false"
+            tools:ignore="AppLinkUrlError"
             android:intentMatchingFlags="enforceIntentFilter"
             android:resizeableActivity="true"
             android:theme="@style/Theme.WizardCut"
