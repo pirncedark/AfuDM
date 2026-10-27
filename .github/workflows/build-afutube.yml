@@ -157,7 +157,6 @@ jobs:
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
-          profile: pixel_6
           arch: x86_64
           target: google_apis
           disable-animations: true
@@ -170,6 +169,7 @@ jobs:
             bash AfuTube/scripts/e2e-paylas.sh
             bash AfuTube/scripts/e2e-sade.sh
             ls -R e2e-apks
+            adb shell wm size 1080x2400; adb shell wm density 420
             adb install -r "$(ls e2e-apks/debug/*x86_64*.apk e2e-apks/debug/*universal*.apk 2>/dev/null | head -1)"
             adb install -r "$(ls e2e-apks/androidTest/debug/*.apk | head -1)"
             mkdir -p e2e-out
@@ -177,6 +177,7 @@ jobs:
             sleep 3
             adb shell am instrument -w com.afudm.afutube.debug.test/androidx.test.runner.AndroidJUnitRunner | tee e2e-out/editor-instrument.txt; grep -q "^OK (" e2e-out/editor-instrument.txt
             adb pull /sdcard/Android/data/com.afudm.afutube.debug/files/e2e-out/editor-screen.png e2e-out/editor-screen.png
+            adb shell wm size reset; adb shell wm density reset
             bash AfuTube/scripts/e2e-tarayici.sh
 
       - name: Upload e2e evidence
