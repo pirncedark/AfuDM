@@ -73,6 +73,7 @@ fun MusicScreen() {
     var playbackPosition by remember { mutableLongStateOf(0L) }
     var dragging by remember { mutableStateOf(false) }
     var openFolders by remember { mutableStateOf(preferences.getStringSet("open_folders", null)?.toSet()) }
+    var musicView by remember { mutableStateOf(preferences.getString("music_view", "all") ?: "all") }
     var trackToDelete by remember { mutableStateOf<MusicTrack?>(null) }
     val deleteLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { if (it.resultCode == android.app.Activity.RESULT_OK) { trackToDelete = null; refresh++ } }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -201,8 +202,25 @@ fun MusicScreen() {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = AfuColors.accent) }
         } else {
             if (tracks.isEmpty() && error == null) Text("Henüz müzik yok; telefonuna müzik eklediğinde burada görünür.", color = AfuColors.textMuted)
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                listOf("all" to "Tüm müzikler", "folders" to "Klasörler").forEachIndexed { index, (key, label) ->
+                    SegmentedButton(selected = musicView == key, onClick = { musicView = key; preferences.edit().putString("music_view", key).apply() }, shape = SegmentedButtonDefaults.itemShape(index, 2)) { Text(label) }
+                }
+            }
             LazyColumn(Modifier.weight(1f)) {
-                groupMusic(tracks).forEach { group ->
+                if (musicView == "all") {
+                    items(prepareMusicList(tracks), key = { it.uri }) { track ->
+                        ListItem(headlineContent = { Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis) }, supportingContent = { Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis) }, leadingContent = { AlbumArt(track, 48) },
+                            colors = ListItemDefaults.colors(containerColor = if (track.uri == currentId) AfuColors.card else AfuColors.bg, headlineColor = AfuColors.text, supportingColor = AfuColors.textMuted),
+                            modifier = Modifier.combinedClickable(enabled = controller != null, onLongClick = { trackToDelete = track }, onClick = {
+                                val player = controller ?: return@combinedClickable
+                                error = null
+                                val queue = prepareMusicList(tracks)
+                                player.setMediaItems(queue.map { t -> MediaItem.Builder().setMediaId(t.uri).setUri(t.uri).setMediaMetadata(MediaMetadata.Builder().setTitle(t.title).setArtist(t.artist).setIsPlayable(true).setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC).build()).build() }, queue.indexOf(track), 0L)
+                                player.prepare(); player.play()
+                            }))
+                    }
+                } else groupMusic(tracks).forEach { group ->
                 item(key = "folder-${group.title}") {
                     val isOpen = group.title in (openFolders ?: emptySet())
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier
