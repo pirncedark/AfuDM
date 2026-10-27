@@ -53,7 +53,9 @@ data class CompositionPlan(
         val originalAudioEnabled: Boolean = true,
         val fadeInMs: Long = 0,
         val fadeOutMs: Long = 0,
-        val startMs: Long = 0
+        val startMs: Long = 0,
+        /** Full source length; Media3 needs it (not the trimmed length) to apply clipping. */
+        val sourceDurationMs: Long = trimEndMs
     )
 }
 
@@ -61,7 +63,7 @@ object CompositionPlanBuilder {
     fun build(project: EditorProject, sourceWidth: Int = 1920, sourceHeight: Int = 1080): CompositionPlan {
         require(project.clips.isNotEmpty()) { "En az bir video ekle." }
         return CompositionPlan(
-            clips = project.clips.map { CompositionPlan.MediaSegment(it.source, it.trimStartMs, it.trimEndMs, it.speed, if (it.originalAudioEnabled) it.volume else 0.0, it.originalAudioEnabled, it.fadeInMs, it.fadeOutMs) },
+            clips = project.clips.map { CompositionPlan.MediaSegment(it.source, it.trimStartMs, it.trimEndMs, it.speed, if (it.originalAudioEnabled) it.volume else 0.0, it.originalAudioEnabled, it.fadeInMs, it.fadeOutMs, sourceDurationMs = it.sourceDurationMs) },
             musicTracks = project.musicTracks.map { m -> CompositionPlan.MediaSegment(m.source, m.trimStartMs, m.trimEndMs, 1.0, m.volume * if (project.dialogueDucking) .3 else 1.0, true, m.fadeInMs, m.fadeOutMs, m.startMs) },
             textOverlays = project.textOverlays, filter = project.filter, brightness = project.brightness,
             contrast = project.contrast, aspectRatio = project.aspectRatio,
@@ -209,7 +211,7 @@ object CompositionBuilder {
         processors += GainFadeAudioProcessor(volume, trimEndMs - trimStartMs, fadeInMs, fadeOutMs)
         val effects = emptyList<androidx.media3.common.Effect>()
         val builder = EditedMediaItem.Builder(mediaItem)
-            .setDurationUs((trimEndMs - trimStartMs) * 1_000L)
+            .setDurationUs(sourceDurationMs * 1_000L)
             .setFrameRate(30)
             .setEffects(Effects(processors, if (removeVideo) effects else effects + videoEffects))
         // CompositionPlayer only supports speed set on the item itself (not SpeedChangeEffect).
