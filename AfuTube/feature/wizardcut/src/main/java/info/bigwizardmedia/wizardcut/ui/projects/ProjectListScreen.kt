@@ -51,6 +51,8 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.video.VideoFrameDecoder
 import info.bigwizardmedia.wizardcut.R
+import info.bigwizardmedia.wizardcut.ui.components.AfuAdvancedSection
+import info.bigwizardmedia.wizardcut.ui.components.AfuPrimaryButton
 import info.bigwizardmedia.wizardcut.engine.IncomingDocumentImportPreview
 import info.bigwizardmedia.wizardcut.engine.IncomingDocumentImportStatus
 import info.bigwizardmedia.wizardcut.engine.IncomingDocumentItem
@@ -169,18 +171,11 @@ fun ProjectListScreen(
                 onSettings = onSettings,
                 showSearch = showCollectionControls,
                 showSortControls = showCollectionControls && projects.isNotEmpty(),
-                actionsEnabled = actionsEnabled
+                actionsEnabled = actionsEnabled,
+                filterMode = filterMode,
+                onFilterModeChanged = viewModel::setFilterMode,
+                showFilterControls = showCollectionControls
             )
-
-            if (showCollectionControls) {
-                ProjectFilterChipsRow(
-                    filterMode = filterMode,
-                    onFilterModeChanged = viewModel::setFilterMode,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = Spacing.lg, vertical = Spacing.xs)
-                )
-            }
 
             AnimatedVisibility(
                 visible = operationState != null,
@@ -642,7 +637,10 @@ private fun ProjectHomeHero(
     onSettings: () -> Unit,
     showSearch: Boolean,
     showSortControls: Boolean,
-    actionsEnabled: Boolean
+    actionsEnabled: Boolean,
+    filterMode: ProjectFilterMode,
+    onFilterModeChanged: (ProjectFilterMode) -> Unit,
+    showFilterControls: Boolean
 ) {
     val maximumHeight = (LocalConfiguration.current.screenHeightDp * 0.62f)
         .coerceAtLeast(320f)
@@ -699,15 +697,11 @@ private fun ProjectHomeHero(
             )
         }
 
-        ProjectActionRow(
-            primaryLabel = stringResource(R.string.projects_new_project),
-            primaryIcon = Icons.Default.Add,
-            onPrimary = onCreateProject,
-            secondaryLabel = stringResource(R.string.project_document_import_confirm),
-            secondaryIcon = Icons.Default.FileOpen,
-            onSecondary = onImportTemplate,
+        AfuPrimaryButton(
+            text = stringResource(R.string.afu_projects_new_video),
+            onClick = onCreateProject,
             enabled = actionsEnabled,
-            primaryTestTag = ClearCutTestTags.PROJECTS_CREATE_PROJECT
+            testTag = ClearCutTestTags.PROJECTS_CREATE_PROJECT
         )
 
         if (showSearch) {
@@ -757,16 +751,27 @@ private fun ProjectHomeHero(
             )
         }
 
-        if (showSortControls) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                items(SortMode.entries.toList()) { mode ->
-                    ClearCutFilterChip(
-                        onClick = { onSortModeChanged(mode) },
-                        text = mode.localizedLabel(),
-                        selected = sortMode == mode,
-                        accent = ClearCutAccents.Rosewater,
-                        icon = if (sortMode == mode) Icons.Default.Check else null
-                    )
+        AfuAdvancedSection {
+            TextButton(onClick = onImportTemplate, enabled = actionsEnabled) {
+                Text(stringResource(R.string.project_document_import_confirm))
+            }
+            if (showFilterControls) {
+                ProjectFilterChipsRow(
+                    filterMode = filterMode,
+                    onFilterModeChanged = onFilterModeChanged,
+                )
+            }
+            if (showSortControls) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    items(SortMode.entries.toList()) { mode ->
+                        ClearCutFilterChip(
+                            onClick = { onSortModeChanged(mode) },
+                            text = mode.localizedLabel(),
+                            selected = sortMode == mode,
+                            accent = ClearCutAccents.Rosewater,
+                            icon = if (sortMode == mode) Icons.Default.Check else null
+                        )
+                    }
                 }
             }
         }
@@ -1423,16 +1428,6 @@ private fun ProjectCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(projectDuration, color = ClearCutAccents.Peach, style = MaterialTheme.typography.labelMedium)
-                            VerticalDivider(
-                                modifier = Modifier.height(14.dp),
-                                color = LocalClearCutColors.current.cardStrokeStrong
-                            )
-                            Text(project.resolution.label, color = LocalClearCutColors.current.subtext, style = MaterialTheme.typography.labelMedium)
-                            VerticalDivider(
-                                modifier = Modifier.height(14.dp),
-                                color = LocalClearCutColors.current.cardStrokeStrong
-                            )
-                            Text(project.timelineTimebase.frameRateLabel, color = LocalClearCutColors.current.subtext, style = MaterialTheme.typography.labelMedium)
                         }
 
                         Text(
@@ -1654,23 +1649,6 @@ private fun ProjectThumbnail(
             )
         }
 
-        Surface(
-            color = LocalClearCutColors.current.background.copy(alpha = 0.78f),
-            shape = RoundedCornerShape(Radius.sm),
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(8.dp)
-        ) {
-            Text(
-                text = project.aspectRatio.label,
-                color = LocalClearCutColors.current.text,
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.padding(
-                    horizontal = 8.dp,
-                    vertical = 4.dp
-                )
-            )
-        }
     }
 }
 
