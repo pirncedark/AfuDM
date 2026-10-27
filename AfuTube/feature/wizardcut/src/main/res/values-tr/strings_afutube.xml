@@ -84,4 +84,5 @@
     <string name="afu_effect_cat_distortion">Bozulma</string>
     <string name="afu_effect_cat_keying">Renk anahtarı</string>
     <string name="afu_effect_cat_speed">Hız</string>
+    <string name="afu_edit_title">Edit</string>
 </resources>

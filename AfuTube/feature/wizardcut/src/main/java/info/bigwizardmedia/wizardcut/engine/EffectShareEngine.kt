@@ -76,7 +76,7 @@ class EffectShareEngine @Inject constructor(
                         put(DeclarativePackContract.EMBEDDED_LUT_CAPABILITY)
                     }
                 })
-                put("provenance", JSONObject().put("source", "ClearCut effect export"))
+                put("provenance", JSONObject().put("source", "AfuTube effect export"))
 
                 // Effects
                 val effectsArr = JSONArray()
@@ -257,7 +257,7 @@ class EffectShareEngine @Inject constructor(
                     provenanceSource = envelope.source,
                     minAppVersion = envelope.minAppVersion,
                     requiredCapabilities = envelope.requiredCapabilities,
-                    warnings = listOf("This JSON document is not a ClearCut effect pack."),
+                    warnings = listOf("This JSON document is not a AfuTube effect pack."),
                     reasonCode = EffectPackFailure.WRONG_KIND.name,
                 )
             }

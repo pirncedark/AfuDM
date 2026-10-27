@@ -84,4 +84,5 @@
     <string name="afu_effect_cat_distortion">Distorsión</string>
     <string name="afu_effect_cat_keying">Croma</string>
     <string name="afu_effect_cat_speed">Velocidad</string>
+    <string name="afu_edit_title">Edit</string>
 </resources>

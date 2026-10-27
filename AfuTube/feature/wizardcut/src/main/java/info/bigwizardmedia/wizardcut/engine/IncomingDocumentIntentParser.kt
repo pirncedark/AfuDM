@@ -46,7 +46,7 @@ enum class IncomingDocumentKind(
         maxBytes = StabilizationProfileManager.MAX_PROFILE_BYTES,
     ),
     PROJECT_ARCHIVE(
-        displayName = "ClearCut project archive",
+        displayName = "AfuTube project archive",
         targetAction = "Validate project archive",
         maxBytes = 4L * 1024L * 1024L * 1024L,
     ),
@@ -66,7 +66,7 @@ enum class IncomingDocumentKind(
         maxBytes = 5_000_000L,
     ),
     EDIT_DECISION_JSON(
-        displayName = "ClearCut edit-decision JSON",
+        displayName = "AfuTube edit-decision JSON",
         targetAction = "Review portable edit decisions before applying",
         maxBytes = 25_000_000L,
     ),

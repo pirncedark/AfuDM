@@ -217,7 +217,7 @@ object AiToolRequirements {
         ),
         Tool.AI_STABILIZE to ToolRequirement(
             tool = Tool.AI_STABILIZE,
-            modelDisplayName = "ClearCut offline motion analysis",
+            modelDisplayName = "AfuTube offline motion analysis",
             estimatedBytes = 0L,
             license = "Android platform APIs",
             sourceUrl = "https://developer.android.com/reference/android/media/MediaMetadataRetriever",

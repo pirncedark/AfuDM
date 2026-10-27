@@ -268,7 +268,7 @@ class ProjectAutoSave @Inject constructor(
                 is LoadOutcome.FutureSchema -> {
                     AppLog.w(
                         TAG,
-                        "Auto-save for $projectId was written by a newer ClearCut " +
+                        "Auto-save for $projectId was written by a newer AfuTube " +
                             "(schema ${outcome.fileVersion} > supported ${outcome.supportedVersion}); " +
                             "refusing to load to avoid data loss"
                     )

@@ -201,7 +201,7 @@ class StabilizationProfileManager @Inject constructor(
         put("packType", DeclarativePackKind.STABILIZATION_PROFILE.wireName)
         put("minAppVersion", BuildConfig.VERSION_NAME)
         put("requiredCapabilities", JSONArray().put(DeclarativePackContract.STABILIZATION_PROFILE_CAPABILITY))
-        put("provenance", JSONObject().put("source", "ClearCut offline stabilization profile"))
+        put("provenance", JSONObject().put("source", "AfuTube offline stabilization profile"))
         put("profileVersion", PROFILE_VERSION)
         put("profileId", profile.id)
         put("name", profile.name)

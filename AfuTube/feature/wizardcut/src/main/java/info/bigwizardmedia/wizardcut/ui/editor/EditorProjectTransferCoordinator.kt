@@ -117,7 +117,7 @@ class EditorProjectTransferCoordinator internal constructor(
                     put(MediaStore.Downloads.MIME_TYPE, "application/zip")
                     put(
                         MediaStore.Downloads.RELATIVE_PATH,
-                        "${Environment.DIRECTORY_DOWNLOADS}/ClearCut",
+                        "${Environment.DIRECTORY_DOWNLOADS}/AfuTube",
                     )
                     put(MediaStore.Downloads.IS_PENDING, 1)
                 }
@@ -140,7 +140,7 @@ class EditorProjectTransferCoordinator internal constructor(
             } else {
                 val downloadsRoot = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
                     ?: File(context.filesDir, "downloads")
-                val destination = File(File(downloadsRoot, "ClearCut").apply { mkdirs() }, fileName)
+                val destination = File(File(downloadsRoot, "AfuTube").apply { mkdirs() }, fileName)
                 sourceFile.copyTo(destination, overwrite = true)
                 destination.name
             }

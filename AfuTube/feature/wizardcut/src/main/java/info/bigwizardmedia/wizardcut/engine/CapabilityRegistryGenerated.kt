@@ -334,7 +334,7 @@ internal object CapabilityRegistryGenerated {
             licenseUrl = "https://www.gnu.org/licenses/lgpl-3.0.txt",
             projectUrl = "https://github.com/arthenica/ffmpeg-kit-next",
             sourceOfferText = "Exact corresponding-source recipe for this LGPL v3.0-or-later build:\nhttps://github.com/arthenica/ffmpeg-kit-next/tree/3e223118e6e8fb6208693ecf3952e77cd096f587\nCommand: ./nix-android.sh -p android-r27d --enable-libass --enable-libjxl --enable-android-media-codec --enable-android-zlib --enable-openh264 --jobs=8\nThe security patch at third_party/ffmpeg-kit-next/clearcut-security.patch, complete recipe, checksums, disabled components, and source revisions are recorded in third_party/ffmpeg-kit-next/native-lock.json and the installed application resource res/raw/ffmpeg_kit_next_source_offer.txt.",
-            complianceNote = "The AAR packages res/raw/license.txt, res/raw/license_*.txt, and res/raw/source.txt; ClearCut additionally packages res/raw/ffmpeg_kit_next_source_offer.txt with its exact source recipe.",
+            complianceNote = "The AAR packages res/raw/license.txt, res/raw/license_*.txt, and res/raw/source.txt; AfuTube additionally packages res/raw/ffmpeg_kit_next_source_offer.txt with its exact source recipe.",
         ),
     )
 }

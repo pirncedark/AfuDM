@@ -89,7 +89,7 @@ object HdrOverlayPolicy {
         val disclosure = when {
             fallbackRequired -> {
                 val subjects = overlays.labels(apiLevel).joinToString(", ")
-                "HDR preservation is unavailable with $subjects. ClearCut will use the SDR " +
+                "HDR preservation is unavailable with $subjects. AfuTube will use the SDR " +
                     "overlay path to avoid Media3 HDR overlay color errors."
             }
             samplerBudgetExceeded -> {

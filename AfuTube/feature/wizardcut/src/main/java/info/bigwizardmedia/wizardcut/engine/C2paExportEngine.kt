@@ -445,7 +445,7 @@ class C2paExportEngine @Inject constructor() {
         private const val ACTIONS_V2_LABEL = "c2pa.actions.v2"
         private const val EMPTY_DIGITAL_SOURCE_TYPE = "http://c2pa.org/digitalsourcetype/empty"
         private const val UNSIGNED_DRAFT_MESSAGE =
-            "Unsigned and unverifiable draft: ClearCut does not embed Content Credentials in this build."
+            "Unsigned and unverifiable draft: AfuTube does not embed Content Credentials in this build."
         private const val TAG = "C2paExportEngine"
 
         private fun c2paTimestamp(epochMs: Long): String = Instant.ofEpochMilli(epochMs).toString()

@@ -142,7 +142,7 @@ object MetadataSidecarPolicy {
                     kind = MetadataSidecarKind.OTHER,
                     mimeType = normalized,
                     language = language,
-                    unsupportedReason = "This metadata track was detected, but ClearCut has no local sidecar decoder for it.",
+                    unsupportedReason = "This metadata track was detected, but AfuTube has no local sidecar decoder for it.",
                 )
             else -> null
         }
@@ -265,7 +265,7 @@ class MetadataSidecarEngine @Inject constructor(
         val temporary = runCatching {
             File.createTempFile("metadata-sidecar-", ".tmp", outputDir)
         }.getOrElse {
-            return@withContext MetadataSidecarExportResult.Failed("ClearCut could not create a local sidecar file.")
+            return@withContext MetadataSidecarExportResult.Failed("AfuTube could not create a local sidecar file.")
         }
 
         try {
@@ -276,7 +276,7 @@ class MetadataSidecarEngine @Inject constructor(
             }
             if (!wrote || temporary.length() <= 0L) {
                 val reason = track.unsupportedReason
-                    ?: "ClearCut could not decode this metadata track locally."
+                    ?: "AfuTube could not decode this metadata track locally."
                 return@withContext MetadataSidecarExportResult.Unsupported(reason)
             }
             if (temporary.length() > MAX_SIDECAR_BYTES) {
@@ -286,12 +286,12 @@ class MetadataSidecarEngine @Inject constructor(
             }
             val finalFile = nextOutputFile(outputDir, track, format, now)
             if (!installTemporary(temporary, finalFile)) {
-                return@withContext MetadataSidecarExportResult.Failed("ClearCut could not finalize the local sidecar.")
+                return@withContext MetadataSidecarExportResult.Failed("AfuTube could not finalize the local sidecar.")
             }
             pruneOldSidecars(outputDir)
             MetadataSidecarExportResult.Success(finalFile, format)
         } catch (_: Exception) {
-            MetadataSidecarExportResult.Failed("ClearCut could not export this metadata sidecar locally.")
+            MetadataSidecarExportResult.Failed("AfuTube could not export this metadata sidecar locally.")
         } finally {
             temporary.delete()
         }

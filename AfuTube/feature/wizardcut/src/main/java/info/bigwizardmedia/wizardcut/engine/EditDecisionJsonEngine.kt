@@ -95,7 +95,7 @@ internal object EditDecisionJsonEngine {
             if (version > SCHEMA_VERSION) {
                 return rejected(
                     warnings = warnings,
-                    message = "Edit-decision schema v$version is newer than ClearCut's supported v$SCHEMA_VERSION; nothing was imported.",
+                    message = "Edit-decision schema v$version is newer than AfuTube's supported v$SCHEMA_VERSION; nothing was imported.",
                     schemaVersion = version,
                     schemaTooNew = true,
                 )

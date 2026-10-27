@@ -3013,7 +3013,7 @@ class EditorViewModel @Inject constructor(
                                     backupImportFeedback = BackupImportFeedback(
                                         succeeded = true,
                                         title = appContext.getString(R.string.afu_backup_imported_notes),
-                                        body = "ClearCut restored the timeline, but this archive needs review before you export or hand it off.",
+                                        body = "AfuTube restored the timeline, but this archive needs review before you export or hand it off.",
                                         report = report
                                     )
                                 )
@@ -3029,7 +3029,7 @@ class EditorViewModel @Inject constructor(
                                 backupImportFeedback = BackupImportFeedback(
                                     succeeded = false,
                                     title = appContext.getString(R.string.afu_backup_import_failed),
-                                    body = "ClearCut left the current project unchanged.",
+                                    body = "AfuTube left the current project unchanged.",
                                     report = result.report,
                                     errorMessage = reason
                                 )
@@ -3610,7 +3610,7 @@ class EditorViewModel @Inject constructor(
             AiUsageRecordFactory.forClip(
                 clip = clip,
                 effectKind = AiUsageLedger.EffectKind.AUTO_EDIT_LOCAL,
-                modelName = "ClearCut Auto Edit window scorer",
+                modelName = "AfuTube Auto Edit window scorer",
                 recordedAtEpochMs = recordedAt
             )
         }
@@ -5235,7 +5235,7 @@ class EditorViewModel @Inject constructor(
                         timelineExchangeFeedback = TimelineExchangeFeedback(
                             succeeded = false,
                             title = appContext.getString(R.string.afu_export_blocked, formatName),
-                            body = "ClearCut found a timeline issue that would make the handoff unreliable.",
+                            body = "AfuTube found a timeline issue that would make the handoff unreliable.",
                             outputFileName = null,
                             report = result.report,
                         )
@@ -6273,7 +6273,7 @@ class EditorViewModel @Inject constructor(
         MediaHealth.analyze(recovery)
 
     private fun sanitizedProjectFileStem(name: String): String {
-        return sanitizeFileName(name, fallback = "ClearCut")
+        return sanitizeFileName(name, fallback = "AfuTube")
     }
 
     fun saveProject() {
