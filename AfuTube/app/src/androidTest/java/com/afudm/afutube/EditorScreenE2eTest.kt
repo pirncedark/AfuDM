@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onRoot
@@ -68,8 +69,9 @@ class EditorScreenE2eTest {
         composeRule.onAllNodesWithText("Oynat", substring = true, ignoreCase = true).onFirst().assertExists()
         composeRule.onAllNodesWithText("Böl", substring = true, ignoreCase = true).onFirst().assertExists()
         composeRule.onAllNodesWithText("Müzik", substring = true, ignoreCase = true).onFirst().assertExists()
-        composeRule.onAllNodesWithText("Kes", substring = true, ignoreCase = true).onFirst().assertExists()
-        composeRule.onAllNodesWithText("Yazı", substring = true, ignoreCase = true).onFirst().assertExists()
+        listOf("Kes", "H\u0131z", "Ses", "M\u00fczik", "Yaz\u0131", "Filtre", "Oran", "Sesi ay\u0131r").forEach { tool ->
+            composeRule.onAllNodesWithText(tool, substring = true, ignoreCase = true).onFirst().performScrollTo().assertIsDisplayed()
+        }
         composeRule.onNodeWithContentDescription("Klip 1").performClick()
         composeRule.onAllNodesWithText("Oynat").onFirst().performClick()
         composeRule.waitUntil(5_000) {

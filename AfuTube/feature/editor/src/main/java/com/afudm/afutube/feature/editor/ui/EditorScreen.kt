@@ -13,7 +13,6 @@ import android.util.LruCache
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -21,7 +20,8 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -147,7 +147,29 @@ fun EditorScreen(
         var previewHeightPx by remember { mutableFloatStateOf(1f) }
         val previewWidthDp = with(androidx.compose.ui.platform.LocalDensity.current) { previewWidthPx.toDp() }
         val previewHeightDp = with(androidx.compose.ui.platform.LocalDensity.current) { previewHeightPx.toDp() }
-        Box(Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp).clip(RoundedCornerShape(14.dp)).background(Color.Black).onSizeChanged { previewWidthPx=it.width.toFloat(); previewHeightPx=it.height.toFloat() }, Alignment.Center) {
+        val sourceAspectRatio = remember(project.clips.firstOrNull()?.source) {
+            val source = project.clips.firstOrNull()?.source
+            if (source == null) 16f / 9f else {
+                val retriever = MediaMetadataRetriever()
+                runCatching {
+                    if (source.startsWith("content://")) retriever.setDataSource(context, Uri.parse(source)) else retriever.setDataSource(source)
+                    val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toFloat() ?: 16f
+                    val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toFloat() ?: 9f
+                    val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+                    if (rotation == 90 || rotation == 270) height / width else width / height
+                }.getOrDefault(16f / 9f).also { retriever.release() }.coerceAtLeast(.1f)
+            }
+        }
+        val previewAspectRatio = when (project.aspectRatio) {
+            AspectRatio.ORIGINAL -> sourceAspectRatio
+            AspectRatio.PORTRAIT_9_16 -> 9f / 16f
+            AspectRatio.SQUARE_1_1 -> 1f
+            AspectRatio.LANDSCAPE_16_9 -> 16f / 9f
+        }
+        Box(Modifier.fillMaxWidth().weight(1f), Alignment.Center) {
+            Box(Modifier.fillMaxHeight(.4f).aspectRatio(previewAspectRatio)
+                .clip(RoundedCornerShape(14.dp)).background(Color.Black)
+                .onSizeChanged { previewWidthPx=it.width.toFloat(); previewHeightPx=it.height.toFloat() }, Alignment.Center) {
             if (player != null) PlayerSurface(player = player!!, modifier = Modifier.fillMaxSize())
             else Text("Video ekle", color = AfuColors.textMuted)
             project.textOverlays.lastOrNull { it.isVisibleAt(positionMs) }?.let { overlay ->
@@ -158,12 +180,13 @@ fun EditorScreen(
                         .pointerInput(overlay.id) { detectTapGestures { selectedTextId = overlay.id; selectedTool = "Yazı" } }
                         .pointerInput(overlay.id, previewWidthPx, previewHeightPx) { detectDragGestures { change, drag -> change.consume(); selectedTextId = overlay.id; selectedTool = "Yazı"; edit { p -> p.updateText(overlay.id) { it.copy(x=(it.x+drag.x/previewWidthPx).coerceIn(0.0,1.0), y=(it.y+drag.y/previewHeightPx).coerceIn(0.0,1.0)) } } } })
             }
+            }
         }
         val durationMs = project.clips.sumOf { it.trimEndMs - it.trimStartMs }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = { player?.let { if (it.isPlaying) it.pause() else it.play() } }) { Text(if (player?.isPlaying == true) "Duraklat" else "Oynat", color = AfuColors.text) }
         LaunchedEffect(player) { while (player != null) { positionMs = player?.currentPosition ?: 0L; kotlinx.coroutines.delay(250) } }
-        Text("${formatTime(positionMs)} / ${formatTime(durationMs)}", Modifier.weight(1f), color = AfuColors.textMuted)
+        Text("${formatTime(positionMs)} / ${formatTime(durationMs)}", Modifier.weight(1f), color = AfuColors.textMuted, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
             TextButton(onClick = { if (history.undo()) revision++ }, enabled = history.canUndo) { Text("Geri al", color = AfuColors.accent) }
             TextButton(onClick = { if (history.redo()) revision++ }, enabled = history.canRedo) { Text("İleri al", color = AfuColors.accent) }
         }
@@ -287,8 +310,15 @@ private fun EditorTools(project: EditorProject, selectedClipId: String?, playhea
     val selectedClip = project.clips.firstOrNull { it.id == selectedClipId }
     val selectedText = project.textOverlays.firstOrNull { it.id == selectedTextId }
     Column(Modifier.fillMaxWidth().background(AfuColors.surface, RoundedCornerShape(12.dp)).padding(10.dp)) {
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            listOf("Kes", "Hız", "Ses", "Müzik", "Yazı", "Filtre", "Oran", "Sesi ayır").forEach { label -> TextButton(onClick = { onSelectTool(label); if (label == "Sesi ayır") onExtractAudio() }) { Text(label, color = if (selectedTool == label) AfuColors.accent else AfuColors.text) } }
+        val toolLabels = listOf("Kes", "H\u0131z", "Ses", "M\u00fczik", "Yaz\u0131", "Filtre", "Oran", "Sesi ay\u0131r")
+        val toolListState = rememberLazyListState()
+        LaunchedEffect(selectedTool) { toolLabels.indexOf(selectedTool).takeIf { it >= 0 }?.let { toolListState.animateScrollToItem(it) } }
+        LazyRow(state = toolListState, modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            itemsIndexed(toolLabels) { _, label ->
+                TextButton(onClick = { onSelectTool(label); if (label == "Sesi ay\u0131r") onExtractAudio() }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
+                    Text(label, color = if (selectedTool == label) AfuColors.accent else AfuColors.text, maxLines = 1, softWrap = false)
+                }
+            }
         }
         when (selectedTool) {
             "Kes" -> if (selectedClip != null) {
@@ -397,9 +427,9 @@ private fun Timeline(clips: List<VideoClip>, selectedClipId: String?, onSelectCl
                 val scale = 0.6f / durationMs.coerceAtLeast(1L).toFloat()
                 Row(Modifier.weight(1f).height(24.dp).clip(RoundedCornerShape(4.dp)).background(AfuColors.card), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.width((overlay.startMs * scale).dp).fillMaxHeight())
-                    Box(Modifier.width(12.dp).fillMaxHeight().background(AfuColors.accent).pointerInput(overlay, durationMs) { detectDragGestures { change, drag -> change.consume(); val delta = (drag.x / 0.6f * durationMs).toLong(); onEditText(overlay.id, (overlay.startMs + delta).coerceAtLeast(0L), overlay.endMs) } })
+                    Box(Modifier.width(12.dp).fillMaxHeight().border(1.5.dp, AfuColors.accent, RoundedCornerShape(3.dp)).pointerInput(overlay, durationMs) { detectDragGestures { change, drag -> change.consume(); val delta = (drag.x / 0.6f * durationMs).toLong(); onEditText(overlay.id, (overlay.startMs + delta).coerceAtLeast(0L), overlay.endMs) } })
                     Text(overlay.text, color = AfuColors.text, maxLines = 1, modifier = Modifier.weight(1f).pointerInput(overlay, durationMs) { detectDragGestures { change, drag -> change.consume(); val delta = (drag.x / 0.6f * durationMs).toLong(); onEditText(overlay.id, overlay.startMs, (overlay.endMs + delta).coerceAtLeast(overlay.startMs + 1L)) } }.padding(horizontal = 2.dp))
-                    Box(Modifier.width(12.dp).fillMaxHeight().background(AfuColors.accent).pointerInput(overlay, durationMs) { detectDragGestures { change, drag -> change.consume(); val delta = (drag.x / 0.6f * durationMs).toLong(); onEditText(overlay.id, overlay.startMs, (overlay.endMs + delta).coerceAtLeast(overlay.startMs + 1L)) } })
+                    Box(Modifier.width(12.dp).fillMaxHeight().border(1.5.dp, AfuColors.accent, RoundedCornerShape(3.dp)).pointerInput(overlay, durationMs) { detectDragGestures { change, drag -> change.consume(); val delta = (drag.x / 0.6f * durationMs).toLong(); onEditText(overlay.id, overlay.startMs, (overlay.endMs + delta).coerceAtLeast(overlay.startMs + 1L)) } })
                 }
             }
         }
@@ -434,9 +464,9 @@ private fun ClipStrip(clip: VideoClip, modifier: Modifier, onTrim: (Long, Long) 
             else { dragDistance += drag.x; if (kotlin.math.abs(dragDistance) > widthPx * .6f) { onMove(if (dragDistance > 0) 1 else -1); dragDistance = 0f } }
         })
     }.pointerInput(clip) { detectTapGestures { onTap() } }.clip(RoundedCornerShape(8.dp)).background(AfuColors.card).onSizeChanged { widthPx = it.width.toFloat() }) {
-        Box(Modifier.width(14.dp).fillMaxHeight().background(AfuColors.accent.copy(alpha = .18f)))
+        Box(Modifier.width(14.dp).fillMaxHeight().border(1.5.dp, AfuColors.accent, RoundedCornerShape(3.dp)))
         frames.forEach { bitmap -> if (bitmap != null) androidx.compose.foundation.Image(bitmap.asImageBitmap(), null, Modifier.weight(1f).fillMaxHeight()) else Box(Modifier.weight(1f).fillMaxHeight().background(AfuColors.card)) }
-        Box(Modifier.width(14.dp).fillMaxHeight().background(AfuColors.accent.copy(alpha = .18f)))
+        Box(Modifier.width(14.dp).fillMaxHeight().border(1.5.dp, AfuColors.accent, RoundedCornerShape(3.dp)))
     }
 }
 
