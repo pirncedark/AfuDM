@@ -330,7 +330,7 @@ private fun EditorTools(project: EditorProject, selectedClipId: String?, playhea
                     Text("Başlangıç · ${formatTime(track.startMs)}", color = AfuColors.textMuted)
                     Slider(value = track.startMs.toFloat(), onValueChange = { value -> onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(startMs = value.toLong()) }) } }, valueRange = 0f..(project.clips.sumOf { it.trimEndMs - it.trimStartMs }).coerceAtLeast(1).toFloat())
                     Text("Kırp · ${formatTime(track.trimStartMs)} – ${formatTime(track.trimEndMs)}", color = AfuColors.textMuted)
-                    Row { TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(trimStartMs = (track.trimStartMs + 500).coerceAtMost(track.trimEndMs - 1)) }) } }) { Text("Başını kırp +0,5 sn", color = AfuColors.text) }; TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(trimEndMs = (track.trimEndMs - 500).coerceAtLeast(track.trimStartMs + 1)) }) } }) { Text("Sonunu kırp -0,5 sn", color = AfuColors.text) }; TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.filterIndexed { index, _ -> index != i }) } }) { Text("Kaldır", color = AfuColors.text) } }
+                    Row { TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(trimStartMs = (track.trimStartMs + 500).coerceAtMost(track.trimEndMs - 1)) }) } }) { Text("Başını kırp +0,5 sn", color = AfuColors.text) }; TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(trimEndMs = (track.trimEndMs - 500).coerceAtLeast(track.trimStartMs + 1)) }) } }) { Text("Sonunu kırp −0,5 sn", color = AfuColors.text) }; TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.filterIndexed { index, _ -> index != i }) } }) { Text("Kaldır", color = AfuColors.text) } }
                     Row { TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(fadeInMs = 500L.coerceAtMost((track.trimEndMs - track.trimStartMs) / 2)) }) } }) { Text("Yumuşak giriş", color = AfuColors.text) }; TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(fadeOutMs = 500L.coerceAtMost((track.trimEndMs - track.trimStartMs) / 2)) }) } }) { Text("Yumuşak çıkış", color = AfuColors.text) } }
                 }
             }
@@ -383,7 +383,7 @@ private fun Timeline(clips: List<VideoClip>, selectedClipId: String?, onSelectCl
             item { TextButton(onClick = onAdd) { Text("+", color = AfuColors.accent, style = MaterialTheme.typography.headlineMedium) } }
         }
         if (musicTracks.isNotEmpty()) Row(Modifier.fillMaxWidth().height(24.dp), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("d Müzik izi", color = AfuColors.accent)
+            Text("♪ Müzik izi", color = AfuColors.accent)
             musicTracks.forEach { track ->
                 val context = LocalContext.current
                 val wave by produceState(emptyList<Float>(), track.source) { value = withContext(Dispatchers.IO) { WaveformCache.load(context, track.source) } }
@@ -409,7 +409,7 @@ private fun Timeline(clips: List<VideoClip>, selectedClipId: String?, onSelectCl
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("${clips.size} klip", color = AfuColors.textMuted)
-            Text("-", color = AfuColors.accent, modifier = Modifier.weight(1f))
+            Text("│", color = AfuColors.accent, modifier = Modifier.weight(1f))
             TextButton(onClick = { clips.indexOfFirst { it.id == selectedClipId }.takeIf { it >= 0 }?.let(onSplit) }, enabled = clips.isNotEmpty()) { Text("Böl", color = AfuColors.text) }
             TextButton(onClick = { clips.indexOfFirst { it.id == selectedClipId }.takeIf { it >= 0 }?.let(onDelete) }, enabled = clips.isNotEmpty()) { Text("Sil", color = AfuColors.text) }
         }
