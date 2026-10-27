@@ -23,5 +23,7 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":downloader"))
     implementation(project(":media"))
+    implementation("androidx.media3:media3-exoplayer:1.11.1")
+    implementation("androidx.media3:media3-ui:1.11.1")
     testImplementation("junit:junit:4.13.2")
 }

@@ -15,6 +15,7 @@ android {
         applicationId = "com.afudm.afutube"
         minSdk = 24
         targetSdk = 37
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1000000
         versionName = (project.findProperty("versionName") as String?) ?: "1.0.0"
 
@@ -134,9 +135,19 @@ dependencies {
     implementation(project(":feature:home"))
     implementation(project(":feature:formats"))
     implementation(project(":feature:downloads"))
+    implementation(project(":feature:editor"))
     implementation(project(":feature:history"))
     implementation(project(":feature:settings"))
     implementation(project(":feature:torrent"))
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test:2.2.20")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
+    androidTestImplementation("androidx.media3:media3-common:1.11.1")
+    androidTestImplementation("androidx.media3:media3-transformer:1.11.1")
+    androidTestImplementation("androidx.media3:media3-effect:1.11.1")
 }

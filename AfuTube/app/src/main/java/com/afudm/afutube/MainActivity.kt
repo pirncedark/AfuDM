@@ -24,6 +24,9 @@ import androidx.navigation.compose.*
 import com.afudm.afutube.core.extractor.MediaInfo
 import com.afudm.afutube.core.stats.activeUserStats
 import com.afudm.afutube.feature.downloads.DownloadsScreen
+import com.afudm.afutube.feature.editor.model.EditorProject
+import com.afudm.afutube.feature.editor.model.VideoClip
+import com.afudm.afutube.feature.editor.ui.EditorScreen
 import com.afudm.afutube.feature.formats.FormatPickerScreen
 import com.afudm.afutube.core.theme.AfuColors
 import com.afudm.afutube.feature.home.HomeScreen
@@ -91,6 +94,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel, musicRequest: Long = 0L) {
     }
 
     var pendingMediaInfo by remember { mutableStateOf<MediaInfo?>(null) }
+    var editorPath by remember { mutableStateOf<String?>(null) }
     var browserUrl by remember { mutableStateOf("") }
     var routedShareSequence by remember { mutableLongStateOf(0L) }
     var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
@@ -200,7 +204,25 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel, musicRequest: Long = 0L) {
                     )
                 }
             }
-            composable(Screen.Downloads.route) { DownloadsScreen() }
+            composable(Screen.Downloads.route) { DownloadsScreen(onEdit = { path -> editorPath = path; navController.navigate("editor") }) }
+            composable("editor") {
+                val path = editorPath
+                if (path != null) {
+                    val duration = remember(path) { runCatching {
+                        android.media.MediaMetadataRetriever().let { retriever ->
+                            try {
+                                retriever.setDataSource(path)
+                                retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                            } finally { retriever.release() }
+                        }
+                    }.getOrDefault(0L) }
+                    EditorScreen(
+                        initialProject = EditorProject(clips = if (duration > 0) listOf(VideoClip("clip-0", path, duration)) else emptyList()),
+                        onAddClip = { },
+                        onSave = { }
+                    )
+                }
+            }
             composable(Screen.Settings.route)  {
                 SettingsScreen(currentVersionCode = BuildConfig.VERSION_CODE, currentVersionName = BuildConfig.VERSION_NAME, shareLink = ShareLinkBuilder.url(BuildConfig.VERSION_NAME), onUpdateFound = { availableUpdate = it })
             }

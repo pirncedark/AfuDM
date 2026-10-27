@@ -61,6 +61,10 @@ jobs:
           RUN_NUMBER: ${{ github.run_number }}
         run: ./gradlew assembleRelease --no-daemon --stacktrace -PversionCode="$RUN_NUMBER" -PversionName=0.0."$RUN_NUMBER"
 
+      - name: Build emulator export test APKs
+        working-directory: ./AfuTube
+        run: ./gradlew assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx5g -Dfile.encoding=UTF-8"
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: success()
@@ -75,6 +79,16 @@ jobs:
         with:
           name: AfuTube-All-APKs
           path: AfuTube/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Upload editor e2e APKs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: AfuTube-Editor-E2E-APKs
+          path: |
+            AfuTube/app/build/outputs/apk/debug/*.apk
+            AfuTube/app/build/outputs/apk/androidTest/debug/*.apk
           if-no-files-found: error
           retention-days: 3
 
@@ -104,6 +118,12 @@ jobs:
         with:
           name: AfuTube-All-APKs
           path: apks
+
+      - name: Download editor e2e APKs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: AfuTube-Editor-E2E-APKs
+          path: e2e-apks
 
       - name: Pick APK for x86_64 emulator
         run: |
@@ -148,12 +168,25 @@ jobs:
             bash AfuTube/scripts/e2e-indirme.sh
             bash AfuTube/scripts/e2e-paylas.sh
             bash AfuTube/scripts/e2e-sade.sh
+            ls -R e2e-apks
+            adb shell wm size 1080x2400; adb shell wm density 420
+            adb install -r "$(ls e2e-apks/debug/*x86_64*.apk e2e-apks/debug/*universal*.apk 2>/dev/null | head -1)"
+            adb install -r "$(ls e2e-apks/androidTest/debug/*.apk | head -1)"
+            mkdir -p e2e-out
+            adb shell monkey -p com.afudm.afutube.debug 1
+            sleep 3
+            adb shell am instrument -w com.afudm.afutube.debug.test/androidx.test.runner.AndroidJUnitRunner | tee e2e-out/editor-instrument.txt; grep -q "^OK (" e2e-out/editor-instrument.txt
+            adb pull /sdcard/Android/data/com.afudm.afutube.debug/files/e2e-out/editor-screen.png e2e-out/editor-screen.png
+            adb shell wm size reset; adb shell wm density reset
+            adb uninstall com.afudm.afutube.debug.test; adb uninstall com.afudm.afutube.debug; adb shell am kill-all
             bash AfuTube/scripts/e2e-tarayici.sh
 
       - name: Upload e2e evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: AfuTube-e2e-acilis
-          path: e2e-out/
+          name: AfuTube-editor-e2e
+          path: |
+            e2e-out/editor-screen.png
+            e2e-out/editor-instrument.txt
           retention-days: 14

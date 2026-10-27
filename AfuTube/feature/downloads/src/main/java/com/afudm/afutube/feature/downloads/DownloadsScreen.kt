@@ -40,11 +40,10 @@ import android.os.Build
 import java.io.File
 
 @Composable
-fun DownloadsScreen() {
+fun DownloadsScreen(onEdit: (String) -> Unit) {
     val context   = LocalContext.current
     val engine    = remember { DownloadEngine.getInstance(context) }
     val workInfos by engine.allDownloads().collectAsState(initial = emptyList())
-    var editPath by remember { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<Pair<File, WorkInfo>?>(null) }
     val deleteLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) pendingDelete?.let { (file, info) ->
@@ -123,13 +122,12 @@ fun DownloadsScreen() {
                         onRemove = { title ->
                             if (playable) pendingDelete = File(outputPath!!) to workInfo else engine.remove(workInfo.id, title, finished = false)
                         }
-                        , onEdit = { editPath = it }
+                        , onEdit = onEdit
                     )
                 }
             }
         }
     }
-    editPath?.let { EditDialog(it) { editPath = null } }
     pendingDelete?.let { (file, info) -> AlertDialog(onDismissRequest = { pendingDelete = null }, title = { Text("Dosyayı da sil?") },
         confirmButton = { TextButton(onClick = {
             if (Build.VERSION.SDK_INT >= 30) runCatching { MediaDelete.request(context, file) }.getOrNull()?.let { deleteLauncher.launch(androidx.activity.result.IntentSenderRequest.Builder(it).build()) } ?: run { pendingDelete = null }

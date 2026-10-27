@@ -1,5 +1,21 @@
 # Third-party software / Üçüncü taraf yazılımlar
 
+## AfuTube video editor
+
+### AndroidX Media3 composition demo
+
+- Component: `androidx/media` `demos/composition` (Composition preview and export patterns adapted)
+- License: Apache-2.0
+- Source: https://github.com/androidx/media/tree/release/demos/composition
+- License text: https://www.apache.org/licenses/LICENSE-2.0
+
+### LibreCuts
+
+- Component: LibreCuts (`tharunbirla/LibreCuts`); timeline and editing flow ideas only. No LibreCuts source code or assets are included.
+- License: MIT
+- Source: https://github.com/tharunbirla/LibreCuts
+- License text: https://opensource.org/license/mit
+
 AfuDM bundles or optionally downloads third-party software.
 Each component remains subject to its own license.
 
