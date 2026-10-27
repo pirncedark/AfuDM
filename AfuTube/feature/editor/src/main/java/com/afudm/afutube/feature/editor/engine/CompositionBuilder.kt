@@ -7,12 +7,10 @@ import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
 import androidx.media3.transformer.Transformer
 import androidx.media3.common.audio.AudioProcessor
-import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.C
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import androidx.media3.effect.SpeedChangeEffect
 import androidx.media3.effect.RgbFilter
 import androidx.media3.effect.RgbMatrix
 import androidx.media3.effect.Brightness
@@ -207,10 +205,12 @@ object CompositionBuilder {
                     .build()
             )
             .build()
+        // CompositionPlayer accepts speed changes only from this factory, placed first.
+        val speedEffects = if (speed != 1.0) Effects.createExperimentalSpeedChangingEffect(speed.toFloat()) else Effects.EMPTY
         val processors = mutableListOf<AudioProcessor>()
+        processors += speedEffects.audioProcessors
         processors += GainFadeAudioProcessor(volume, trimEndMs - trimStartMs, fadeInMs, fadeOutMs)
-        processors += SonicAudioProcessor().apply { setSpeed(speed.toFloat()) }
-        val effects = listOf(SpeedChangeEffect(speed.toFloat()))
+        val effects: List<androidx.media3.common.Effect> = speedEffects.videoEffects
         val builder = EditedMediaItem.Builder(mediaItem)
             .setDurationUs((trimEndMs - trimStartMs) * 1_000L)
             .setFrameRate(30)
