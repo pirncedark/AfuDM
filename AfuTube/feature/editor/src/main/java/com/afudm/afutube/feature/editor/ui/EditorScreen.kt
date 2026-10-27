@@ -91,8 +91,46 @@ fun EditorScreen(
             onReorder = { from, to -> edit { it.reorderClip(from, to) } },
             onAdd = { onAddClip { clip -> edit { it.copy(clips = it.clips + clip) } } }
         )
+        EditorTools(project = project, onEdit = { edit(it) }, onAddMusic = { source ->
+            val duration = project.clips.maxOfOrNull { it.trimEndMs - it.trimStartMs } ?: 1_000L
+            edit { it.copy(musicTracks = it.musicTracks + com.afudm.afutube.feature.editor.model.MusicTrack("music-${it.musicTracks.size}", source, trimEndMs = duration)) }
+        })
     }
     DisposableEffect(Unit) { onDispose { activePlayer?.release() } }
+}
+
+@Composable
+private fun EditorTools(project: EditorProject, onEdit: ((EditorProject) -> EditorProject) -> Unit, onAddMusic: (String) -> Unit) {
+    var selected by remember { mutableStateOf("Hız") }
+    var musicPath by remember { mutableStateOf("") }
+    Column(Modifier.fillMaxWidth().background(AfuColors.surface, RoundedCornerShape(12.dp)).padding(10.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            listOf("Hız", "Ses", "Müzik").forEach { label -> TextButton(onClick = { selected = label }) { Text(label, color = if (selected == label) AfuColors.accent else AfuColors.text) } }
+        }
+        when (selected) {
+            "Hız" -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                listOf(.5, 1.0, 1.5, 2.0).forEach { speed -> TextButton(onClick = { project.clips.lastIndex.takeIf { it >= 0 }?.let { index -> onEdit { p -> p.copy(clips = p.clips.toMutableList().also { it[index] = it[index].copy(speed = speed) }) } } }) { Text("${speed}x", color = AfuColors.text) } }
+            }
+            "Ses" -> {
+                val index = project.clips.lastIndex
+                val clip = project.clips.getOrNull(index)
+                if (clip != null) {
+                    Text("Klip sesi: ${(clip.volume * 100).toInt()}%", color = AfuColors.text)
+                    Slider(value = clip.volume.toFloat(), onValueChange = { value -> onEdit { p -> p.copy(clips = p.clips.toMutableList().also { it[index] = it[index].copy(volume = value.toDouble()) }) } }, valueRange = 0f..2f)
+                    Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = !clip.originalAudioEnabled, onCheckedChange = { muted -> onEdit { p -> p.copy(clips = p.clips.toMutableList().also { it[index] = it[index].copy(originalAudioEnabled = !muted) }) } }); Text("Orijinal sesi kapat", color = AfuColors.text) }
+                    Text("Yumuşak giriş / çıkış", color = AfuColors.text)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(0L, 300L, 600L, 1_000L).forEach { ms -> TextButton(onClick = { onEdit { p -> p.copy(clips = p.clips.toMutableList().also { it[index] = it[index].copy(fadeInMs = ms, fadeOutMs = ms.coerceAtMost((it[index].trimEndMs - it[index].trimStartMs) / 2)) }) } }) { Text("${ms / 1000.0}s", color = AfuColors.text) } }
+                    }
+                }
+            }
+            else -> {
+                OutlinedTextField(value = musicPath, onValueChange = { musicPath = it }, label = { Text("Müzik dosyası") }, singleLine = true)
+                Row { TextButton(onClick = { if (musicPath.isNotBlank()) onAddMusic(musicPath) }) { Text("Ekle", color = AfuColors.text) }; TextButton(onClick = { onEdit { it.copy(dialogueDucking = !it.dialogueDucking) } }) { Text("Konuşmada %30", color = AfuColors.text) } }
+                project.musicTracks.forEachIndexed { i, track -> Text("Müzik ${i + 1} · ${(track.volume * 100).toInt()}%", color = AfuColors.text) }
+            }
+        }
+    }
 }
 
 @Composable
