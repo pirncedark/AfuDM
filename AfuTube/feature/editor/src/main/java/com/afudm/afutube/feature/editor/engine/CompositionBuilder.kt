@@ -152,10 +152,16 @@ object CompositionBuilder {
 
     fun build(project: EditorProject): Result = build(CompositionPlanBuilder.build(project))
 
-    fun build(plan: CompositionPlan): Result {
+    fun build(project: EditorProject, outputSize: CompositionPlan.OutputSize): Result =
+        build(CompositionPlanBuilder.build(project), outputSize)
+
+    fun build(plan: CompositionPlan): Result = build(plan, null)
+
+    private fun build(plan: CompositionPlan, outputSize: CompositionPlan.OutputSize?): Result {
         val ratio = when(plan.aspectRatio) { AspectRatio.ORIGINAL -> null; AspectRatio.PORTRAIT_9_16 -> 9f/16f; AspectRatio.SQUARE_1_1 -> 1f; AspectRatio.LANDSCAPE_16_9 -> 16f/9f }
         val visualEffects = buildList<androidx.media3.common.Effect> {
             if (ratio != null) add(Presentation.createForAspectRatio(ratio, Presentation.LAYOUT_SCALE_TO_FIT))
+            outputSize?.let { add(Presentation.createForWidthAndHeight(it.width, it.height, Presentation.LAYOUT_SCALE_TO_FIT)) }
             when(plan.filter) {
                 EditorFilter.NONE -> Unit
                 EditorFilter.BLACK_WHITE -> add(RgbFilter.createGrayscaleFilter())

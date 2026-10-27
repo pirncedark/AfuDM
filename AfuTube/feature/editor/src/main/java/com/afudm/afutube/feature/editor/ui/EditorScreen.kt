@@ -1,6 +1,7 @@
 ﻿package com.afudm.afutube.feature.editor.ui
 
 import android.content.Context
+import android.content.Intent
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.LruCache
@@ -30,8 +31,17 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.ExperimentalApi
 import androidx.media3.transformer.CompositionPlayer
 import androidx.media3.ui.compose.PlayerSurface
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import com.afudm.afutube.core.share.ShareHelper
 import com.afudm.afutube.core.theme.AfuColors
 import com.afudm.afutube.feature.editor.engine.CompositionBuilder
+import com.afudm.afutube.feature.editor.engine.ExportQuality
+import com.afudm.afutube.feature.editor.engine.ExportWorker
+import com.afudm.afutube.feature.downloads.audioArgs
+import com.afudm.afutube.feature.downloads.audioOutput
+import com.afudm.afutube.downloader.DownloadFolder
+import com.afudm.afutube.runtime.FfmpegRunner
 import com.afudm.afutube.feature.editor.history.ProjectEditCommand
 import com.afudm.afutube.feature.editor.history.UndoStack
 import com.afudm.afutube.feature.editor.model.EditorProject
@@ -40,7 +50,10 @@ import com.afudm.afutube.feature.editor.model.TextOverlay
 import com.afudm.afutube.feature.editor.model.EditorFilter
 import com.afudm.afutube.feature.editor.model.AspectRatio
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 @OptIn(UnstableApi::class, ExperimentalApi::class)
@@ -54,13 +67,34 @@ fun EditorScreen(
     var project by remember { mutableStateOf(initialProject) }
     var revision by remember { mutableIntStateOf(0) }
     var player by remember { mutableStateOf<CompositionPlayer?>(null) }
+    var draftReady by remember { mutableStateOf(false) }
+    var showResume by remember { mutableStateOf(false) }
+    var showFirstTip by remember { mutableStateOf(false) }
+    var showExportOptions by remember { mutableStateOf(false) }
+    var showAdvancedQuality by remember { mutableStateOf(false) }
+    var selectedQuality by remember { mutableStateOf(ExportQuality.SOURCE) }
+    var exportId by remember { mutableStateOf<UUID?>(null) }
+    var audioMessage by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val preferences = remember(context) { context.getSharedPreferences("editor_draft", Context.MODE_PRIVATE) }
+    val exportInfo by exportId?.let { WorkManager.getInstance(context).getWorkInfoByIdFlow(it).collectAsState(initial = null) }
+        ?: remember { mutableStateOf(null) }
     val history = remember { UndoStack() }
     val current by rememberUpdatedState(project)
     val activePlayer by rememberUpdatedState(player)
     fun edit(transform: (EditorProject) -> EditorProject) {
         history.execute(ProjectEditCommand({ current }, { project = it; revision++ }, transform))
     }
-    val context = LocalContext.current
+    LaunchedEffect(initialProject) {
+        val savedDraft = preferences.getString("project", null)
+        showResume = !savedDraft.isNullOrBlank()
+        draftReady = !showResume
+        if (!showResume) showFirstTip = !preferences.getBoolean("intro_seen", false)
+    }
+    LaunchedEffect(project, draftReady) {
+        if (draftReady) preferences.edit().putString("project", project.toJson()).apply()
+    }
     LaunchedEffect(project, revision) {
         player?.release()
         player = project.clips.takeIf { it.isNotEmpty() }?.let {
@@ -73,7 +107,7 @@ fun EditorScreen(
     Column(modifier.fillMaxSize().background(AfuColors.bg).padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Düzenle", color = AfuColors.text, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            TextButton(onClick = { onSave(project) }) { Text("Kaydet", color = AfuColors.text) }
+            TextButton(onClick = { onSave(project); showExportOptions = true }) { Text("Videoyu kaydet", color = AfuColors.text) }
         }
         var previewWidthPx by remember { mutableFloatStateOf(1f) }
         var previewHeightPx by remember { mutableFloatStateOf(1f) }
@@ -108,18 +142,104 @@ fun EditorScreen(
         EditorTools(project = project, onEdit = { edit(it) }, onAddMusic = { source ->
             val duration = project.clips.maxOfOrNull { it.trimEndMs - it.trimStartMs } ?: 1_000L
             edit { it.copy(musicTracks = it.musicTracks + com.afudm.afutube.feature.editor.model.MusicTrack("music-${it.musicTracks.size}", source, trimEndMs = duration)) }
+        }, onExtractAudio = {
+            val source = project.clips.firstOrNull()?.source
+            if (source == null) audioMessage = "Önce bir video ekle."
+            else scope.launch {
+                val input = File(Uri.parse(source).path ?: source)
+                val output = audioOutput(input)
+                val published = withContext(Dispatchers.IO) {
+                    runCatching { if (FfmpegRunner.run(context, audioArgs(input, output)) == 0) DownloadFolder.publish(context, output) else null }
+                }.getOrNull()
+                audioMessage = if (published != null) "Ses ayrı dosya olarak kaydedildi." else "Ses kaydedilemedi. Tekrar dene."
+            }
         })
     }
+
+    if (showResume) AlertDialog(
+        onDismissRequest = { preferences.edit().remove("project").apply(); draftReady = true; showResume = false; showFirstTip = !preferences.getBoolean("intro_seen", false) },
+        title = { Text("Kaldığın yerden devam?") },
+        confirmButton = { TextButton(onClick = {
+            val saved = preferences.getString("project", null)
+            runCatching { saved?.let { EditorProject.fromJson(it) } }.getOrNull()?.let { project = it; revision++ }
+            draftReady = true; showResume = false; showFirstTip = !preferences.getBoolean("intro_seen", false)
+        }) { Text("Devam et") } },
+        dismissButton = { TextButton(onClick = { preferences.edit().remove("project").apply(); draftReady = true; showResume = false; showFirstTip = !preferences.getBoolean("intro_seen", false) }) { Text("Yeni düzenleme") } }
+    )
+    if (showFirstTip) AlertDialog(
+        onDismissRequest = { preferences.edit().putBoolean("intro_seen", true).apply(); showFirstTip = false },
+        title = { Text("Üç adımda düzenle") },
+        text = { Text("1. Videonu seç.\n2. Alttaki araçlarla düzenle.\n3. Videoyu kaydet.") },
+        confirmButton = { TextButton(onClick = { preferences.edit().putBoolean("intro_seen", true).apply(); showFirstTip = false }) { Text("Başlayalım") } }
+    )
+    if (showExportOptions) AlertDialog(
+        onDismissRequest = { showExportOptions = false },
+        title = { Text("Videoyu kaydet") },
+        text = {
+            Column {
+                Text("Kalite", color = AfuColors.text)
+                listOf(ExportQuality.SOURCE to "Kaynak kalitesi").forEach { (quality, label) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = selectedQuality == quality, onClick = { selectedQuality = quality })
+                        Text(label, color = AfuColors.text)
+                    }
+                }
+                TextButton(onClick = { showAdvancedQuality = !showAdvancedQuality }) { Text(if (showAdvancedQuality) "Gelişmişi gizle" else "Gelişmiş", color = AfuColors.accent) }
+                if (showAdvancedQuality) listOf(ExportQuality.P1080 to "1080p", ExportQuality.P720 to "720p").forEach { (quality, label) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = selectedQuality == quality, onClick = { selectedQuality = quality })
+                        Text(label, color = AfuColors.text)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { exportId = ExportWorker.enqueue(context, project, selectedQuality); showExportOptions = false }) { Text("Kaydet") } },
+        dismissButton = { TextButton(onClick = { showExportOptions = false }) { Text("İptal") } }
+    )
+    exportInfo?.let { info ->
+        val output = info.outputData.getString(ExportWorker.KEY_OUTPUT)
+        if (info.state == WorkInfo.State.RUNNING || info.state == WorkInfo.State.ENQUEUED) AlertDialog(
+            onDismissRequest = {}, title = { Text("Video kaydediliyor") },
+            text = { Column { LinearProgressIndicator(progress = { info.progress.getInt("progress_percent", 0) / 100f }, modifier = Modifier.fillMaxWidth()); Text("%${info.progress.getInt("progress_percent", 0)}") } }, confirmButton = { TextButton(onClick = { WorkManager.getInstance(context).cancelWorkById(info.id); exportId = null }) { Text("Durdur") } }
+        ) else if (info.state == WorkInfo.State.FAILED) AlertDialog(
+            onDismissRequest = { exportId = null }, title = { Text(ExportWorker.ERROR_MESSAGE) },
+            confirmButton = { TextButton(onClick = {
+                selectedQuality = if (selectedQuality == ExportQuality.P720) ExportQuality.P480 else ExportQuality.P720
+                exportId = ExportWorker.enqueue(context, project, selectedQuality)
+            }) { Text("Daha düşük kalitede tekrar dene") } },
+            dismissButton = { TextButton(onClick = { exportId = null }) { Text("Kapat") } }
+        ) else if (info.state == WorkInfo.State.SUCCEEDED && output != null) {
+            val savedFile = File(output)
+            AlertDialog(
+                onDismissRequest = { exportId = null }, title = { Text("Video kaydedildi") }, text = { Text(savedFile.name) },
+                confirmButton = { TextButton(onClick = { ShareHelper.shareFile(context, savedFile, savedFile.name) }) { Text("Paylaş") } },
+                dismissButton = { Row {
+                    TextButton(onClick = {
+                        val uri = ShareHelper.createShareUri(context, savedFile)
+                        context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "video/mp4").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                    }) { Text("Aç") }
+                    TextButton(onClick = {
+                        val uri = ShareHelper.createShareUri(context, savedFile)
+                        val intent = Intent(Intent.ACTION_SEND).setType("video/mp4").putExtra(Intent.EXTRA_STREAM, uri)
+                            .setClipData(android.content.ClipData.newUri(context.contentResolver, savedFile.name, uri))
+                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        try { context.startActivity(intent.setPackage("com.whatsapp")) } catch (_: Exception) { ShareHelper.shareFile(context, savedFile, savedFile.name) }
+                    }) { Text("WhatsApp") }
+                } }
+            )
+        }
+    }
+    audioMessage?.let { message -> AlertDialog(onDismissRequest = { audioMessage = null }, text = { Text(message) }, confirmButton = { TextButton(onClick = { audioMessage = null }) { Text("Tamam") } }) }
     DisposableEffect(Unit) { onDispose { activePlayer?.release() } }
 }
 
 @Composable
-private fun EditorTools(project: EditorProject, onEdit: ((EditorProject) -> EditorProject) -> Unit, onAddMusic: (String) -> Unit) {
+private fun EditorTools(project: EditorProject, onEdit: ((EditorProject) -> EditorProject) -> Unit, onAddMusic: (String) -> Unit, onExtractAudio: () -> Unit) {
     var selected by remember { mutableStateOf("Hız") }
     var musicPath by remember { mutableStateOf("") }
     Column(Modifier.fillMaxWidth().background(AfuColors.surface, RoundedCornerShape(12.dp)).padding(10.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            listOf("Hız", "Ses", "Müzik").forEach { label -> TextButton(onClick = { selected = label }) { Text(label, color = if (selected == label) AfuColors.accent else AfuColors.text) } }
+            listOf("Hız", "Ses", "Müzik", "Sesi ayır").forEach { label -> TextButton(onClick = { selected = label; if (label == "Sesi ayır") onExtractAudio() }) { Text(label, color = if (selected == label) AfuColors.accent else AfuColors.text) } }
         }
         when (selected) {
             "Hız" -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -138,11 +258,12 @@ private fun EditorTools(project: EditorProject, onEdit: ((EditorProject) -> Edit
                     }
                 }
             }
-            else -> {
+            "Müzik" -> {
                 OutlinedTextField(value = musicPath, onValueChange = { musicPath = it }, label = { Text("Müzik dosyası") }, singleLine = true)
                 Row { TextButton(onClick = { if (musicPath.isNotBlank()) onAddMusic(musicPath) }) { Text("Ekle", color = AfuColors.text) }; TextButton(onClick = { onEdit { it.copy(dialogueDucking = !it.dialogueDucking) } }) { Text("Konuşmada %30", color = AfuColors.text) } }
                 project.musicTracks.forEachIndexed { i, track -> Text("Müzik ${i + 1} · ${(track.volume * 100).toInt()}%", color = AfuColors.text) }
             }
+            "Sesi ayır" -> Text("Ses ayrı dosya olarak kaydedilir.", color = AfuColors.textMuted)
         }
     }
 }

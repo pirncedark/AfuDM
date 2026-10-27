@@ -8,8 +8,8 @@ internal fun trimArgs(input: File, output: File, startMs: Long, endMs: Long): Li
 internal fun musicOutput(input: File) = File(input.parentFile, "${input.nameWithoutExtension}_muzikli.mp4")
 internal fun muteOutput(input: File) = File(input.parentFile, "${input.nameWithoutExtension}_sessiz.${input.extension}")
 internal fun muteArgs(input: File, output: File): List<String> = editArgs(input, output, 0, Long.MAX_VALUE, null, 0, 0)
-internal fun audioOutput(input: File) = File(input.parentFile, "${input.nameWithoutExtension}_ses.m4a")
-internal fun audioArgs(input: File, output: File): List<String> = listOf("-y", "-i", input.absolutePath, "-vn", "-c:a", "aac", "-b:a", "192k", output.absolutePath)
+fun audioOutput(input: File) = File(input.parentFile, "${input.nameWithoutExtension}_ses.m4a")
+fun audioArgs(input: File, output: File): List<String> = listOf("-y", "-i", input.absolutePath, "-vn", "-c:a", "aac", "-b:a", "192k", output.absolutePath)
 internal fun addMusicArgs(video: File, music: File, output: File, lowerOriginal: Boolean, hasVideoAudio: Boolean = true): List<String> =
     editArgs(video, output, 0, Long.MAX_VALUE, music, if (lowerOriginal) 20 else 100, 100, hasVideoAudio)
 
