@@ -238,8 +238,35 @@ fun SettingsScreen(
                     fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)
                 )
             }
+            item {
+                SettingsCard("Lisanslar") {
+                    var licensesExpanded by remember { mutableStateOf(false) }
+                    Text("Edit sekmesi WizardCut (MIT) ve FFmpegKit (LGPL) kullanır.", color = AfuColors.text, fontSize = 13.sp)
+                    TextButton(onClick = { licensesExpanded = !licensesExpanded }, contentPadding = PaddingValues(0.dp)) {
+                        Text(if (licensesExpanded) "Lisansları gizle" else "Açık kaynak lisansları", color = AfuColors.textMuted)
+                    }
+                    if (licensesExpanded) {
+                        val licenseText = remember { openSourceLicenseText(context) }
+                        Text(licenseText, color = AfuColors.textMuted, fontSize = 11.sp)
+                    }
+                }
+            }
         }
     }
+}
+
+/** WizardCut MIT + NOTICE (assets) ve FFmpegKitNext LGPL kaynak teklifi (wizardcut res/raw). */
+private fun openSourceLicenseText(context: Context): String {
+    fun asset(name: String) = runCatching { context.assets.open("lisanslar/$name").bufferedReader().use { it.readText() } }.getOrDefault("")
+    val sourceOfferId = context.resources.getIdentifier("ffmpeg_kit_next_source_offer", "raw", context.packageName)
+    val sourceOffer = if (sourceOfferId == 0) "" else runCatching {
+        context.resources.openRawResource(sourceOfferId).bufferedReader().use { it.readText() }
+    }.getOrDefault("")
+    return listOf(
+        "WizardCut — BigWizard Media (ClearCut, SysAdminDoc fork'u)\nhttps://github.com/BigWizard94/wizardcut\n\n" + asset("wizardcut-LICENSE.txt"),
+        asset("wizardcut-NOTICE.txt"),
+        "FFmpegKitNext / FFmpeg — LGPL-3.0-or-later kaynak teklifi\n\n$sourceOffer",
+    ).filter { it.isNotBlank() }.joinToString("\n\n────────\n\n")
 }
 
 private fun prepareApk(context: Context, versionName: String): android.net.Uri {
