@@ -12,6 +12,11 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performScrollTo
@@ -70,7 +75,8 @@ class EditorScreenE2eTest {
         composeRule.onAllNodesWithText("Böl", substring = true, ignoreCase = true).onFirst().assertExists()
         composeRule.onAllNodesWithText("Müzik", substring = true, ignoreCase = true).onFirst().assertExists()
         listOf("Kes", "H\u0131z", "Ses", "M\u00fczik", "Yaz\u0131", "Filtre", "Oran", "Sesi ay\u0131r").forEach { tool ->
-            composeRule.onAllNodesWithText(tool, substring = true, ignoreCase = true).onFirst().performScrollTo().assertIsDisplayed()
+            composeRule.onNodeWithTag("araclar").performScrollToNode(hasText(tool))
+            composeRule.onNode(hasText(tool) and hasAnyAncestor(hasTestTag("araclar"))).assertIsDisplayed()
         }
         composeRule.onNodeWithContentDescription("Klip 1").performClick()
         composeRule.onAllNodesWithText("Oynat").onFirst().performClick()

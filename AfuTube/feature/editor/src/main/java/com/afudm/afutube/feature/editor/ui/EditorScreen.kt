@@ -19,6 +19,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.text.style.TextOverflow
@@ -313,7 +314,7 @@ private fun EditorTools(project: EditorProject, selectedClipId: String?, playhea
         val toolLabels = listOf("Kes", "H\u0131z", "Ses", "M\u00fczik", "Yaz\u0131", "Filtre", "Oran", "Sesi ay\u0131r")
         val toolListState = rememberLazyListState()
         LaunchedEffect(selectedTool) { toolLabels.indexOf(selectedTool).takeIf { it >= 0 }?.let { toolListState.animateScrollToItem(it) } }
-        LazyRow(state = toolListState, modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        LazyRow(state = toolListState, modifier = Modifier.fillMaxWidth().testTag("araclar"), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             itemsIndexed(toolLabels) { _, label ->
                 TextButton(onClick = { onSelectTool(label); if (label == "Sesi ay\u0131r") onExtractAudio() }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
                     Text(label, color = if (selectedTool == label) AfuColors.accent else AfuColors.text, maxLines = 1, softWrap = false)
