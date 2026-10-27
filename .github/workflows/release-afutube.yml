@@ -92,7 +92,7 @@ jobs:
             --arg changelog "$CHANGELOG" \
             --argjson versionCode "$VERSION_CODE" \
             --argjson prerelease "$PRERELEASE" \
-            '{versionName:$versionName,versionCode:$versionCode,tag:$tag,apk:"AfuTube-universal.apk",sha256:$sha256,minSdk:24,changelog:$changelog,prerelease:$prerelease}' \
+            '{versionName:$versionName,versionCode:$versionCode,tag:$tag,apk:"AfuTube-universal.apk",sha256:$sha256,minSdk:26,changelog:$changelog,prerelease:$prerelease}' \
             > release-assets/AfuTube-update.json
 
       - name: Prepare latest manifest release

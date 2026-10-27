@@ -24,9 +24,6 @@ import androidx.navigation.compose.*
 import com.afudm.afutube.core.extractor.MediaInfo
 import com.afudm.afutube.core.stats.activeUserStats
 import com.afudm.afutube.feature.downloads.DownloadsScreen
-import com.afudm.afutube.feature.editor.model.EditorProject
-import com.afudm.afutube.feature.editor.model.VideoClip
-import com.afudm.afutube.feature.editor.ui.EditorScreen
 import com.afudm.afutube.feature.formats.FormatPickerScreen
 import com.afudm.afutube.core.theme.AfuColors
 import com.afudm.afutube.feature.home.HomeScreen
@@ -75,6 +72,7 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     object Home      : Screen("home",      "Ana Ekran",   Icons.Default.Home)
     object Torrent   : Screen("torrent",   "Torrent",     Icons.Default.MoveToInbox)
     object Music     : Screen("music",     "Müzik",       Icons.Default.MusicNote)
+    object Edit      : Screen("edit",      "Edit",        Icons.Default.Movie)
     object Downloads : Screen("downloads", "İndirmeler",  Icons.Default.Download)
     object Settings  : Screen("settings",  "Ayarlar",     Icons.Default.Settings)
 }
@@ -94,7 +92,6 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel, musicRequest: Long = 0L) {
     }
 
     var pendingMediaInfo by remember { mutableStateOf<MediaInfo?>(null) }
-    var editorPath by remember { mutableStateOf<String?>(null) }
     var browserUrl by remember { mutableStateOf("") }
     var routedShareSequence by remember { mutableLongStateOf(0L) }
     var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
@@ -142,7 +139,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel, musicRequest: Long = 0L) {
         )
     }
 
-    val bottomScreens = listOf(Screen.Home, Screen.Torrent, Screen.Music, Screen.Downloads, Screen.Settings)
+    val bottomScreens = listOf(Screen.Home, Screen.Torrent, Screen.Music, Screen.Edit, Screen.Downloads, Screen.Settings)
     val showBottomBar = currentRoute in bottomScreens.map { it.route }
 
     Scaffold(
@@ -184,6 +181,7 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel, musicRequest: Long = 0L) {
                 }
             }
             composable(Screen.Music.route) { MusicScreen() }
+            composable(Screen.Edit.route) { EditTabScreen() }
             composable("browser") {
                 BrowserScreen(
                     startUrl = browserUrl,
@@ -204,25 +202,10 @@ fun AfuTubeApp(shareViewModel: ShareIntentViewModel, musicRequest: Long = 0L) {
                     )
                 }
             }
-            composable(Screen.Downloads.route) { DownloadsScreen(onEdit = { path -> editorPath = path; navController.navigate("editor") }) }
-            composable("editor") {
-                val path = editorPath
-                if (path != null) {
-                    val duration = remember(path) { runCatching {
-                        android.media.MediaMetadataRetriever().let { retriever ->
-                            try {
-                                retriever.setDataSource(path)
-                                retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-                            } finally { retriever.release() }
-                        }
-                    }.getOrDefault(0L) }
-                    EditorScreen(
-                        initialProject = EditorProject(clips = if (duration > 0) listOf(VideoClip("clip-0", path, duration)) else emptyList()),
-                        onAddClip = { },
-                        onSave = { }
-                    )
-                }
-            }
+            composable(Screen.Downloads.route) { DownloadsScreen(onEdit = { path ->
+                navController.navigate(Screen.Edit.route) { launchSingleTop = true }
+                openInWizardCut(context, path)
+            }) }
             composable(Screen.Settings.route)  {
                 SettingsScreen(currentVersionCode = BuildConfig.VERSION_CODE, currentVersionName = BuildConfig.VERSION_NAME, shareLink = ShareLinkBuilder.url(BuildConfig.VERSION_NAME), onUpdateFound = { availableUpdate = it })
             }
