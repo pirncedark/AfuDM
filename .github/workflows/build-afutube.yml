@@ -178,6 +178,7 @@ jobs:
             adb shell am instrument -w com.afudm.afutube.debug.test/androidx.test.runner.AndroidJUnitRunner | tee e2e-out/editor-instrument.txt; grep -q "^OK (" e2e-out/editor-instrument.txt
             adb pull /sdcard/Android/data/com.afudm.afutube.debug/files/e2e-out/editor-screen.png e2e-out/editor-screen.png
             adb shell wm size reset; adb shell wm density reset
+            adb uninstall com.afudm.afutube.debug.test; adb uninstall com.afudm.afutube.debug; adb shell am kill-all
             bash AfuTube/scripts/e2e-tarayici.sh
 
       - name: Upload e2e evidence
