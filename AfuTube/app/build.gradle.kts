@@ -1,8 +1,8 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.kapt")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.dagger.hilt.android")
+    id("com.google.devtools.ksp")
 }
 
 android {
@@ -13,7 +13,7 @@ android {
         // GitHub sideload is the only distribution today. Add a Play flavor before Play publication;
         // Play must disable APK self-update and external executable-code downloads.
         applicationId = "com.afudm.afutube"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 37
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1000000
@@ -69,7 +69,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
 
     buildFeatures {
         compose = true
@@ -108,7 +107,7 @@ dependencies {
     val roomVersion = "2.8.5"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
-    kapt("androidx.room:room-compiler:$roomVersion")
+    ksp("androidx.room:room-compiler:$roomVersion")
 
     // ── youtubedl-android (yt-dlp + FFmpeg + aria2 wrapper) ─────────────────
     // Resmi repo: https://github.com/yausername/youtubedl-android
@@ -116,6 +115,10 @@ dependencies {
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:aria2c:0.18.1")
 
+
+    // ── Hilt (Edit sekmesindeki wizardcut modülü Hilt ile çalışır) ─────────
+    implementation("com.google.dagger:hilt-android:2.60.1")
+    ksp("com.google.dagger:hilt-compiler:2.60.1")
 
     // ── Coil (thumbnail yükleme) ──────────────────────────────────────────
     implementation("io.coil-kt:coil-compose:2.5.0")
@@ -135,19 +138,18 @@ dependencies {
     implementation(project(":feature:home"))
     implementation(project(":feature:formats"))
     implementation(project(":feature:downloads"))
-    implementation(project(":feature:editor"))
     implementation(project(":feature:history"))
     implementation(project(":feature:settings"))
     implementation(project(":feature:torrent"))
+    implementation(project(":feature:wizardcut"))
+    // WizardCut'ın FFmpegKitNext AAR'ı (LGPL, kaynak teklifi wizardcut res/raw içinde).
+    implementation(files("../feature/wizardcut/third_party/ffmpeg-kit-next/ffmpeg-kit-next-8.1.0.aar"))
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlin:kotlin-test:2.2.20")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.4.10")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
-    androidTestImplementation("androidx.media3:media3-common:1.11.1")
-    androidTestImplementation("androidx.media3:media3-transformer:1.11.1")
-    androidTestImplementation("androidx.media3:media3-effect:1.11.1")
 }

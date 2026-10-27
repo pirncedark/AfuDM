@@ -1,6 +1,5 @@
 package com.afudm.afutube
 
-import android.app.Application
 import com.afudm.afutube.runtime.MediaRuntime
 import com.afudm.afutube.runtime.MediaRuntimeHealthChecker
 import com.afudm.afutube.updater.ExtractorUpdater
@@ -9,8 +8,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import android.util.Log
+import dagger.hilt.android.HiltAndroidApp
+import info.bigwizardmedia.wizardcut.WizardCutApp
 
-class AfuTubeApplication : Application() {
+@HiltAndroidApp
+// WizardCutApp: Edit sekmesinin Hilt/WorkManager/bildirim kanalı kurulumu (wizardcut).
+class AfuTubeApplication : WizardCutApp() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // Motor hazirliginin TEK sahibi burasi; Compose yalnizca MediaRuntime.status'u izler.

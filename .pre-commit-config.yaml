@@ -13,6 +13,8 @@ repos:
       - id: check-toml
       - id: check-added-large-files
         args: [--maxkb=1024]
+        # WizardCut vendor dosyaları (kaynak-sabitli FFmpegKitNext AAR, baseline profile) aynen tutulur.
+        exclude: ^AfuTube/feature/wizardcut/(third_party/ffmpeg-kit-next/ffmpeg-kit-next-8\.1\.0\.aar|src/main/baseline-prof\.txt)$
       - id: check-merge-conflict
       - id: mixed-line-ending
         args: [--fix=no]
