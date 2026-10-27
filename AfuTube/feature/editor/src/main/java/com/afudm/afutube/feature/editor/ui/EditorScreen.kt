@@ -1,8 +1,11 @@
-ï»¿package com.afudm.afutube.feature.editor.ui
+package com.afudm.afutube.feature.editor.ui
 
 import android.content.Context
 import android.content.Intent
 import android.media.MediaMetadataRetriever
+import android.media.MediaExtractor
+import android.media.MediaCodec
+import android.media.MediaFormat
 import android.net.Uri
 import android.os.Build
 import android.Manifest
@@ -137,7 +140,7 @@ fun EditorScreen(
     }
     Column(modifier.fillMaxSize().background(AfuColors.bg).padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("DÃ¼zenle", color = AfuColors.text, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Text("Düzenle", color = AfuColors.text, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             TextButton(onClick = { onSave(project); showExportOptions = true }) { Text("Videoyu kaydet", color = AfuColors.text) }
         }
         var previewWidthPx by remember { mutableFloatStateOf(1f) }
@@ -152,8 +155,8 @@ fun EditorScreen(
                     textAlign = TextAlign.Center,
                     modifier=Modifier.align(Alignment.TopStart).offset(x=previewWidthDp * overlay.x.toFloat(), y=previewHeightDp * overlay.y.toFloat())
                         .then(if (overlay.id == selectedTextId) Modifier.border(1.dp, AfuColors.accent) else Modifier)
-                        .pointerInput(overlay.id) { detectTapGestures { selectedTextId = overlay.id; selectedTool = "YazÄ±" } }
-                        .pointerInput(overlay.id, previewWidthPx, previewHeightPx) { detectDragGestures { change, drag -> change.consume(); selectedTextId = overlay.id; selectedTool = "YazÄ±"; edit { p -> p.updateText(overlay.id) { it.copy(x=(it.x+drag.x/previewWidthPx).coerceIn(0.0,1.0), y=(it.y+drag.y/previewHeightPx).coerceIn(0.0,1.0)) } } } })
+                        .pointerInput(overlay.id) { detectTapGestures { selectedTextId = overlay.id; selectedTool = "Yazý" } }
+                        .pointerInput(overlay.id, previewWidthPx, previewHeightPx) { detectDragGestures { change, drag -> change.consume(); selectedTextId = overlay.id; selectedTool = "Yazý"; edit { p -> p.updateText(overlay.id) { it.copy(x=(it.x+drag.x/previewWidthPx).coerceIn(0.0,1.0), y=(it.y+drag.y/previewHeightPx).coerceIn(0.0,1.0)) } } } })
             }
         }
         val durationMs = project.clips.sumOf { it.trimEndMs - it.trimStartMs }
@@ -162,7 +165,7 @@ fun EditorScreen(
         LaunchedEffect(player) { while (player != null) { positionMs = player?.currentPosition ?: 0L; kotlinx.coroutines.delay(250) } }
         Text("${formatTime(positionMs)} / ${formatTime(durationMs)}", Modifier.weight(1f), color = AfuColors.textMuted)
             TextButton(onClick = { if (history.undo()) revision++ }, enabled = history.canUndo) { Text("Geri al", color = AfuColors.accent) }
-            TextButton(onClick = { if (history.redo()) revision++ }, enabled = history.canRedo) { Text("Ä°leri al", color = AfuColors.accent) }
+            TextButton(onClick = { if (history.redo()) revision++ }, enabled = history.canRedo) { Text("Ýleri al", color = AfuColors.accent) }
         }
         Timeline(
             clips = project.clips,
@@ -174,44 +177,46 @@ fun EditorScreen(
             onReorder = { from, to -> edit { it.reorderClip(from, to) } },
             onAdd = { onAddClip { clip -> selectedClipId = clip.id; edit { it.copy(clips = it.clips + clip) } } },
             musicTracks = project.musicTracks,
-            textOverlays = project.textOverlays
+            textOverlays = project.textOverlays,
+            durationMs = durationMs,
+            onEditText = { id, start, end -> edit { it.updateText(id) { text -> text.copy(startMs = start.coerceIn(0L, text.endMs - 1L), endMs = end.coerceIn(text.startMs + 1L, durationMs)) } } }
         )
         EditorTools(project = project, selectedClipId = selectedClipId ?: TimelineMath.clipAtPlayhead(project.clips, positionMs)?.let { project.clips[it.index].id }, playheadMs = positionMs, selectedTool = selectedTool, onSelectTool = { selectedTool = it }, selectedTextId = selectedTextId, onSelectText = { selectedTextId = it }, onEdit = { edit(it) }, onAddMusic = { source ->
             val duration = project.clips.maxOfOrNull { it.trimEndMs - it.trimStartMs } ?: 1_000L
             edit { it.copy(musicTracks = it.musicTracks + com.afudm.afutube.feature.editor.model.MusicTrack("music-${it.musicTracks.size}", source, trimEndMs = duration)) }
         }, onExtractAudio = {
             val source = project.clips.firstOrNull()?.source
-            if (source == null) audioMessage = "Ã–nce bir video ekle."
+            if (source == null) audioMessage = "Önce bir video ekle."
             else scope.launch {
                 val input = File(Uri.parse(source).path ?: source)
                 val output = audioOutput(input)
                 val published = withContext(Dispatchers.IO) {
                     runCatching { if (FfmpegRunner.run(context, audioArgs(input, output)) == 0) DownloadFolder.publish(context, output) else null }
                 }.getOrNull()
-                audioMessage = if (published != null) "Ses ayrÄ± dosya olarak kaydedildi." else "Ses kaydedilemedi. Tekrar dene."
+                audioMessage = if (published != null) "Ses ayrý dosya olarak kaydedildi." else "Ses kaydedilemedi. Tekrar dene."
             }
         }, onPickMusic = { if (musicLibraryProvider != null || androidx.core.content.ContextCompat.checkSelfPermission(context, musicPermission) == android.content.pm.PackageManager.PERMISSION_GRANTED) scope.launch { musicLibrary = runCatching { musicLibraryProvider?.invoke(context) ?: loadMusic(context) }.getOrDefault(emptyList()); showMusicLibrary = true } else musicPermissionLauncher.launch(musicPermission) }, onPickAudioFile = { audioDocumentLauncher.launch(arrayOf("audio/*")) })
     }
 
-    if (showMusicLibrary) AlertDialog(onDismissRequest = { showMusicLibrary = false }, title = { Text("AfuTube MÃ¼zik") },
-        text = { androidx.compose.foundation.lazy.LazyColumn { items(musicLibrary.size) { index -> val song = musicLibrary[index]; TextButton(onClick = { addMusicSource(song.uri); showMusicLibrary = false }) { Text("${song.title} Â· ${song.artist}", color = AfuColors.text) } } } },
+    if (showMusicLibrary) AlertDialog(onDismissRequest = { showMusicLibrary = false }, title = { Text("AfuTube Müzik") },
+        text = { androidx.compose.foundation.lazy.LazyColumn { items(musicLibrary.size) { index -> val song = musicLibrary[index]; TextButton(onClick = { addMusicSource(song.uri); showMusicLibrary = false }) { Text("${song.title} · ${song.artist}", color = AfuColors.text) } } } },
         confirmButton = { TextButton(onClick = { showMusicLibrary = false }) { Text("Kapat") } })
 
     if (showResume) AlertDialog(
         onDismissRequest = { preferences.edit().remove("project").apply(); draftReady = true; showResume = false; showFirstTip = !preferences.getBoolean("intro_seen", false) },
-        title = { Text("KaldÄ±ÄŸÄ±n yerden devam?") },
+        title = { Text("Kaldýðýn yerden devam?") },
         confirmButton = { TextButton(onClick = {
             val saved = preferences.getString("project", null)
             runCatching { saved?.let { EditorProject.fromJson(it) } }.getOrNull()?.let { project = it; revision++ }
             draftReady = true; showResume = false; showFirstTip = !preferences.getBoolean("intro_seen", false)
         }) { Text("Devam et") } },
-        dismissButton = { TextButton(onClick = { preferences.edit().remove("project").apply(); draftReady = true; showResume = false; showFirstTip = !preferences.getBoolean("intro_seen", false) }) { Text("Yeni dÃ¼zenleme") } }
+        dismissButton = { TextButton(onClick = { preferences.edit().remove("project").apply(); draftReady = true; showResume = false; showFirstTip = !preferences.getBoolean("intro_seen", false) }) { Text("Yeni düzenleme") } }
     )
     if (showFirstTip) AlertDialog(
         onDismissRequest = { preferences.edit().putBoolean("intro_seen", true).apply(); showFirstTip = false },
-        title = { Text("ÃœÃ§ adÄ±mda dÃ¼zenle") },
-        text = { Text("1. Videonu seÃ§.\n2. Alttaki araÃ§larla dÃ¼zenle.\n3. Videoyu kaydet.") },
-        confirmButton = { TextButton(onClick = { preferences.edit().putBoolean("intro_seen", true).apply(); showFirstTip = false }) { Text("BaÅŸlayalÄ±m") } }
+        title = { Text("Üç adýmda düzenle") },
+        text = { Text("1. Videonu seç.\n2. Alttaki araçlarla düzenle.\n3. Videoyu kaydet.") },
+        confirmButton = { TextButton(onClick = { preferences.edit().putBoolean("intro_seen", true).apply(); showFirstTip = false }) { Text("Baþlayalým") } }
     )
     if (showExportOptions) AlertDialog(
         onDismissRequest = { showExportOptions = false },
@@ -225,7 +230,7 @@ fun EditorScreen(
                         Text(label, color = AfuColors.text)
                     }
                 }
-                TextButton(onClick = { showAdvancedQuality = !showAdvancedQuality }) { Text(if (showAdvancedQuality) "GeliÅŸmiÅŸi gizle" else "GeliÅŸmiÅŸ", color = AfuColors.accent) }
+                TextButton(onClick = { showAdvancedQuality = !showAdvancedQuality }) { Text(if (showAdvancedQuality) "Geliþmiþi gizle" else "Geliþmiþ", color = AfuColors.accent) }
                 if (showAdvancedQuality) listOf(ExportQuality.P1080 to "1080p", ExportQuality.P720 to "720p").forEach { (quality, label) ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(selected = selectedQuality == quality, onClick = { selectedQuality = quality })
@@ -235,7 +240,7 @@ fun EditorScreen(
             }
         },
         confirmButton = { TextButton(onClick = { exportId = ExportWorker.enqueue(context, project, selectedQuality); showExportOptions = false }) { Text("Kaydet") } },
-        dismissButton = { TextButton(onClick = { showExportOptions = false }) { Text("Ä°ptal") } }
+        dismissButton = { TextButton(onClick = { showExportOptions = false }) { Text("Ýptal") } }
     )
     exportInfo?.let { info ->
         val output = info.outputData.getString(ExportWorker.KEY_OUTPUT)
@@ -247,18 +252,18 @@ fun EditorScreen(
             confirmButton = { TextButton(onClick = {
                 selectedQuality = if (selectedQuality == ExportQuality.P720) ExportQuality.P480 else ExportQuality.P720
                 exportId = ExportWorker.enqueue(context, project, selectedQuality)
-            }) { Text("Daha dÃ¼ÅŸÃ¼k kalitede tekrar dene") } },
+            }) { Text("Daha düþük kalitede tekrar dene") } },
             dismissButton = { TextButton(onClick = { exportId = null }) { Text("Kapat") } }
         ) else if (info.state == WorkInfo.State.SUCCEEDED && output != null) {
             val savedFile = File(output)
             AlertDialog(
                 onDismissRequest = { exportId = null }, title = { Text("Video kaydedildi") }, text = { Text(savedFile.name) },
-                confirmButton = { TextButton(onClick = { ShareHelper.shareFile(context, savedFile, savedFile.name) }) { Text("PaylaÅŸ") } },
+                confirmButton = { TextButton(onClick = { ShareHelper.shareFile(context, savedFile, savedFile.name) }) { Text("Paylaþ") } },
                 dismissButton = { Row {
                     TextButton(onClick = {
                         val uri = ShareHelper.createShareUri(context, savedFile)
                         context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "video/mp4").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
-                    }) { Text("AÃ§") }
+                    }) { Text("Aç") }
                     TextButton(onClick = {
                         val uri = ShareHelper.createShareUri(context, savedFile)
                         val intent = Intent(Intent.ACTION_SEND).setType("video/mp4").putExtra(Intent.EXTRA_STREAM, uri)
@@ -283,21 +288,21 @@ private fun EditorTools(project: EditorProject, selectedClipId: String?, playhea
     val selectedText = project.textOverlays.firstOrNull { it.id == selectedTextId }
     Column(Modifier.fillMaxWidth().background(AfuColors.surface, RoundedCornerShape(12.dp)).padding(10.dp)) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            listOf("Kes", "HÄ±z", "Ses", "MÃ¼zik", "YazÄ±", "Filtre", "Oran", "Sesi ayÄ±r").forEach { label -> TextButton(onClick = { onSelectTool(label); if (label == "Sesi ayÄ±r") onExtractAudio() }) { Text(label, color = if (selectedTool == label) AfuColors.accent else AfuColors.text) } }
+            listOf("Kes", "Hýz", "Ses", "Müzik", "Yazý", "Filtre", "Oran", "Sesi ayýr").forEach { label -> TextButton(onClick = { onSelectTool(label); if (label == "Sesi ayýr") onExtractAudio() }) { Text(label, color = if (selectedTool == label) AfuColors.accent else AfuColors.text) } }
         }
         when (selectedTool) {
             "Kes" -> if (selectedClip != null) {
                 val index = project.clips.indexOfFirst { it.id == selectedClip.id }
-                Text("BaÅŸlangÄ±Ã§ Â· ${formatTime(selectedClip.trimStartMs)}", color = AfuColors.text)
+                Text("Baþlangýç · ${formatTime(selectedClip.trimStartMs)}", color = AfuColors.text)
                 Slider(value = selectedClip.trimStartMs.toFloat(), onValueChange = { value -> onEdit { p -> p.trimClip(index, value.toLong(), p.clips[index].trimEndMs) } }, valueRange = 0f..(selectedClip.trimEndMs - selectedClip.minimumDurationMs).toFloat())
-                Text("BitiÅŸ Â· ${formatTime(selectedClip.trimEndMs)}", color = AfuColors.text)
+                Text("Bitiþ · ${formatTime(selectedClip.trimEndMs)}", color = AfuColors.text)
                 Slider(value = selectedClip.trimEndMs.toFloat(), onValueChange = { value -> onEdit { p -> p.trimClip(index, p.clips[index].trimStartMs, value.toLong()) } }, valueRange = (selectedClip.trimStartMs + selectedClip.minimumDurationMs).toFloat()..selectedClip.sourceDurationMs.toFloat())
                 Row {
-                    TextButton(onClick = { onEdit { p -> TimelineMath.splitAtPlayhead(p, playheadMs) } }) { Text("BÃ¶l", color = AfuColors.text) }
+                    TextButton(onClick = { onEdit { p -> TimelineMath.splitAtPlayhead(p, playheadMs) } }) { Text("Böl", color = AfuColors.text) }
                     TextButton(onClick = { onEdit { it.removeClip(index) } }) { Text("Sil", color = AfuColors.text) }
                 }
-            } else Text("Ã–nce bir video ekle.", color = AfuColors.textMuted)
-            "HÄ±z" -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            } else Text("Önce bir video ekle.", color = AfuColors.textMuted)
+            "Hýz" -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 listOf(.5, 1.0, 1.5, 2.0).forEach { speed -> TextButton(onClick = { project.clips.indexOfFirst { it.id == selectedClipId }.takeIf { it >= 0 }?.let { index -> onEdit { p -> p.copy(clips = p.clips.toMutableList().also { it[index] = it[index].copy(speed = speed) }) } } }) { Text("${speed}x", color = AfuColors.text) } }
             }
             "Ses" -> {
@@ -307,30 +312,30 @@ private fun EditorTools(project: EditorProject, selectedClipId: String?, playhea
                     Text("Klip sesi: ${(clip.volume * 100).toInt()}%", color = AfuColors.text)
                     Slider(value = clip.volume.toFloat(), onValueChange = { value -> onEdit { p -> p.copy(clips = p.clips.toMutableList().also { it[index] = it[index].copy(volume = value.toDouble()) }) } }, valueRange = 0f..2f)
                     Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = !clip.originalAudioEnabled, onCheckedChange = { muted -> onEdit { p -> p.copy(clips = p.clips.toMutableList().also { it[index] = it[index].copy(originalAudioEnabled = !muted) }) } }); Text("Orijinal sesi kapat", color = AfuColors.text) }
-                    Text("YumuÅŸak giriÅŸ / Ã§Ä±kÄ±ÅŸ", color = AfuColors.text)
+                    Text("Yumuþak giriþ / çýkýþ", color = AfuColors.text)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf(0L, 300L, 600L, 1_000L).forEach { ms -> TextButton(onClick = { onEdit { p -> p.copy(clips = p.clips.toMutableList().also { it[index] = it[index].copy(fadeInMs = ms, fadeOutMs = ms.coerceAtMost((it[index].trimEndMs - it[index].trimStartMs) / 2)) }) } }) { Text("${ms / 1000.0}s", color = AfuColors.text) } }
                     }
                 }
             }
-            "MÃ¼zik" -> {
+            "Müzik" -> {
                 Row {
-                    TextButton(onClick = onPickMusic) { Text("AfuTube MÃ¼zik", color = AfuColors.text) }
-                    TextButton(onClick = onPickAudioFile) { Text("Dosyadan seÃ§", color = AfuColors.text) }
-                    TextButton(onClick = { onEdit { it.copy(dialogueDucking = !it.dialogueDucking) } }) { Text("KonuÅŸmada %30", color = AfuColors.text) }
+                    TextButton(onClick = onPickMusic) { Text("AfuTube Müzik", color = AfuColors.text) }
+                    TextButton(onClick = onPickAudioFile) { Text("Dosyadan seç", color = AfuColors.text) }
+                    TextButton(onClick = { onEdit { it.copy(dialogueDucking = !it.dialogueDucking) } }) { Text("Konuþmada %30", color = AfuColors.text) }
                 }
                 project.musicTracks.forEachIndexed { i, track ->
-                    Text("MÃ¼zik ${i + 1} Â· ${(track.volume * 100).toInt()}%", color = AfuColors.text)
+                    Text("Müzik ${i + 1} · ${(track.volume * 100).toInt()}%", color = AfuColors.text)
                     Slider(value = track.volume.toFloat(), onValueChange = { value -> onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(volume = value.toDouble()) }) } }, valueRange = 0f..2f)
-                    Text("BaÅŸlangÄ±Ã§ Â· ${formatTime(track.startMs)}", color = AfuColors.textMuted)
+                    Text("Baþlangýç · ${formatTime(track.startMs)}", color = AfuColors.textMuted)
                     Slider(value = track.startMs.toFloat(), onValueChange = { value -> onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(startMs = value.toLong()) }) } }, valueRange = 0f..(project.clips.sumOf { it.trimEndMs - it.trimStartMs }).coerceAtLeast(1).toFloat())
-                    Text("KÄ±rp Â· ${formatTime(track.trimStartMs)} â€“ ${formatTime(track.trimEndMs)}", color = AfuColors.textMuted)
-                    Row { TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(trimStartMs = (track.trimStartMs + 500).coerceAtMost(track.trimEndMs - 1)) }) } }) { Text("BaÅŸÄ±nÄ± kÄ±rp +0,5 sn", color = AfuColors.text) }; TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(trimEndMs = (track.trimEndMs - 500).coerceAtLeast(track.trimStartMs + 1)) }) } }) { Text("Sonunu kÄ±rp âˆ’0,5 sn", color = AfuColors.text) }; TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.filterIndexed { index, _ -> index != i }) } }) { Text("KaldÄ±r", color = AfuColors.text) } }
-                    Row { TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(fadeInMs = 500L.coerceAtMost((track.trimEndMs - track.trimStartMs) / 2)) }) } }) { Text("YumuÅŸak giriÅŸ", color = AfuColors.text) }; TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(fadeOutMs = 500L.coerceAtMost((track.trimEndMs - track.trimStartMs) / 2)) }) } }) { Text("YumuÅŸak Ã§Ä±kÄ±ÅŸ", color = AfuColors.text) } }
+                    Text("Kýrp · ${formatTime(track.trimStartMs)} – ${formatTime(track.trimEndMs)}", color = AfuColors.textMuted)
+                    Row { TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(trimStartMs = (track.trimStartMs + 500).coerceAtMost(track.trimEndMs - 1)) }) } }) { Text("Baþýný kýrp +0,5 sn", color = AfuColors.text) }; TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(trimEndMs = (track.trimEndMs - 500).coerceAtLeast(track.trimStartMs + 1)) }) } }) { Text("Sonunu kýrp -0,5 sn", color = AfuColors.text) }; TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.filterIndexed { index, _ -> index != i }) } }) { Text("Kaldýr", color = AfuColors.text) } }
+                    Row { TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(fadeInMs = 500L.coerceAtMost((track.trimEndMs - track.trimStartMs) / 2)) }) } }) { Text("Yumuþak giriþ", color = AfuColors.text) }; TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(fadeOutMs = 500L.coerceAtMost((track.trimEndMs - track.trimStartMs) / 2)) }) } }) { Text("Yumuþak çýkýþ", color = AfuColors.text) } }
                 }
             }
-            "YazÄ±" -> {
-                OutlinedTextField(value = selectedText?.text ?: textDraft, onValueChange = { value -> if (selectedText != null) onEdit { p -> p.updateText(selectedText.id) { it.copy(text = value.ifBlank { " " }) } } else textDraft = value }, label = { Text("YazÄ±") }, singleLine = true)
+            "Yazý" -> {
+                OutlinedTextField(value = selectedText?.text ?: textDraft, onValueChange = { value -> if (selectedText != null) onEdit { p -> p.updateText(selectedText.id) { it.copy(text = value.ifBlank { " " }) } } else textDraft = value }, label = { Text("Yazý") }, singleLine = true)
                 Row {
                     TextButton(onClick = { if (selectedText == null && textDraft.isNotBlank()) { val duration = project.clips.sumOf { (it.trimEndMs - it.trimStartMs).toDouble().div(it.speed).toLong() }.coerceAtLeast(1L); val overlay = TextOverlay("text-${System.nanoTime()}", textDraft, playheadMs.coerceAtMost(duration - 1), duration, textColor); onEdit { it.addText(overlay) }; onSelectText(overlay.id); textDraft = "" } }) { Text("Ekle", color = AfuColors.text) }
                     TextButton(onClick = { selectedText?.let { overlay -> onEdit { it.removeText(overlay.id) }; onSelectText(null) } }, enabled = selectedText != null) { Text("Sil", color = AfuColors.text) }
@@ -342,31 +347,31 @@ private fun EditorTools(project: EditorProject, selectedClipId: String?, playhea
                     }
                 }
                 if (selectedText != null) { val overlay = selectedText!!
-                    Text("Boyut Â· ${overlay.sizeSp}", color = AfuColors.text)
+                    Text("Boyut · ${overlay.sizeSp}", color = AfuColors.text)
                     Slider(value = overlay.sizeSp.toFloat(), onValueChange = { value -> onEdit { it.updateText(overlay.id) { text -> text.copy(sizeSp = value.toInt().coerceIn(12, 120)) } } }, valueRange = 12f..120f)
-                    Text("BaÅŸlangÄ±Ã§ Â· ${formatTime(overlay.startMs)}", color = AfuColors.text)
+                    Text("Baþlangýç · ${formatTime(overlay.startMs)}", color = AfuColors.text)
                     Slider(value = overlay.startMs.toFloat(), onValueChange = { value -> onEdit { it.updateText(overlay.id) { text -> text.copy(startMs = value.toLong().coerceAtMost(text.endMs - 1)) } } }, valueRange = 0f..(overlay.endMs - 1).coerceAtLeast(0).toFloat())
-                    Text("BitiÅŸ Â· ${formatTime(overlay.endMs)}", color = AfuColors.text)
+                    Text("Bitiþ · ${formatTime(overlay.endMs)}", color = AfuColors.text)
                     val duration = project.clips.sumOf { (it.trimEndMs - it.trimStartMs).toDouble().div(it.speed).toLong() }.coerceAtLeast(1L)
                     Slider(value = overlay.endMs.toFloat(), onValueChange = { value -> onEdit { it.updateText(overlay.id) { text -> text.copy(endMs = value.toLong().coerceAtLeast(text.startMs + 1)) } } }, valueRange = (overlay.startMs + 1).toFloat()..duration.toFloat())
-                } else Text("Ã–nizlemede seÃ§ili yazÄ±ya dokunup dÃ¼zenle.", color = AfuColors.textMuted)
+                } else Text("Önizlemede seçili yazýya dokunup düzenle.", color = AfuColors.textMuted)
                 project.textOverlays.forEach { overlay -> TextButton(onClick = { onSelectText(overlay.id); textColor = overlay.color }) { Text(overlay.text, color = if (selectedTextId == overlay.id) AfuColors.accent else AfuColors.text) } }
             }
             "Filtre" -> {
-                listOf(EditorFilter.NONE to "Yok", EditorFilter.BLACK_WHITE to "Siyah-Beyaz", EditorFilter.WARM to "SÄ±cak", EditorFilter.COOL to "SoÄŸuk", EditorFilter.VIVID to "CanlÄ±").forEach { (filter, label) -> TextButton(onClick = { onEdit { it.copy(filter = filter) } }) { Text(label, color = if (project.filter == filter) AfuColors.accent else AfuColors.text) } }
-                Text("ParlaklÄ±k Â· ${"%.1f".format(project.brightness)}", color = AfuColors.text)
+                listOf(EditorFilter.NONE to "Yok", EditorFilter.BLACK_WHITE to "Siyah-Beyaz", EditorFilter.WARM to "Sýcak", EditorFilter.COOL to "Soðuk", EditorFilter.VIVID to "Canlý").forEach { (filter, label) -> TextButton(onClick = { onEdit { it.copy(filter = filter) } }) { Text(label, color = if (project.filter == filter) AfuColors.accent else AfuColors.text) } }
+                Text("Parlaklýk · ${"%.1f".format(project.brightness)}", color = AfuColors.text)
                 Slider(value = project.brightness.toFloat(), onValueChange = { value -> onEdit { it.copy(brightness = value.toDouble()) } }, valueRange = -1f..1f)
-                Text("Kontrast Â· ${"%.1f".format(project.contrast)}", color = AfuColors.text)
+                Text("Kontrast · ${"%.1f".format(project.contrast)}", color = AfuColors.text)
                 Slider(value = project.contrast.toFloat(), onValueChange = { value -> onEdit { it.copy(contrast = value.toDouble()) } }, valueRange = -1f..1f)
             }
             "Oran" -> listOf(AspectRatio.ORIGINAL to "Orijinal", AspectRatio.PORTRAIT_9_16 to "9:16", AspectRatio.SQUARE_1_1 to "1:1", AspectRatio.LANDSCAPE_16_9 to "16:9").forEach { (ratio, label) -> TextButton(onClick = { onEdit { it.copy(aspectRatio = ratio) } }) { Text(label, color = if (project.aspectRatio == ratio) AfuColors.accent else AfuColors.text) } }
-            "Sesi ayÄ±r" -> Text("Ses ayrÄ± dosya olarak kaydedilir.", color = AfuColors.textMuted)
+            "Sesi ayýr" -> Text("Ses ayrý dosya olarak kaydedilir.", color = AfuColors.textMuted)
         }
     }
 }
 
 @Composable
-private fun Timeline(clips: List<VideoClip>, selectedClipId: String?, onSelectClip: (String) -> Unit, onTrim: (Int, Long, Long) -> Unit, onSplit: (Int) -> Unit, onDelete: (Int) -> Unit, onReorder: (Int, Int) -> Unit, onAdd: () -> Unit, musicTracks: List<com.afudm.afutube.feature.editor.model.MusicTrack>, textOverlays: List<TextOverlay>) {
+private fun Timeline(clips: List<VideoClip>, selectedClipId: String?, onSelectClip: (String) -> Unit, onTrim: (Int, Long, Long) -> Unit, onSplit: (Int) -> Unit, onDelete: (Int) -> Unit, onReorder: (Int, Int) -> Unit, onAdd: () -> Unit, musicTracks: List<com.afudm.afutube.feature.editor.model.MusicTrack>, textOverlays: List<TextOverlay>, durationMs: Long, onEditText: (String, Long, Long) -> Unit) {
     var zoom by remember { mutableFloatStateOf(1f) }
     Column(Modifier.fillMaxWidth().background(AfuColors.surface, RoundedCornerShape(12.dp)).padding(10.dp)) {
         Box(Modifier.fillMaxWidth().pointerInput(Unit) { detectTransformGestures { _, _, zoomChange, _ -> zoom = (zoom * zoomChange).coerceIn(.5f, 4f) } }) {
@@ -378,14 +383,25 @@ private fun Timeline(clips: List<VideoClip>, selectedClipId: String?, onSelectCl
             item { TextButton(onClick = onAdd) { Text("+", color = AfuColors.accent, style = MaterialTheme.typography.headlineMedium) } }
         }
         if (musicTracks.isNotEmpty()) Row(Modifier.fillMaxWidth().height(24.dp), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("â™ª MÃ¼zik izi", color = AfuColors.accent)
-            musicTracks.forEach { track -> Box(Modifier.weight(1f).fillMaxHeight().padding(vertical = 3.dp).clip(RoundedCornerShape(4.dp)).background(AfuColors.card), contentAlignment = Alignment.CenterStart) {
-                Canvas(Modifier.fillMaxSize()) { val count = (size.width / 5f).toInt().coerceAtLeast(1); repeat(count) { i -> val seed = (track.source.hashCode() * 31 + i * 17).ushr(1); val h = (seed % 100) / 130f * size.height; drawLine(AfuColors.accent, Offset(i * 5f, (size.height - h) / 2), Offset(i * 5f, (size.height + h) / 2), 2.dp.toPx()) } }
+            Text("d Müzik izi", color = AfuColors.accent)
+            musicTracks.forEach { track ->
+                val context = LocalContext.current
+                val wave by produceState(emptyList<Float>(), track.source) { value = withContext(Dispatchers.IO) { WaveformCache.load(context, track.source) } }
+                Box(Modifier.weight(1f).fillMaxHeight().padding(vertical = 3.dp).clip(RoundedCornerShape(4.dp)).background(AfuColors.card), contentAlignment = Alignment.CenterStart) {
+                Canvas(Modifier.fillMaxSize()) { val count = wave.size; if (count > 0) repeat(count) { i -> val h = wave[i] * size.height; val x = size.width * i / count; drawLine(AfuColors.accent, Offset(x, (size.height - h) / 2), Offset(x, (size.height + h) / 2), 1.dp.toPx()) } }
             } }
         }
         if (textOverlays.isNotEmpty()) Row(Modifier.fillMaxWidth().height(24.dp), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("T", color = AfuColors.accent)
-            textOverlays.forEach { overlay -> Text(overlay.text, color = AfuColors.text, maxLines = 1, modifier = Modifier.weight(1f).clip(RoundedCornerShape(4.dp)).background(AfuColors.card).padding(horizontal = 6.dp, vertical = 3.dp)) }
+            textOverlays.forEach { overlay ->
+                val scale = 0.6f / durationMs.coerceAtLeast(1L).toFloat()
+                Row(Modifier.weight(1f).height(24.dp).clip(RoundedCornerShape(4.dp)).background(AfuColors.card), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.width((overlay.startMs * scale).dp).fillMaxHeight())
+                    Box(Modifier.width(12.dp).fillMaxHeight().background(AfuColors.accent).pointerInput(overlay, durationMs) { detectDragGestures { change, drag -> change.consume(); val delta = (drag.x / 0.6f * durationMs).toLong(); onEditText(overlay.id, (overlay.startMs + delta).coerceAtLeast(0L), overlay.endMs) } })
+                    Text(overlay.text, color = AfuColors.text, maxLines = 1, modifier = Modifier.weight(1f).pointerInput(overlay, durationMs) { detectDragGestures { change, drag -> change.consume(); val delta = (drag.x / 0.6f * durationMs).toLong(); onEditText(overlay.id, overlay.startMs, (overlay.endMs + delta).coerceAtLeast(overlay.startMs + 1L)) } }.padding(horizontal = 2.dp))
+                    Box(Modifier.width(12.dp).fillMaxHeight().background(AfuColors.accent).pointerInput(overlay, durationMs) { detectDragGestures { change, drag -> change.consume(); val delta = (drag.x / 0.6f * durationMs).toLong(); onEditText(overlay.id, overlay.startMs, (overlay.endMs + delta).coerceAtLeast(overlay.startMs + 1L)) } })
+                }
+            }
         }
         Canvas(Modifier.matchParentSize()) {
             drawLine(AfuColors.accent, Offset(size.width / 2, 0f), Offset(size.width / 2, size.height), 2.dp.toPx())
@@ -393,8 +409,8 @@ private fun Timeline(clips: List<VideoClip>, selectedClipId: String?, onSelectCl
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("${clips.size} klip", color = AfuColors.textMuted)
-            Text("â”‚", color = AfuColors.accent, modifier = Modifier.weight(1f))
-            TextButton(onClick = { clips.indexOfFirst { it.id == selectedClipId }.takeIf { it >= 0 }?.let(onSplit) }, enabled = clips.isNotEmpty()) { Text("BÃ¶l", color = AfuColors.text) }
+            Text("-", color = AfuColors.accent, modifier = Modifier.weight(1f))
+            TextButton(onClick = { clips.indexOfFirst { it.id == selectedClipId }.takeIf { it >= 0 }?.let(onSplit) }, enabled = clips.isNotEmpty()) { Text("Böl", color = AfuColors.text) }
             TextButton(onClick = { clips.indexOfFirst { it.id == selectedClipId }.takeIf { it >= 0 }?.let(onDelete) }, enabled = clips.isNotEmpty()) { Text("Sil", color = AfuColors.text) }
         }
     }
@@ -435,6 +451,68 @@ private object ThumbnailCache {
             List(6) { i -> retriever.getFrameAtTime((startMs + (endMs - startMs) * i / 6) * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC) }
                 .also { cache.put(key, it) }
         } catch (_: Exception) { List(6) { null } } finally { retriever.release() }
+    }
+}
+
+private object WaveformCache {
+    private val cache = object : LruCache<String, List<Float>>(24) {}
+
+    fun load(context: Context, source: String): List<Float> {
+        val uri = Uri.parse(source)
+        val size = runCatching {
+            context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getLong(0) else -1L
+            } ?: -1L
+        }.getOrDefault(-1L)
+        val key = "$source:$size"
+        cache.get(key)?.let { return it }
+        val extractor = MediaExtractor()
+        var codec: MediaCodec? = null
+        try {
+            extractor.setDataSource(context, uri, null)
+            val track = (0 until extractor.trackCount).firstOrNull { extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true }
+                ?: return List(200) { 0f }
+            val format = extractor.getTrackFormat(track)
+            extractor.selectTrack(track)
+            codec = MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME)!!)
+            codec.configure(format, null, null, 0)
+            codec.start()
+            val pcm = ArrayList<Short>()
+            val info = MediaCodec.BufferInfo()
+            var inputDone = false
+            var outputDone = false
+            while (!outputDone && pcm.size < 20_000_000) {
+                if (!inputDone) {
+                    val inputIndex = decoder.dequeueInputBuffer(10_000)
+                    if (inputIndex >= 0) {
+                        val input = decoder.getInputBuffer(inputIndex)!!
+                        val count = extractor.readSampleData(input, 0)
+                        if (count < 0) { decoder.queueInputBuffer(inputIndex, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM); inputDone = true }
+                        else { decoder.queueInputBuffer(inputIndex, 0, count, extractor.sampleTime, 0); extractor.advance() }
+                    }
+                }
+                val outputIndex = decoder.dequeueOutputBuffer(info, 10_000)
+                if (outputIndex >= 0) {
+                    val output = decoder.getOutputBuffer(outputIndex)
+                    if (output != null && info.size > 0) {
+                        output.position(info.offset)
+                        output.limit(info.offset + info.size)
+                        while (output.remaining() >= 2) pcm.add(output.short)
+                    }
+                    outputDone = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
+                    decoder.releaseOutputBuffer(outputIndex, false)
+                }
+            }
+            val result = com.afudm.afutube.feature.editor.model.TimelineMath.rmsBuckets(ShortArray(pcm.size) { pcm[it] }, 200)
+            cache.put(key, result)
+            return result
+        } catch (_: Exception) {
+            return List(200) { 0f }
+        } finally {
+            runCatching { codec?.stop() }
+            runCatching { codec?.release() }
+            extractor.release()
+        }
     }
 }
 

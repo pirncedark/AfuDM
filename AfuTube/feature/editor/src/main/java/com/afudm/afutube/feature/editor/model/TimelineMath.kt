@@ -36,4 +36,16 @@ object TimelineMath {
             kotlin.math.sqrt(bucket.sumOf { val normalized = it / 32768.0; normalized * normalized } / bucket.size).toFloat()
         }
     }
+
+    fun rmsBuckets(samples: ShortArray, bucketCount: Int): List<Float> {
+        if (bucketCount <= 0) return emptyList()
+        if (samples.isEmpty()) return List(bucketCount) { 0f }
+        return List(bucketCount) { bucket ->
+            val from = (bucket.toLong() * samples.size / bucketCount).toInt()
+            val until = (((bucket + 1L) * samples.size / bucketCount).toInt()).coerceAtLeast(from + 1).coerceAtMost(samples.size)
+            var sum = 0.0
+            for (i in from until until) { val sample = samples[i] / 32768.0; sum += sample * sample }
+            kotlin.math.sqrt(sum / (until - from)).toFloat()
+        }
+    }
 }

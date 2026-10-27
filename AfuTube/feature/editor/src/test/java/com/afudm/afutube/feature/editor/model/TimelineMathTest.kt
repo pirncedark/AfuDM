@@ -21,4 +21,12 @@ class TimelineMathTest {
         assertEquals(listOf(1f, 0f), TimelineMath.rms(shortArrayOf(32767, 32767, 0, 0), 2).map { if (it > .99f) 1f else 0f })
         assertEquals(.01f, TimelineMath.pixelsPerMillisecond(1_000f, 100_000, 1f), .0001f)
     }
+
+    @Test fun fixedRmsBucketsHandleSilenceAndConstantAmplitude() {
+        assertEquals(List(200) { 0f }, TimelineMath.rmsBuckets(ShortArray(0), 200))
+        assertEquals(List(4) { 0f }, TimelineMath.rmsBuckets(ShortArray(20), 4))
+        val buckets = TimelineMath.rmsBuckets(ShortArray(20) { 16384 }, 4)
+        assertEquals(4, buckets.size)
+        buckets.forEach { assertEquals(.5f, it, .001f) }
+    }
 }
