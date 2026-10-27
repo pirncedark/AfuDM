@@ -101,7 +101,7 @@ private fun Timeline(clips: List<VideoClip>, onTrim: (Int, Long, Long) -> Unit, 
         Box(Modifier.fillMaxWidth()) {
         LazyRow(verticalAlignment = Alignment.CenterVertically) {
             itemsIndexed(clips, key = { _, clip -> clip.id }) { index, clip ->
-                ClipStrip(clip, Modifier.width(clip.trimEndMs.minus(clip.trimStartMs).div(250).coerceIn(88, 220).dp).height(76.dp),
+                ClipStrip(clip, Modifier.width(clip.trimEndMs.minus(clip.trimStartMs).div(250).coerceIn(88L, 220L).toInt().dp).height(76.dp),
                     onTrim = { start, end -> onTrim(index, start, end) }, onTap = { }, onMove = { onReorder(index, (index + it).coerceIn(clips.indices)) })
             }
             item { TextButton(onClick = onAdd) { Text("+", color = AfuColors.accent, style = MaterialTheme.typography.headlineMedium) } }
