@@ -77,6 +77,8 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import info.bigwizardmedia.wizardcut.R
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.animation.AnimatedVisibility
 import info.bigwizardmedia.wizardcut.ui.components.AfuAdvancedSection
 import info.bigwizardmedia.wizardcut.engine.AiUsageLedger
 import info.bigwizardmedia.wizardcut.engine.EncoderCapabilityProbe
@@ -292,8 +294,9 @@ fun ExportSheet(
     val effectiveConfig = remember(config, exportDurationMs) {
         if (config.targetSizeBytes != null) config.resolveTargetSize(exportDurationMs) else config
     }
+    // Shown only with a target file size: without one the bitrate-based estimate can be far off.
     val estimatedSize = remember(effectiveConfig, exportDurationMs) {
-        estimateExportSize(exportDurationMs, effectiveConfig)
+        if (config.targetSizeBytes == null) null else estimateExportSize(exportDurationMs, effectiveConfig)
     }
     val videoModeEnabled = !config.exportAudioOnly && !config.exportStemsOnly && !config.exportAsGif && !config.captureFrameOnly && !config.exportAsContactSheet
     val audioCodecVisible = !config.captureFrameOnly && !config.exportAsGif && !config.exportAsContactSheet
@@ -2599,8 +2602,18 @@ private fun ExportStateCard(
                     )
                 }
                 if (!secondaryBody.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(secondaryBody, color = tint, style = MaterialTheme.typography.labelLarge)
+                    // Technical summary stays behind "Detaylar >" so the card shows one plain sentence.
+                    var showDetails by rememberSaveable { mutableStateOf(false) }
+                    TextButton(onClick = { showDetails = !showDetails }) {
+                        Text(
+                            text = stringResource(R.string.afu_error_details),
+                            color = colors.subtext,
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                    AnimatedVisibility(visible = showDetails) {
+                        Text(secondaryBody, color = tint, style = MaterialTheme.typography.labelLarge)
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(18.dp))
