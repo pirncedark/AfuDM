@@ -88,4 +88,9 @@
     <string name="afu_advanced_title">Gelişmiş</string>
     <string name="afu_projects_new_video">Yeni video</string>
     <string name="afu_export_save">Kaydet</string>
+    <string name="afu_tab_auto_edit">Otomatik düzenle</string>
+    <string name="afu_caption_add_primary">Altyazı ekle</string>
+    <string name="afu_settings_basics_title">Temel</string>
+    <string name="afu_settings_export_folder">Kayıt klasörü</string>
+    <string name="afu_error_details">Detaylar &gt;</string>
 </resources>

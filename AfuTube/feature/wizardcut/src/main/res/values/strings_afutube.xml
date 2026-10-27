@@ -88,4 +88,9 @@
     <string name="afu_advanced_title">Advanced</string>
     <string name="afu_projects_new_video">New video</string>
     <string name="afu_export_save">Save</string>
+    <string name="afu_tab_auto_edit">Auto edit</string>
+    <string name="afu_caption_add_primary">Add captions</string>
+    <string name="afu_settings_basics_title">Basics</string>
+    <string name="afu_settings_export_folder">Save folder</string>
+    <string name="afu_error_details">Details &gt;</string>
 </resources>

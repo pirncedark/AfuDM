@@ -65,7 +65,7 @@ val projectTabs = listOf(
     TabItem("edit", Icons.Default.Edit, R.string.tool_tab_edit),
     TabItem("text", Icons.Default.Title, R.string.tool_tab_text),
     TabItem("audio", Icons.Default.MusicNote, R.string.tool_tab_audio),
-    TabItem("auto_edit", Icons.Default.AutoFixHigh, R.string.auto_edit_title),
+    TabItem("auto_edit", Icons.Default.AutoFixHigh, R.string.afu_tab_auto_edit),
     TabItem("project_tools", Icons.Default.GridView, R.string.editor_more)
 )
 

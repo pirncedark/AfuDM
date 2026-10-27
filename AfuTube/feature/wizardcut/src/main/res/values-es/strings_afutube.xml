@@ -88,4 +88,9 @@
     <string name="afu_advanced_title">Avanzado</string>
     <string name="afu_projects_new_video">Nuevo vídeo</string>
     <string name="afu_export_save">Guardar</string>
+    <string name="afu_tab_auto_edit">Autoedición</string>
+    <string name="afu_caption_add_primary">Añadir subtítulos</string>
+    <string name="afu_settings_basics_title">Básicos</string>
+    <string name="afu_settings_export_folder">Carpeta de guardado</string>
+    <string name="afu_error_details">Detalles &gt;</string>
 </resources>
