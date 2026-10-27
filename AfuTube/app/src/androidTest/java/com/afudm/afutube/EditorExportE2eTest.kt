@@ -7,7 +7,6 @@ import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.uiautomator.UiDevice
 import com.afudm.afutube.feature.editor.engine.CompositionBuilder
 import com.afudm.afutube.feature.editor.model.EditorProject
 import com.afudm.afutube.feature.editor.model.TextOverlay
@@ -59,8 +58,5 @@ class EditorExportE2eTest {
             assertTrue("Expected 3.0s ±0.3s, got ${duration}ms", duration in 2_700..3_300)
             assertEquals("Export must retain the fixture audio track", "yes", retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO))
         } finally { retriever.release() }
-        val evidence = File(context.getExternalFilesDir(null), "e2e-out/editor-export.png")
-        evidence.parentFile?.mkdirs()
-        assertTrue("Could not capture emulator screenshot", UiDevice.getInstance(instrumentation).takeScreenshot(evidence))
     }
 }

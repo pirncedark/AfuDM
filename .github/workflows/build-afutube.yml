@@ -176,12 +176,14 @@ jobs:
             adb shell monkey -p com.afudm.afutube.debug 1
             sleep 3
             adb shell am instrument -w com.afudm.afutube.debug.test/androidx.test.runner.AndroidJUnitRunner | tee e2e-out/editor-instrument.txt; grep -q "^OK (" e2e-out/editor-instrument.txt
-            adb pull /sdcard/Android/data/com.afudm.afutube.debug/files/e2e-out e2e-out/editor-export
+            adb pull /sdcard/Android/data/com.afudm.afutube.debug/files/e2e-out/editor-screen.png e2e-out/editor-screen.png
 
       - name: Upload e2e evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: AfuTube-e2e-acilis
-          path: e2e-out/
+          name: AfuTube-editor-e2e
+          path: |
+            e2e-out/editor-screen.png
+            e2e-out/editor-instrument.txt
           retention-days: 14
