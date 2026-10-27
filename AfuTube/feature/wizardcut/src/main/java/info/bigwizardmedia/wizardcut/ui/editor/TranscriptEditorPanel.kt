@@ -81,12 +81,12 @@ fun TranscriptEditorPanel(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 PremiumPanelPill(
-                    text = "${transcript.words.size} words",
+                    text = stringResource(R.string.afu_transcript_words, transcript.words.size),
                     accent = ClearCutAccents.Blue
                 )
                 if (selectedWordIndices.isNotEmpty()) {
                     PremiumPanelPill(
-                        text = "${selectedWordIndices.size} selected",
+                        text = stringResource(R.string.afu_transcript_selected, selectedWordIndices.size),
                         accent = ClearCutAccents.Peach
                     )
                 }

@@ -62,7 +62,7 @@ fun ChapterMarkerPanel(
 
     PremiumEditorPanel(
         title = stringResource(R.string.chapter_title),
-        subtitle = "Drop navigation points at the playhead so long edits feel structured and easy to skim.",
+        subtitle = stringResource(R.string.afu_chapter_subtitle),
         icon = Icons.Default.Bookmarks,
         accent = ClearCutAccents.Yellow,
         onClose = onClose,
@@ -87,7 +87,7 @@ fun ChapterMarkerPanel(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Chapter rail",
+                        text = stringResource(R.string.afu_chapter_rail),
                         style = MaterialTheme.typography.titleMedium,
                         color = semanticColors.text
                     )
@@ -106,11 +106,11 @@ fun ChapterMarkerPanel(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     PremiumPanelPill(
-                        text = "${chapters.size} chapters",
+                        text = stringResource(R.string.afu_chapter_count, chapters.size),
                         accent = ClearCutAccents.Yellow
                     )
                     PremiumPanelPill(
-                        text = "Playhead ${formatChapterTimestamp(playheadMs)}",
+                        text = stringResource(R.string.afu_chapter_playhead, formatChapterTimestamp(playheadMs)),
                         accent = ClearCutAccents.Blue
                     )
                 }
@@ -138,14 +138,14 @@ fun ChapterMarkerPanel(
                         color = semanticColors.text
                     )
                     Text(
-                        text = "Use the add button to drop a chapter at the current playhead and start shaping the timeline.",
+                        text = stringResource(R.string.afu_chapter_empty_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = semanticColors.subtext
                     )
                 }
             } else {
                 Text(
-                    text = "Chapter list",
+                    text = stringResource(R.string.afu_chapter_list),
                     style = MaterialTheme.typography.titleMedium,
                     color = semanticColors.text
                 )
@@ -303,7 +303,7 @@ private fun ChapterRow(
                 Spacer(modifier = Modifier.width(8.dp))
                 ChapterAction(
                     icon = Icons.Default.Delete,
-                    label = "Delete",
+                    label = stringResource(R.string.afu_delete),
                     accent = ClearCutAccents.Red,
                     contentDescription = stringResource(R.string.cd_chapter_delete),
                     onClick = onDelete

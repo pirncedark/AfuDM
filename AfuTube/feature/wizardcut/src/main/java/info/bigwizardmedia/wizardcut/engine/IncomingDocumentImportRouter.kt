@@ -1,5 +1,6 @@
 package info.bigwizardmedia.wizardcut.engine
 
+import info.bigwizardmedia.wizardcut.R
 import android.content.Context
 import android.net.Uri
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -102,7 +103,7 @@ class IncomingDocumentImportRouter @Inject constructor(
             IncomingDocumentImportPreview(
                 item = item,
                 status = IncomingDocumentImportStatus.IMPORTED,
-                title = "Template imported",
+                title = context.getString(R.string.afu_import_template_imported),
                 body = "Saved \"${template.name}\" to Templates.",
                 details = listOf(
                     "File kind: ${item.kind.displayName}",
@@ -137,7 +138,7 @@ class IncomingDocumentImportRouter @Inject constructor(
             IncomingDocumentImportPreview(
                 item = item,
                 status = IncomingDocumentImportStatus.IMPORTED,
-                title = "Style pack installed",
+                title = context.getString(R.string.afu_import_style_installed),
                 body = "\"${pack.name}\" added ${pack.styles.size} styles to the caption gallery.",
                 details = listOf(
                     "File kind: ${item.kind.displayName}",
@@ -175,7 +176,7 @@ class IncomingDocumentImportRouter @Inject constructor(
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.READY,
-            title = "Style pack ready to install",
+            title = context.getString(R.string.afu_import_style_ready),
             body = "\"${pack.name}\" contains ${pack.styles.size} caption/text styles.",
             details = baseDetails(item) + listOf(
                 "Pack: ${pack.name} v${pack.version}",
@@ -197,7 +198,7 @@ class IncomingDocumentImportRouter @Inject constructor(
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.READY,
-            title = "Template ready for review",
+            title = context.getString(R.string.afu_import_template_ready),
             body = "ClearCut can run the existing template compatibility checks before saving this file to Templates.",
             details = baseDetails(item),
             warnings = emptyList(),
@@ -217,7 +218,7 @@ class IncomingDocumentImportRouter @Inject constructor(
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.READY,
-            title = "Effect pack validated",
+            title = context.getString(R.string.afu_import_effect_validated),
             body = "Open an editor project, select a clip, and use Effect Library import to apply this pack.",
             details = baseDetails(item) + listOf(
                 "Effect pack: ${imported.name}",
@@ -251,7 +252,7 @@ class IncomingDocumentImportRouter @Inject constructor(
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.READY,
-            title = "Stabilization profile ready",
+            title = context.getString(R.string.afu_import_stabilization_ready),
             body = "${profile.name} contains reusable offline lens, motion, crop, and sync assumptions.",
             details = baseDetails(item) + listOf(
                 "Profile: ${profile.name}",
@@ -281,7 +282,7 @@ class IncomingDocumentImportRouter @Inject constructor(
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.IMPORTED,
-            title = "Stabilization profile activated",
+            title = context.getString(R.string.afu_import_stabilization_activated),
             body = "${profile.name} will be used by the next offline stabilization analysis.",
             details = baseDetails(item) + listOf(
                 "Profile: ${profile.name}",
@@ -307,7 +308,7 @@ class IncomingDocumentImportRouter @Inject constructor(
             IncomingDocumentImportPreview(
                 item = item,
                 status = IncomingDocumentImportStatus.READY,
-                title = "LUT validated",
+                title = context.getString(R.string.afu_import_lut_validated),
                 body = "Open Color Grading in an editor project to apply this LUT to a selected clip.",
                 details = baseDetails(item) + listOf(
                     "LUT size: ${lut.size}x${lut.size}x${lut.size}",
@@ -328,7 +329,7 @@ class IncomingDocumentImportRouter @Inject constructor(
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.READY,
-            title = "OpenFX descriptor validated",
+            title = context.getString(R.string.afu_import_openfx_validated),
             body = "ClearCut can carry this metadata alongside effect packs for future timeline interchange.",
             details = baseDetails(item) + listOf(
                 "ClearCut effect: ${descriptor.novaCutEffectId}",
@@ -353,7 +354,7 @@ class IncomingDocumentImportRouter @Inject constructor(
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.READY,
-            title = "Project archive validated",
+            title = context.getString(R.string.afu_import_project_archive_validated),
             body = "Open an editor project and use Archive Transfer import to restore this archive intentionally.",
             details = baseDetails(item) + listOf(
                 "Archive report: ${report.summary}",
@@ -442,7 +443,7 @@ class IncomingDocumentImportRouter @Inject constructor(
             return IncomingDocumentImportPreview(
                 item = item,
                 status = IncomingDocumentImportStatus.INVALID,
-                title = "Caption import blocked",
+                title = context.getString(R.string.afu_import_caption_blocked),
                 body = captionFailureMessage(failure),
                 details = details,
                 warnings = analysis.warnings + "No project data was changed.",
@@ -453,7 +454,7 @@ class IncomingDocumentImportRouter @Inject constructor(
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.READY,
-            title = "Caption preview ready",
+            title = context.getString(R.string.afu_import_caption_preview_ready),
             body = "Preview is non-mutating. Open Caption Editor on a selected clip to apply this import as one undoable edit.",
             details = details + "Time mapping: source timestamps are offset by the selected clip's timeline start and clipped to that clip.",
             warnings = analysis.warnings + "No project data was changed during preview.",
@@ -570,7 +571,7 @@ class IncomingDocumentImportRouter @Inject constructor(
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.INVALID,
-            title = "Document import blocked",
+            title = context.getString(R.string.afu_import_document_blocked),
             body = body,
             details = baseDetails(item) + reasonCode?.let { listOf("Reason code: $it") }.orEmpty(),
             warnings = warnings.ifEmpty { listOf("No project data was changed.") },
@@ -586,7 +587,7 @@ class IncomingDocumentImportRouter @Inject constructor(
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.BLOCKED,
-            title = "${item.kind.displayName} support is pending",
+            title = context.getString(R.string.afu_import_support_pending, item.kind.displayName),
             body = body,
             details = baseDetails(item),
             warnings = warnings,

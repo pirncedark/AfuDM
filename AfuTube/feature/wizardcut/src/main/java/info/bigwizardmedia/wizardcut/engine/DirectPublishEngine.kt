@@ -1,5 +1,6 @@
 package info.bigwizardmedia.wizardcut.engine
 
+import info.bigwizardmedia.wizardcut.R
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
@@ -110,7 +111,7 @@ class DirectPublishEngine @Inject constructor(
         Result(
             intent = launchIntent,
             used = Method.SHARE_INTENT,
-            message = "Opening ${target.displayName} for user-controlled posting...",
+            message = context.getString(R.string.afu_publish_opening, target.displayName),
             capability = capability
         )
     }

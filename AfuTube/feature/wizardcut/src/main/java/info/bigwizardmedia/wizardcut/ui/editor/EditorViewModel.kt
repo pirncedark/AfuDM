@@ -3012,7 +3012,7 @@ class EditorViewModel @Inject constructor(
                                 media.copy(
                                     backupImportFeedback = BackupImportFeedback(
                                         succeeded = true,
-                                        title = "Backup imported with notes",
+                                        title = appContext.getString(R.string.afu_backup_imported_notes),
                                         body = "ClearCut restored the timeline, but this archive needs review before you export or hand it off.",
                                         report = report
                                     )
@@ -3028,7 +3028,7 @@ class EditorViewModel @Inject constructor(
                             media.copy(
                                 backupImportFeedback = BackupImportFeedback(
                                     succeeded = false,
-                                    title = "Backup import failed",
+                                    title = appContext.getString(R.string.afu_backup_import_failed),
                                     body = "ClearCut left the current project unchanged.",
                                     report = result.report,
                                     errorMessage = reason
@@ -5234,7 +5234,7 @@ class EditorViewModel @Inject constructor(
                     media.copy(
                         timelineExchangeFeedback = TimelineExchangeFeedback(
                             succeeded = false,
-                            title = "$formatName export blocked",
+                            title = appContext.getString(R.string.afu_export_blocked, formatName),
                             body = "ClearCut found a timeline issue that would make the handoff unreliable.",
                             outputFileName = null,
                             report = result.report,
@@ -5264,7 +5264,7 @@ class EditorViewModel @Inject constructor(
                     media.copy(
                         timelineExchangeFeedback = TimelineExchangeFeedback(
                             succeeded = true,
-                            title = "$formatName exported with notes",
+                            title = appContext.getString(R.string.afu_export_with_notes, formatName),
                             body = "The file was written, but the receiving editor may need manual cleanup.",
                             outputFileName = file.name,
                             report = result.report,

@@ -244,7 +244,7 @@ class AiToolsDelegate(
                 val s = stateFlow.value
                 val template = templateManager.saveTemplate(
                     name = name,
-                    description = "${s.tracks.size} tracks, ${s.textOverlays.size} text overlays",
+                    description = appContext.getString(R.string.afu_template_description, s.tracks.size, s.textOverlays.size),
                     project = s.project,
                     tracks = s.tracks,
                     textOverlays = s.textOverlays

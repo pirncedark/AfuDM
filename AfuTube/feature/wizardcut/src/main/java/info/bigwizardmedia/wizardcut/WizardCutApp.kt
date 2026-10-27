@@ -1,5 +1,6 @@
 package info.bigwizardmedia.wizardcut
 
+import info.bigwizardmedia.wizardcut.R
 import android.app.Application
 import android.app.Activity
 import android.app.NotificationChannel
@@ -102,7 +103,7 @@ abstract class WizardCutApp : Application(), Configuration.Provider {
             "Export Progress",
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Shows video export progress"
+            description = getString(R.string.afu_channel_export_description)
             setShowBadge(false)
         }
         val nm = getSystemService(NotificationManager::class.java)

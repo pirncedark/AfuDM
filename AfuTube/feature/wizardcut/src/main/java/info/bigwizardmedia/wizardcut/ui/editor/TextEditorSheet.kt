@@ -1,5 +1,6 @@
 package info.bigwizardmedia.wizardcut.ui.editor
 
+import androidx.compose.runtime.Composable
 import info.bigwizardmedia.wizardcut.ui.theme.ClearCutAccents
 import info.bigwizardmedia.wizardcut.ui.theme.LocalClearCutColors
 import androidx.compose.foundation.*
@@ -262,7 +263,7 @@ fun TextEditorSheet(
             ) {
                 Text(stringResource(R.string.text_editor_font), color = semanticColors.subtextStrong, style = MaterialTheme.typography.labelLarge)
                 Text(
-                    text = "Import",
+                    text = stringResource(R.string.afu_import),
                     color = ClearCutAccents.Mauve,
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier

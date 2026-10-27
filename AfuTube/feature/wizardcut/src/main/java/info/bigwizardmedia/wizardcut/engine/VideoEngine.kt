@@ -1,5 +1,6 @@
 package info.bigwizardmedia.wizardcut.engine
 
+import info.bigwizardmedia.wizardcut.R
 import android.app.ActivityManager
 import android.content.Context
 import android.content.BroadcastReceiver
@@ -1144,7 +1145,7 @@ class VideoEngine @Inject constructor(
             throw ExportStageException(
                 stage = "cfr-normalize",
                 subjectId = null,
-                message = "Constant frame-rate export requires the bundled frame-normalization backend.",
+                message = context.getString(R.string.afu_cfr_backend_missing),
             )
         }
 
@@ -1168,7 +1169,7 @@ class VideoEngine @Inject constructor(
                 throw ExportStageException(
                     stage = "cfr-normalize",
                     subjectId = clip.id,
-                    message = "Constant frame-rate normalization failed for clip ${clip.id}.",
+                    message = context.getString(R.string.afu_cfr_failed, clip.id),
                 )
             }
             val normalizedDurationMs = getVideoDuration(Uri.fromFile(tempFile))

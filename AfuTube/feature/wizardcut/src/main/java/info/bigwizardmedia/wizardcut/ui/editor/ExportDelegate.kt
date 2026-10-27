@@ -1197,7 +1197,7 @@ class ExportDelegate(
                         .flatMap { it.clips }
                         .sortedBy { it.timelineStartMs }
                     if (allClips.isEmpty()) {
-                        val message = "No video clips"
+                        val message = appContext.getString(R.string.afu_no_video_clips)
                         updateExport {
                             it.copy(
                                 state = ExportState.ERROR,
@@ -1246,7 +1246,7 @@ class ExportDelegate(
                         )
                         showToast(appContext.getString(R.string.export_contact_sheet_toast, finalizedSheetFile.name))
                     } else {
-                        val message = "Contact sheet render failed"
+                        val message = appContext.getString(R.string.afu_contact_sheet_failed)
                         updateExport {
                             it.copy(
                                 state = ExportState.ERROR,
@@ -1335,7 +1335,7 @@ class ExportDelegate(
                         tracks.filter { it.type == TrackType.OVERLAY }.flatMap { it.clips }
                     }).sortedBy { it.timelineStartMs }
                     if (allClips.isEmpty()) {
-                        val message = "No video clips"
+                        val message = appContext.getString(R.string.afu_no_video_clips)
                         updateExport {
                             it.copy(
                                 state = ExportState.ERROR,
