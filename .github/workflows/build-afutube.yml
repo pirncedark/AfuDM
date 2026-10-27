@@ -87,8 +87,8 @@ jobs:
         with:
           name: AfuTube-Editor-E2E-APKs
           path: |
-            AfuTube/app/build/outputs/apk/debug/app-debug.apk
-            AfuTube/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            AfuTube/app/build/outputs/apk/debug/*.apk
+            AfuTube/app/build/outputs/apk/androidTest/debug/*.apk
           if-no-files-found: error
           retention-days: 3
 
@@ -169,8 +169,11 @@ jobs:
             bash AfuTube/scripts/e2e-paylas.sh
             bash AfuTube/scripts/e2e-sade.sh
             bash AfuTube/scripts/e2e-tarayici.sh
-            adb install e2e-apks/app-debug.apk
-            adb install -r e2e-apks/app-debug-androidTest.apk
+            ls -R e2e-apks
+            DEBUG_APK=$(ls e2e-apks/debug/*x86_64*.apk 2>/dev/null | head -1)
+            [ -n "$DEBUG_APK" ] || DEBUG_APK=$(ls e2e-apks/debug/*universal*.apk e2e-apks/debug/*.apk 2>/dev/null | head -1)
+            adb install -r "$DEBUG_APK"
+            adb install -r "$(ls e2e-apks/androidTest/debug/*.apk | head -1)"
             mkdir -p e2e-out
             adb shell monkey -p com.afudm.afutube.debug 1
             sleep 3
