@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- AfuTube eklemesi: yalnız varsayılan (en) + tr; WizardCut es çevirisi bu anahtarları kapsamaz. -->
-<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+<resources>
     <string name="afu_ai_tools_subtitle">Stage on-device assists, model downloads, and clip-aware magic.</string>
     <string name="afu_ai_creative_stack">Creative stack</string>
     <string name="afu_ai_ready_count">%1$d ready</string>
@@ -66,4 +65,23 @@
     <string name="afu_export_resolution_short">%1$dp · %2$d frames per second</string>
     <string name="afu_export_quality_line">Quality: %1$s</string>
     <string name="afu_export_resume_unavailable">This partial file cannot be resumed. Export again.</string>
+    <string name="afu_tpl_cat_vlog">Vlog</string>
+    <string name="afu_tpl_cat_tutorial">Tutorial</string>
+    <string name="afu_tpl_cat_short_form">Short form</string>
+    <string name="afu_tpl_cat_cinematic">Cinematic</string>
+    <string name="afu_tpl_cat_slideshow">Slideshow</string>
+    <string name="afu_tpl_cat_promo">Promo</string>
+    <string name="afu_tpl_cat_blank">Blank</string>
+    <string name="afu_text_cat_lower_thirds">Lower thirds</string>
+    <string name="afu_text_cat_title_cards">Title cards</string>
+    <string name="afu_text_cat_end_screens">End screens</string>
+    <string name="afu_text_cat_call_to_action">Call to action</string>
+    <string name="afu_text_cat_social">Social media</string>
+    <string name="afu_text_cat_minimal">Minimal</string>
+    <string name="afu_effect_cat_color">Color</string>
+    <string name="afu_effect_cat_filter">Filters</string>
+    <string name="afu_effect_cat_blur">Blur</string>
+    <string name="afu_effect_cat_distortion">Distortion</string>
+    <string name="afu_effect_cat_keying">Keying</string>
+    <string name="afu_effect_cat_speed">Speed</string>
 </resources>

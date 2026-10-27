@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.annotation.StringRes
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -434,7 +435,7 @@ private fun ProjectTemplateCard(
     onClick: (String) -> Unit
 ) {
     val templateName = stringResource(template.nameResId)
-    val category = formatCategory(template.category)
+    val category = stringResource(template.category.labelRes())
     val templateDescription = stringResource(
         R.string.template_builtin_card_cd,
         templateName,
@@ -656,9 +657,13 @@ private fun TemplateActionButton(
     )
 }
 
-private fun formatCategory(category: TemplateCategory): String {
-    return category.name
-        .replace('_', ' ')
-        .lowercase()
-        .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+@StringRes
+private fun TemplateCategory.labelRes(): Int = when (this) {
+    TemplateCategory.VLOG -> R.string.afu_tpl_cat_vlog
+    TemplateCategory.TUTORIAL -> R.string.afu_tpl_cat_tutorial
+    TemplateCategory.SHORT_FORM -> R.string.afu_tpl_cat_short_form
+    TemplateCategory.CINEMATIC -> R.string.afu_tpl_cat_cinematic
+    TemplateCategory.SLIDESHOW -> R.string.afu_tpl_cat_slideshow
+    TemplateCategory.PROMO -> R.string.afu_tpl_cat_promo
+    TemplateCategory.BLANK -> R.string.afu_tpl_cat_blank
 }

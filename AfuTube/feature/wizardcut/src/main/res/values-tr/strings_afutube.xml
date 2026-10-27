@@ -65,4 +65,23 @@
     <string name="afu_export_resolution_short">%1$dp · saniyede %2$d kare</string>
     <string name="afu_export_quality_line">Kalite: %1$s</string>
     <string name="afu_export_resume_unavailable">Bu kısmi dosya devam ettirilemiyor. Yeniden dışa aktar.</string>
+    <string name="afu_tpl_cat_vlog">Vlog</string>
+    <string name="afu_tpl_cat_tutorial">Eğitici</string>
+    <string name="afu_tpl_cat_short_form">Kısa video</string>
+    <string name="afu_tpl_cat_cinematic">Sinematik</string>
+    <string name="afu_tpl_cat_slideshow">Slayt gösterisi</string>
+    <string name="afu_tpl_cat_promo">Tanıtım</string>
+    <string name="afu_tpl_cat_blank">Boş</string>
+    <string name="afu_text_cat_lower_thirds">Alt başlıklar</string>
+    <string name="afu_text_cat_title_cards">Başlık kartları</string>
+    <string name="afu_text_cat_end_screens">Bitiş ekranları</string>
+    <string name="afu_text_cat_call_to_action">Harekete geçirme</string>
+    <string name="afu_text_cat_social">Sosyal medya</string>
+    <string name="afu_text_cat_minimal">Minimal</string>
+    <string name="afu_effect_cat_color">Renk</string>
+    <string name="afu_effect_cat_filter">Filtreler</string>
+    <string name="afu_effect_cat_blur">Bulanıklık</string>
+    <string name="afu_effect_cat_distortion">Bozulma</string>
+    <string name="afu_effect_cat_keying">Renk anahtarı</string>
+    <string name="afu_effect_cat_speed">Hız</string>
 </resources>

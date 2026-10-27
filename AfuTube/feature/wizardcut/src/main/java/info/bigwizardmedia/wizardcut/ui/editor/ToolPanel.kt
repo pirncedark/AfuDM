@@ -695,7 +695,7 @@ fun EffectsPanel(
                         onClick = { selectedCategory = category },
                         label = {
                             Text(
-                                text = category.displayName,
+                                text = stringResource(category.labelRes()),
                                 style = MaterialTheme.typography.labelMedium
                             )
                         },
@@ -838,7 +838,7 @@ fun EffectsPanel(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = selectedCategory.displayName,
+                                text = stringResource(selectedCategory.labelRes()),
                                 color = semanticColors.subtext,
                                 style = MaterialTheme.typography.bodySmall
                             )
@@ -903,7 +903,7 @@ fun EffectAdjustmentPanel(
                 accent = if (effect.enabled) ClearCutAccents.Green else semanticColors.subtext
             )
             PremiumPanelPill(
-                text = effect.type.category.displayName,
+                text = stringResource(effect.type.category.labelRes()),
                 accent = accent
             )
         }
@@ -1955,4 +1955,14 @@ private fun formatTextOverlayRange(overlay: TextOverlay): String {
     val startSec = overlay.startTimeMs / 1000f
     val endSec = overlay.endTimeMs / 1000f
     return String.format(Locale.US, "%.1fs — %.1fs", startSec, endSec)
+}
+
+@StringRes
+private fun EffectCategory.labelRes(): Int = when (this) {
+    EffectCategory.COLOR -> R.string.afu_effect_cat_color
+    EffectCategory.FILTER -> R.string.afu_effect_cat_filter
+    EffectCategory.BLUR -> R.string.afu_effect_cat_blur
+    EffectCategory.DISTORTION -> R.string.afu_effect_cat_distortion
+    EffectCategory.KEYING -> R.string.afu_effect_cat_keying
+    EffectCategory.SPEED -> R.string.afu_effect_cat_speed
 }
