@@ -244,7 +244,7 @@ fun BoxScope.EditorPrimaryPanelHost(
             onConfigChanged = viewModel::updateExportConfig,
             onStartExport = {
                 val moviesDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_MOVIES)
-                val outputDir = File(moviesDir ?: context.filesDir, "ClearCut").apply { mkdirs() }
+                val outputDir = File(moviesDir ?: context.filesDir, "AfuTube").apply { mkdirs() }
                 onStartExportRequested(outputDir)
             },
             onShare = {

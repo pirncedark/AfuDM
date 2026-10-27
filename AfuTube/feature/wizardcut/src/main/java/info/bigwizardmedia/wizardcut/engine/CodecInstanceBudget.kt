@@ -273,7 +273,7 @@ object CodecInstanceBudget {
             .sortedWith(compareBy({ it.kind }, { it.mimeType }))
 
     fun diagnosticSummary(): String = buildString {
-        appendLine("# ClearCut codec instance lease summary")
+        appendLine("# AfuTube codec instance lease summary")
         appendLine("# kind\tmime\tdeclared_ceiling\teffective_ceiling\tactive\tqueued\ttotal_active\ttotal_queued")
         val entries = snapshots()
         if (entries.isEmpty()) {

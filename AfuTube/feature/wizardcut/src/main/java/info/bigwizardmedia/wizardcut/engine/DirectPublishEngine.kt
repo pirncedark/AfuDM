@@ -1,5 +1,6 @@
 package info.bigwizardmedia.wizardcut.engine
 
+import info.bigwizardmedia.wizardcut.R
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
@@ -93,7 +94,7 @@ class DirectPublishEngine @Inject constructor(
             FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         } catch (e: Exception) {
             AppLog.w(TAG, "FileProvider failed for ${RedactedLog.path(filePath)}", e)
-            return@withContext Result(null, Method.NONE, "Export is not in a shareable ClearCut location")
+            return@withContext Result(null, Method.NONE, "Export is not in a shareable AfuTube location")
         }
         val intent = buildShareIntent(uri, target, meta)
         val targetInstalled = target.packageName != null && isInstalled(target.packageName)
@@ -110,7 +111,7 @@ class DirectPublishEngine @Inject constructor(
         Result(
             intent = launchIntent,
             used = Method.SHARE_INTENT,
-            message = "Opening ${target.displayName} for user-controlled posting...",
+            message = context.getString(R.string.afu_publish_opening, target.displayName),
             capability = capability
         )
     }
@@ -198,7 +199,7 @@ internal fun normalizePublishMeta(
     meta: DirectPublishEngine.PublishMeta
 ): DirectPublishEngine.PublishMeta {
     return meta.copy(
-        title = normalizeShareText(meta.title, fallback = "ClearCut export", maxChars = MAX_SHARE_TITLE_CHARS),
+        title = normalizeShareText(meta.title, fallback = "AfuTube export", maxChars = MAX_SHARE_TITLE_CHARS),
         description = normalizeShareText(
             raw = meta.description,
             fallback = "",

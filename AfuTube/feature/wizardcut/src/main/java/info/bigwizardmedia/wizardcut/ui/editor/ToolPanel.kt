@@ -60,12 +60,12 @@ internal val genericAddableEffectTypes: List<EffectType> = EffectType.entries.fi
 }
 
 // Project mode tabs (no clip selected)
+// Four everyday tools plus one "More" entry; everything else lives under More.
 val projectTabs = listOf(
     TabItem("edit", Icons.Default.Edit, R.string.tool_tab_edit),
-    TabItem("audio", Icons.Default.MusicNote, R.string.tool_tab_audio),
     TabItem("text", Icons.Default.Title, R.string.tool_tab_text),
-    TabItem("effects", Icons.Default.AutoFixHigh, R.string.tool_tab_effects),
-    TabItem("aspect", Icons.Default.AspectRatio, R.string.tool_tab_aspect),
+    TabItem("audio", Icons.Default.MusicNote, R.string.tool_tab_audio),
+    TabItem("auto_edit", Icons.Default.AutoFixHigh, R.string.afu_tab_auto_edit),
     TabItem("project_tools", Icons.Default.GridView, R.string.editor_more)
 )
 
@@ -176,6 +176,7 @@ private val clipAiSubMenu = listOf(
 
 // Project mode — Tools tab sub-menu
 private val projectToolsSubMenu = listOf(
+    SubMenuItem("aspect", Icons.Default.AspectRatio, R.string.tool_tab_aspect),
     SubMenuItem("audio_mixer", Icons.Default.Equalizer, R.string.tool_audio_mixer),
     SubMenuItem("beat_detect", Icons.Default.GraphicEq, R.string.tool_beat_detect),
     SubMenuItem("auto_duck", Icons.Default.RecordVoiceOver, R.string.tool_auto_duck),
@@ -217,7 +218,7 @@ fun BottomToolArea(
     val isClipMode = selectedClipId != null
 
     val visibleProjectTabs = if (editorMode == EditorMode.EASY) {
-        projectTabs.filter { it.id in setOf("edit", "audio", "text", "effects") }
+        projectTabs.filter { it.id in setOf("edit", "audio", "text", "auto_edit") }
     } else projectTabs
 
     val visibleClipTabs = visibleClipTabs(editorMode)
@@ -343,6 +344,10 @@ fun BottomToolArea(
                     "aspect" -> {
                         activeTabId = null
                         onAction("aspect")
+                    }
+                    "auto_edit" -> {
+                        activeTabId = null
+                        onAction("auto_edit")
                     }
                     "project_tools" -> {
                         // Project mode: show Tools sub-menu (Audio Mixer, Beat Detect, etc.)
@@ -695,7 +700,7 @@ fun EffectsPanel(
                         onClick = { selectedCategory = category },
                         label = {
                             Text(
-                                text = category.displayName,
+                                text = stringResource(category.labelRes()),
                                 style = MaterialTheme.typography.labelMedium
                             )
                         },
@@ -838,7 +843,7 @@ fun EffectsPanel(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = selectedCategory.displayName,
+                                text = stringResource(selectedCategory.labelRes()),
                                 color = semanticColors.subtext,
                                 style = MaterialTheme.typography.bodySmall
                             )
@@ -903,7 +908,7 @@ fun EffectAdjustmentPanel(
                 accent = if (effect.enabled) ClearCutAccents.Green else semanticColors.subtext
             )
             PremiumPanelPill(
-                text = effect.type.category.displayName,
+                text = stringResource(effect.type.category.labelRes()),
                 accent = accent
             )
         }
@@ -1955,4 +1960,14 @@ private fun formatTextOverlayRange(overlay: TextOverlay): String {
     val startSec = overlay.startTimeMs / 1000f
     val endSec = overlay.endTimeMs / 1000f
     return String.format(Locale.US, "%.1fs — %.1fs", startSec, endSec)
+}
+
+@StringRes
+private fun EffectCategory.labelRes(): Int = when (this) {
+    EffectCategory.COLOR -> R.string.afu_effect_cat_color
+    EffectCategory.FILTER -> R.string.afu_effect_cat_filter
+    EffectCategory.BLUR -> R.string.afu_effect_cat_blur
+    EffectCategory.DISTORTION -> R.string.afu_effect_cat_distortion
+    EffectCategory.KEYING -> R.string.afu_effect_cat_keying
+    EffectCategory.SPEED -> R.string.afu_effect_cat_speed
 }

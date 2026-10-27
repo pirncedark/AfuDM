@@ -817,7 +817,7 @@ class ExportDelegate(
             partialFile.length() > 0L
         if (!canResume) {
             deleteOwnedResumeFile(partialFile)
-            val message = text(R.string.export_resume_unavailable)
+            val message = text(R.string.afu_export_resume_unavailable)
             updateExport {
                 it.prepareForExportAttempt().copy(
                     state = ExportState.ERROR,
@@ -1114,7 +1114,7 @@ class ExportDelegate(
                 resumeSourceFile.length() > 0L
             if (!resumeValid) {
                 deleteOwnedResumeFile(resumeSourceFile)
-                val message = text(R.string.export_resume_unavailable)
+                val message = text(R.string.afu_export_resume_unavailable)
                 updateExport {
                     it.copy(
                         state = ExportState.ERROR,
@@ -1197,7 +1197,7 @@ class ExportDelegate(
                         .flatMap { it.clips }
                         .sortedBy { it.timelineStartMs }
                     if (allClips.isEmpty()) {
-                        val message = "No video clips"
+                        val message = appContext.getString(R.string.afu_no_video_clips)
                         updateExport {
                             it.copy(
                                 state = ExportState.ERROR,
@@ -1246,7 +1246,7 @@ class ExportDelegate(
                         )
                         showToast(appContext.getString(R.string.export_contact_sheet_toast, finalizedSheetFile.name))
                     } else {
-                        val message = "Contact sheet render failed"
+                        val message = appContext.getString(R.string.afu_contact_sheet_failed)
                         updateExport {
                             it.copy(
                                 state = ExportState.ERROR,
@@ -1335,7 +1335,7 @@ class ExportDelegate(
                         tracks.filter { it.type == TrackType.OVERLAY }.flatMap { it.clips }
                     }).sortedBy { it.timelineStartMs }
                     if (allClips.isEmpty()) {
-                        val message = "No video clips"
+                        val message = appContext.getString(R.string.afu_no_video_clips)
                         updateExport {
                             it.copy(
                                 state = ExportState.ERROR,
@@ -2536,7 +2536,7 @@ class ExportDelegate(
         batchExportJob = scope.launch {
             val outputDir = File(
                 appContext.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: appContext.filesDir,
-                "ClearCut"
+                "AfuTube"
             ).apply { mkdirs() }
             val batchState = stateFlow.value
             val itemStates = queue.associateWith { item -> batchExportState(batchState, item) }
@@ -2835,7 +2835,7 @@ class ExportDelegate(
         val baseName = trimmedOutputName
             .substringBeforeLast('.', missingDelimiterValue = trimmedOutputName)
             .takeIf { it.isNotBlank() }
-            ?: "ClearCut"
+            ?: "AfuTube"
         val namingConfig = configOverride ?: stateFlow.value.exportConfig
         val template = namingConfig.filenameTemplate.ifBlank { "{name}" }
         val templated = applyFilenameTemplate(
@@ -2850,7 +2850,7 @@ class ExportDelegate(
         // miss a previously-created number by hopping across lengths).
         val suffixReserve = 6
         val baseBudget = 64 - suffixReserve
-        val sanitizedBase = sanitizeFileName(templated, fallback = "ClearCut", maxLength = baseBudget)
+        val sanitizedBase = sanitizeFileName(templated, fallback = "AfuTube", maxLength = baseBudget)
         var candidate = File(outputDir, "$sanitizedBase.$extension")
         if (!candidate.exists()) {
             return candidate
@@ -2880,7 +2880,7 @@ class ExportDelegate(
         } else {
             val externalRoot = appContext.getExternalFilesDir(relativeDirectory)
                 ?: File(appContext.filesDir, relativeDirectory.lowercase())
-            val destinationDir = File(externalRoot, "ClearCut").apply { mkdirs() }
+            val destinationDir = File(externalRoot, "AfuTube").apply { mkdirs() }
             val destinationFile = createOutputFile(
                 destinationDir,
                 file.extension.ifBlank { if (usesImageCollection) "png" else "mp4" },
@@ -2980,7 +2980,7 @@ internal suspend fun saveExportedFileToMediaStore(context: Context, file: File):
     val values = ContentValues().apply {
         put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
         put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-        put(MediaStore.MediaColumns.RELATIVE_PATH, "$relativeDirectory/ClearCut")
+        put(MediaStore.MediaColumns.RELATIVE_PATH, "$relativeDirectory/AfuTube")
         put(MediaStore.MediaColumns.IS_PENDING, 1)
     }
     val collection = when {

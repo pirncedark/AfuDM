@@ -22,6 +22,11 @@ internal object MediaStorePendingRowPolicy {
     const val ORPHAN_AGE_MS = 24L * 60L * 60L * 1_000L
 
     private val ownedRelativePaths = setOf(
+        "Movies/AfuTube",
+        "Music/AfuTube",
+        "Pictures/AfuTube",
+        "Download/AfuTube",
+        // Legacy folders from earlier versions; kept so their pending rows are still swept.
         "Movies/ClearCut",
         "Music/ClearCut",
         "Pictures/ClearCut",

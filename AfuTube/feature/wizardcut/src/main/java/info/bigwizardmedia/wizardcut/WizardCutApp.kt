@@ -1,5 +1,6 @@
 package info.bigwizardmedia.wizardcut
 
+import info.bigwizardmedia.wizardcut.R
 import android.app.Application
 import android.app.Activity
 import android.app.NotificationChannel
@@ -70,13 +71,25 @@ abstract class WizardCutApp : Application(), Configuration.Provider {
         val VERSION: String = "v${BuildConfig.VERSION_NAME}"
     }
 
+    private val wizardStartupStarted = java.util.concurrent.atomic.AtomicBoolean(false)
+
     override fun onCreate() {
         super.onCreate()
-        DebugRuntimePolicy.install()
         registerActivityLifecycleCallbacks(activityLifecycleCallbacks)
-        CrashRecordStore(this).installGlobalHandler(VERSION)
-        processExitRecorder.recordStartupExitReasons()
         createNotificationChannels()
+    }
+
+    /**
+     * WizardCut-only startup work. Runs once, when the Edit screen is first opened,
+     * so AfuTube launches do not pay for it. Safe to call repeatedly.
+     */
+    fun ensureWizardStartup() {
+        if (!wizardStartupStarted.compareAndSet(false, true)) return
+        DebugRuntimePolicy.install()
+        CrashRecordStore(this).installGlobalHandler(VERSION)
+        applicationScope.launch {
+            processExitRecorder.recordStartupExitReasons()
+        }
         applicationScope.launch {
             mediaStorePendingRowSweeper.sweep()
         }
@@ -102,7 +115,7 @@ abstract class WizardCutApp : Application(), Configuration.Provider {
             "Export Progress",
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Shows video export progress"
+            description = getString(R.string.afu_channel_export_description)
             setShowBadge(false)
         }
         val nm = getSystemService(NotificationManager::class.java)

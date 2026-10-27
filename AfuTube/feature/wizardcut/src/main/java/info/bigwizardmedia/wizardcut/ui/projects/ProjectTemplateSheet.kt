@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.annotation.StringRes
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -26,6 +27,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import info.bigwizardmedia.wizardcut.R
+import info.bigwizardmedia.wizardcut.ui.components.AfuAdvancedSection
 import info.bigwizardmedia.wizardcut.engine.UserTemplate
 import info.bigwizardmedia.wizardcut.model.*
 import info.bigwizardmedia.wizardcut.ui.ClearCutTestTags
@@ -117,6 +119,9 @@ val projectTemplates = listOf(
 )
 
 @OptIn(ExperimentalLayoutApi::class)
+/** Templates shown on the first screen; the rest live under Advanced. */
+private val READY_TEMPLATE_IDS = setOf("blank", "vlog", "short_tiktok")
+
 @Composable
 fun ProjectTemplateSheet(
     onTemplateSelected: (ProjectTemplateUI, String) -> Unit,
@@ -211,55 +216,6 @@ fun ProjectTemplateSheet(
 
         Spacer(Modifier.height(14.dp))
 
-        Surface(
-            onClick = onImportTemplate,
-            modifier = Modifier.fillMaxWidth(),
-            color = LocalClearCutColors.current.panelHighest,
-            shape = RoundedCornerShape(Radius.xl),
-            border = androidx.compose.foundation.BorderStroke(1.dp, LocalClearCutColors.current.cardStrokeStrong)
-        ) {
-            Row(
-                modifier = Modifier
-                    .defaultMinSize(minHeight = 76.dp)
-                    .padding(horizontal = Spacing.lg, vertical = Spacing.lg),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(Radius.md))
-                        .background(ClearCutAccents.Sapphire.copy(alpha = 0.14f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.FileOpen,
-                        contentDescription = null,
-                        tint = ClearCutAccents.Sapphire,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-
-                Spacer(Modifier.width(12.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.template_import),
-                        color = LocalClearCutColors.current.text,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        stringResource(R.string.template_import_description),
-                        color = LocalClearCutColors.current.subtext,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
 
         Spacer(Modifier.height(12.dp))
 
@@ -273,15 +229,85 @@ fun ProjectTemplateSheet(
             modifier = Modifier
                 .testTag(ClearCutTestTags.TEMPLATE_GRID)
                 .fillMaxWidth()
-                .heightIn(max = if (userTemplates.isEmpty()) 460.dp else 320.dp),
+                .heightIn(max = 240.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            items(projectTemplates, key = { it.id }) { template ->
+            items(projectTemplates.filter { it.id in READY_TEMPLATE_IDS }, key = { it.id }) { template ->
                 ProjectTemplateCard(
                     template = template,
                     onClick = { templateName -> onTemplateSelected(template, templateName) }
                 )
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        AfuAdvancedSection(title = stringResource(R.string.afu_advanced_title)) {
+            Surface(
+                onClick = onImportTemplate,
+                modifier = Modifier.fillMaxWidth(),
+                color = LocalClearCutColors.current.panelHighest,
+                shape = RoundedCornerShape(Radius.xl),
+                border = androidx.compose.foundation.BorderStroke(1.dp, LocalClearCutColors.current.cardStrokeStrong)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .defaultMinSize(minHeight = 76.dp)
+                        .padding(horizontal = Spacing.lg, vertical = Spacing.lg),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(Radius.md))
+                            .background(ClearCutAccents.Sapphire.copy(alpha = 0.14f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.FileOpen,
+                            contentDescription = null,
+                            tint = ClearCutAccents.Sapphire,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.width(12.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.template_import),
+                            color = LocalClearCutColors.current.text,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            stringResource(R.string.template_import_description),
+                            color = LocalClearCutColors.current.subtext,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 168.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(projectTemplates.filter { it.id !in READY_TEMPLATE_IDS }, key = { it.id }) { template ->
+                    ProjectTemplateCard(
+                        template = template,
+                        onClick = { templateName -> onTemplateSelected(template, templateName) }
+                    )
+                }
             }
         }
 
@@ -434,7 +460,7 @@ private fun ProjectTemplateCard(
     onClick: (String) -> Unit
 ) {
     val templateName = stringResource(template.nameResId)
-    val category = formatCategory(template.category)
+    val category = stringResource(template.category.labelRes())
     val templateDescription = stringResource(
         R.string.template_builtin_card_cd,
         templateName,
@@ -656,9 +682,13 @@ private fun TemplateActionButton(
     )
 }
 
-private fun formatCategory(category: TemplateCategory): String {
-    return category.name
-        .replace('_', ' ')
-        .lowercase()
-        .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+@StringRes
+private fun TemplateCategory.labelRes(): Int = when (this) {
+    TemplateCategory.VLOG -> R.string.afu_tpl_cat_vlog
+    TemplateCategory.TUTORIAL -> R.string.afu_tpl_cat_tutorial
+    TemplateCategory.SHORT_FORM -> R.string.afu_tpl_cat_short_form
+    TemplateCategory.CINEMATIC -> R.string.afu_tpl_cat_cinematic
+    TemplateCategory.SLIDESHOW -> R.string.afu_tpl_cat_slideshow
+    TemplateCategory.PROMO -> R.string.afu_tpl_cat_promo
+    TemplateCategory.BLANK -> R.string.afu_tpl_cat_blank
 }

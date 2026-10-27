@@ -3012,8 +3012,8 @@ class EditorViewModel @Inject constructor(
                                 media.copy(
                                     backupImportFeedback = BackupImportFeedback(
                                         succeeded = true,
-                                        title = "Backup imported with notes",
-                                        body = "ClearCut restored the timeline, but this archive needs review before you export or hand it off.",
+                                        title = appContext.getString(R.string.afu_backup_imported_notes),
+                                        body = "AfuTube restored the timeline, but this archive needs review before you export or hand it off.",
                                         report = report
                                     )
                                 )
@@ -3028,8 +3028,8 @@ class EditorViewModel @Inject constructor(
                             media.copy(
                                 backupImportFeedback = BackupImportFeedback(
                                     succeeded = false,
-                                    title = "Backup import failed",
-                                    body = "ClearCut left the current project unchanged.",
+                                    title = appContext.getString(R.string.afu_backup_import_failed),
+                                    body = "AfuTube left the current project unchanged.",
                                     report = result.report,
                                     errorMessage = reason
                                 )
@@ -3610,7 +3610,7 @@ class EditorViewModel @Inject constructor(
             AiUsageRecordFactory.forClip(
                 clip = clip,
                 effectKind = AiUsageLedger.EffectKind.AUTO_EDIT_LOCAL,
-                modelName = "ClearCut Auto Edit window scorer",
+                modelName = "AfuTube Auto Edit window scorer",
                 recordedAtEpochMs = recordedAt
             )
         }
@@ -5234,8 +5234,8 @@ class EditorViewModel @Inject constructor(
                     media.copy(
                         timelineExchangeFeedback = TimelineExchangeFeedback(
                             succeeded = false,
-                            title = "$formatName export blocked",
-                            body = "ClearCut found a timeline issue that would make the handoff unreliable.",
+                            title = appContext.getString(R.string.afu_export_blocked, formatName),
+                            body = "AfuTube found a timeline issue that would make the handoff unreliable.",
                             outputFileName = null,
                             report = result.report,
                         )
@@ -5264,7 +5264,7 @@ class EditorViewModel @Inject constructor(
                     media.copy(
                         timelineExchangeFeedback = TimelineExchangeFeedback(
                             succeeded = true,
-                            title = "$formatName exported with notes",
+                            title = appContext.getString(R.string.afu_export_with_notes, formatName),
                             body = "The file was written, but the receiving editor may need manual cleanup.",
                             outputFileName = file.name,
                             report = result.report,
@@ -6273,7 +6273,7 @@ class EditorViewModel @Inject constructor(
         MediaHealth.analyze(recovery)
 
     private fun sanitizedProjectFileStem(name: String): String {
-        return sanitizeFileName(name, fallback = "ClearCut")
+        return sanitizeFileName(name, fallback = "AfuTube")
     }
 
     fun saveProject() {

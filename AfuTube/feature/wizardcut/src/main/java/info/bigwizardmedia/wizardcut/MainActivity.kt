@@ -71,6 +71,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        (application as WizardCutApp).ensureWizardStartup()
         enableEdgeToEdge()
         // R8.3 — remove the translucent scrim Android draws under the
         // three-button navigation bar when the app is edge-to-edge. We

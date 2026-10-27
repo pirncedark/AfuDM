@@ -15,6 +15,7 @@
     <files-path name="diagnostic_shares" path="diagnostic-shares/" />
     <files-path name="internal_templates" path="templates/" />
     <external-files-path name="exports" path="Movies/ClearCut/" />
+    <external-files-path name="exports_afutube" path="Movies/AfuTube/" />
     <external-files-path name="external_archives" path="archives/" />
     <external-files-path name="timeline_exports" path="exports/" />
     <external-files-path name="templates" path="templates/" />

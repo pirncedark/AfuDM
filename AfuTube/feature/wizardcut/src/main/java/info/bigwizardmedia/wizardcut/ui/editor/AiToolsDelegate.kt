@@ -244,7 +244,7 @@ class AiToolsDelegate(
                 val s = stateFlow.value
                 val template = templateManager.saveTemplate(
                     name = name,
-                    description = "${s.tracks.size} tracks, ${s.textOverlays.size} text overlays",
+                    description = appContext.getString(R.string.afu_template_description, s.tracks.size, s.textOverlays.size),
                     project = s.project,
                     tracks = s.tracks,
                     textOverlays = s.textOverlays
@@ -708,7 +708,7 @@ class AiToolsDelegate(
         recordAiUsageForClip(
             clip = clip,
             effectKind = AiUsageLedger.EffectKind.BACKGROUND_REMOVAL_LOCAL,
-            modelName = "ClearCut background analyzer"
+            modelName = "AfuTube background analyzer"
         )
         val bgType = when {
             analysis.isGreenScreen -> text(R.string.ai_bg_type_green_screen)
@@ -805,7 +805,7 @@ class AiToolsDelegate(
             recordAiUsageForClip(
                 clip = clip,
                 effectKind = AiUsageLedger.EffectKind.STYLE_TRANSFER_LOCAL,
-                modelName = "ClearCut style analyzer"
+                modelName = "AfuTube style analyzer"
             )
             showToast(text(R.string.ai_style_applied_toast, style.styleName, newEffects.size))
         } catch (e: Exception) {
@@ -905,7 +905,7 @@ class AiToolsDelegate(
             recordAiUsageForClip(
                 clip = clip,
                 effectKind = AiUsageLedger.EffectKind.UPSCALING_LOCAL,
-                modelName = "ClearCut upscale assistant"
+                modelName = "AfuTube upscale assistant"
             )
             showToast(text(R.string.ai_upscale_applied_toast, result.targetResolution.label))
         } catch (e: Exception) {
@@ -1320,7 +1320,7 @@ class AiToolsDelegate(
         recordAiUsageForClip(
             clip = clip,
             effectKind = AiUsageLedger.EffectKind.STABILIZATION_LOCAL,
-            modelName = "ClearCut offline motion stabilization",
+            modelName = "AfuTube offline motion stabilization",
         )
         showToast(
             text(

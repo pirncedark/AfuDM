@@ -1,5 +1,6 @@
 package info.bigwizardmedia.wizardcut.engine
 
+import info.bigwizardmedia.wizardcut.R
 import android.content.Context
 import android.net.Uri
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -92,7 +93,7 @@ class IncomingDocumentImportRouter @Inject constructor(
 
     suspend fun importTemplate(item: IncomingDocumentItem): IncomingDocumentImportPreview = withContext(Dispatchers.IO) {
         if (item.kind != IncomingDocumentKind.TEMPLATE) {
-            return@withContext invalid(item, "Only ClearCut template files can be imported from this preview.")
+            return@withContext invalid(item, "Only AfuTube template files can be imported from this preview.")
         }
         val readability = validateReadable(item)
         if (readability != null) return@withContext readability
@@ -102,7 +103,7 @@ class IncomingDocumentImportRouter @Inject constructor(
             IncomingDocumentImportPreview(
                 item = item,
                 status = IncomingDocumentImportStatus.IMPORTED,
-                title = "Template imported",
+                title = context.getString(R.string.afu_import_template_imported),
                 body = "Saved \"${template.name}\" to Templates.",
                 details = listOf(
                     "File kind: ${item.kind.displayName}",
@@ -137,7 +138,7 @@ class IncomingDocumentImportRouter @Inject constructor(
             IncomingDocumentImportPreview(
                 item = item,
                 status = IncomingDocumentImportStatus.IMPORTED,
-                title = "Style pack installed",
+                title = context.getString(R.string.afu_import_style_installed),
                 body = "\"${pack.name}\" added ${pack.styles.size} styles to the caption gallery.",
                 details = listOf(
                     "File kind: ${item.kind.displayName}",
@@ -165,7 +166,7 @@ class IncomingDocumentImportRouter @Inject constructor(
     }
 
     private fun previewStylePack(item: IncomingDocumentItem): IncomingDocumentImportPreview {
-        val json = readText(item) ?: return invalid(item, "ClearCut could not read this style-pack file.")
+        val json = readText(item) ?: return invalid(item, "AfuTube could not read this style-pack file.")
         // Validation only: preview must not install. Installing happens in commit().
         val result = stylePackManager.validateFromJson(json)
         val pack = result.pack
@@ -175,7 +176,7 @@ class IncomingDocumentImportRouter @Inject constructor(
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.READY,
-            title = "Style pack ready to install",
+            title = context.getString(R.string.afu_import_style_ready),
             body = "\"${pack.name}\" contains ${pack.styles.size} caption/text styles.",
             details = baseDetails(item) + listOf(
                 "Pack: ${pack.name} v${pack.version}",
@@ -197,8 +198,8 @@ class IncomingDocumentImportRouter @Inject constructor(
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.READY,
-            title = "Template ready for review",
-            body = "ClearCut can run the existing template compatibility checks before saving this file to Templates.",
+            title = context.getString(R.string.afu_import_template_ready),
+            body = "AfuTube can run the existing template compatibility checks before saving this file to Templates.",
             details = baseDetails(item),
             warnings = emptyList(),
             canImportNow = true,
@@ -217,7 +218,7 @@ class IncomingDocumentImportRouter @Inject constructor(
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.READY,
-            title = "Effect pack validated",
+            title = context.getString(R.string.afu_import_effect_validated),
             body = "Open an editor project, select a clip, and use Effect Library import to apply this pack.",
             details = baseDetails(item) + listOf(
                 "Effect pack: ${imported.name}",
@@ -251,7 +252,7 @@ class IncomingDocumentImportRouter @Inject constructor(
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.READY,
-            title = "Stabilization profile ready",
+            title = context.getString(R.string.afu_import_stabilization_ready),
             body = "${profile.name} contains reusable offline lens, motion, crop, and sync assumptions.",
             details = baseDetails(item) + listOf(
                 "Profile: ${profile.name}",
@@ -281,7 +282,7 @@ class IncomingDocumentImportRouter @Inject constructor(
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.IMPORTED,
-            title = "Stabilization profile activated",
+            title = context.getString(R.string.afu_import_stabilization_activated),
             body = "${profile.name} will be used by the next offline stabilization analysis.",
             details = baseDetails(item) + listOf(
                 "Profile: ${profile.name}",
@@ -300,14 +301,14 @@ class IncomingDocumentImportRouter @Inject constructor(
         item: IncomingDocumentItem,
         parse: (File) -> LutEngine.Lut3D?,
     ): IncomingDocumentImportPreview {
-        val tempFile = copyToPreviewFile(item) ?: return invalid(item, "ClearCut could not copy this LUT for validation.")
+        val tempFile = copyToPreviewFile(item) ?: return invalid(item, "AfuTube could not copy this LUT for validation.")
         return try {
             val lut = parse(tempFile)
                 ?: return invalid(item, "This LUT is malformed or uses an unsupported table shape.")
             IncomingDocumentImportPreview(
                 item = item,
                 status = IncomingDocumentImportStatus.READY,
-                title = "LUT validated",
+                title = context.getString(R.string.afu_import_lut_validated),
                 body = "Open Color Grading in an editor project to apply this LUT to a selected clip.",
                 details = baseDetails(item) + listOf(
                     "LUT size: ${lut.size}x${lut.size}x${lut.size}",
@@ -322,16 +323,16 @@ class IncomingDocumentImportRouter @Inject constructor(
     }
 
     private fun previewOpenFxDescriptor(item: IncomingDocumentItem): IncomingDocumentImportPreview {
-        val json = readText(item) ?: return invalid(item, "ClearCut could not read this descriptor.")
+        val json = readText(item) ?: return invalid(item, "AfuTube could not read this descriptor.")
         val descriptor = OpenFxDescriptor.fromJson(json)
-            ?: return invalid(item, "This .ncfxd file did not match ClearCut's OpenFX descriptor schema.")
+            ?: return invalid(item, "This .ncfxd file did not match AfuTube's OpenFX descriptor schema.")
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.READY,
-            title = "OpenFX descriptor validated",
-            body = "ClearCut can carry this metadata alongside effect packs for future timeline interchange.",
+            title = context.getString(R.string.afu_import_openfx_validated),
+            body = "AfuTube can carry this metadata alongside effect packs for future timeline interchange.",
             details = baseDetails(item) + listOf(
-                "ClearCut effect: ${descriptor.novaCutEffectId}",
+                "AfuTube effect: ${descriptor.novaCutEffectId}",
                 "OpenFX effect: ${descriptor.openfxId}",
                 "Parameters: ${descriptor.parameters.size}",
             ),
@@ -353,7 +354,7 @@ class IncomingDocumentImportRouter @Inject constructor(
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.READY,
-            title = "Project archive validated",
+            title = context.getString(R.string.afu_import_project_archive_validated),
             body = "Open an editor project and use Archive Transfer import to restore this archive intentionally.",
             details = baseDetails(item) + listOf(
                 "Archive report: ${report.summary}",
@@ -393,16 +394,16 @@ class IncomingDocumentImportRouter @Inject constructor(
             item = item,
             status = status,
             title = if (schemaTooNew) {
-                "${format.displayName} requires a newer ClearCut version"
+                "${format.displayName} requires a newer AfuTube version"
             } else if (report?.canProceed == true) {
                 "${format.displayName} import preview ready"
             } else {
                 "${format.displayName} import needs review"
             },
             body = if (schemaTooNew) {
-                "This edit-decision file was rejected before any timeline state was created. Export it with a compatible ClearCut schema version."
+                "This edit-decision file was rejected before any timeline state was created. Export it with a compatible AfuTube schema version."
             } else {
-                "ClearCut parsed the timeline and prepared an atomic editor commit without mutating project state. " +
+                "AfuTube parsed the timeline and prepared an atomic editor commit without mutating project state. " +
                     "Open an editor project to apply it after the report and any relinks are accepted."
             },
             details = baseDetails(item) + listOf(
@@ -433,7 +434,7 @@ class IncomingDocumentImportRouter @Inject constructor(
         val bytes = readBytes(item)
             ?: return invalid(
                 item,
-                "ClearCut could not read this caption file within its bounded import limit.",
+                "AfuTube could not read this caption file within its bounded import limit.",
             )
         val analysis = CaptionImportEngine.analyze(bytes, format)
         val details = baseDetails(item) + captionDetails(analysis)
@@ -442,7 +443,7 @@ class IncomingDocumentImportRouter @Inject constructor(
             return IncomingDocumentImportPreview(
                 item = item,
                 status = IncomingDocumentImportStatus.INVALID,
-                title = "Caption import blocked",
+                title = context.getString(R.string.afu_import_caption_blocked),
                 body = captionFailureMessage(failure),
                 details = details,
                 warnings = analysis.warnings + "No project data was changed.",
@@ -453,7 +454,7 @@ class IncomingDocumentImportRouter @Inject constructor(
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.READY,
-            title = "Caption preview ready",
+            title = context.getString(R.string.afu_import_caption_preview_ready),
             body = "Preview is non-mutating. Open Caption Editor on a selected clip to apply this import as one undoable edit.",
             details = details + "Time mapping: source timestamps are offset by the selected clip's timeline start and clipped to that clip.",
             warnings = analysis.warnings + "No project data was changed during preview.",
@@ -468,14 +469,14 @@ class IncomingDocumentImportRouter @Inject constructor(
         }
         val knownSize = item.sizeBytes
         if (knownSize != null && knownSize > item.kind.maxBytes) {
-            return invalid(item, "This file is larger than ClearCut's ${item.kind.displayName} import limit.")
+            return invalid(item, "This file is larger than AfuTube's ${item.kind.displayName} import limit.")
         }
         val readable = runCatching {
             context.contentResolver.openAssetFileDescriptor(item.uri, "r")?.use { descriptor ->
                 descriptor.length != 0L
             } ?: false
         }.getOrDefault(false)
-        return if (readable) null else invalid(item, "ClearCut could not read this document grant.")
+        return if (readable) null else invalid(item, "AfuTube could not read this document grant.")
     }
 
     private fun copyToPreviewFile(item: IncomingDocumentItem): File? {
@@ -540,13 +541,13 @@ class IncomingDocumentImportRouter @Inject constructor(
 
     private fun captionFailureMessage(failure: CaptionImportEngine.Failure): String {
         return when (failure) {
-            CaptionImportEngine.Failure.OVERSIZED -> "Caption file is larger than ClearCut's bounded import limit."
+            CaptionImportEngine.Failure.OVERSIZED -> "Caption file is larger than AfuTube's bounded import limit."
             CaptionImportEngine.Failure.EMPTY -> "Caption file is empty."
             CaptionImportEngine.Failure.BINARY -> "This file contains binary content and is not a text caption file."
             CaptionImportEngine.Failure.UNSUPPORTED_ENCODING -> "Caption encoding is unsupported or malformed. Use UTF-8 or UTF-16 text."
             CaptionImportEngine.Failure.INVALID_HEADER -> "WebVTT files must begin with a valid WEBVTT header."
             CaptionImportEngine.Failure.INVALID_CUES -> "One or more caption cues are invalid; the file was not imported."
-            CaptionImportEngine.Failure.EXCESSIVE_CUES -> "Caption file contains more cues than ClearCut allows in one import."
+            CaptionImportEngine.Failure.EXCESSIVE_CUES -> "Caption file contains more cues than AfuTube allows in one import."
             CaptionImportEngine.Failure.NO_CUES -> "No valid caption cues were found."
         }
     }
@@ -570,7 +571,7 @@ class IncomingDocumentImportRouter @Inject constructor(
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.INVALID,
-            title = "Document import blocked",
+            title = context.getString(R.string.afu_import_document_blocked),
             body = body,
             details = baseDetails(item) + reasonCode?.let { listOf("Reason code: $it") }.orEmpty(),
             warnings = warnings.ifEmpty { listOf("No project data was changed.") },
@@ -586,7 +587,7 @@ class IncomingDocumentImportRouter @Inject constructor(
         return IncomingDocumentImportPreview(
             item = item,
             status = IncomingDocumentImportStatus.BLOCKED,
-            title = "${item.kind.displayName} support is pending",
+            title = context.getString(R.string.afu_import_support_pending, item.kind.displayName),
             body = body,
             details = baseDetails(item),
             warnings = warnings,
@@ -597,16 +598,16 @@ class IncomingDocumentImportRouter @Inject constructor(
     private fun stylePackFailureMessage(failure: StylePackFailure): String {
         return when (failure) {
             StylePackFailure.NONE -> "Style pack import failed."
-            StylePackFailure.UNREADABLE -> "ClearCut could not read this file."
+            StylePackFailure.UNREADABLE -> "AfuTube could not read this file."
             StylePackFailure.INVALID_JSON -> "File is not valid JSON."
             StylePackFailure.MISSING_REQUIRED_FIELDS -> "Pack is missing required fields (id, name, or styles)."
             StylePackFailure.INVALID_SCHEMA -> "Pack schemaVersion must be a positive integer."
             StylePackFailure.WRONG_KIND -> "This file declares a different declarative pack type."
-            StylePackFailure.INCOMPATIBLE_VERSION -> "Pack requires a newer version of ClearCut."
+            StylePackFailure.INCOMPATIBLE_VERSION -> "Pack requires a newer version of AfuTube."
             StylePackFailure.MISSING_MANIFEST_FIELDS -> "Current-schema packs must declare compatibility and provenance metadata."
-            StylePackFailure.UNKNOWN_REQUIRED_CAPABILITY -> "Pack requires a capability this ClearCut build does not support."
-            StylePackFailure.INCOMPATIBLE_APP_VERSION -> "Pack requires a newer version of ClearCut."
-            StylePackFailure.UNSAFE_CONTENT -> "Pack contains executable or plugin content, which ClearCut rejects."
+            StylePackFailure.UNKNOWN_REQUIRED_CAPABILITY -> "Pack requires a capability this AfuTube build does not support."
+            StylePackFailure.INCOMPATIBLE_APP_VERSION -> "Pack requires a newer version of AfuTube."
+            StylePackFailure.UNSAFE_CONTENT -> "Pack contains executable or plugin content, which AfuTube rejects."
             StylePackFailure.INVALID_STYLE_ENTRY -> "Pack contains an invalid style entry."
             StylePackFailure.MISSING_CONTENT_HASH -> "Current-schema packs must include a content hash."
             StylePackFailure.HASH_MISMATCH -> "Pack content failed its integrity check."
@@ -620,15 +621,15 @@ class IncomingDocumentImportRouter @Inject constructor(
     private fun effectPackFailureMessage(failure: EffectShareEngine.EffectPackFailure): String {
         return when (failure) {
             EffectShareEngine.EffectPackFailure.NONE -> "Effect pack validation failed."
-            EffectShareEngine.EffectPackFailure.UNREADABLE -> "ClearCut could not read this effect pack."
+            EffectShareEngine.EffectPackFailure.UNREADABLE -> "AfuTube could not read this effect pack."
             EffectShareEngine.EffectPackFailure.INVALID_JSON -> "Effect pack is not valid JSON."
             EffectShareEngine.EffectPackFailure.INVALID_SCHEMA -> "Effect pack schemaVersion must be a positive integer."
             EffectShareEngine.EffectPackFailure.WRONG_KIND -> "This file declares a different declarative pack type."
-            EffectShareEngine.EffectPackFailure.INCOMPATIBLE_VERSION -> "Effect pack requires a newer version of ClearCut."
+            EffectShareEngine.EffectPackFailure.INCOMPATIBLE_VERSION -> "Effect pack requires a newer version of AfuTube."
             EffectShareEngine.EffectPackFailure.MISSING_MANIFEST_FIELDS -> "Current-schema effect packs must declare compatibility and provenance metadata."
-            EffectShareEngine.EffectPackFailure.UNKNOWN_REQUIRED_CAPABILITY -> "Effect pack requires a capability this ClearCut build does not support."
-            EffectShareEngine.EffectPackFailure.INCOMPATIBLE_APP_VERSION -> "Effect pack requires a newer version of ClearCut."
-            EffectShareEngine.EffectPackFailure.UNSAFE_CONTENT -> "Effect pack contains executable or plugin content, which ClearCut rejects."
+            EffectShareEngine.EffectPackFailure.UNKNOWN_REQUIRED_CAPABILITY -> "Effect pack requires a capability this AfuTube build does not support."
+            EffectShareEngine.EffectPackFailure.INCOMPATIBLE_APP_VERSION -> "Effect pack requires a newer version of AfuTube."
+            EffectShareEngine.EffectPackFailure.UNSAFE_CONTENT -> "Effect pack contains executable or plugin content, which AfuTube rejects."
             EffectShareEngine.EffectPackFailure.MISSING_CONTENT_HASH -> "Current-schema effect packs must include a content hash."
             EffectShareEngine.EffectPackFailure.HASH_MISMATCH -> "Effect pack content failed its integrity check."
             EffectShareEngine.EffectPackFailure.INVALID_ENTRY -> "Effect pack contains an unsupported or invalid effect entry."
@@ -639,23 +640,23 @@ class IncomingDocumentImportRouter @Inject constructor(
     private fun stabilizationProfileFailureMessage(failure: StabilizationProfileFailure): String {
         return when (failure) {
             StabilizationProfileFailure.NONE -> "Stabilization profile validation failed."
-            StabilizationProfileFailure.UNREADABLE -> "ClearCut could not read this stabilization profile."
+            StabilizationProfileFailure.UNREADABLE -> "AfuTube could not read this stabilization profile."
             StabilizationProfileFailure.INVALID_JSON -> "Stabilization profile is not valid JSON."
             StabilizationProfileFailure.INVALID_SCHEMA -> "Stabilization profile schemaVersion is invalid."
             StabilizationProfileFailure.WRONG_KIND -> "This file declares a different declarative pack type."
             StabilizationProfileFailure.INCOMPATIBLE_VERSION,
-            StabilizationProfileFailure.INCOMPATIBLE_APP_VERSION -> "Stabilization profile requires a newer ClearCut version."
+            StabilizationProfileFailure.INCOMPATIBLE_APP_VERSION -> "Stabilization profile requires a newer AfuTube version."
             StabilizationProfileFailure.MISSING_REQUIRED_METADATA -> "Profile is missing required lens, motion, crop, or provenance metadata."
-            StabilizationProfileFailure.UNSAFE_CONTENT -> "Profile contains executable or plugin content, which ClearCut rejects."
+            StabilizationProfileFailure.UNSAFE_CONTENT -> "Profile contains executable or plugin content, which AfuTube rejects."
             StabilizationProfileFailure.MISSING_CONTENT_HASH -> "Current-schema profiles must include a content hash."
             StabilizationProfileFailure.HASH_MISMATCH -> "Profile content failed its integrity check."
-            StabilizationProfileFailure.UNKNOWN_REQUIRED_CAPABILITY -> "Profile requires a capability this ClearCut build does not support."
+            StabilizationProfileFailure.UNKNOWN_REQUIRED_CAPABILITY -> "Profile requires a capability this AfuTube build does not support."
         }
     }
 
     private fun templateImportFailureMessage(failure: TemplateImportFailure): String {
         return when (failure) {
-            TemplateImportFailure.INCOMPATIBLE -> "Template needs a newer ClearCut version or unsupported tools."
+            TemplateImportFailure.INCOMPATIBLE -> "Template needs a newer AfuTube version or unsupported tools."
             TemplateImportFailure.OVERSIZED_FILE -> "Template file is too large."
             TemplateImportFailure.INVALID_JSON,
             TemplateImportFailure.INVALID_STATE -> "Template file is not readable."

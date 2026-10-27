@@ -86,7 +86,7 @@ class TimelineExchangeEngine @Inject constructor(
             contract = TimelineExchangeContract(InterchangeContracts.EDL_STANDARD),
         ),
         EDIT_DECISION_JSON(
-            "ClearCut edit-decision JSON",
+            "AfuTube edit-decision JSON",
             ".${EditDecisionJsonEngine.FILE_EXTENSION}",
             canImport = true,
             canExport = true,
@@ -152,7 +152,7 @@ class TimelineExchangeEngine @Inject constructor(
     fun exportToOtio(
         tracks: List<Track>,
         textOverlays: List<TextOverlay> = emptyList(),
-        projectName: String = "ClearCut Project",
+        projectName: String = "AfuTube Project",
         frameRate: Int = 30
     ): String = exportToOtio(
         tracks = tracks,
@@ -226,7 +226,7 @@ class TimelineExchangeEngine @Inject constructor(
                 val gapDurationMs = clip.timelineStartMs - currentTimeMs
                 children.put(JSONObject().apply {
                     put("OTIO_SCHEMA", "Gap.1")
-                    put("name", "ClearCut gap")
+                    put("name", "AfuTube gap")
                     put("effects", JSONArray())
                     put("markers", JSONArray())
                     put("enabled", true)
@@ -336,7 +336,7 @@ class TimelineExchangeEngine @Inject constructor(
             if (overlay.startTimeMs > currentTimeMs) {
                 children.put(JSONObject().apply {
                     put("OTIO_SCHEMA", "Gap.1")
-                    put("name", "ClearCut text gap")
+                    put("name", "AfuTube text gap")
                     put("effects", JSONArray())
                     put("markers", JSONArray())
                     put("enabled", true)
@@ -357,7 +357,7 @@ class TimelineExchangeEngine @Inject constructor(
                 ))
                 put("media_reference", JSONObject().apply {
                     put("OTIO_SCHEMA", "GeneratorReference.1")
-                    put("name", "ClearCut TextOverlay")
+                    put("name", "AfuTube TextOverlay")
                     put("generator_kind", "TextOverlay")
                     put("available_range", JSONObject.NULL)
                     put("metadata", JSONObject())
@@ -492,7 +492,7 @@ class TimelineExchangeEngine @Inject constructor(
         tracks: List<Track>,
         textOverlays: List<TextOverlay> = emptyList(),
         timelineMarkers: List<TimelineMarker> = emptyList(),
-        projectName: String = "ClearCut Project",
+        projectName: String = "AfuTube Project",
         timebase: TimelineTimebase = TimelineTimebase(30),
     ): String = EditDecisionJsonEngine.export(
         tracks = tracks,
@@ -530,7 +530,7 @@ class TimelineExchangeEngine @Inject constructor(
                     tracks = emptyList(),
                     textOverlays = emptyList(),
                     warnings = listOf(
-                        "OTIO root schema '$schema' is newer than ClearCut's supported " +
+                        "OTIO root schema '$schema' is newer than AfuTube's supported " +
                             "${InterchangeContracts.OTIO_ROOT_SCHEMA}; nothing was imported."
                     ),
                     schemaVersion = rootSchemaVersion,
@@ -558,7 +558,7 @@ class TimelineExchangeEngine @Inject constructor(
                     textOverlays = emptyList(),
                     warnings = listOf(
                         "OTIO metadata schema version '$declaredSchemaVersion' is newer than " +
-                            "ClearCut's supported range ${InterchangeContracts.OTIO_ADAPTER_RANGE}; " +
+                            "AfuTube's supported range ${InterchangeContracts.OTIO_ADAPTER_RANGE}; " +
                             "nothing was imported."
                     ),
                     schemaVersion = declaredSchemaCode,
@@ -960,7 +960,7 @@ class TimelineExchangeEngine @Inject constructor(
                             cursorMs = safeAdd(cursorMs, duration)
                         }
                         "transition" -> {
-                            warnings.add("FCPXML transition was not mapped to a named ClearCut transition")
+                            warnings.add("FCPXML transition was not mapped to a named AfuTube transition")
                         }
                         "asset-clip" -> {
                             val assetId = element.getAttribute("ref").trim()
@@ -1208,7 +1208,7 @@ class TimelineExchangeEngine @Inject constructor(
      */
     fun exportToFcpxml(
         tracks: List<Track>,
-        projectName: String = "ClearCut Project",
+        projectName: String = "AfuTube Project",
         frameRate: Int = 30
     ): String = exportToFcpxml(
         tracks = tracks,
@@ -1456,7 +1456,7 @@ class TimelineExchangeEngine @Inject constructor(
             val type = runCatching { EffectType.valueOf(json.optString("type")) }.getOrNull()
             if (type == null) {
                 diagnostics.droppedEffects++
-                warnings.add("Unsupported ClearCut effect metadata '${json.optString("type")}'")
+                warnings.add("Unsupported AfuTube effect metadata '${json.optString("type")}'")
                 return@mapNotNull null
             }
             val params = mutableMapOf<String, Float>()

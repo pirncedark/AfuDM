@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.pluralStringResource
+import androidx.annotation.StringRes
 import androidx.compose.ui.res.stringResource
 import info.bigwizardmedia.wizardcut.R
 import info.bigwizardmedia.wizardcut.model.*
@@ -472,7 +473,7 @@ fun TextTemplateGallery(
                 )
                 TextTemplateCategory.entries.forEach { category ->
                     TemplateCategoryChip(
-                        label = category.displayName,
+                        label = stringResource(category.labelRes()),
                         selected = selectedCategory == category,
                         accent = templateCategoryAccent(category),
                         onClick = { selectedCategory = category }
@@ -678,7 +679,7 @@ private fun TemplateCard(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     PremiumPanelPill(
-                        text = template.category.displayName,
+                        text = stringResource(template.category.labelRes()),
                         accent = accent
                     )
                     PremiumPanelPill(
@@ -829,7 +830,7 @@ private fun AnimatedTemplateCard(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     PremiumPanelPill(
-                        text = template.category.displayName,
+                        text = stringResource(template.category.labelRes()),
                         accent = template.accent
                     )
                     PremiumPanelPill(
@@ -1003,4 +1004,14 @@ private fun formatTemplateTime(playheadMs: Long): String {
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
     return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+}
+
+@StringRes
+private fun TextTemplateCategory.labelRes(): Int = when (this) {
+    TextTemplateCategory.LOWER_THIRD -> R.string.afu_text_cat_lower_thirds
+    TextTemplateCategory.TITLE_CARD -> R.string.afu_text_cat_title_cards
+    TextTemplateCategory.END_SCREEN -> R.string.afu_text_cat_end_screens
+    TextTemplateCategory.CALL_TO_ACTION -> R.string.afu_text_cat_call_to_action
+    TextTemplateCategory.SOCIAL -> R.string.afu_text_cat_social
+    TextTemplateCategory.MINIMAL -> R.string.afu_text_cat_minimal
 }

@@ -275,9 +275,9 @@ class DiagnosticExportEngine @Inject constructor(
     // --- Section builders (each returns plain text for the ZIP entry) ---
 
     private fun buildAppInfo(now: Long): String = buildString {
-        appendLine("# ClearCut diagnostic bundle")
+        appendLine("# AfuTube diagnostic bundle")
         appendLine("# Generated: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(now))}")
-        appendLine("# This bundle is generated on-device. ClearCut does not upload it anywhere.")
+        appendLine("# This bundle is generated on-device. AfuTube does not upload it anywhere.")
         appendLine()
         appendLine("applicationId: ${context.packageName}")
         try {
@@ -399,7 +399,7 @@ class DiagnosticExportEngine @Inject constructor(
         private const val LOGCAT_LINES = 200
 
         fun buildPermissionState(snapshots: List<PermissionSnapshot>): String = buildString {
-            appendLine("ClearCut permission state")
+            appendLine("AfuTube permission state")
             snapshots.sortedBy { it.permissionName }.forEach { snapshot ->
                 append(snapshot.permissionName)
                 append("; granted=").append(snapshot.granted)

@@ -200,7 +200,7 @@ object DeclarativePackContract {
                     kind = expectedKind,
                     issue = DeclarativePackIssue.INCOMPATIBLE_APP_VERSION,
                     warnings = listOf(
-                        "Pack requires ClearCut $minAppVersion or newer; this build is $supportedAppVersion."
+                        "Pack requires AfuTube $minAppVersion or newer; this build is $supportedAppVersion."
                     ),
                     source = source,
                     minAppVersion = minAppVersion,

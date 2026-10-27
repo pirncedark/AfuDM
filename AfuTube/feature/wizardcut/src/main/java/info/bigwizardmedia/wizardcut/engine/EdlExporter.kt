@@ -37,7 +37,7 @@ class EdlExporter @Inject constructor(
         try {
             val safeFrameRate = frameRate.coerceIn(1, 240)
             val sb = StringBuilder()
-            sb.appendLine("TITLE: ${edlSafeText(projectName, fallback = "ClearCut Project")}")
+            sb.appendLine("TITLE: ${edlSafeText(projectName, fallback = "AfuTube Project")}")
             sb.appendLine("FCM: NON-DROP FRAME")
             sb.appendLine()
 
@@ -100,7 +100,7 @@ class EdlExporter @Inject constructor(
 
             val outputDir = File(context.getExternalFilesDir(null) ?: context.filesDir, "exports")
             outputDir.mkdirs()
-            val sanitized = sanitizeFileName(projectName, fallback = "ClearCut", maxLength = 50)
+            val sanitized = sanitizeFileName(projectName, fallback = "AfuTube", maxLength = 50)
             val file = File(outputDir, "${sanitized}.edl")
             writeUtf8TextAtomically(file, sb.toString())
             AppLog.d(TAG, "EDL exported: ${file.redacted()}")

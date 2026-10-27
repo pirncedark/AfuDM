@@ -221,7 +221,7 @@ class TimelineExchangeValidator @Inject constructor() {
             issues += Issue(
                 Severity.WARNING,
                 path = "Effects",
-                message = "$droppedEffects effect(s) had no ClearCut equivalent and were dropped.",
+                message = "$droppedEffects effect(s) had no AfuTube equivalent and were dropped.",
                 suggestedFix = "Re-apply effects manually after import."
             )
         }

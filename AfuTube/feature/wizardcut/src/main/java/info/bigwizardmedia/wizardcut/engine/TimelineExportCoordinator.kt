@@ -70,7 +70,7 @@ class TimelineExportCoordinator @Inject constructor(
 
         val outputFile = File(
             request.outputDirectory,
-            "${sanitizeFileName(request.projectName, fallback = "ClearCut")}.${request.format.extension}",
+            "${sanitizeFileName(request.projectName, fallback = "AfuTube")}.${request.format.extension}",
         )
         val contents = when (request.format) {
             Format.OTIO -> timelineExchangeEngine.exportToOtio(

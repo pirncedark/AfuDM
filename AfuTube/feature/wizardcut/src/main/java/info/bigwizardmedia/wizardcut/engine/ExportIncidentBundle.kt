@@ -58,7 +58,7 @@ data class ExportIncidentBundle(
      * captions, or paths that generic redaction cannot recognize.
      */
     fun toCopyableReport(includeRawErrorText: Boolean = false): String = buildString {
-        appendLine("ClearCut export failure report")
+        appendLine("AfuTube export failure report")
         appendLine("incident: ${id.take(8)}")
         appendLine("app: $appVersion (Android SDK $androidSdk)")
         appendLine("device: $deviceModel")

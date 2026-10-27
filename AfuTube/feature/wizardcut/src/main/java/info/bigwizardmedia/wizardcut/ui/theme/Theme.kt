@@ -9,54 +9,50 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
+import com.afudm.afutube.core.theme.AfuColors
 import info.bigwizardmedia.wizardcut.engine.AppearanceMode
 
-// Catppuccin Mocha palette
+// AfuTube: WizardCut paleti AfuTube renk tokenlarına (core/theme/AfuColors) bağlandı.
+// Adlar (Mocha.*) WizardCut kodunda her yerde kullanıldığı için korunur; değerler AfuTube'un.
 object Mocha {
-    // Neutral creator-workspace layers. Catppuccin accents remain available for media
-    // semantics, while persistent chrome stays graphite so footage remains the focal point.
-    val Midnight = Color(0xFF020405)
-    val Crust = Color(0xFF05090C)
-    val Mantle = Color(0xFF070C11)
-    val Base = Color(0xFF0A1117)
-    val Panel = Color(0xFF070C10)
-    val PanelRaised = Color(0xFF0C131A)
-    val PanelHighest = Color(0xFF111A22)
-    val CardStroke = Color(0xFF1D2933)
-    val CardStrokeStrong = Color(0xFF31404B)
-    val Glow = Color(0x66CBA6F7)
-    val GlowSoft = Color(0x3389B4FA)
-    val GlowWarm = Color(0x33F5E0DC)
-    val Surface0 = Color(0xFF17212A)
-    val Surface1 = Color(0xFF25323D)
-    val Surface2 = Color(0xFF3C4A56)
-    val Overlay0 = Color(0xFF596470)
-    val Overlay1 = Color(0xFF788390)
-    val Overlay2 = Color(0xFF929CA8)
-    val Subtext0 = Color(0xFF87919F)
-    val Subtext1 = Color(0xFFAFB7C3)
-    val Text = Color(0xFFF4F7FA)
-    val Lavender = Color(0xFFB4BEFE)
-    val Blue = Color(0xFF89B4FA)
-    val Sapphire = Color(0xFF52C8F0)
-    val Sky = Color(0xFF35D5E8)
-    val Teal = Color(0xFF54D6C6)
-    val Green = Color(0xFF91E68F)
-    val Yellow = Color(0xFFF9E2AF)
-    val Peach = Color(0xFFFF7F6E)
-    val Maroon = Color(0xFFEBA0AC)
-    val Red = Color(0xFFF38BA8)
-    val Mauve = Color(0xFFC27CFF)
-    val Pink = Color(0xFFF5C2E7)
-    val Flamingo = Color(0xFFF2CDCD)
-    val Rosewater = Color(0xFFF5E0DC)
-    // WizardCut brand accents: deep purple primary + teal secondary.
-    val Wizard = Color(0xFFA855F7)
-    val WizardDeep = Color(0xFF7C3AED)
+    val Midnight = AfuColors.bg
+    val Crust = AfuColors.bg
+    val Mantle = AfuColors.bg
+    val Base = AfuColors.bg
+    val Panel = AfuColors.surface
+    val PanelRaised = AfuColors.card
+    val PanelHighest = AfuColors.card
+    val CardStroke = AfuColors.textMuted.copy(alpha = 0.28f)
+    val CardStrokeStrong = AfuColors.textMuted.copy(alpha = 0.55f)
+    val Glow = AfuColors.accent.copy(alpha = 0.40f)
+    val GlowSoft = AfuColors.accent.copy(alpha = 0.20f)
+    val GlowWarm = AfuColors.accentAlt.copy(alpha = 0.20f)
+    val Surface0 = AfuColors.card
+    val Surface1 = AfuColors.card
+    val Surface2 = AfuColors.textMuted.copy(alpha = 0.35f)
+    val Overlay0 = AfuColors.textMuted
+    val Overlay1 = AfuColors.textMuted
+    val Overlay2 = AfuColors.textMuted
+    val Subtext0 = AfuColors.textMuted
+    val Subtext1 = AfuColors.text.copy(alpha = 0.75f)
+    val Text = AfuColors.text
+    val Lavender = AfuColors.accent
+    val Blue = AfuColors.accent
+    val Sapphire = AfuColors.accent
+    val Sky = AfuColors.accent
+    val Teal = AfuColors.accent
+    val Green = AfuColors.success
+    val Yellow = AfuColors.warning
+    val Peach = AfuColors.warning
+    val Maroon = AfuColors.error
+    val Red = AfuColors.error
+    val Mauve = AfuColors.accentAlt
+    val Pink = AfuColors.accentAlt
+    val Flamingo = AfuColors.accentAlt
+    val Rosewater = AfuColors.accentAlt
+    val Wizard = AfuColors.accent
+    val WizardDeep = AfuColors.accentAlt
 }
 
 /**
@@ -85,15 +81,15 @@ object ClearCutAccents {
 
 private val ClearCutDarkColorScheme = darkColorScheme(
     primary = Mocha.Wizard,
-    onPrimary = Mocha.Crust,
+    onPrimary = AfuColors.text,
     primaryContainer = Mocha.Wizard.copy(alpha = 0.18f),
     onPrimaryContainer = Mocha.Wizard,
     secondary = Mocha.Teal,
-    onSecondary = Mocha.Crust,
+    onSecondary = AfuColors.text,
     secondaryContainer = Mocha.Teal.copy(alpha = 0.16f),
     onSecondaryContainer = Mocha.Teal,
     tertiary = Mocha.Mauve,
-    onTertiary = Mocha.Crust,
+    onTertiary = AfuColors.text,
     tertiaryContainer = Mocha.Mauve.copy(alpha = 0.16f),
     onTertiaryContainer = Mocha.Mauve,
     error = Mocha.Red,
@@ -267,7 +263,7 @@ object ClearCutThemeDefaults {
             surfaceHigh = Mocha.Surface2,
             overlay = Mocha.Overlay0,
             overlayStrong = Mocha.Overlay1,
-            onAccent = Mocha.Crust,
+            onAccent = AfuColors.text,
         )
     }
 
@@ -298,90 +294,26 @@ object ClearCutThemeDefaults {
 
 private val ClearCutFontFamily = FontFamily.SansSerif
 
-private val ClearCutTypography = Typography(
-    displayLarge = TextStyle(
-        fontFamily = ClearCutFontFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 36.sp,
-        lineHeight = 40.sp,
-        letterSpacing = 0.sp
-    ),
-    displayMedium = TextStyle(
-        fontFamily = ClearCutFontFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 30.sp,
-        lineHeight = 34.sp,
-        letterSpacing = 0.sp
-    ),
-    headlineLarge = TextStyle(
-        fontFamily = ClearCutFontFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 24.sp,
-        lineHeight = 28.sp,
-        letterSpacing = 0.sp
-    ),
-    headlineMedium = TextStyle(
-        fontFamily = ClearCutFontFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 20.sp,
-        lineHeight = 24.sp
-    ),
-    titleLarge = TextStyle(
-        fontFamily = ClearCutFontFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 18.sp,
-        lineHeight = 22.sp
-    ),
-    titleMedium = TextStyle(
-        fontFamily = ClearCutFontFamily,
-        fontWeight = FontWeight.Medium,
-        fontSize = 16.sp,
-        lineHeight = 20.sp
-    ),
-    titleSmall = TextStyle(
-        fontFamily = ClearCutFontFamily,
-        fontWeight = FontWeight.Medium,
-        fontSize = 14.sp,
-        lineHeight = 18.sp
-    ),
-    bodyLarge = TextStyle(
-        fontFamily = ClearCutFontFamily,
-        fontWeight = FontWeight.Normal,
-        fontSize = 15.sp,
-        lineHeight = 21.sp
-    ),
-    bodyMedium = TextStyle(
-        fontFamily = ClearCutFontFamily,
-        fontWeight = FontWeight.Normal,
-        fontSize = 14.sp,
-        lineHeight = 20.sp
-    ),
-    bodySmall = TextStyle(
-        fontFamily = ClearCutFontFamily,
-        fontWeight = FontWeight.Normal,
-        fontSize = 12.sp,
-        lineHeight = 17.sp
-    ),
-    labelLarge = TextStyle(
-        fontFamily = ClearCutFontFamily,
-        fontWeight = FontWeight.Medium,
-        fontSize = 13.sp,
-        lineHeight = 16.sp
-    ),
-    labelMedium = TextStyle(
-        fontFamily = ClearCutFontFamily,
-        fontWeight = FontWeight.Medium,
-        fontSize = 12.sp,
-        lineHeight = 14.sp
-    ),
-    labelSmall = TextStyle(
-        fontFamily = ClearCutFontFamily,
-        fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        lineHeight = 13.sp,
-        letterSpacing = 0.2.sp
+// Material3 default type scale; only the font family is set to SansSerif.
+private val ClearCutTypography = Typography().let { base ->
+    Typography(
+        displayLarge = base.displayLarge.copy(fontFamily = ClearCutFontFamily),
+        displayMedium = base.displayMedium.copy(fontFamily = ClearCutFontFamily),
+        displaySmall = base.displaySmall.copy(fontFamily = ClearCutFontFamily),
+        headlineLarge = base.headlineLarge.copy(fontFamily = ClearCutFontFamily),
+        headlineMedium = base.headlineMedium.copy(fontFamily = ClearCutFontFamily),
+        headlineSmall = base.headlineSmall.copy(fontFamily = ClearCutFontFamily),
+        titleLarge = base.titleLarge.copy(fontFamily = ClearCutFontFamily),
+        titleMedium = base.titleMedium.copy(fontFamily = ClearCutFontFamily),
+        titleSmall = base.titleSmall.copy(fontFamily = ClearCutFontFamily),
+        bodyLarge = base.bodyLarge.copy(fontFamily = ClearCutFontFamily),
+        bodyMedium = base.bodyMedium.copy(fontFamily = ClearCutFontFamily),
+        bodySmall = base.bodySmall.copy(fontFamily = ClearCutFontFamily),
+        labelLarge = base.labelLarge.copy(fontFamily = ClearCutFontFamily),
+        labelMedium = base.labelMedium.copy(fontFamily = ClearCutFontFamily),
+        labelSmall = base.labelSmall.copy(fontFamily = ClearCutFontFamily),
     )
-)
+}
 
 private val ClearCutShapes = Shapes(
     extraSmall = RoundedCornerShape(Radius.xs),

@@ -47,6 +47,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import info.bigwizardmedia.wizardcut.R
+import info.bigwizardmedia.wizardcut.ui.components.AfuPrimaryButton
+import info.bigwizardmedia.wizardcut.ui.components.AfuAdvancedSection
 import info.bigwizardmedia.wizardcut.engine.CaptionImportEngine
 import info.bigwizardmedia.wizardcut.engine.CaptionTranslationEngine.EditorRow
 import info.bigwizardmedia.wizardcut.engine.CaptionTranslationEngine.LanguagePairQuality
@@ -139,6 +141,13 @@ fun CaptionEditorPanel(
             )
         }
     ) {
+        AfuPrimaryButton(
+            text = stringResource(R.string.afu_caption_add_primary),
+            onClick = onGenerateAutoCaption,
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
         PremiumPanelCard(accent = if (activeCaptionCount > 0) ClearCutAccents.Green else ClearCutAccents.Yellow) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -206,61 +215,63 @@ fun CaptionEditorPanel(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        PremiumPanelCard(accent = ClearCutAccents.Mauve) {
-            Text(
-                text = stringResource(R.string.caption_default_style_title),
-                style = MaterialTheme.typography.titleMedium,
-                color = semanticColors.text
-            )
-            Text(
-                text = stringResource(R.string.caption_default_style_description),
-                style = MaterialTheme.typography.bodyMedium,
-                color = semanticColors.subtext
-            )
+        AfuAdvancedSection(title = stringResource(R.string.afu_advanced_title)) {
+            PremiumPanelCard(accent = ClearCutAccents.Mauve) {
+                Text(
+                    text = stringResource(R.string.caption_default_style_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = semanticColors.text
+                )
+                Text(
+                    text = stringResource(R.string.caption_default_style_description),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = semanticColors.subtext
+                )
 
-            FlowRow(
-                modifier = Modifier.semantics {
-                    contentDescription = captionStylesSectionDescription
-                },
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                CaptionStyleType.entries.forEach { styleType ->
-                    FilterChip(
-                        selected = styleType == selectedStyleType,
-                        onClick = { selectedStyleType = styleType },
-                        label = {
-                            Text(
-                                text = stringResource(styleType.displayNameRes()),
-                                style = MaterialTheme.typography.labelMedium
+                FlowRow(
+                    modifier = Modifier.semantics {
+                        contentDescription = captionStylesSectionDescription
+                    },
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CaptionStyleType.entries.forEach { styleType ->
+                        FilterChip(
+                            selected = styleType == selectedStyleType,
+                            onClick = { selectedStyleType = styleType },
+                            label = {
+                                Text(
+                                    text = stringResource(styleType.displayNameRes()),
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = ClearCutAccents.Mauve.copy(alpha = 0.18f),
+                                selectedLabelColor = ClearCutAccents.Mauve,
+                                containerColor = semanticColors.panelRaised,
+                                labelColor = semanticColors.subtext
                             )
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = ClearCutAccents.Mauve.copy(alpha = 0.18f),
-                            selectedLabelColor = ClearCutAccents.Mauve,
-                            containerColor = semanticColors.panelRaised,
-                            labelColor = semanticColors.subtext
                         )
-                    )
+                    }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-        PremiumPanelCard(accent = ClearCutAccents.Green) {
-            CaptionTranslationPanel(
-                rows = translationRows,
-                sourceLang = translationSourceLang,
-                targetLang = translationTargetLang,
-                currentQuality = translationQuality,
-                availableTargets = translationTargets,
-                onTargetSelected = onTranslationTargetSelected,
-                onUserEdit = onTranslationUserEdit,
-                onRegenerate = onTranslationRegenerate,
-                unavailable = translationUnavailable,
-                offline = translationOffline,
-            )
+            PremiumPanelCard(accent = ClearCutAccents.Green) {
+                CaptionTranslationPanel(
+                    rows = translationRows,
+                    sourceLang = translationSourceLang,
+                    targetLang = translationTargetLang,
+                    currentQuality = translationQuality,
+                    availableTargets = translationTargets,
+                    onTargetSelected = onTranslationTargetSelected,
+                    onUserEdit = onTranslationUserEdit,
+                    onRegenerate = onTranslationRegenerate,
+                    unavailable = translationUnavailable,
+                    offline = translationOffline,
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(12.dp))

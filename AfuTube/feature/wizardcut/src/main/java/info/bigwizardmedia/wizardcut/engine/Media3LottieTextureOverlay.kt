@@ -31,7 +31,7 @@ internal fun chooseLottieOverlayBackend(
     if (preserveHdr) {
         return LottieOverlayBackendDecision(
             LottieOverlayBackend.CLEARCUT_SHADER,
-            "Media3 OverlayEffect treats Lottie bitmaps as Ultra HDR overlays on HDR input; ClearCut shader preserves the existing SDR-over-HDR fallback."
+            "Media3 OverlayEffect treats Lottie bitmaps as Ultra HDR overlays on HDR input; AfuTube shader preserves the existing SDR-over-HDR fallback."
         )
     }
     if (compositionDurationUs <= 0L) {
@@ -43,7 +43,7 @@ internal fun chooseLottieOverlayBackend(
     if (overlayDurationUs > compositionDurationUs) {
         return LottieOverlayBackendDecision(
             LottieOverlayBackend.CLEARCUT_SHADER,
-            "Media3 LottieOverlay loops animations; ClearCut shader holds the final frame for over-long title windows."
+            "Media3 LottieOverlay loops animations; AfuTube shader holds the final frame for over-long title windows."
         )
     }
     return LottieOverlayBackendDecision(

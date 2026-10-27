@@ -208,10 +208,11 @@ private data class BlendModeSection(
     val modes: List<BlendMode>
 )
 
+@Composable
 private fun blendModeSections(): List<BlendModeSection> = listOf(
     BlendModeSection(
-        title = "Foundation",
-        subtitle = "The most-used blend modes for everyday compositing, contrast, and soft overlays.",
+        title = stringResource(R.string.afu_blend_foundation_title),
+        subtitle = stringResource(R.string.afu_blend_foundation_sub),
         accent = ClearCutAccents.Peach,
         modes = listOf(
             BlendMode.NORMAL,
@@ -221,8 +222,8 @@ private fun blendModeSections(): List<BlendModeSection> = listOf(
         )
     ),
     BlendModeSection(
-        title = "Light and Shadow",
-        subtitle = "Push exposure up or down, then lean into harsher additive or subtractive blends.",
+        title = stringResource(R.string.afu_blend_light_title),
+        subtitle = stringResource(R.string.afu_blend_light_sub),
         accent = ClearCutAccents.Yellow,
         modes = listOf(
             BlendMode.DARKEN,
@@ -234,8 +235,8 @@ private fun blendModeSections(): List<BlendModeSection> = listOf(
         )
     ),
     BlendModeSection(
-        title = "Contrast",
-        subtitle = "Use these when you want the layer interaction to feel punchier, more graphic, or more unpredictable.",
+        title = stringResource(R.string.afu_blend_contrast_title),
+        subtitle = stringResource(R.string.afu_blend_contrast_sub),
         accent = ClearCutAccents.Mauve,
         modes = listOf(
             BlendMode.HARD_LIGHT,
@@ -245,8 +246,8 @@ private fun blendModeSections(): List<BlendModeSection> = listOf(
         )
     ),
     BlendModeSection(
-        title = "Color Channels",
-        subtitle = "Borrow hue, saturation, or luminance from one layer while keeping the rest from another.",
+        title = stringResource(R.string.afu_blend_color_title),
+        subtitle = stringResource(R.string.afu_blend_color_sub),
         accent = ClearCutAccents.Blue,
         modes = listOf(
             BlendMode.HUE,

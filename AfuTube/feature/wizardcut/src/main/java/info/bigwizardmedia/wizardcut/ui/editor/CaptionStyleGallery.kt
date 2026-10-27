@@ -172,19 +172,19 @@ fun CaptionStyleGallery(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     StyleMetric(
-                        title = "Karaoke",
+                        title = stringResource(R.string.afu_style_karaoke),
                         value = karaokeTemplates.size.toString(),
                         accent = ClearCutAccents.Yellow,
                         modifier = Modifier.width(metricWidth.coerceAtLeast(0.dp))
                     )
                     StyleMetric(
-                        title = "Editorial",
+                        title = stringResource(R.string.afu_style_editorial),
                         value = editorialTemplates.size.toString(),
                         accent = ClearCutAccents.Mauve,
                         modifier = Modifier.width(metricWidth.coerceAtLeast(0.dp))
                     )
                     StyleMetric(
-                        title = "Accessible",
+                        title = stringResource(R.string.afu_style_accessible),
                         value = accessibilityTemplates.size.toString(),
                         accent = ClearCutAccents.Green,
                         modifier = Modifier.width(metricWidth.coerceAtLeast(0.dp))
@@ -448,7 +448,7 @@ private fun CaptionStylePreview(template: CaptionStyleTemplate) {
             horizontalArrangement = Arrangement.Center
         ) {
             Text(
-                text = "Hello ",
+                text = stringResource(R.string.afu_preview_hello),
                 color = highlightColor,
                 fontSize = previewSize.sp,
                 fontWeight = FontWeight.Bold,
@@ -462,7 +462,7 @@ private fun CaptionStylePreview(template: CaptionStyleTemplate) {
                 )
             )
             Text(
-                text = "World",
+                text = stringResource(R.string.afu_preview_world),
                 color = textColor,
                 fontSize = previewSize.sp,
                 fontWeight = FontWeight.Bold,

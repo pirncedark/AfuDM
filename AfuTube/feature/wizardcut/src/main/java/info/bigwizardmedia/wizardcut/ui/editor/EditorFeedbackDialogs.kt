@@ -130,7 +130,7 @@ private fun BackupImportReportBody(
         )
         feedback.errorMessage?.let {
             ReportCallout(
-                title = "Reason",
+                title = stringResource(R.string.afu_reason),
                 body = it,
                 accent = ClearCutAccents.Red
             )
@@ -146,7 +146,7 @@ private fun BackupImportReportBody(
         }
         if (report.mediaMissing > 0) {
             ReportCallout(
-                title = "Missing media",
+                title = stringResource(R.string.afu_missing_media),
                 body = "${report.mediaMissing} linked file(s) were not bundled or could not be restored. Relink them before export.",
                 accent = ClearCutAccents.Peach
             )
@@ -154,14 +154,14 @@ private fun BackupImportReportBody(
                 ReportIssueRow(
                     severity = "Media",
                     path = uri,
-                    message = "Still points to the original location.",
+                    message = stringResource(R.string.afu_still_original),
                     suggestedFix = "Open Media Manager and relink this asset.",
                     accent = ClearCutAccents.Peach
                 )
             }
             if (report.unresolvedMediaUris.size > 4) {
                 Text(
-                    text = "+${report.unresolvedMediaUris.size - 4} more missing media reference(s)",
+                    text = stringResource(R.string.afu_more_missing_media, report.unresolvedMediaUris.size - 4),
                     color = semanticColors.subtext,
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -242,7 +242,7 @@ private fun TimelineExchangeReportBody(
         )
         feedback.outputFileName?.let {
             ReportCallout(
-                title = "Saved file",
+                title = stringResource(R.string.afu_saved_file),
                 body = it,
                 accent = ClearCutAccents.Green
             )
@@ -272,7 +272,7 @@ private fun TimelineExchangeReportBody(
         }
         if (report.issues.size > 8) {
             Text(
-                text = "+${report.issues.size - 8} more issue(s)",
+                text = stringResource(R.string.afu_more_issues, report.issues.size - 8),
                 color = semanticColors.subtext,
                 style = MaterialTheme.typography.bodySmall
             )

@@ -269,7 +269,7 @@ fun AiToolsPanel(
 
     PremiumEditorPanel(
         title = stringResource(R.string.ai_tools_title),
-        subtitle = "Stage on-device assists, model downloads, and clip-aware magic.",
+        subtitle = stringResource(R.string.afu_ai_tools_subtitle),
         icon = Icons.Default.AutoAwesome,
         accent = ClearCutAccents.Mauve,
         onClose = onClose,
@@ -284,7 +284,7 @@ fun AiToolsPanel(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Creative stack",
+                        text = stringResource(R.string.afu_ai_creative_stack),
                         style = MaterialTheme.typography.titleMedium,
                         color = semanticColors.text
                     )
@@ -307,7 +307,7 @@ fun AiToolsPanel(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     PremiumPanelPill(
-                        text = "${readyTools.size} ready",
+                        text = stringResource(R.string.afu_ai_ready_count, readyTools.size),
                         accent = ClearCutAccents.Mauve
                     )
                     PremiumPanelPill(
@@ -504,7 +504,7 @@ fun AiToolsPanel(
                     if (normalizedProgress > 0f) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Processing now",
+                                text = stringResource(R.string.afu_processing_now),
                                 style = MaterialTheme.typography.titleSmall,
                                 color = semanticColors.text
                             )
@@ -533,7 +533,7 @@ fun AiToolsPanel(
                         )
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Processing now",
+                                text = stringResource(R.string.afu_processing_now),
                                 style = MaterialTheme.typography.titleSmall,
                                 color = semanticColors.text
                             )

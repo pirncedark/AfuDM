@@ -257,7 +257,7 @@ fun CommandPaletteSheet(
                         }
                         if (cmd.requiresClip && !hasSelectedClip) {
                             Text(
-                                text = "Select clip",
+                                text = stringResource(R.string.afu_select_clip),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                             )

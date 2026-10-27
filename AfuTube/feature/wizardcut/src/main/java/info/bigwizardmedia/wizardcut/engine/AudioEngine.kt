@@ -1,5 +1,6 @@
 package info.bigwizardmedia.wizardcut.engine
 
+import info.bigwizardmedia.wizardcut.R
 import android.content.Context
 import android.media.*
 import android.net.Uri
@@ -439,7 +440,7 @@ class AudioEngine @Inject constructor(
             issues.add(AudioConformanceIssue(
                 type = AudioConformanceIssueType.MIXED_SAMPLE_RATES,
                 clipId = "",
-                message = "Clips have mixed sample rates (${rates.joinToString()}). Audio will be resampled to ${outputSampleRate} Hz.",
+                message = context.getString(R.string.afu_audio_mixed_rates, rates.joinToString(), outputSampleRate),
                 isBlocking = false
             ))
         }
@@ -448,7 +449,7 @@ class AudioEngine @Inject constructor(
             issues.add(AudioConformanceIssue(
                 type = AudioConformanceIssueType.MIXED_CHANNEL_COUNTS,
                 clipId = "",
-                message = "Clips have mixed channel layouts (${channels.joinToString()}). Audio will be normalized to $outputChannels channels.",
+                message = context.getString(R.string.afu_audio_mixed_channels, channels.joinToString(), outputChannels),
                 isBlocking = false
             ))
         }
@@ -458,7 +459,7 @@ class AudioEngine @Inject constructor(
                 issues.add(AudioConformanceIssue(
                     type = AudioConformanceIssueType.UNCOMMON_SAMPLE_RATE,
                     clipId = clipId,
-                    message = "Clip uses uncommon sample rate ${info.sampleRate} Hz.",
+                    message = context.getString(R.string.afu_audio_uncommon_rate, info.sampleRate),
                     isBlocking = false
                 ))
             }

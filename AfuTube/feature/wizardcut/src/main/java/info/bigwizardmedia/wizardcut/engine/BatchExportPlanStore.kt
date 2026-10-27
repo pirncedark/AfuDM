@@ -167,7 +167,7 @@ class BatchExportPlanStore(
             status == BatchExportStatus.IN_PROGRESS -> copy(
                 status = BatchExportStatus.INTERRUPTED,
                 progress = 0f,
-                errorMessage = reason ?: "This export was interrupted when ClearCut closed.",
+                errorMessage = reason ?: "This export was interrupted when AfuTube closed.",
                 resumePartialPath = recoverableOutputPath,
             )
             reason != null -> copy(

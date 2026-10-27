@@ -33,7 +33,7 @@ class TimelineImportEngine @Inject constructor(
         FCPXML("fcpxml", "Final Cut Pro XML"),
         OTIO("otio", "OpenTimelineIO JSON"),
         EDL("edl", "CMX 3600 EDL"),
-        EDIT_DECISION_JSON(EditDecisionJsonEngine.FILE_EXTENSION, "ClearCut edit-decision JSON"),
+        EDIT_DECISION_JSON(EditDecisionJsonEngine.FILE_EXTENSION, "AfuTube edit-decision JSON"),
     }
 
     data class ImportResult(
