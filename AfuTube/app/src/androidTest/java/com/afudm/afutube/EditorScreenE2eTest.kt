@@ -85,7 +85,8 @@ class EditorScreenE2eTest {
         }
         composeRule.onAllNodesWithText("Böl").onFirst().performClick()
         composeRule.onAllNodesWithText("2 klip").onFirst().assertExists()
-        composeRule.onAllNodesWithText("Müzik").onFirst().performScrollTo().performClick()
+        composeRule.onNodeWithTag("araclar").performScrollToNode(hasText("Müzik"))
+        composeRule.onNode(hasText("Müzik") and hasAnyAncestor(hasTestTag("araclar"))).performClick()
         composeRule.onAllNodesWithText("AfuTube Müzik").onFirst().performClick()
         composeRule.onAllNodesWithText("Deneme müziği", substring = true).onFirst().performClick()
         composeRule.onAllNodesWithText("♪ Müzik izi", substring = true).onFirst().assertExists()
@@ -94,11 +95,13 @@ class EditorScreenE2eTest {
         composeRule.onNodeWithText("♪ Müzik izi", substring = true).assertDoesNotExist()
 
         // Yazı ekle, sonra oran 9:16; son ekran görüntüsü bu hâli gösterir.
-        composeRule.onAllNodesWithText("Yazı").onFirst().performScrollTo().performClick()
+        composeRule.onNodeWithTag("araclar").performScrollToNode(hasText("Yazı"))
+        composeRule.onNode(hasText("Yazı") and hasAnyAncestor(hasTestTag("araclar"))).performClick()
         composeRule.onAllNodes(hasSetTextAction()).onFirst().performTextInput("Merhaba AfuTube")
         composeRule.onAllNodesWithText("Ekle").onFirst().performClick()
         composeRule.onAllNodesWithText("Merhaba AfuTube").onFirst().assertExists()
-        composeRule.onAllNodesWithText("Oran").onFirst().performScrollTo().performClick()
+        composeRule.onNodeWithTag("araclar").performScrollToNode(hasText("Oran"))
+        composeRule.onNode(hasText("Oran") and hasAnyAncestor(hasTestTag("araclar"))).performClick()
         composeRule.onAllNodesWithText("9:16").onFirst().performClick()
         composeRule.onAllNodesWithText("9:16").onFirst().assertExists()
         composeRule.waitForIdle()
