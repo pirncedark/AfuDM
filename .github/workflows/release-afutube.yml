@@ -145,6 +145,22 @@ jobs:
 
             ## Kurulum
             Çoğu telefon: daha küçük `AfuTube-arm64-v8a.apk`. Eski 32-bit telefonlar: `AfuTube-universal.apk`. İkisi de önceki imzalı sürümün üstüne veriler silinmeden kurulur. Uygulama içi güncelleme doğru dosyayı kendisi seçer.
+
+            ---
+
+            ## Edit tab — based on WizardCut
+
+            AfuTube's Edit tab is built on the WizardCut video editor. From WizardCut: project list and templates, multi-track timeline (trim, split, speed, transitions), text and captions (including on-device speech-to-text), effects, filters and colour tools, audio mixing and noise reduction, auto edit, and video export.
+
+            WizardCut by BigWizard94, MIT License — https://github.com/BigWizard94/wizardcut
+            Video processing uses FFmpegKitNext / FFmpeg under LGPL-3.0-or-later — source: https://github.com/arthenica/ffmpeg-kit (exact build recipe shipped in the app and in THIRD_PARTY_NOTICES.md).
+
+            ### Edit sekmesi — WizardCut tabanlı
+
+            AfuTube'un Edit sekmesi WizardCut video düzenleyicisi üzerine kuruludur. WizardCut'tan gelenler: proje listesi ve şablonlar, çok kanallı zaman çizelgesi (kesme, bölme, hız, geçişler), yazı ve altyazı (cihazda konuşmadan yazıya dahil), efektler, filtreler ve renk araçları, ses karıştırma ve gürültü azaltma, otomatik düzenleme, video dışa aktarma.
+
+            WizardCut — BigWizard94, MIT Lisansı — https://github.com/BigWizard94/wizardcut
+            Video işleme FFmpegKitNext / FFmpeg (LGPL-3.0-or-later) kullanır — kaynak: https://github.com/arthenica/ffmpeg-kit
           files: |
             release-assets/AfuTube-universal.apk
             release-assets/AfuTube-universal.apk.sha256
