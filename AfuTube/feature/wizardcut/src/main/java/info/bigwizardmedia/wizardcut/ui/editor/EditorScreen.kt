@@ -1618,67 +1618,14 @@ private fun EditorTopBar(
                     stringResource(R.string.settings_mode_easy)
                 }
                 val modeChipDescription = stringResource(R.string.editor_mode_chip_cd, modeLabel)
-                val saveLabel = when {
-                    editConfidenceStatus.saveIndicator == SaveIndicatorState.ERROR ->
-                        stringResource(R.string.autosave_failed)
-                    editConfidenceStatus.saveIndicator == SaveIndicatorState.SAVING ->
-                        stringResource(R.string.autosave_saving)
-                    editConfidenceStatus.isDirty -> stringResource(R.string.autosave_unsaved)
-                    editConfidenceStatus.saveIndicator == SaveIndicatorState.SAVED ->
-                        stringResource(R.string.autosave_saved)
-                    else -> stringResource(R.string.edit_confidence_autosave_ready)
-                }
-                val saveAccent = when {
-                    editConfidenceStatus.saveIndicator == SaveIndicatorState.ERROR -> ClearCutAccents.Red
-                    editConfidenceStatus.saveIndicator == SaveIndicatorState.SAVING -> ClearCutAccents.Sapphire
-                    editConfidenceStatus.isDirty -> ClearCutAccents.Peach
-                    else -> ClearCutAccents.Green
-                }
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .then(
-                            if (layoutMode == LayoutMode.DESKTOP && isCompactBar) {
-                                Modifier
-                            } else {
-                                Modifier
-                                    .clickable(onClick = onToggleEditorMode)
-                                    .semantics { contentDescription = modeChipDescription }
-                            }
-                        ),
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Text(
-                        text = projectName,
-                        color = semanticColors.text,
-                        style = MaterialTheme.typography.titleMedium.copy(lineHeight = 18.sp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            imageVector = when {
-                                editConfidenceStatus.saveNeedsAttention -> Icons.Default.Warning
-                                editConfidenceStatus.isDirty -> Icons.Default.Edit
-                                else -> Icons.Default.CheckCircle
-                            },
-                            contentDescription = null,
-                            tint = saveAccent,
-                            modifier = Modifier.size(12.dp),
-                        )
-                        Text(
-                            text = "$saveLabel  •  $modeLabel",
-                            color = saveAccent,
-                            style = MaterialTheme.typography.labelSmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
+                Text(
+                    text = stringResource(R.string.afu_edit_title),
+                    color = semanticColors.text,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
 
                 if (!isCompactBar) {
                     Surface(
