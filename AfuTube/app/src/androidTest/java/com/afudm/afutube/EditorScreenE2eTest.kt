@@ -65,6 +65,9 @@ class EditorScreenE2eTest {
 
         val evidence = File(context.getExternalFilesDir("e2e-out"), "editor-screen.png")
         evidence.parentFile?.mkdirs()
+        composeRule.onNodeWithTag("araclar").performScrollToIndex(0)
+        composeRule.onNode(hasText("Kes") and hasAnyAncestor(hasTestTag("araclar"))).assertIsDisplayed()
+        composeRule.onNode(hasText("Hız") and hasAnyAncestor(hasTestTag("araclar"))).assertIsDisplayed()
         val bitmap = composeRule.onRoot().captureToImage().asAndroidBitmap()
         evidence.outputStream().use { output ->
             assertTrue("Could not write editor screenshot", bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
@@ -105,6 +108,9 @@ class EditorScreenE2eTest {
         composeRule.onAllNodesWithText("9:16").onFirst().performClick()
         composeRule.onAllNodesWithText("9:16").onFirst().assertExists()
         composeRule.waitForIdle()
+        composeRule.onNodeWithTag("araclar").performScrollToIndex(0)
+        composeRule.onNode(hasText("Kes") and hasAnyAncestor(hasTestTag("araclar"))).assertIsDisplayed()
+        composeRule.onNode(hasText("H\u0131z") and hasAnyAncestor(hasTestTag("araclar"))).assertIsDisplayed()
 
         val finalBitmap = composeRule.onRoot().captureToImage().asAndroidBitmap()
         evidence.outputStream().use { output -> assertTrue("Could not write final editor screenshot", finalBitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) }

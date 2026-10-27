@@ -34,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.contentDescription
@@ -167,8 +168,8 @@ fun EditorScreen(
             AspectRatio.SQUARE_1_1 -> 1f
             AspectRatio.LANDSCAPE_16_9 -> 16f / 9f
         }
-        Box(Modifier.fillMaxWidth().weight(1f), Alignment.Center) {
-            Box(Modifier.fillMaxHeight(.4f).aspectRatio(previewAspectRatio)
+        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f), Alignment.Center) {
+            Box(Modifier.fillMaxWidth().height(maxHeight * .4f).aspectRatio(previewAspectRatio, matchHeightConstraintsFirst = true)
                 .clip(RoundedCornerShape(14.dp)).background(Color.Black)
                 .onSizeChanged { previewWidthPx=it.width.toFloat(); previewHeightPx=it.height.toFloat() }, Alignment.Center) {
             if (player != null) PlayerSurface(player = player!!, modifier = Modifier.fillMaxSize())
@@ -313,7 +314,7 @@ private fun EditorTools(project: EditorProject, selectedClipId: String?, playhea
     Column(Modifier.fillMaxWidth().background(AfuColors.surface, RoundedCornerShape(12.dp)).padding(10.dp)) {
         val toolLabels = listOf("Kes", "H\u0131z", "Ses", "M\u00fczik", "Yaz\u0131", "Filtre", "Oran", "Sesi ay\u0131r")
         val toolListState = rememberLazyListState()
-        LaunchedEffect(selectedTool) { toolLabels.indexOf(selectedTool).takeIf { it >= 0 }?.let { toolListState.animateScrollToItem(it) } }
+        LaunchedEffect(selectedTool) { if (selectedTool != "Oran") toolLabels.indexOf(selectedTool).takeIf { it >= 0 }?.let { toolListState.animateScrollToItem(it) } }
         LazyRow(state = toolListState, modifier = Modifier.fillMaxWidth().testTag("araclar"), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             itemsIndexed(toolLabels) { _, label ->
                 TextButton(onClick = { onSelectTool(label); if (label == "Sesi ay\u0131r") onExtractAudio() }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
@@ -406,6 +407,18 @@ private fun Timeline(clips: List<VideoClip>, selectedClipId: String?, onSelectCl
     var zoom by remember { mutableFloatStateOf(1f) }
     Column(Modifier.fillMaxWidth().background(AfuColors.surface, RoundedCornerShape(12.dp)).padding(10.dp)) {
         Box(Modifier.fillMaxWidth().pointerInput(Unit) { detectTransformGestures { _, _, zoomChange, _ -> zoom = (zoom * zoomChange).coerceIn(.5f, 4f) } }) {
+        if (textOverlays.isNotEmpty()) Row(Modifier.fillMaxWidth().height(24.dp), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("T", color = AfuColors.accent)
+            textOverlays.forEach { overlay ->
+                val scale = 0.6f / durationMs.coerceAtLeast(1L).toFloat()
+                Row(Modifier.weight(1f).height(24.dp).clip(RoundedCornerShape(4.dp)).background(AfuColors.card), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.width((overlay.startMs * scale).dp).fillMaxHeight())
+                    Box(Modifier.width(12.dp).fillMaxHeight().border(1.5.dp, AfuColors.accent, RoundedCornerShape(3.dp)).pointerInput(overlay, durationMs) { detectDragGestures { change, drag -> change.consume(); val delta = (drag.x / 0.6f * durationMs).toLong(); onEditText(overlay.id, (overlay.startMs + delta).coerceAtLeast(0L), overlay.endMs) } })
+                    Text(overlay.text, color = AfuColors.text, maxLines = 1, modifier = Modifier.weight(1f).pointerInput(overlay, durationMs) { detectDragGestures { change, drag -> change.consume(); val delta = (drag.x / 0.6f * durationMs).toLong(); onEditText(overlay.id, overlay.startMs, (overlay.endMs + delta).coerceAtLeast(overlay.startMs + 1L)) } }.padding(horizontal = 2.dp))
+                    Box(Modifier.width(12.dp).fillMaxHeight().border(1.5.dp, AfuColors.accent, RoundedCornerShape(3.dp)).pointerInput(overlay, durationMs) { detectDragGestures { change, drag -> change.consume(); val delta = (drag.x / 0.6f * durationMs).toLong(); onEditText(overlay.id, overlay.startMs, (overlay.endMs + delta).coerceAtLeast(overlay.startMs + 1L)) } })
+                }
+            }
+        }
         LazyRow(verticalAlignment = Alignment.CenterVertically) {
             itemsIndexed(clips, key = { _, clip -> clip.id }) { index, clip ->
                 ClipStrip(clip, Modifier.semantics { contentDescription = "Klip ${index + 1}" }.width((clip.trimEndMs.minus(clip.trimStartMs).div(250).coerceIn(88L, 220L) * zoom).toInt().dp).height(76.dp).then(if (clip.id == selectedClipId) Modifier.border(2.dp, AfuColors.accent, RoundedCornerShape(8.dp)) else Modifier),
@@ -421,18 +434,6 @@ private fun Timeline(clips: List<VideoClip>, selectedClipId: String?, onSelectCl
                 Box(Modifier.weight(1f).fillMaxHeight().padding(vertical = 3.dp).clip(RoundedCornerShape(4.dp)).background(AfuColors.card), contentAlignment = Alignment.CenterStart) {
                 Canvas(Modifier.fillMaxSize()) { val count = wave.size; if (count > 0) repeat(count) { i -> val h = wave[i] * size.height; val x = size.width * i / count; drawLine(AfuColors.accent, Offset(x, (size.height - h) / 2), Offset(x, (size.height + h) / 2), 1.dp.toPx()) } }
             } }
-        }
-        if (textOverlays.isNotEmpty()) Row(Modifier.fillMaxWidth().height(24.dp), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("T", color = AfuColors.accent)
-            textOverlays.forEach { overlay ->
-                val scale = 0.6f / durationMs.coerceAtLeast(1L).toFloat()
-                Row(Modifier.weight(1f).height(24.dp).clip(RoundedCornerShape(4.dp)).background(AfuColors.card), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.width((overlay.startMs * scale).dp).fillMaxHeight())
-                    Box(Modifier.width(12.dp).fillMaxHeight().border(1.5.dp, AfuColors.accent, RoundedCornerShape(3.dp)).pointerInput(overlay, durationMs) { detectDragGestures { change, drag -> change.consume(); val delta = (drag.x / 0.6f * durationMs).toLong(); onEditText(overlay.id, (overlay.startMs + delta).coerceAtLeast(0L), overlay.endMs) } })
-                    Text(overlay.text, color = AfuColors.text, maxLines = 1, modifier = Modifier.weight(1f).pointerInput(overlay, durationMs) { detectDragGestures { change, drag -> change.consume(); val delta = (drag.x / 0.6f * durationMs).toLong(); onEditText(overlay.id, overlay.startMs, (overlay.endMs + delta).coerceAtLeast(overlay.startMs + 1L)) } }.padding(horizontal = 2.dp))
-                    Box(Modifier.width(12.dp).fillMaxHeight().border(1.5.dp, AfuColors.accent, RoundedCornerShape(3.dp)).pointerInput(overlay, durationMs) { detectDragGestures { change, drag -> change.consume(); val delta = (drag.x / 0.6f * durationMs).toLong(); onEditText(overlay.id, overlay.startMs, (overlay.endMs + delta).coerceAtLeast(overlay.startMs + 1L)) } })
-                }
-            }
         }
         Canvas(Modifier.matchParentSize()) {
             drawLine(AfuColors.accent, Offset(size.width / 2, 0f), Offset(size.width / 2, size.height), 2.dp.toPx())
@@ -466,7 +467,7 @@ private fun ClipStrip(clip: VideoClip, modifier: Modifier, onTrim: (Long, Long) 
         })
     }.pointerInput(clip) { detectTapGestures { onTap() } }.clip(RoundedCornerShape(8.dp)).background(AfuColors.card).onSizeChanged { widthPx = it.width.toFloat() }) {
         Box(Modifier.width(14.dp).fillMaxHeight().border(1.5.dp, AfuColors.accent, RoundedCornerShape(3.dp)))
-        frames.forEach { bitmap -> if (bitmap != null) androidx.compose.foundation.Image(bitmap.asImageBitmap(), null, Modifier.weight(1f).fillMaxHeight()) else Box(Modifier.weight(1f).fillMaxHeight().background(AfuColors.card)) }
+        frames.forEach { bitmap -> if (bitmap != null) androidx.compose.foundation.Image(bitmap.asImageBitmap(), null, Modifier.weight(1f).fillMaxHeight(), contentScale = ContentScale.Crop) else Box(Modifier.weight(1f).fillMaxHeight().background(AfuColors.card)) }
         Box(Modifier.width(14.dp).fillMaxHeight().border(1.5.dp, AfuColors.accent, RoundedCornerShape(3.dp)))
     }
 }
