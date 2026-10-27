@@ -71,13 +71,25 @@ abstract class WizardCutApp : Application(), Configuration.Provider {
         val VERSION: String = "v${BuildConfig.VERSION_NAME}"
     }
 
+    private val wizardStartupStarted = java.util.concurrent.atomic.AtomicBoolean(false)
+
     override fun onCreate() {
         super.onCreate()
-        DebugRuntimePolicy.install()
         registerActivityLifecycleCallbacks(activityLifecycleCallbacks)
-        CrashRecordStore(this).installGlobalHandler(VERSION)
-        processExitRecorder.recordStartupExitReasons()
         createNotificationChannels()
+    }
+
+    /**
+     * WizardCut-only startup work. Runs once, when the Edit screen is first opened,
+     * so AfuTube launches do not pay for it. Safe to call repeatedly.
+     */
+    fun ensureWizardStartup() {
+        if (!wizardStartupStarted.compareAndSet(false, true)) return
+        DebugRuntimePolicy.install()
+        CrashRecordStore(this).installGlobalHandler(VERSION)
+        applicationScope.launch {
+            processExitRecorder.recordStartupExitReasons()
+        }
         applicationScope.launch {
             mediaStorePendingRowSweeper.sweep()
         }
