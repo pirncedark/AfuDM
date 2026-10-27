@@ -237,6 +237,7 @@ tasks.withType<KotlinCompile>().configureEach {
 tasks.configureEach { if (name.startsWith("ksp") && name.contains("Kotlin")) dependsOn(generateRuntimeOpenSourceNotices) }
 
 dependencies {
+    implementation(project(":core")) // AfuColors (tema)
     constraints {
         implementation("com.google.protobuf:protobuf-javalite:4.27.5") {
             because("GHSA-735f-pc8j-v9w8: protobuf-javalite < 4.27.5 is vulnerable to a malformed-input DoS")
