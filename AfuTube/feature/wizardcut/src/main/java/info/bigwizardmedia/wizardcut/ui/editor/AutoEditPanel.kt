@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import info.bigwizardmedia.wizardcut.R
+import info.bigwizardmedia.wizardcut.ui.components.AfuAdvancedSection
 import info.bigwizardmedia.wizardcut.ai.AutoEditIntent
 import info.bigwizardmedia.wizardcut.ai.AutoEditResult
 
@@ -106,33 +107,35 @@ fun AutoEditPanel(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        PremiumPanelCard(accent = ClearCutAccents.Blue) {
-            Text(
-                text = stringResource(R.string.auto_edit_intent_title),
-                style = MaterialTheme.typography.titleMedium,
-                color = semanticColors.text
-            )
-            Text(
-                text = stringResource(R.string.auto_edit_brief_unsupported),
-                style = MaterialTheme.typography.bodyMedium,
-                color = semanticColors.subtext
-            )
-            AutoEditIntent.entries.forEach { option ->
-                FilterChip(
-                    selected = intent == option,
-                    onClick = { intent = option },
-                    enabled = !isProcessing,
-                    label = { Text(stringResource(option.labelResource())) }
+        AfuAdvancedSection(title = stringResource(R.string.afu_advanced_title)) {
+            PremiumPanelCard(accent = ClearCutAccents.Blue) {
+                Text(
+                    text = stringResource(R.string.auto_edit_intent_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = semanticColors.text
                 )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(30_000L, 60_000L, 90_000L).forEach { duration ->
+                Text(
+                    text = stringResource(R.string.auto_edit_brief_unsupported),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = semanticColors.subtext
+                )
+                AutoEditIntent.entries.forEach { option ->
                     FilterChip(
-                        selected = targetDurationMs == duration,
-                        onClick = { targetDurationMs = duration },
+                        selected = intent == option,
+                        onClick = { intent = option },
                         enabled = !isProcessing,
-                        label = { Text(stringResource(R.string.auto_edit_duration_seconds, duration / 1_000L)) }
+                        label = { Text(stringResource(option.labelResource())) }
                     )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(30_000L, 60_000L, 90_000L).forEach { duration ->
+                        FilterChip(
+                            selected = targetDurationMs == duration,
+                            onClick = { targetDurationMs = duration },
+                            enabled = !isProcessing,
+                            label = { Text(stringResource(R.string.auto_edit_duration_seconds, duration / 1_000L)) }
+                        )
+                    }
                 }
             }
         }
