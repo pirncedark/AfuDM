@@ -221,8 +221,8 @@ fun EditorScreen(
                     TextButton(onClick = {
                         val uri = ShareHelper.createShareUri(context, savedFile)
                         val intent = Intent(Intent.ACTION_SEND).setType("video/mp4").putExtra(Intent.EXTRA_STREAM, uri)
-                            .setClipData(android.content.ClipData.newUri(context.contentResolver, savedFile.name, uri))
                             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            .apply { clipData = android.content.ClipData.newUri(context.contentResolver, savedFile.name, uri) }
                         try { context.startActivity(intent.setPackage("com.whatsapp")) } catch (_: Exception) { ShareHelper.shareFile(context, savedFile, savedFile.name) }
                     }) { Text("WhatsApp") }
                 } }
