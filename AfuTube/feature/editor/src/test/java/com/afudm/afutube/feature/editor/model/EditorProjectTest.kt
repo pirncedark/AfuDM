@@ -30,7 +30,7 @@ class EditorProjectTest {
         assertThrows(IllegalArgumentException::class.java) { project().trimClip(0, 0, 10_001) }
     }
     @Test fun jsonRoundTripsEveryProjectFieldAndEscapesText() {
-        val value = EditorProject(project().clips.mapIndexed { i, clip -> if (i == 0) clip.copy(minimumDurationMs = 250) else clip }, listOf(MusicTrack("m", "music.mp3", trimEndMs = 20_000, volume = .7)), listOf(TextOverlay("t", "hi \"there\"", 10, 200)), EditorFilter.WARM, AspectRatio.SQUARE_1_1)
+        val value = EditorProject(project().clips.mapIndexed { i, clip -> if (i == 0) clip.copy(minimumDurationMs = 250) else clip }, listOf(MusicTrack("m", "music.mp3", trimEndMs = 20_000, volume = .7)), listOf(TextOverlay("t", "hi \"there\"", 10, 200, "#FFD740", 48, .2, .7)), EditorFilter.WARM, AspectRatio.SQUARE_1_1, brightness = .25, contrast = -.4)
         assertEquals(value, EditorProject.fromJson(value.toJson()))
     }
 }

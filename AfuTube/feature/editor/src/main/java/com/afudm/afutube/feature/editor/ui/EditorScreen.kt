@@ -6,6 +6,7 @@ import android.net.Uri
 import android.util.LruCache
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -24,6 +25,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.ExperimentalApi
 import androidx.media3.transformer.CompositionPlayer
@@ -34,6 +36,9 @@ import com.afudm.afutube.feature.editor.history.ProjectEditCommand
 import com.afudm.afutube.feature.editor.history.UndoStack
 import com.afudm.afutube.feature.editor.model.EditorProject
 import com.afudm.afutube.feature.editor.model.VideoClip
+import com.afudm.afutube.feature.editor.model.TextOverlay
+import com.afudm.afutube.feature.editor.model.EditorFilter
+import com.afudm.afutube.feature.editor.model.AspectRatio
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
@@ -70,9 +75,18 @@ fun EditorScreen(
             Text("Düzenle", color = AfuColors.text, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             TextButton(onClick = { onSave(project) }) { Text("Kaydet", color = AfuColors.text) }
         }
-        Box(Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp).clip(RoundedCornerShape(14.dp)).background(Color.Black), Alignment.Center) {
+        var previewWidthPx by remember { mutableFloatStateOf(1f) }
+        var previewHeightPx by remember { mutableFloatStateOf(1f) }
+        val previewWidthDp = with(androidx.compose.ui.platform.LocalDensity.current) { previewWidthPx.toDp() }
+        val previewHeightDp = with(androidx.compose.ui.platform.LocalDensity.current) { previewHeightPx.toDp() }
+        Box(Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp).clip(RoundedCornerShape(14.dp)).background(Color.Black).onSizeChanged { previewWidthPx=it.width.toFloat(); previewHeightPx=it.height.toFloat() }, Alignment.Center) {
             if (player != null) PlayerSurface(player = player!!, modifier = Modifier.fillMaxSize())
             else Text("Video ekle", color = AfuColors.textMuted)
+            project.textOverlays.lastOrNull()?.let { overlay ->
+                Text(overlay.text, color=Color(android.graphics.Color.parseColor(overlay.color)), fontSize=overlay.sizeSp.sp,
+                    modifier=Modifier.align(Alignment.TopStart).offset(x=previewWidthDp * overlay.x.toFloat(), y=previewHeightDp * overlay.y.toFloat())
+                        .pointerInput(overlay.id, previewWidthPx, previewHeightPx) { detectDragGestures { change, drag -> change.consume(); edit { p -> p.updateText(overlay.id) { it.copy(x=(it.x+drag.x/previewWidthPx).coerceIn(0.0,1.0), y=(it.y+drag.y/previewHeightPx).coerceIn(0.0,1.0)) } } } })
+            }
         }
         val durationMs = project.clips.sumOf { it.trimEndMs - it.trimStartMs }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
