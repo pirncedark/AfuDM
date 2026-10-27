@@ -177,7 +177,8 @@ jobs:
             mkdir -p e2e-out
             adb shell monkey -p com.afudm.afutube.debug 1
             sleep 3
-            adb shell am instrument -w com.afudm.afutube.debug.test/androidx.test.runner.AndroidJUnitRunner
+            adb shell am instrument -w com.afudm.afutube.debug.test/androidx.test.runner.AndroidJUnitRunner | tee e2e-out/editor-instrument.txt
+            grep -q "^OK (" e2e-out/editor-instrument.txt
             adb pull /sdcard/Android/data/com.afudm.afutube.debug/files/e2e-out e2e-out/editor-export
 
       - name: Upload e2e evidence
