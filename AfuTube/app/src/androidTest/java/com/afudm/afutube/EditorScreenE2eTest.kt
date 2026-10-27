@@ -60,24 +60,24 @@ class EditorScreenE2eTest {
         }
         assertTrue("Editor screenshot is missing", evidence.isFile && evidence.length() > 0)
 
-        composeRule.onNodeWithText("Oynat", substring = true, ignoreCase = true).assertExists()
-        composeRule.onNodeWithText("Böl", substring = true, ignoreCase = true).assertExists()
-        composeRule.onNodeWithText("Müzik", substring = true, ignoreCase = true).assertExists()
-        composeRule.onNodeWithText("Kes", substring = true, ignoreCase = true).assertExists()
-        composeRule.onNodeWithText("Yazı", substring = true, ignoreCase = true).assertExists()
+        composeRule.onAllNodesWithText("Oynat", substring = true, ignoreCase = true).onFirst().assertExists()
+        composeRule.onAllNodesWithText("Böl", substring = true, ignoreCase = true).onFirst().assertExists()
+        composeRule.onAllNodesWithText("Müzik", substring = true, ignoreCase = true).onFirst().assertExists()
+        composeRule.onAllNodesWithText("Kes", substring = true, ignoreCase = true).onFirst().assertExists()
+        composeRule.onAllNodesWithText("Yazı", substring = true, ignoreCase = true).onFirst().assertExists()
         composeRule.onNodeWithText("Oran", substring = true).performClick()
-        composeRule.onNodeWithText("9:16", substring = true).assertExists()
+        composeRule.onAllNodesWithText("9:16", substring = true).onFirst().assertExists()
         composeRule.onNodeWithContentDescription("Klip 1").performClick()
         composeRule.onNodeWithText("Oynat").performClick()
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText("00:01 / 00:05", substring = true).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onAllNodesWithText("Böl").onFirst().performClick()
-        composeRule.onNodeWithText("2 klip").assertExists()
+        composeRule.onAllNodesWithText("2 klip").onFirst().assertExists()
         composeRule.onNodeWithText("Müzik", substring = true).performClick()
         composeRule.onNodeWithText("AfuTube Müzik").performClick()
         composeRule.onNodeWithText("Deneme müziği", substring = true).performClick()
-        composeRule.onNodeWithText("♪ Müzik izi", substring = true).assertExists()
+        composeRule.onAllNodesWithText("♪ Müzik izi", substring = true).onFirst().assertExists()
         composeRule.onNodeWithText("Kaldır").performClick()
         composeRule.onNodeWithText("♪ Müzik izi", substring = true).assertDoesNotExist()
 
