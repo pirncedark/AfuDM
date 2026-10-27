@@ -205,16 +205,15 @@ object CompositionBuilder {
                     .build()
             )
             .build()
-        // CompositionPlayer accepts speed changes only from this factory, placed first.
-        val speedEffects = if (speed != 1.0) Effects.createExperimentalSpeedChangingEffect(speed.toFloat()) else Effects.EMPTY
         val processors = mutableListOf<AudioProcessor>()
-        processors += speedEffects.audioProcessors
         processors += GainFadeAudioProcessor(volume, trimEndMs - trimStartMs, fadeInMs, fadeOutMs)
-        val effects: List<androidx.media3.common.Effect> = speedEffects.videoEffects
+        val effects = emptyList<androidx.media3.common.Effect>()
         val builder = EditedMediaItem.Builder(mediaItem)
             .setDurationUs((trimEndMs - trimStartMs) * 1_000L)
             .setFrameRate(30)
             .setEffects(Effects(processors, if (removeVideo) effects else effects + videoEffects))
+        // CompositionPlayer only supports speed set on the item itself (not SpeedChangeEffect).
+        if (speed != 1.0) builder.setSpeed(ConstantSpeed(speed.toFloat()))
         if (removeVideo) builder.setRemoveVideo(true)
         return builder.build()
     }
@@ -233,4 +232,9 @@ object CompositionBuilder {
     fun startExport(transformer: Transformer, result: Result, outputPath: String) {
         transformer.start(result.composition, outputPath)
     }
+}
+
+private class ConstantSpeed(private val speed: Float) : androidx.media3.common.audio.SpeedProvider {
+    override fun getSpeed(timeUs: Long): Float = speed
+    override fun getNextSpeedChangeTimeUs(timeUs: Long): Long = androidx.media3.common.C.TIME_UNSET
 }
