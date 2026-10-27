@@ -15,6 +15,7 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":downloader"))
     implementation(project(":feature:downloads"))
+    implementation(project(":media"))
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
@@ -24,6 +25,7 @@ dependencies {
     implementation("androidx.media3:media3-effect:1.11.1")
     implementation("androidx.media3:media3-ui-compose:1.11.1")
     implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.activity:activity-compose:1.8.2")
     implementation("androidx.work:work-runtime-ktx:2.9.0")
     testImplementation("junit:junit:4.13.2")
 }
