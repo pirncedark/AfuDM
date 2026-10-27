@@ -13,7 +13,7 @@ class ExportPolicyTest {
         assertEquals(ExportSize(3840, 2160), exportSize(3840, 2160, ExportQuality.SOURCE))
         assertEquals(ExportSize(1920, 1080), exportSize(3840, 2160, ExportQuality.P1080))
         assertEquals(ExportSize(1280, 720), exportSize(3840, 2160, ExportQuality.P720))
-        assertEquals(ExportSize(1920, 1080), exportSize(1280, 720, ExportQuality.P1080))
+        assertEquals(ExportSize(1280, 720), exportSize(1280, 720, ExportQuality.P1080))
     }
 
     @Test fun progressIsBoundedAndDoesNotReportCompleteEarly() {
