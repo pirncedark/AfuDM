@@ -11,6 +11,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -65,8 +68,6 @@ class EditorScreenE2eTest {
         composeRule.onAllNodesWithText("Müzik", substring = true, ignoreCase = true).onFirst().assertExists()
         composeRule.onAllNodesWithText("Kes", substring = true, ignoreCase = true).onFirst().assertExists()
         composeRule.onAllNodesWithText("Yazı", substring = true, ignoreCase = true).onFirst().assertExists()
-        composeRule.onAllNodesWithText("Oran", substring = true).onFirst().performClick()
-        composeRule.onAllNodesWithText("9:16", substring = true).onFirst().assertExists()
         composeRule.onNodeWithContentDescription("Klip 1").performClick()
         composeRule.onAllNodesWithText("Oynat").onFirst().performClick()
         composeRule.waitUntil(5_000) {
@@ -74,12 +75,22 @@ class EditorScreenE2eTest {
         }
         composeRule.onAllNodesWithText("Böl").onFirst().performClick()
         composeRule.onAllNodesWithText("2 klip").onFirst().assertExists()
-        composeRule.onAllNodesWithText("Müzik", substring = true).onFirst().performClick()
+        composeRule.onAllNodesWithText("Müzik").onFirst().performScrollTo().performClick()
         composeRule.onAllNodesWithText("AfuTube Müzik").onFirst().performClick()
         composeRule.onAllNodesWithText("Deneme müziği", substring = true).onFirst().performClick()
         composeRule.onAllNodesWithText("♪ Müzik izi", substring = true).onFirst().assertExists()
         composeRule.onAllNodesWithText("Kaldır").onFirst().performClick()
         composeRule.onNodeWithText("♪ Müzik izi", substring = true).assertDoesNotExist()
+
+        // Yazı ekle, sonra oran 9:16; son ekran görüntüsü bu hâli gösterir.
+        composeRule.onAllNodesWithText("Yazı").onFirst().performScrollTo().performClick()
+        composeRule.onAllNodes(hasSetTextAction()).onFirst().performTextInput("Merhaba AfuTube")
+        composeRule.onAllNodesWithText("Ekle").onFirst().performClick()
+        composeRule.onAllNodesWithText("Merhaba AfuTube").onFirst().assertExists()
+        composeRule.onAllNodesWithText("Oran").onFirst().performScrollTo().performClick()
+        composeRule.onAllNodesWithText("9:16").onFirst().performClick()
+        composeRule.onAllNodesWithText("9:16").onFirst().assertExists()
+        composeRule.waitForIdle()
 
         val finalBitmap = composeRule.onRoot().captureToImage().asAndroidBitmap()
         evidence.outputStream().use { output -> assertTrue("Could not write final editor screenshot", finalBitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) }
