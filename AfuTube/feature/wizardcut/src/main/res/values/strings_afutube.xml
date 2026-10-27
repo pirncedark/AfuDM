@@ -85,4 +85,6 @@
     <string name="afu_effect_cat_keying">Keying</string>
     <string name="afu_effect_cat_speed">Speed</string>
     <string name="afu_edit_title">Edit</string>
+    <string name="afu_advanced_title">Advanced</string>
+    <string name="afu_projects_new_video">New video</string>
 </resources>

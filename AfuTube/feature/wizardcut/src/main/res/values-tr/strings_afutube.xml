@@ -85,4 +85,6 @@
     <string name="afu_effect_cat_keying">Renk anahtarı</string>
     <string name="afu_effect_cat_speed">Hız</string>
     <string name="afu_edit_title">Edit</string>
+    <string name="afu_advanced_title">Gelişmiş</string>
+    <string name="afu_projects_new_video">Yeni video</string>
 </resources>
