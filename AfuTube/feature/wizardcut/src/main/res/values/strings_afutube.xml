@@ -36,7 +36,7 @@
     <string name="afu_export_blocked">%1$s export blocked</string>
     <string name="afu_export_with_notes">%1$s exported with notes</string>
     <string name="afu_no_video_clips">No video clips</string>
-    <string name="afu_contact_sheet_failed">Contact sheet render failed</string>
+    <string name="afu_contact_sheet_failed">Contact sheet could not be created. Try again.</string>
     <string name="afu_template_description">%1$d tracks, %2$d text overlays</string>
     <string name="afu_import">Import</string>
     <string name="afu_transcript_words">%1$d words</string>
@@ -62,4 +62,7 @@
     <string name="afu_import_document_blocked">Document import blocked</string>
     <string name="afu_import_support_pending">%1$s support is pending</string>
     <string name="afu_publish_opening">Opening %1$s for user-controlled posting...</string>
+    <string name="afu_export_resolution_short">%1$dp · %2$d frames per second</string>
+    <string name="afu_export_quality_line">Quality: %1$s</string>
+    <string name="afu_export_resume_unavailable">This partial file cannot be resumed. Export again.</string>
 </resources>

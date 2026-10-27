@@ -817,7 +817,7 @@ class ExportDelegate(
             partialFile.length() > 0L
         if (!canResume) {
             deleteOwnedResumeFile(partialFile)
-            val message = text(R.string.export_resume_unavailable)
+            val message = text(R.string.afu_export_resume_unavailable)
             updateExport {
                 it.prepareForExportAttempt().copy(
                     state = ExportState.ERROR,
@@ -1114,7 +1114,7 @@ class ExportDelegate(
                 resumeSourceFile.length() > 0L
             if (!resumeValid) {
                 deleteOwnedResumeFile(resumeSourceFile)
-                val message = text(R.string.export_resume_unavailable)
+                val message = text(R.string.afu_export_resume_unavailable)
                 updateExport {
                     it.copy(
                         state = ExportState.ERROR,

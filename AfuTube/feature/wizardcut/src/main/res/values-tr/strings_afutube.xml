@@ -36,7 +36,7 @@
     <string name="afu_export_blocked">%1$s dışa aktarımı engellendi</string>
     <string name="afu_export_with_notes">%1$s notlarla dışa aktarıldı</string>
     <string name="afu_no_video_clips">Video klip yok</string>
-    <string name="afu_contact_sheet_failed">Kontak sayfası oluşturulamadı</string>
+    <string name="afu_contact_sheet_failed">Kontak sayfası oluşturulamadı. Tekrar dene.</string>
     <string name="afu_template_description">%1$d kanal, %2$d metin katmanı</string>
     <string name="afu_import">İçe aktar</string>
     <string name="afu_transcript_words">%1$d kelime</string>
@@ -62,4 +62,7 @@
     <string name="afu_import_document_blocked">Belge içe aktarımı engellendi</string>
     <string name="afu_import_support_pending">%1$s desteği bekleniyor</string>
     <string name="afu_publish_opening">%1$s açılıyor; paylaşımı sen kontrol edersin...</string>
+    <string name="afu_export_resolution_short">%1$dp · saniyede %2$d kare</string>
+    <string name="afu_export_quality_line">Kalite: %1$s</string>
+    <string name="afu_export_resume_unavailable">Bu kısmi dosya devam ettirilemiyor. Yeniden dışa aktar.</string>
 </resources>

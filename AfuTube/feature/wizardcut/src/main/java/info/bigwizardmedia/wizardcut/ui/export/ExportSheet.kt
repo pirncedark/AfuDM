@@ -410,7 +410,7 @@ fun ExportSheet(
         config.exportAsGif -> stringResource(R.string.export_gif_summary_format, config.gifMaxWidth)
         config.exportStemsOnly -> stringResource(R.string.export_stems_summary)
         config.exportAudioOnly -> stringResource(R.string.export_audio_summary)
-        else -> stringResource(R.string.export_resolution_format, width, height, config.frameRate)
+        else -> stringResource(R.string.afu_export_resolution_short, height, config.frameRate)
     }
 
     val summaryDetail = when {
@@ -420,8 +420,7 @@ fun ExportSheet(
         config.exportAudioOnly -> stringResource(R.string.export_audio_details_format, config.audioCodec.label, config.audioBitrate / 1000)
         else -> {
             val bitrate = stringResource(
-                R.string.export_bitrate_format,
-                effectiveConfig.videoBitrate / 1_000_000,
+                R.string.afu_export_quality_line,
                 bitrateDescription,
             )
             if (estimatedSize != null) {
@@ -435,7 +434,7 @@ fun ExportSheet(
         config.exportAsGif -> stringResource(R.string.export_gif_details_format, config.gifMaxWidth, config.gifFrameRate)
         config.exportStemsOnly -> stringResource(R.string.export_stems_details_format, config.audioCodec.label, config.audioBitrate / 1000)
         config.exportAudioOnly -> stringResource(R.string.export_audio_details_format, config.audioCodec.label, config.audioBitrate / 1000)
-        else -> stringResource(R.string.export_codec_quality_format, config.codec.label, localizedExportQuality(config.quality))
+        else -> stringResource(R.string.afu_export_quality_line, localizedExportQuality(config.quality))
     }
 
     val outputDetailsSecondary = when {
@@ -443,7 +442,7 @@ fun ExportSheet(
         config.exportAsGif -> stringResource(R.string.export_gif_summary_format, config.gifMaxWidth)
         config.exportStemsOnly -> stringResource(R.string.export_audio_codec)
         config.exportAudioOnly -> stringResource(R.string.export_audio_codec)
-        else -> stringResource(R.string.export_resolution_format, width, height, config.frameRate)
+        else -> stringResource(R.string.afu_export_resolution_short, height, config.frameRate)
     }
 
     val primaryButtonLabel = when {
