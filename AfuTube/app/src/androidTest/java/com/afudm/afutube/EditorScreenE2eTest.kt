@@ -11,6 +11,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.hasSetTextAction
@@ -79,7 +81,8 @@ class EditorScreenE2eTest {
         composeRule.onAllNodesWithText("AfuTube Müzik").onFirst().performClick()
         composeRule.onAllNodesWithText("Deneme müziği", substring = true).onFirst().performClick()
         composeRule.onAllNodesWithText("♪ Müzik izi", substring = true).onFirst().assertExists()
-        composeRule.onAllNodesWithText("Kaldır").onFirst().performClick()
+        composeRule.onAllNodesWithText("Kaldır").onFirst().performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitForIdle()
         composeRule.onNodeWithText("♪ Müzik izi", substring = true).assertDoesNotExist()
 
         // Yazı ekle, sonra oran 9:16; son ekran görüntüsü bu hâli gösterir.
