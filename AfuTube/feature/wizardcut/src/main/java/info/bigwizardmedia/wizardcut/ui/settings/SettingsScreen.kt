@@ -55,6 +55,8 @@ import androidx.core.content.ContextCompat
 import info.bigwizardmedia.wizardcut.BuildConfig
 import info.bigwizardmedia.wizardcut.WizardCutApp
 import info.bigwizardmedia.wizardcut.R
+import androidx.compose.material.icons.filled.Folder
+import info.bigwizardmedia.wizardcut.ui.components.AfuAdvancedSection
 import info.bigwizardmedia.wizardcut.engine.AppearanceMode
 import info.bigwizardmedia.wizardcut.engine.AppSettings
 import info.bigwizardmedia.wizardcut.engine.PrivacyDashboard
@@ -199,373 +201,10 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(10.dp))
 
-        // Export Defaults
-        val projectColorPolicy = ProjectColorPolicy.DEFAULT
+        // Visible basics: default quality and where exports are saved
         SettingsSection(
-            title = stringResource(R.string.settings_export_defaults),
-            description = stringResource(R.string.settings_export_defaults_description)
+            title = stringResource(R.string.afu_settings_basics_title),
         ) {
-            SettingsDropdown(
-                icon = Icons.Default.Movie,
-                accent = ClearCutAccents.Rosewater,
-                label = stringResource(R.string.settings_default_resolution),
-                description = stringResource(R.string.settings_default_resolution_description),
-                value = settings.defaultResolution.label,
-                options = Resolution.entries.map { it.label },
-                onSelected = { idx -> viewModel.setResolution(Resolution.entries[idx]) }
-            )
-            SettingsDropdown(
-                icon = Icons.Default.Schedule,
-                accent = ClearCutAccents.Sapphire,
-                label = stringResource(R.string.settings_default_frame_rate),
-                description = stringResource(R.string.settings_default_frame_rate_description),
-                value = "${settings.defaultFrameRate}fps",
-                options = listOf("24fps", "30fps", "60fps"),
-                onSelected = { idx -> viewModel.setFrameRate(listOf(24, 30, 60)[idx]) }
-            )
-            SettingsDropdown(
-                icon = Icons.Default.CropSquare,
-                accent = ClearCutAccents.Mauve,
-                label = stringResource(R.string.settings_default_aspect_ratio),
-                description = stringResource(R.string.settings_default_aspect_ratio_description),
-                value = settings.defaultAspectRatio.label,
-                options = AspectRatio.entries.map { it.label },
-                onSelected = { idx -> viewModel.setAspectRatio(AspectRatio.entries[idx]) }
-            )
-            SettingsDropdown(
-                icon = Icons.Default.Memory,
-                accent = ClearCutAccents.Peach,
-                label = stringResource(R.string.settings_default_codec),
-                description = stringResource(R.string.settings_default_codec_description),
-                value = listOf("H.264", "H.265 (HEVC)", "AV1", "VP9")[
-                    listOf("H264", "HEVC", "AV1", "VP9").indexOf(settings.defaultCodec).coerceAtLeast(0)
-                ],
-                options = listOf("H.264", "H.265 (HEVC)", "AV1", "VP9"),
-                onSelected = { viewModel.setDefaultCodec(listOf("H264", "HEVC", "AV1", "VP9")[it]) }
-            )
-            SettingsTile(
-                icon = Icons.Default.Palette,
-                accent = ClearCutAccents.Teal,
-                label = stringResource(R.string.settings_project_color_policy),
-                description = stringResource(R.string.settings_project_color_policy_description)
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(Spacing.xs)
-                ) {
-                    SettingsStatusBadge(
-                        text = projectColorPolicy.workingColorSpace.displayName,
-                        accent = ClearCutAccents.Teal
-                    )
-                    SettingsStatusBadge(
-                        text = projectColorPolicy.displayTransform.displayName,
-                        accent = ClearCutAccents.Sapphire
-                    )
-                }
-            }
-        }
-
-        // Export Notifications
-        SettingsSection(
-            title = stringResource(R.string.settings_export_notifications),
-            description = stringResource(R.string.settings_export_notifications_description)
-        ) {
-            SettingsNotificationPermissionRow(
-                context = context,
-                refreshKey = notificationStatusRefreshKey
-            )
-        }
-
-        // Timeline
-        SettingsSection(
-            title = stringResource(R.string.settings_timeline),
-            description = stringResource(R.string.settings_timeline_description)
-        ) {
-            SettingsToggle(
-                icon = Icons.Default.Save,
-                accent = ClearCutAccents.Mauve,
-                label = stringResource(R.string.settings_auto_save),
-                description = stringResource(R.string.settings_auto_save_description),
-                checked = settings.autoSaveEnabled,
-                onChanged = { viewModel.setAutoSave(it) }
-            )
-            if (settings.autoSaveEnabled) {
-                SettingsSlider(
-                    icon = Icons.Default.Schedule,
-                    accent = ClearCutAccents.Sapphire,
-                    label = stringResource(R.string.settings_auto_save_interval),
-                    description = stringResource(R.string.settings_auto_save_description),
-                    value = settings.autoSaveIntervalSec.toFloat(),
-                    range = 15f..300f,
-                    valueLabel = "${settings.autoSaveIntervalSec}s",
-                    onChanged = { viewModel.setAutoSaveInterval(it.toInt()) }
-                )
-            }
-            SettingsDropdown(
-                icon = Icons.Default.Tune,
-                accent = ClearCutAccents.Sky,
-                label = stringResource(R.string.settings_proxy_resolution),
-                description = stringResource(R.string.settings_proxy_resolution_description),
-                value = settings.proxyResolution.label,
-                options = ProxyResolution.entries.map { it.label },
-                onSelected = { idx -> viewModel.setProxyResolution(ProxyResolution.entries[idx]) }
-            )
-            SettingsSwitch(
-                icon = Icons.Default.Layers,
-                accent = ClearCutAccents.Blue,
-                label = stringResource(R.string.settings_enable_proxy),
-                description = stringResource(R.string.settings_enable_proxy_description),
-                checked = settings.proxyEnabled,
-                onChanged = { viewModel.setProxyEnabled(it) }
-            )
-            SettingsSwitch(
-                icon = Icons.Default.GraphicEq,
-                accent = ClearCutAccents.Green,
-                label = stringResource(R.string.settings_show_waveforms),
-                description = stringResource(R.string.settings_show_waveforms_desc),
-                checked = settings.showWaveforms,
-                onChanged = { viewModel.setShowWaveforms(it) }
-            )
-            SettingsSwitch(
-                icon = Icons.Default.MusicNote,
-                accent = ClearCutAccents.Green,
-                label = stringResource(R.string.settings_snap_beat),
-                description = stringResource(R.string.settings_snap_beat_desc),
-                checked = settings.snapToBeat,
-                onChanged = { viewModel.setSnapToBeat(it) }
-            )
-            SettingsSwitch(
-                icon = Icons.Default.Bookmark,
-                accent = ClearCutAccents.Yellow,
-                label = stringResource(R.string.settings_snap_markers),
-                description = stringResource(R.string.settings_snap_markers_desc),
-                checked = settings.snapToMarker,
-                onChanged = { viewModel.setSnapToMarker(it) }
-            )
-            SettingsChoiceHeader(
-                icon = Icons.Default.ViewStream,
-                accent = ClearCutAccents.Teal,
-                label = stringResource(R.string.settings_default_track_height),
-                description = stringResource(R.string.settings_default_track_height_description)
-            )
-            FlowRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf(48, 64, 80, 96).forEach { height ->
-                    ClearCutFilterChip(
-                        selected = settings.defaultTrackHeight == height,
-                        onClick = { viewModel.setDefaultTrackHeight(height) },
-                        text = "${height}dp",
-                        accent = ClearCutAccents.Teal,
-                        icon = if (settings.defaultTrackHeight == height) Icons.Default.Check else null
-                    )
-                }
-            }
-        }
-
-        // AI Models
-        SettingsSection(
-            title = stringResource(R.string.settings_ai_models),
-            description = stringResource(R.string.settings_ai_models_description)
-        ) {
-                SettingsSwitch(
-                    icon = Icons.Default.Wifi,
-                    accent = ClearCutAccents.Sapphire,
-                    label = stringResource(R.string.settings_ai_wifi_only),
-                    description = stringResource(R.string.settings_ai_wifi_only_description),
-                    checked = settings.aiModelWifiOnly,
-                    onChanged = viewModel::setAiModelWifiOnly
-                )
-                SettingsSwitch(
-                    icon = Icons.Default.PrivacyTip,
-                    accent = ClearCutAccents.Green,
-                    label = stringResource(R.string.settings_mediapipe_consent),
-                    description = stringResource(R.string.settings_mediapipe_consent_description),
-                    checked = settings.mediaPipeConsentVersion >=
-                        info.bigwizardmedia.wizardcut.engine.MediaPipeUsageGate.CONSENT_VERSION,
-                    onChanged = viewModel::setMediaPipeConsent
-                )
-                SettingsStorageOverview(
-                    totalBytes = aiModelStorage.totalBytes,
-                    whisperBytes = aiModelStorage.whisperBytes,
-                    segmentationBytes = aiModelStorage.segmentationBytes
-                )
-                SettingsAiModelRow(
-                    icon = Icons.Default.RecordVoiceOver,
-                    accent = ClearCutAccents.Mauve,
-                    label = stringResource(R.string.settings_whisper_model),
-                    description = stringResource(R.string.ai_whisper_description),
-                    stateLabel = whisperModelState.displayLabel(),
-                    storageLabel = modelStorageLabel(aiModelStorage.whisperBytes, stringResource(R.string.settings_whisper_size)),
-                    canRemove = canRemoveWhisperModel,
-                    networkAvailable = networkAvailable,
-                    isError = whisperModelState == WhisperModelState.ERROR,
-                    isBusy = aiModelStorage.isRemovingWhisper || whisperModelState == WhisperModelState.DOWNLOADING,
-                    actionLabel = if (canRemoveWhisperModel) {
-                        stringResource(R.string.remove)
-                    } else {
-                        stringResource(R.string.download)
-                    },
-                    actionIcon = if (canRemoveWhisperModel) {
-                        Icons.Default.Delete
-                    } else {
-                        Icons.Default.Download
-                    },
-                    onAction = if (canRemoveWhisperModel) {
-                        { pendingAiModelRemoval = SettingsAiModelRemovalTarget.WHISPER }
-                    } else {
-                        viewModel::downloadWhisperModel
-                    }
-                )
-                SettingsAiModelRow(
-                    icon = Icons.Default.PersonOff,
-                    accent = ClearCutAccents.Green,
-                    label = stringResource(R.string.settings_segmentation_model),
-                    description = stringResource(R.string.ai_segmentation_description),
-                    stateLabel = segmentationModelState.displayLabel(),
-                    storageLabel = modelStorageLabel(aiModelStorage.segmentationBytes, stringResource(R.string.settings_segmentation_size)),
-                    canRemove = canRemoveSegmentationModel,
-                    networkAvailable = networkAvailable,
-                    isError = segmentationModelState == SegmentationModelState.ERROR,
-                    isBusy = aiModelStorage.isRemovingSegmentation || segmentationModelState == SegmentationModelState.DOWNLOADING,
-                    actionLabel = if (canRemoveSegmentationModel) {
-                        stringResource(R.string.remove)
-                    } else {
-                        stringResource(R.string.download)
-                    },
-                    actionIcon = if (canRemoveSegmentationModel) {
-                        Icons.Default.Delete
-                    } else {
-                        Icons.Default.Download
-                    },
-                    onAction = if (canRemoveSegmentationModel) {
-                        { pendingAiModelRemoval = SettingsAiModelRemovalTarget.SEGMENTATION }
-                    } else {
-                        viewModel::downloadSegmentationModel
-                    }
-                )
-                SettingsTile(
-                    icon = Icons.Default.Mic,
-                    accent = ClearCutAccents.Peach,
-                    label = stringResource(R.string.settings_piper_model),
-                    description = stringResource(R.string.settings_piper_system_voice_description)
-                ) {
-                    SettingsStatusBadge(
-                        text = stringResource(R.string.settings_piper_system_voice_status),
-                        accent = ClearCutAccents.Peach
-                    )
-                }
-            }
-
-        // Project Storage
-        SettingsSection(
-            title = stringResource(R.string.settings_project_storage_title),
-            description = stringResource(
-                R.string.settings_project_storage_media,
-                formatStorageBytes(projectStorage.managedMediaBytes)
-            )
-        ) {
-            SettingsTile(
-                icon = Icons.Default.Storage,
-                accent = ClearCutAccents.Peach,
-                label = stringResource(R.string.settings_project_storage_title),
-                description = stringResource(
-                    R.string.settings_project_storage_proxy,
-                    formatStorageBytes(projectStorage.proxyCacheBytes)
-                )
-            ) {
-                SettingsStatusBadge(
-                    text = formatStorageBytes(projectStorage.totalBytes),
-                    accent = if (projectStorage.totalBytes > 0L) ClearCutAccents.Peach else LocalClearCutColors.current.overlay
-                )
-            }
-            if (projectStorage.proxyCacheBytes > 0L) {
-                SettingsActionRow(
-                    icon = Icons.Default.DeleteSweep,
-                    accent = ClearCutAccents.Peach,
-                    label = stringResource(R.string.settings_clear_proxy_cache),
-                    description = formatStorageBytes(projectStorage.proxyCacheBytes),
-                    actionLabel = if (projectStorage.isClearingProxies) "…" else stringResource(R.string.settings_clear_proxy_cache),
-                    actionIcon = Icons.Default.DeleteSweep,
-                    onClick = viewModel::clearProxyCache
-                )
-            }
-        }
-        projectStorage.feedbackMessage?.let { message ->
-            SettingsFeedbackBanner(message = message, onDismiss = viewModel::dismissProjectStorageFeedback)
-        }
-
-        // Appearance
-        SettingsSection(
-            title = stringResource(R.string.settings_appearance),
-            description = stringResource(R.string.settings_appearance_description)
-        ) {
-            val appearanceModes = AppearanceMode.entries
-            SettingsDropdown(
-                icon = Icons.Default.Contrast,
-                accent = ClearCutAccents.Sky,
-                label = stringResource(R.string.settings_appearance_mode),
-                description = stringResource(R.string.settings_appearance_mode_description),
-                value = settings.appearanceMode.displayLabel(),
-                options = appearanceModes.map { it.displayLabel() },
-                onSelected = { index -> viewModel.setAppearanceMode(appearanceModes[index]) }
-            )
-        }
-
-        // Editor
-        SettingsSection(
-            title = stringResource(R.string.settings_editor),
-            description = stringResource(R.string.settings_editor_description)
-        ) {
-            SettingsDropdown(
-                icon = Icons.Default.Tune,
-                accent = ClearCutAccents.Mauve,
-                label = stringResource(R.string.settings_default_mode),
-                description = stringResource(R.string.settings_default_mode_description),
-                value = selectedEditorMode.label,
-                options = editorModeOptions.map { it.label },
-                onSelected = { viewModel.setEditorMode(editorModeOptions[it].value) }
-            )
-            SettingsToggle(
-                icon = Icons.Default.TouchApp,
-                accent = ClearCutAccents.Sapphire,
-                label = stringResource(R.string.settings_haptic_feedback),
-                description = stringResource(R.string.settings_haptic_desc),
-                checked = settings.hapticEnabled,
-                onChanged = { viewModel.setHapticEnabled(it) }
-            )
-            SettingsChoiceHeader(
-                icon = Icons.Default.PhotoLibrary,
-                accent = ClearCutAccents.Peach,
-                label = stringResource(R.string.settings_thumbnail_cache),
-                description = stringResource(R.string.settings_thumbnail_cache_description)
-            )
-            FlowRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val choices: List<Pair<Int?, String>> = listOf(null to stringResource(R.string.settings_thumbnail_cache_automatic)) +
-                    thumbnailCacheSizes.map { size -> size to "$size MB" }
-                choices.forEach { (size, label) ->
-                    ClearCutFilterChip(
-                        selected = settings.thumbnailCacheSizeMb == size,
-                        onClick = {
-                            if (size == null) viewModel.setThumbnailCacheAutomatic()
-                            else viewModel.setThumbnailCacheSize(size)
-                        },
-                        text = label,
-                        accent = ClearCutAccents.Peach,
-                        icon = if (settings.thumbnailCacheSizeMb == size) Icons.Default.Check else null
-                    )
-                }
-            }
             SettingsChoiceHeader(
                 icon = Icons.Default.HighQuality,
                 accent = ClearCutAccents.Yellow,
@@ -594,160 +233,537 @@ fun SettingsScreen(
                     )
                 }
             }
-        }
-
-        // Tutorial
-        SettingsSection(
-            title = stringResource(R.string.settings_tutorial),
-            description = stringResource(R.string.settings_tutorial_description)
-        ) {
-            SettingsTile(
-                icon = Icons.Default.School,
-                accent = ClearCutAccents.Sapphire,
-                label = stringResource(R.string.settings_replay_tutorial),
-                description = stringResource(R.string.settings_replay_tutorial_row_description),
-                onClick = onReplayTutorial,
-                modifier = Modifier.testTag(ClearCutTestTags.SETTINGS_REPLAY_TUTORIAL)
-            ) {
-                ClearCutMetricPill(
-                    text = stringResource(R.string.settings_replay_tutorial_action),
-                    accent = ClearCutAccents.Sapphire
-                )
-            }
-        }
-
-        // Diagnostics
-        SettingsSection(
-            title = stringResource(R.string.settings_diagnostics),
-            description = stringResource(R.string.settings_diagnostics_description)
-        ) {
-            SettingsSwitch(
-                icon = Icons.Default.ViewStream,
-                accent = ClearCutAccents.Teal,
-                label = stringResource(R.string.settings_diagnostic_timeline_shape),
-                description = stringResource(R.string.settings_diagnostic_timeline_shape_description),
-                checked = settings.includeDiagnosticTimelineShape,
-                onChanged = viewModel::setIncludeDiagnosticTimelineShape
-            )
-            SettingsSwitch(
-                icon = Icons.Default.BugReport,
-                accent = ClearCutAccents.Peach,
-                label = stringResource(R.string.settings_diagnostic_raw_error_text),
-                description = stringResource(R.string.settings_diagnostic_raw_error_text_description),
-                checked = settings.includeDiagnosticRawErrorText,
-                onChanged = viewModel::setIncludeDiagnosticRawErrorText
-            )
-            SettingsDiagnosticExportRow(
-                state = diagnosticExport,
-                onExport = viewModel::exportDiagnosticBundle,
-                onShare = { bundle ->
-                    shareDiagnosticBundle(
-                        context = context,
-                        bundle = bundle,
-                        onFailure = viewModel::reportDiagnosticShareFailure
-                    )
-                }
+            SettingsInfo(
+                Icons.Default.Folder,
+                stringResource(R.string.afu_settings_export_folder),
+                "Movies/AfuTube",
+                ClearCutAccents.Sapphire
             )
         }
 
-        // Privacy (R5.5c UI) — opens the PrivacyDashboardPanel in a dialog.
-        // Engine helpers (groupForDisplay / controlSummary) are pure so the
-        // panel re-renders without any view-model state today.
-        SettingsSection(
-            title = stringResource(R.string.settings_privacy_section_title),
-            description = stringResource(R.string.settings_privacy_section_description)
-        ) {
-            SettingsActionRow(
-                icon = Icons.Default.Shield,
-                accent = ClearCutAccents.Mauve,
-                label = stringResource(R.string.settings_privacy_open_label),
-                description = stringResource(R.string.settings_privacy_open_description),
-                actionLabel = stringResource(R.string.settings_privacy_open_action),
-                onClick = { showPrivacyDashboard = true },
-                modifier = Modifier.testTag(ClearCutTestTags.SETTINGS_PRIVACY_OPEN)
-            )
-        }
-
-        // Third-party notices
-        SettingsSection(
-            title = stringResource(R.string.settings_open_source_licenses_section_title),
-            description = stringResource(R.string.settings_open_source_licenses_section_description)
-        ) {
-            SettingsActionRow(
-                icon = Icons.Default.Info,
-                accent = ClearCutAccents.Teal,
-                label = stringResource(R.string.settings_open_source_licenses),
-                description = stringResource(R.string.settings_open_source_licenses_description),
-                actionLabel = stringResource(R.string.settings_open_source_licenses_action),
-                onClick = { showOpenSourceLicenses = true },
-                modifier = Modifier.testTag(ClearCutTestTags.SETTINGS_LICENSES_OPEN)
-            )
-        }
-
-        // Updates (sideload / GitHub-release installs only). Compiled out when
-        // the build opts out via BuildConfig.UPDATE_CHECK_AVAILABLE.
-        if (BuildConfig.UPDATE_CHECK_AVAILABLE) {
+        AfuAdvancedSection(title = stringResource(R.string.afu_advanced_title)) {
+            // Export Defaults
+            val projectColorPolicy = ProjectColorPolicy.DEFAULT
             SettingsSection(
-                title = stringResource(R.string.settings_updates_section_title),
-                description = stringResource(R.string.settings_updates_section_description)
+                title = stringResource(R.string.settings_export_defaults),
+                description = stringResource(R.string.settings_export_defaults_description)
             ) {
-                SettingsSwitch(
-                    icon = Icons.Default.SystemUpdate,
-                    accent = ClearCutAccents.Sky,
-                    label = stringResource(R.string.settings_update_check_label),
-                    description = stringResource(R.string.settings_update_check_description),
-                    checked = settings.updateCheckEnabled,
-                    onChanged = viewModel::setUpdateCheckEnabled
+                SettingsDropdown(
+                    icon = Icons.Default.Movie,
+                    accent = ClearCutAccents.Rosewater,
+                    label = stringResource(R.string.settings_default_resolution),
+                    description = stringResource(R.string.settings_default_resolution_description),
+                    value = settings.defaultResolution.label,
+                    options = Resolution.entries.map { it.label },
+                    onSelected = { idx -> viewModel.setResolution(Resolution.entries[idx]) }
                 )
-                if (settings.updateCheckEnabled) {
-                    if (updateCheck.updateAvailable) {
-                        SettingsActionRow(
-                            icon = Icons.Default.NewReleases,
-                            accent = ClearCutAccents.Green,
-                            label = stringResource(
-                                R.string.settings_update_available_label,
-                                updateCheck.latestVersion.orEmpty()
-                            ),
-                            description = stringResource(
-                                if (networkAvailable) {
-                                    R.string.settings_update_available_description
-                                } else {
-                                    R.string.settings_update_offline
-                                }
-                            ),
-                            actionLabel = stringResource(R.string.settings_update_view_action),
-                            actionIcon = Icons.AutoMirrored.Filled.OpenInNew,
-                            onClick = { updateCheck.releaseUrl?.let { uriHandler.openUri(it) } },
-                            enabled = networkAvailable,
+                SettingsDropdown(
+                    icon = Icons.Default.Schedule,
+                    accent = ClearCutAccents.Sapphire,
+                    label = stringResource(R.string.settings_default_frame_rate),
+                    description = stringResource(R.string.settings_default_frame_rate_description),
+                    value = "${settings.defaultFrameRate}fps",
+                    options = listOf("24fps", "30fps", "60fps"),
+                    onSelected = { idx -> viewModel.setFrameRate(listOf(24, 30, 60)[idx]) }
+                )
+                SettingsDropdown(
+                    icon = Icons.Default.CropSquare,
+                    accent = ClearCutAccents.Mauve,
+                    label = stringResource(R.string.settings_default_aspect_ratio),
+                    description = stringResource(R.string.settings_default_aspect_ratio_description),
+                    value = settings.defaultAspectRatio.label,
+                    options = AspectRatio.entries.map { it.label },
+                    onSelected = { idx -> viewModel.setAspectRatio(AspectRatio.entries[idx]) }
+                )
+                SettingsDropdown(
+                    icon = Icons.Default.Memory,
+                    accent = ClearCutAccents.Peach,
+                    label = stringResource(R.string.settings_default_codec),
+                    description = stringResource(R.string.settings_default_codec_description),
+                    value = listOf("H.264", "H.265 (HEVC)", "AV1", "VP9")[
+                        listOf("H264", "HEVC", "AV1", "VP9").indexOf(settings.defaultCodec).coerceAtLeast(0)
+                    ],
+                    options = listOf("H.264", "H.265 (HEVC)", "AV1", "VP9"),
+                    onSelected = { viewModel.setDefaultCodec(listOf("H264", "HEVC", "AV1", "VP9")[it]) }
+                )
+                SettingsTile(
+                    icon = Icons.Default.Palette,
+                    accent = ClearCutAccents.Teal,
+                    label = stringResource(R.string.settings_project_color_policy),
+                    description = stringResource(R.string.settings_project_color_policy_description)
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(Spacing.xs)
+                    ) {
+                        SettingsStatusBadge(
+                            text = projectColorPolicy.workingColorSpace.displayName,
+                            accent = ClearCutAccents.Teal
                         )
-                    } else {
-                        SettingsActionRow(
-                            icon = Icons.Default.SystemUpdate,
-                            accent = ClearCutAccents.Sky,
-                            label = stringResource(R.string.settings_update_check_now_label),
-                            description = stringResource(R.string.settings_update_check_now_description),
-                            actionLabel = if (updateCheck.isChecking) {
-                                stringResource(R.string.settings_update_checking_action)
-                            } else {
-                                stringResource(R.string.settings_update_check_now_action)
-                            },
-                            actionIcon = Icons.Default.Refresh,
-                            onClick = { if (!updateCheck.isChecking) viewModel.checkForUpdate() },
-                            enabled = networkAvailable && !updateCheck.isChecking,
+                        SettingsStatusBadge(
+                            text = projectColorPolicy.displayTransform.displayName,
+                            accent = ClearCutAccents.Sapphire
                         )
                     }
                 }
             }
-        }
 
-        // About
-        SettingsSection(
-            title = stringResource(R.string.settings_about),
-            description = stringResource(R.string.settings_about_description)
-        ) {
-            SettingsInfo(Icons.Default.Info, stringResource(R.string.settings_version), WizardCutApp.VERSION, ClearCutAccents.Sapphire)
-            SettingsInfo(Icons.Default.Movie, stringResource(R.string.settings_engine), stringResource(R.string.settings_engine_value), ClearCutAccents.Peach)
-            SettingsInfo(Icons.Default.AutoAwesome, stringResource(R.string.settings_ai_models), stringResource(R.string.settings_ai_models_value), ClearCutAccents.Mauve)
+            // Export Notifications
+            SettingsSection(
+                title = stringResource(R.string.settings_export_notifications),
+                description = stringResource(R.string.settings_export_notifications_description)
+            ) {
+                SettingsNotificationPermissionRow(
+                    context = context,
+                    refreshKey = notificationStatusRefreshKey
+                )
+            }
+
+            // Timeline
+            SettingsSection(
+                title = stringResource(R.string.settings_timeline),
+                description = stringResource(R.string.settings_timeline_description)
+            ) {
+                SettingsToggle(
+                    icon = Icons.Default.Save,
+                    accent = ClearCutAccents.Mauve,
+                    label = stringResource(R.string.settings_auto_save),
+                    description = stringResource(R.string.settings_auto_save_description),
+                    checked = settings.autoSaveEnabled,
+                    onChanged = { viewModel.setAutoSave(it) }
+                )
+                if (settings.autoSaveEnabled) {
+                    SettingsSlider(
+                        icon = Icons.Default.Schedule,
+                        accent = ClearCutAccents.Sapphire,
+                        label = stringResource(R.string.settings_auto_save_interval),
+                        description = stringResource(R.string.settings_auto_save_description),
+                        value = settings.autoSaveIntervalSec.toFloat(),
+                        range = 15f..300f,
+                        valueLabel = "${settings.autoSaveIntervalSec}s",
+                        onChanged = { viewModel.setAutoSaveInterval(it.toInt()) }
+                    )
+                }
+                SettingsDropdown(
+                    icon = Icons.Default.Tune,
+                    accent = ClearCutAccents.Sky,
+                    label = stringResource(R.string.settings_proxy_resolution),
+                    description = stringResource(R.string.settings_proxy_resolution_description),
+                    value = settings.proxyResolution.label,
+                    options = ProxyResolution.entries.map { it.label },
+                    onSelected = { idx -> viewModel.setProxyResolution(ProxyResolution.entries[idx]) }
+                )
+                SettingsSwitch(
+                    icon = Icons.Default.Layers,
+                    accent = ClearCutAccents.Blue,
+                    label = stringResource(R.string.settings_enable_proxy),
+                    description = stringResource(R.string.settings_enable_proxy_description),
+                    checked = settings.proxyEnabled,
+                    onChanged = { viewModel.setProxyEnabled(it) }
+                )
+                SettingsSwitch(
+                    icon = Icons.Default.GraphicEq,
+                    accent = ClearCutAccents.Green,
+                    label = stringResource(R.string.settings_show_waveforms),
+                    description = stringResource(R.string.settings_show_waveforms_desc),
+                    checked = settings.showWaveforms,
+                    onChanged = { viewModel.setShowWaveforms(it) }
+                )
+                SettingsSwitch(
+                    icon = Icons.Default.MusicNote,
+                    accent = ClearCutAccents.Green,
+                    label = stringResource(R.string.settings_snap_beat),
+                    description = stringResource(R.string.settings_snap_beat_desc),
+                    checked = settings.snapToBeat,
+                    onChanged = { viewModel.setSnapToBeat(it) }
+                )
+                SettingsSwitch(
+                    icon = Icons.Default.Bookmark,
+                    accent = ClearCutAccents.Yellow,
+                    label = stringResource(R.string.settings_snap_markers),
+                    description = stringResource(R.string.settings_snap_markers_desc),
+                    checked = settings.snapToMarker,
+                    onChanged = { viewModel.setSnapToMarker(it) }
+                )
+                SettingsChoiceHeader(
+                    icon = Icons.Default.ViewStream,
+                    accent = ClearCutAccents.Teal,
+                    label = stringResource(R.string.settings_default_track_height),
+                    description = stringResource(R.string.settings_default_track_height_description)
+                )
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(48, 64, 80, 96).forEach { height ->
+                        ClearCutFilterChip(
+                            selected = settings.defaultTrackHeight == height,
+                            onClick = { viewModel.setDefaultTrackHeight(height) },
+                            text = "${height}dp",
+                            accent = ClearCutAccents.Teal,
+                            icon = if (settings.defaultTrackHeight == height) Icons.Default.Check else null
+                        )
+                    }
+                }
+            }
+
+            // AI Models
+            SettingsSection(
+                title = stringResource(R.string.settings_ai_models),
+                description = stringResource(R.string.settings_ai_models_description)
+            ) {
+                    SettingsSwitch(
+                        icon = Icons.Default.Wifi,
+                        accent = ClearCutAccents.Sapphire,
+                        label = stringResource(R.string.settings_ai_wifi_only),
+                        description = stringResource(R.string.settings_ai_wifi_only_description),
+                        checked = settings.aiModelWifiOnly,
+                        onChanged = viewModel::setAiModelWifiOnly
+                    )
+                    SettingsSwitch(
+                        icon = Icons.Default.PrivacyTip,
+                        accent = ClearCutAccents.Green,
+                        label = stringResource(R.string.settings_mediapipe_consent),
+                        description = stringResource(R.string.settings_mediapipe_consent_description),
+                        checked = settings.mediaPipeConsentVersion >=
+                            info.bigwizardmedia.wizardcut.engine.MediaPipeUsageGate.CONSENT_VERSION,
+                        onChanged = viewModel::setMediaPipeConsent
+                    )
+                    SettingsStorageOverview(
+                        totalBytes = aiModelStorage.totalBytes,
+                        whisperBytes = aiModelStorage.whisperBytes,
+                        segmentationBytes = aiModelStorage.segmentationBytes
+                    )
+                    SettingsAiModelRow(
+                        icon = Icons.Default.RecordVoiceOver,
+                        accent = ClearCutAccents.Mauve,
+                        label = stringResource(R.string.settings_whisper_model),
+                        description = stringResource(R.string.ai_whisper_description),
+                        stateLabel = whisperModelState.displayLabel(),
+                        storageLabel = modelStorageLabel(aiModelStorage.whisperBytes, stringResource(R.string.settings_whisper_size)),
+                        canRemove = canRemoveWhisperModel,
+                        networkAvailable = networkAvailable,
+                        isError = whisperModelState == WhisperModelState.ERROR,
+                        isBusy = aiModelStorage.isRemovingWhisper || whisperModelState == WhisperModelState.DOWNLOADING,
+                        actionLabel = if (canRemoveWhisperModel) {
+                            stringResource(R.string.remove)
+                        } else {
+                            stringResource(R.string.download)
+                        },
+                        actionIcon = if (canRemoveWhisperModel) {
+                            Icons.Default.Delete
+                        } else {
+                            Icons.Default.Download
+                        },
+                        onAction = if (canRemoveWhisperModel) {
+                            { pendingAiModelRemoval = SettingsAiModelRemovalTarget.WHISPER }
+                        } else {
+                            viewModel::downloadWhisperModel
+                        }
+                    )
+                    SettingsAiModelRow(
+                        icon = Icons.Default.PersonOff,
+                        accent = ClearCutAccents.Green,
+                        label = stringResource(R.string.settings_segmentation_model),
+                        description = stringResource(R.string.ai_segmentation_description),
+                        stateLabel = segmentationModelState.displayLabel(),
+                        storageLabel = modelStorageLabel(aiModelStorage.segmentationBytes, stringResource(R.string.settings_segmentation_size)),
+                        canRemove = canRemoveSegmentationModel,
+                        networkAvailable = networkAvailable,
+                        isError = segmentationModelState == SegmentationModelState.ERROR,
+                        isBusy = aiModelStorage.isRemovingSegmentation || segmentationModelState == SegmentationModelState.DOWNLOADING,
+                        actionLabel = if (canRemoveSegmentationModel) {
+                            stringResource(R.string.remove)
+                        } else {
+                            stringResource(R.string.download)
+                        },
+                        actionIcon = if (canRemoveSegmentationModel) {
+                            Icons.Default.Delete
+                        } else {
+                            Icons.Default.Download
+                        },
+                        onAction = if (canRemoveSegmentationModel) {
+                            { pendingAiModelRemoval = SettingsAiModelRemovalTarget.SEGMENTATION }
+                        } else {
+                            viewModel::downloadSegmentationModel
+                        }
+                    )
+                    SettingsTile(
+                        icon = Icons.Default.Mic,
+                        accent = ClearCutAccents.Peach,
+                        label = stringResource(R.string.settings_piper_model),
+                        description = stringResource(R.string.settings_piper_system_voice_description)
+                    ) {
+                        SettingsStatusBadge(
+                            text = stringResource(R.string.settings_piper_system_voice_status),
+                            accent = ClearCutAccents.Peach
+                        )
+                    }
+                }
+
+            // Project Storage
+            SettingsSection(
+                title = stringResource(R.string.settings_project_storage_title),
+                description = stringResource(
+                    R.string.settings_project_storage_media,
+                    formatStorageBytes(projectStorage.managedMediaBytes)
+                )
+            ) {
+                SettingsTile(
+                    icon = Icons.Default.Storage,
+                    accent = ClearCutAccents.Peach,
+                    label = stringResource(R.string.settings_project_storage_title),
+                    description = stringResource(
+                        R.string.settings_project_storage_proxy,
+                        formatStorageBytes(projectStorage.proxyCacheBytes)
+                    )
+                ) {
+                    SettingsStatusBadge(
+                        text = formatStorageBytes(projectStorage.totalBytes),
+                        accent = if (projectStorage.totalBytes > 0L) ClearCutAccents.Peach else LocalClearCutColors.current.overlay
+                    )
+                }
+                if (projectStorage.proxyCacheBytes > 0L) {
+                    SettingsActionRow(
+                        icon = Icons.Default.DeleteSweep,
+                        accent = ClearCutAccents.Peach,
+                        label = stringResource(R.string.settings_clear_proxy_cache),
+                        description = formatStorageBytes(projectStorage.proxyCacheBytes),
+                        actionLabel = if (projectStorage.isClearingProxies) "…" else stringResource(R.string.settings_clear_proxy_cache),
+                        actionIcon = Icons.Default.DeleteSweep,
+                        onClick = viewModel::clearProxyCache
+                    )
+                }
+            }
+            projectStorage.feedbackMessage?.let { message ->
+                SettingsFeedbackBanner(message = message, onDismiss = viewModel::dismissProjectStorageFeedback)
+            }
+
+            // Appearance
+            SettingsSection(
+                title = stringResource(R.string.settings_appearance),
+                description = stringResource(R.string.settings_appearance_description)
+            ) {
+                val appearanceModes = AppearanceMode.entries
+                SettingsDropdown(
+                    icon = Icons.Default.Contrast,
+                    accent = ClearCutAccents.Sky,
+                    label = stringResource(R.string.settings_appearance_mode),
+                    description = stringResource(R.string.settings_appearance_mode_description),
+                    value = settings.appearanceMode.displayLabel(),
+                    options = appearanceModes.map { it.displayLabel() },
+                    onSelected = { index -> viewModel.setAppearanceMode(appearanceModes[index]) }
+                )
+            }
+
+            // Editor
+            SettingsSection(
+                title = stringResource(R.string.settings_editor),
+                description = stringResource(R.string.settings_editor_description)
+            ) {
+                SettingsDropdown(
+                    icon = Icons.Default.Tune,
+                    accent = ClearCutAccents.Mauve,
+                    label = stringResource(R.string.settings_default_mode),
+                    description = stringResource(R.string.settings_default_mode_description),
+                    value = selectedEditorMode.label,
+                    options = editorModeOptions.map { it.label },
+                    onSelected = { viewModel.setEditorMode(editorModeOptions[it].value) }
+                )
+                SettingsToggle(
+                    icon = Icons.Default.TouchApp,
+                    accent = ClearCutAccents.Sapphire,
+                    label = stringResource(R.string.settings_haptic_feedback),
+                    description = stringResource(R.string.settings_haptic_desc),
+                    checked = settings.hapticEnabled,
+                    onChanged = { viewModel.setHapticEnabled(it) }
+                )
+                SettingsChoiceHeader(
+                    icon = Icons.Default.PhotoLibrary,
+                    accent = ClearCutAccents.Peach,
+                    label = stringResource(R.string.settings_thumbnail_cache),
+                    description = stringResource(R.string.settings_thumbnail_cache_description)
+                )
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val choices: List<Pair<Int?, String>> = listOf(null to stringResource(R.string.settings_thumbnail_cache_automatic)) +
+                        thumbnailCacheSizes.map { size -> size to "$size MB" }
+                    choices.forEach { (size, label) ->
+                        ClearCutFilterChip(
+                            selected = settings.thumbnailCacheSizeMb == size,
+                            onClick = {
+                                if (size == null) viewModel.setThumbnailCacheAutomatic()
+                                else viewModel.setThumbnailCacheSize(size)
+                            },
+                            text = label,
+                            accent = ClearCutAccents.Peach,
+                            icon = if (settings.thumbnailCacheSizeMb == size) Icons.Default.Check else null
+                        )
+                    }
+                }
+            }
+
+            // Tutorial
+            SettingsSection(
+                title = stringResource(R.string.settings_tutorial),
+                description = stringResource(R.string.settings_tutorial_description)
+            ) {
+                SettingsTile(
+                    icon = Icons.Default.School,
+                    accent = ClearCutAccents.Sapphire,
+                    label = stringResource(R.string.settings_replay_tutorial),
+                    description = stringResource(R.string.settings_replay_tutorial_row_description),
+                    onClick = onReplayTutorial,
+                    modifier = Modifier.testTag(ClearCutTestTags.SETTINGS_REPLAY_TUTORIAL)
+                ) {
+                    ClearCutMetricPill(
+                        text = stringResource(R.string.settings_replay_tutorial_action),
+                        accent = ClearCutAccents.Sapphire
+                    )
+                }
+            }
+
+            // Diagnostics
+            SettingsSection(
+                title = stringResource(R.string.settings_diagnostics),
+                description = stringResource(R.string.settings_diagnostics_description)
+            ) {
+                SettingsSwitch(
+                    icon = Icons.Default.ViewStream,
+                    accent = ClearCutAccents.Teal,
+                    label = stringResource(R.string.settings_diagnostic_timeline_shape),
+                    description = stringResource(R.string.settings_diagnostic_timeline_shape_description),
+                    checked = settings.includeDiagnosticTimelineShape,
+                    onChanged = viewModel::setIncludeDiagnosticTimelineShape
+                )
+                SettingsSwitch(
+                    icon = Icons.Default.BugReport,
+                    accent = ClearCutAccents.Peach,
+                    label = stringResource(R.string.settings_diagnostic_raw_error_text),
+                    description = stringResource(R.string.settings_diagnostic_raw_error_text_description),
+                    checked = settings.includeDiagnosticRawErrorText,
+                    onChanged = viewModel::setIncludeDiagnosticRawErrorText
+                )
+                SettingsDiagnosticExportRow(
+                    state = diagnosticExport,
+                    onExport = viewModel::exportDiagnosticBundle,
+                    onShare = { bundle ->
+                        shareDiagnosticBundle(
+                            context = context,
+                            bundle = bundle,
+                            onFailure = viewModel::reportDiagnosticShareFailure
+                        )
+                    }
+                )
+            }
+
+            // Privacy (R5.5c UI) — opens the PrivacyDashboardPanel in a dialog.
+            // Engine helpers (groupForDisplay / controlSummary) are pure so the
+            // panel re-renders without any view-model state today.
+            SettingsSection(
+                title = stringResource(R.string.settings_privacy_section_title),
+                description = stringResource(R.string.settings_privacy_section_description)
+            ) {
+                SettingsActionRow(
+                    icon = Icons.Default.Shield,
+                    accent = ClearCutAccents.Mauve,
+                    label = stringResource(R.string.settings_privacy_open_label),
+                    description = stringResource(R.string.settings_privacy_open_description),
+                    actionLabel = stringResource(R.string.settings_privacy_open_action),
+                    onClick = { showPrivacyDashboard = true },
+                    modifier = Modifier.testTag(ClearCutTestTags.SETTINGS_PRIVACY_OPEN)
+                )
+            }
+
+            // Third-party notices
+            SettingsSection(
+                title = stringResource(R.string.settings_open_source_licenses_section_title),
+                description = stringResource(R.string.settings_open_source_licenses_section_description)
+            ) {
+                SettingsActionRow(
+                    icon = Icons.Default.Info,
+                    accent = ClearCutAccents.Teal,
+                    label = stringResource(R.string.settings_open_source_licenses),
+                    description = stringResource(R.string.settings_open_source_licenses_description),
+                    actionLabel = stringResource(R.string.settings_open_source_licenses_action),
+                    onClick = { showOpenSourceLicenses = true },
+                    modifier = Modifier.testTag(ClearCutTestTags.SETTINGS_LICENSES_OPEN)
+                )
+            }
+
+            // Updates (sideload / GitHub-release installs only). Compiled out when
+            // the build opts out via BuildConfig.UPDATE_CHECK_AVAILABLE.
+            if (BuildConfig.UPDATE_CHECK_AVAILABLE) {
+                SettingsSection(
+                    title = stringResource(R.string.settings_updates_section_title),
+                    description = stringResource(R.string.settings_updates_section_description)
+                ) {
+                    SettingsSwitch(
+                        icon = Icons.Default.SystemUpdate,
+                        accent = ClearCutAccents.Sky,
+                        label = stringResource(R.string.settings_update_check_label),
+                        description = stringResource(R.string.settings_update_check_description),
+                        checked = settings.updateCheckEnabled,
+                        onChanged = viewModel::setUpdateCheckEnabled
+                    )
+                    if (settings.updateCheckEnabled) {
+                        if (updateCheck.updateAvailable) {
+                            SettingsActionRow(
+                                icon = Icons.Default.NewReleases,
+                                accent = ClearCutAccents.Green,
+                                label = stringResource(
+                                    R.string.settings_update_available_label,
+                                    updateCheck.latestVersion.orEmpty()
+                                ),
+                                description = stringResource(
+                                    if (networkAvailable) {
+                                        R.string.settings_update_available_description
+                                    } else {
+                                        R.string.settings_update_offline
+                                    }
+                                ),
+                                actionLabel = stringResource(R.string.settings_update_view_action),
+                                actionIcon = Icons.AutoMirrored.Filled.OpenInNew,
+                                onClick = { updateCheck.releaseUrl?.let { uriHandler.openUri(it) } },
+                                enabled = networkAvailable,
+                            )
+                        } else {
+                            SettingsActionRow(
+                                icon = Icons.Default.SystemUpdate,
+                                accent = ClearCutAccents.Sky,
+                                label = stringResource(R.string.settings_update_check_now_label),
+                                description = stringResource(R.string.settings_update_check_now_description),
+                                actionLabel = if (updateCheck.isChecking) {
+                                    stringResource(R.string.settings_update_checking_action)
+                                } else {
+                                    stringResource(R.string.settings_update_check_now_action)
+                                },
+                                actionIcon = Icons.Default.Refresh,
+                                onClick = { if (!updateCheck.isChecking) viewModel.checkForUpdate() },
+                                enabled = networkAvailable && !updateCheck.isChecking,
+                            )
+                        }
+                    }
+                }
+            }
+
+            // About
+            SettingsSection(
+                title = stringResource(R.string.settings_about),
+                description = stringResource(R.string.settings_about_description)
+            ) {
+                SettingsInfo(Icons.Default.Info, stringResource(R.string.settings_version), WizardCutApp.VERSION, ClearCutAccents.Sapphire)
+                SettingsInfo(Icons.Default.Movie, stringResource(R.string.settings_engine), stringResource(R.string.settings_engine_value), ClearCutAccents.Peach)
+                SettingsInfo(Icons.Default.AutoAwesome, stringResource(R.string.settings_ai_models), stringResource(R.string.settings_ai_models_value), ClearCutAccents.Mauve)
+            }
         }
 
             Spacer(Modifier.height(Spacing.xxl))
