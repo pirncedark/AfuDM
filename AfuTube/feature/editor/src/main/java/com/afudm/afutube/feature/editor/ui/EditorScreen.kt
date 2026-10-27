@@ -14,6 +14,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -325,7 +326,7 @@ private fun EditorTools(project: EditorProject, selectedClipId: String?, playhea
                     Slider(value = track.startMs.toFloat(), onValueChange = { value -> onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(startMs = value.toLong()) }) } }, valueRange = 0f..(project.clips.sumOf { it.trimEndMs - it.trimStartMs }).coerceAtLeast(1).toFloat())
                     Text("Kırp · ${formatTime(track.trimStartMs)} – ${formatTime(track.trimEndMs)}", color = AfuColors.textMuted)
                     Row { TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(trimStartMs = (track.trimStartMs + 500).coerceAtMost(track.trimEndMs - 1)) }) } }) { Text("Başını kırp +0,5 sn", color = AfuColors.text) }; TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(trimEndMs = (track.trimEndMs - 500).coerceAtLeast(track.trimStartMs + 1)) }) } }) { Text("Sonunu kırp −0,5 sn", color = AfuColors.text) }; TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.filterIndexed { index, _ -> index != i }) } }) { Text("Kaldır", color = AfuColors.text) } }
-                    Row { TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(fadeInMs = 500.coerceAtMost((track.trimEndMs - track.trimStartMs) / 2)) }) } }) { Text("Yumuşak giriş", color = AfuColors.text) }; TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(fadeOutMs = 500.coerceAtMost((track.trimEndMs - track.trimStartMs) / 2)) }) } }) { Text("Yumuşak çıkış", color = AfuColors.text) } }
+                    Row { TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(fadeInMs = 500L.coerceAtMost((track.trimEndMs - track.trimStartMs) / 2)) }) } }) { Text("Yumuşak giriş", color = AfuColors.text) }; TextButton(onClick = { onEdit { p -> p.copy(musicTracks = p.musicTracks.toMutableList().also { it[i] = track.copy(fadeOutMs = 500L.coerceAtMost((track.trimEndMs - track.trimStartMs) / 2)) }) } }) { Text("Yumuşak çıkış", color = AfuColors.text) } }
                 }
             }
             "Yazı" -> {
@@ -340,7 +341,7 @@ private fun EditorTools(project: EditorProject, selectedClipId: String?, playhea
                         TextButton(onClick = { textColor = color; selectedText?.let { overlay -> onEdit { it.updateText(overlay.id) { value -> value.copy(color = color) } } } }, contentPadding = PaddingValues(horizontal = 6.dp)) { Box(Modifier.size(22.dp).background(Color(android.graphics.Color.parseColor(color)), RoundedCornerShape(11.dp)).then(if (chosen) Modifier.border(2.dp, AfuColors.accent, RoundedCornerShape(11.dp)) else Modifier)) }
                     }
                 }
-                selectedText?.let { overlay ->
+                if (selectedText != null) { val overlay = selectedText!!
                     Text("Boyut · ${overlay.sizeSp}", color = AfuColors.text)
                     Slider(value = overlay.sizeSp.toFloat(), onValueChange = { value -> onEdit { it.updateText(overlay.id) { text -> text.copy(sizeSp = value.toInt().coerceIn(12, 120)) } } }, valueRange = 12f..120f)
                     Text("Başlangıç · ${formatTime(overlay.startMs)}", color = AfuColors.text)
@@ -368,7 +369,7 @@ private fun EditorTools(project: EditorProject, selectedClipId: String?, playhea
 private fun Timeline(clips: List<VideoClip>, selectedClipId: String?, onSelectClip: (String) -> Unit, onTrim: (Int, Long, Long) -> Unit, onSplit: (Int) -> Unit, onDelete: (Int) -> Unit, onReorder: (Int, Int) -> Unit, onAdd: () -> Unit, musicTracks: List<com.afudm.afutube.feature.editor.model.MusicTrack>, textOverlays: List<TextOverlay>) {
     var zoom by remember { mutableFloatStateOf(1f) }
     Column(Modifier.fillMaxWidth().background(AfuColors.surface, RoundedCornerShape(12.dp)).padding(10.dp)) {
-        Box(Modifier.fillMaxWidth().pointerInput(Unit) { androidx.compose.foundation.gestures.detectTransformGestures { _, _, zoomChange, _ -> zoom = (zoom * zoomChange).coerceIn(.5f, 4f) } }) {
+        Box(Modifier.fillMaxWidth().pointerInput(Unit) { detectTransformGestures { _, _, zoomChange, _ -> zoom = (zoom * zoomChange).coerceIn(.5f, 4f) } }) {
         LazyRow(verticalAlignment = Alignment.CenterVertically) {
             itemsIndexed(clips, key = { _, clip -> clip.id }) { index, clip ->
                 ClipStrip(clip, Modifier.semantics { contentDescription = "Klip ${index + 1}" }.width((clip.trimEndMs.minus(clip.trimStartMs).div(250).coerceIn(88L, 220L) * zoom).toInt().dp).height(76.dp).then(if (clip.id == selectedClipId) Modifier.border(2.dp, AfuColors.accent, RoundedCornerShape(8.dp)) else Modifier),
