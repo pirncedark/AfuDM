@@ -117,8 +117,7 @@ pub fn torrent_arglarini_isle(app: &AppHandle, arglar: &[String]) {
                     let mut istek = JsonMap::new();
                     istek.insert("source".into(), json!(oge));
                     if let Err(e) = c.manager.add(&istek) {
-                        let _ = c
-                            .store
+                        c.store
                             .log("error", &format!("torrent eklenemedi: {e}"), "");
                     }
                 }
