@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.4.1](https://github.com/pirncedark/AfuDM/compare/v3.4.0...v3.4.1) (2026-11-01)
+
+
+### Bug Fixes
+
+* **windows:** keep the window responsive when opening torrents ([#153](https://github.com/pirncedark/AfuDM/issues/153)) ([cf2e782](https://github.com/pirncedark/AfuDM/commit/cf2e7828c5e6e09f5ac6b09a1828834c0ea531dc))
+* **windows:** remove unit binding from torrent error log ([#155](https://github.com/pirncedark/AfuDM/issues/155)) ([7563fe3](https://github.com/pirncedark/AfuDM/commit/7563fe3c44633069a342da4973ffde871b2d66db))
+
 ## [3.4.0](https://github.com/pirncedark/AfuDM/compare/v3.3.0...v3.4.0) (2026-11-01)
 
 
