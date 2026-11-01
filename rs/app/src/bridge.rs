@@ -104,9 +104,11 @@ pub fn torrent_arglarini_isle(app: &AppHandle, arglar: &[String]) {
     if ogeler.is_empty() {
         return;
     }
+    let pencere_app = app.clone();
+    // Pencere ana is parcaciginda acilir; baska thread'den acmak arayuzu dondurur.
+    let _ = app.run_on_main_thread(move || crate::window::goster(&pencere_app));
     let app = app.clone();
     std::thread::spawn(move || {
-        crate::window::goster(&app);
         let kabuk = app.state::<Arc<Kabuk>>().inner().clone();
         // Ilk acilista motor hazir olana dek bekle; oge kaybolmasin.
         for _ in 0..120 {
@@ -114,7 +116,11 @@ pub fn torrent_arglarini_isle(app: &AppHandle, arglar: &[String]) {
                 for oge in &ogeler {
                     let mut istek = JsonMap::new();
                     istek.insert("source".into(), json!(oge));
-                    let _ = c.manager.add(&istek);
+                    if let Err(e) = c.manager.add(&istek) {
+                        let _ = c
+                            .store
+                            .log("error", &format!("torrent eklenemedi: {e}"), "");
+                    }
                 }
                 return;
             }
