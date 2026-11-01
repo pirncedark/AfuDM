@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.2](https://github.com/pirncedark/AfuDM/compare/v3.4.1...v3.4.2) (2026-11-01)
+
+
+### Bug Fixes
+
+* **windows:** ask for a save folder when opening torrents ([#156](https://github.com/pirncedark/AfuDM/issues/156)) ([7d373fc](https://github.com/pirncedark/AfuDM/commit/7d373fc7432ffed6676abdc2db050e7c5c9151ad))
+
 ## [3.4.1](https://github.com/pirncedark/AfuDM/compare/v3.4.0...v3.4.1) (2026-11-01)
 
 
