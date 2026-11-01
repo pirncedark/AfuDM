@@ -74,6 +74,55 @@ fn torrent_metrik_hata(metin: impl Into<String>) -> Json {
     json!({"ok": false, "error_code": "engine", "error": m, "error_details": m, "hazir_degil": true, "neden": m})
 }
 
+// --- Arguman / sürükle-bırak yardımcıları -----------------------------------
+
+/// Argüman listesinden yalnız mevcut `.torrent` dosyaları ve `magnet:` linklerini seçer.
+/// Bayrakları (`--…`), exe adını ve diğer dosyaları atar. Saf; kayıt defterine dokunmaz.
+pub fn torrent_ogelerini_sec(arglar: &[String]) -> Vec<String> {
+    arglar
+        .iter()
+        .filter(|a| {
+            let low = a.to_lowercase();
+            if low.starts_with("magnet:") {
+                return true;
+            }
+            if low.starts_with("--") || low.starts_with('-') {
+                return false;
+            }
+            if !low.ends_with(".torrent") {
+                return false;
+            }
+            std::path::Path::new(a.as_str()).is_file()
+        })
+        .cloned()
+        .collect()
+}
+
+/// Argümanlar/bırakılan yollar içinden torrent/magnet öğelerini indirme kuyruğuna ekler ve pencereyi açar.
+pub fn torrent_arglarini_isle(app: &AppHandle, arglar: &[String]) {
+    let ogeler = torrent_ogelerini_sec(arglar);
+    if ogeler.is_empty() {
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        crate::window::goster(&app);
+        let kabuk = app.state::<Arc<Kabuk>>().inner().clone();
+        // Ilk acilista motor hazir olana dek bekle; oge kaybolmasin.
+        for _ in 0..120 {
+            if let Some(c) = kabuk.ctx.get() {
+                for oge in &ogeler {
+                    let mut istek = JsonMap::new();
+                    istek.insert("source".into(), json!(oge));
+                    let _ = c.manager.add(&istek);
+                }
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    });
+}
+
 /// Python `{"ok": True, **sonuc}` sarmalayicisi.
 fn ok_ile(v: Json) -> Json {
     match v {
@@ -817,6 +866,28 @@ fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Json {
                 Err(e) => hata(e),
             }
         }
+        "torrent_oto_varsayilan_ayarla" => match k.ctx.get() {
+            Some(c) => {
+                let ac = b(a, 0);
+                match c.store.set("torrent_oto_varsayilan", json!(ac)) {
+                    Ok(()) => {
+                        // Tik açılınca hemen bir kez ilişkilendirmeyi dene.
+                        if ac {
+                            let _ = entegrasyon::iliskilendir_ac();
+                        }
+                        json!({
+                            "ok": true,
+                            "ac": ac,
+                            "varsayilan": entegrasyon::varsayilan_mi("torrent")
+                                && entegrasyon::varsayilan_mi("magnet"),
+                        })
+                    }
+                    Err(e) => hata(e.to_string()),
+                }
+            }
+            None => motor_hazir_degil(),
+        },
+
         "windows_integration_status" => windows_durumu(k),
         "windows_integration_apply" => windows_uygula(k, s(a, 0), true),
         "windows_integration_remove" => windows_uygula(k, s(a, 0), false),
@@ -1210,5 +1281,32 @@ mod tests {
         assert!(orphan_mi("kayıt bulunamadı"));
         assert!(orphan_mi("GID not found"));
         assert!(!orphan_mi("disk dolu"));
+    }
+
+    #[test]
+    fn torrent_ogelerini_sec_magnet_ve_bayrak() {
+        // magnet: her zaman geçer
+        let arglar = vec![
+            "magnet:?xt=urn:btih:abc".to_string(),
+            "--tepside".to_string(),
+            "C:\\foo\\bar.torrent".to_string(), // dosya yok — filtre dışı
+            "notatorrent.exe".to_string(),
+        ];
+        let sonuc = torrent_ogelerini_sec(&arglar);
+        assert_eq!(sonuc, vec!["magnet:?xt=urn:btih:abc".to_string()]);
+    }
+
+    #[test]
+    fn torrent_ogelerini_sec_bos_liste() {
+        assert!(torrent_ogelerini_sec(&[]).is_empty());
+    }
+
+    #[test]
+    fn torrent_ogelerini_sec_buyuk_kucuk_harf_duyarsiz_uzanti() {
+        // .TORRENT (büyük harf) — dosya yoksa filtre dışı kalır; burada beklenen boş.
+        let arglar = vec!["C:\\foo\\bar.TORRENT".to_string()];
+        // is_file() false olacak → boş
+        let sonuc = torrent_ogelerini_sec(&arglar);
+        assert!(sonuc.is_empty());
     }
 }

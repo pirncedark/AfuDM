@@ -2077,6 +2077,7 @@ async function sistemAyarlariniUygula() {
   } catch (err) { hatalar.push(err.message); }
   try {
     await call("torrent_iliskilendir", $("sTorrent").checked);
+    await call("torrent_oto_varsayilan_ayarla", $("sTorrent").checked);
   } catch (err) { hatalar.push(err.message); }
   if (hatalar.length) toast(hatalar[0], true);
 }

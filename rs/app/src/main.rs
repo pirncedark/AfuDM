@@ -37,7 +37,9 @@ fn main() {
     #[cfg(not(feature = "test-kapisi"))]
     let builder = builder
         // Ikinci acilis yeni surec baslatmaz; ilk ornegin penceresini one getirir.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // args[0] = exe yolu; geri kalanlar .torrent / magnet olabilir.
+            bridge::torrent_arglarini_isle(app, &args);
             window::goster(app);
         }));
     let uygulama = builder
@@ -53,6 +55,17 @@ fn main() {
                 .unwrap_or_default();
             let kabuk = Arc::new(bridge::Kabuk::new(app.handle().clone(), app_dir));
             app.manage(kabuk.clone());
+            #[cfg(not(feature = "test-kapisi"))]
+            {
+                // İlk açılış: .torrent / magnet argümanlarını işle.
+                // single_instance eklentisi yalnız SONRAKI açılışları yakalar;
+                // ilk açılıştaki args burada okunur.
+                let ilk_arglar: Vec<String> = std::env::args().collect();
+                let app_h = app.handle().clone();
+                std::thread::spawn(move || {
+                    bridge::torrent_arglarini_isle(&app_h, &ilk_arglar);
+                });
+            }
             #[cfg(not(feature = "test-kapisi"))]
             {
                 let motor_kabuk = kabuk.clone();

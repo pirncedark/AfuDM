@@ -108,6 +108,18 @@ fn calistir(kabuk: &Arc<Kabuk>) -> Result<(), String> {
     // Python _on_complete: kapatma / uyku adimi (tamamlanma kancasi).
     manager.tamamlandi_kancasi_ekle(crate::guc::bitis_kancasi(ctx.clone()));
     let _ = kabuk.ctx.set(ctx.clone());
+    // Otomatik varsayılan: ayar açıksa her açılışta ilişkilendirmeyi yenile
+    // (exe taşınmış ya da kayıt silinmişse düzeltir). Hata açılışı bozmasın.
+    if ctx
+        .store
+        .get("torrent_oto_varsayilan")
+        .ok()
+        .flatten()
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        let _ = crate::entegrasyon::iliskilendir_ac();
+    }
 
     // Tek eklenti servisi: HTTP ve kopru ayni ornegi kullanir.
     let eklenti = afudm_extras::g2::servis_olustur(&ctx);

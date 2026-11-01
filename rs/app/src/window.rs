@@ -2,7 +2,9 @@
 //! yok edilir (gizlenmez), tepsi ve motor calismaya devam eder.
 //! Python karsiligi: core/pencere.py (pencere_boyutu, kapatinca_gizle).
 
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, DragDropEvent, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+};
 
 pub const ANA: &str = "ana";
 
@@ -54,6 +56,16 @@ fn ana_olustur(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .center()
         .decorations(false)
         .build()?;
+
+    // Pencereye sürüklenen .torrent / magnet dosyalarını yakala.
+    let app2 = app.clone();
+    pencere.on_window_event(move |olay| {
+        if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = olay {
+            let arglar: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
+            crate::bridge::torrent_arglarini_isle(&app2, &arglar);
+        }
+    });
+
     Ok(pencere)
 }
 
