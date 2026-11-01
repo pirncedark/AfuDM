@@ -115,8 +115,12 @@ pub fn torrent_arglarini_isle(app: &AppHandle, arglar: &[String]) {
             if let Some(c) = kabuk.ctx.get() {
                 for oge in &ogeler {
                     let mut istek = JsonMap::new();
-                    istek.insert("source".into(), json!(oge));
-                    if let Err(e) = c.manager.add(&istek) {
+                    istek.insert("url".into(), json!(oge));
+                    // Klasoru kullanici secer; iptal ederse eklenmez.
+                    let Some(kabul) = kabuk.ui.ask_save_location(&istek) else {
+                        continue;
+                    };
+                    if let Err(e) = c.manager.add(&kabul) {
                         c.store
                             .log("error", &format!("torrent eklenemedi: {e}"), "");
                     }
