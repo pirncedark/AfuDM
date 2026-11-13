@@ -245,7 +245,7 @@ dependencies {
     }
     implementation(platform("org.jetbrains.kotlinx:kotlinx-serialization-bom:1.8.1"))
 
-    implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.window:window:1.5.1")
