@@ -84,6 +84,27 @@ impl Aria2Rpc {
     }
 
     pub fn call_timeout(&self, method: &str, params: Vec<Json>, timeout: Duration) -> Result<Json> {
+        self.call_timeout_inner(method, params, timeout, &mut false)
+    }
+
+    /// Keep the typed transport cause separate from the existing, redacted error text.
+    pub(crate) fn call_with_refusal(
+        &self,
+        method: &str,
+        params: Vec<Json>,
+    ) -> (Result<Json>, bool) {
+        let mut refused = false;
+        let result = self.call_timeout_inner(method, params, Duration::from_secs(15), &mut refused);
+        (result, refused)
+    }
+
+    fn call_timeout_inner(
+        &self,
+        method: &str,
+        params: Vec<Json>,
+        timeout: Duration,
+        refused: &mut bool,
+    ) -> Result<Json> {
         let mut all = vec![json!(self.token)];
         all.extend(params);
         let payload = json!({"jsonrpc":"2.0", "id":self.ids.fetch_add(1, Ordering::Relaxed).to_string(), "method":method, "params":all});
@@ -95,7 +116,10 @@ impl Aria2Rpc {
         let mut response = agent
             .post(&self.url)
             .send_json(&payload)
-            .map_err(|e| AfuError::Engine(self.redact(format!("aria2 RPC erisilemedi: {e}"))))?;
+            .map_err(|e| {
+                *refused = matches!(&e, ureq::Error::Io(io) if io.kind() == std::io::ErrorKind::ConnectionRefused);
+                AfuError::Engine(self.redact(format!("aria2 RPC erisilemedi: {e}")))
+            })?;
         let status = response.status();
         let raw = response.body_mut().read_to_string().map_err(|e| {
             AfuError::Engine(self.redact(format!("aria2 RPC baglantisi koptu: {e}")))
