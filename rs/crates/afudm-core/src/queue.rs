@@ -294,8 +294,13 @@ pub fn add(m: &Manager, req: &JsonMap) -> Result<Json> {
             )));
         }
     }
+    let default_dir = if kind == "torrent" {
+        crate::torrent::kayit_klasoru(&*m.store, &current_download_dir(m)?)?
+    } else {
+        current_download_dir(m)?
+    };
     let defaults = map(
-        json!({"dest_dir":current_download_dir(m)?,"proxy":setting(m,"proxy",json!(""))?,"max_speed_kb":setting(m,"max_speed_kb",json!(0))?,"split":setting(m,"max_conn_per_server",json!(16))?}),
+        json!({"dest_dir":default_dir,"proxy":setting(m,"proxy",json!(""))?,"max_speed_kb":setting(m,"max_speed_kb",json!(0))?,"split":setting(m,"max_conn_per_server",json!(16))?}),
     );
     let (effective, trace) = rules::evaluate(&m.store.rules_list()?, defaults, &req, kind);
     let dest = effective
@@ -303,7 +308,7 @@ pub fn add(m: &Manager, req: &JsonMap) -> Result<Json> {
         .and_then(Json::as_str)
         .filter(|s| !s.is_empty())
         .map(str::to_owned)
-        .unwrap_or(current_download_dir(m)?);
+        .unwrap_or(default_dir);
     let start_after = req
         .get("start_after")
         .filter(|v| truthy(v))
@@ -342,11 +347,15 @@ pub fn add(m: &Manager, req: &JsonMap) -> Result<Json> {
                 .unwrap_or(setting(m, &format!("video_{key}"), fallback)?),
         );
     }
-    let title = opts
-        .get("title")
-        .and_then(Json::as_str)
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned)
+    let title = (kind == "torrent")
+        .then(|| crate::torrent::dosya_basligi(source))
+        .flatten()
+        .or_else(|| {
+            opts.get("title")
+                .and_then(Json::as_str)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+        })
         .unwrap_or_else(|| dosya_adi::guess(source));
     let id = m.store.add(
         kind,
@@ -483,7 +492,11 @@ fn launch(m: &Manager, row: &Json) -> Result<Json> {
         .and_then(Json::as_str)
         .filter(|s| !s.is_empty())
         .map(str::to_owned)
-        .unwrap_or(current_download_dir(m)?);
+        .unwrap_or(if kind == "torrent" {
+            crate::torrent::kayit_klasoru(&*m.store, &current_download_dir(m)?)?
+        } else {
+            current_download_dir(m)?
+        });
     let result: Result<String> = (|| {
         if ["torrent", "video"].contains(&kind) {
             // D receives both normalized flat fields and the persisted row/options. It returns gid or {gid,...}.

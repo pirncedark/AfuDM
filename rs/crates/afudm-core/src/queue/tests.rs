@@ -73,6 +73,134 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn torrent_local_info_name_is_saved_before_metadata_and_used_in_snapshot() {
+    let f = Fixture::new();
+    let torrent = f.root.join("unrelated.TORRENT");
+    std::fs::write(&torrent, b"d4:infod4:name4:Gameee").unwrap();
+    let result = add(
+        &f.m,
+        json!({"source":torrent, "title":"wrong path", "start_after":4102444800.0})
+            .as_object()
+            .unwrap(),
+    )
+    .unwrap();
+    let row =
+        f.m.store
+            .by_id(result["id"].as_i64().unwrap())
+            .unwrap()
+            .unwrap();
+    assert_eq!(row["title"], "Game");
+    let gid = "torrent-job";
+    f.m.store
+        .update_by_id(row_id(&row), &map(json!({"gid":gid})))
+        .unwrap();
+    let mut status = json!({"gid":gid,"infoHash":"abc","files":[{"path":"/downloads/a-part.bin"}]});
+    assert_eq!(shaping::aria(&f.m, &status).unwrap()["title"], "Game");
+    status["bittorrent"] = json!({"info":{"name":"Metadata name"}});
+    assert_eq!(
+        shaping::aria(&f.m, &status).unwrap()["title"],
+        "Metadata name"
+    );
+}
+
+#[test]
+fn torrent_directory_setting_applies_to_preview_queue_and_direct_add() {
+    let f = Fixture::new();
+    let dest = f.root.join("torrents");
+    update_settings(&f.m, &map(json!({"torrent_dir":dest}))).unwrap();
+    let torrent = f.root.join("game.torrent");
+    std::fs::write(&torrent, b"d4:infod4:name4:Gameee").unwrap();
+    crate::torrent::torrent_on_ekle(&f.m, torrent.to_str().unwrap()).unwrap();
+    crate::torrent::torrent_ekle_ic(&f.m, &map(json!({"source":torrent}))).unwrap();
+    let result = add(&f.m, &map(json!({"source":torrent}))).unwrap();
+    let row =
+        f.m.store
+            .by_id(result["id"].as_i64().unwrap())
+            .unwrap()
+            .unwrap();
+    assert_eq!(row["dest_dir"], json!(dest));
+    let calls = f.rpc.calls.lock().unwrap();
+    let torrent_calls: Vec<_> = calls
+        .iter()
+        .filter(|(method, _)| method == "add_torrent")
+        .collect();
+    assert_eq!(torrent_calls.len(), 3);
+    for (_, params) in torrent_calls {
+        assert_eq!(params[1]["dir"], json!(dest));
+    }
+    drop(calls);
+    assert_eq!(f.add("normal.zip")["kind"], "http");
+    let rows = f.m.store.list(None, 20).unwrap();
+    assert_eq!(
+        rows.iter().find(|r| r["kind"] == "http").unwrap()["dest_dir"],
+        json!(f.root)
+    );
+}
+
+#[test]
+fn torrent_explicit_directory_wins_and_adoption_uses_torrent_default() {
+    let f = Fixture::new();
+    let dest = f.root.join("torrents");
+    f.m.store.set("torrent_dir", json!(dest)).unwrap();
+    f.rpc
+        .statuses
+        .lock()
+        .unwrap()
+        .insert("preview".into(), json!({"gid":"preview"}));
+    crate::torrent::torrent_ekle_ic(
+        &f.m,
+        &map(json!({"source":"magnet:?xt=urn:btih:abc", "adopt_gid":"preview"})),
+    )
+    .unwrap();
+    let calls = f.rpc.calls.lock().unwrap();
+    let (_, params) = calls
+        .iter()
+        .find(|(method, _)| method == "change_option")
+        .unwrap();
+    assert_eq!(params[1]["dir"], json!(dest));
+    drop(calls);
+    let chosen = f.root.join("chosen");
+    let result = add(
+        &f.m,
+        &map(json!({"source":"magnet:?xt=urn:btih:def", "dest_dir":chosen})),
+    )
+    .unwrap();
+    let row =
+        f.m.store
+            .by_id(result["id"].as_i64().unwrap())
+            .unwrap()
+            .unwrap();
+    assert_eq!(row["dest_dir"], json!(chosen));
+}
+
+#[test]
+fn torrent_restart_without_saved_directory_uses_torrent_setting() {
+    let f = Fixture::new();
+    let dest = f.root.join("torrents");
+    f.m.store.set("torrent_dir", json!(dest)).unwrap();
+    let id =
+        f.m.store
+            .add(
+                "torrent",
+                "magnet:?xt=urn:btih:abc",
+                Some("Game"),
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+    let row = f.m.store.by_id(id).unwrap().unwrap();
+    launch(&f.m, &row).unwrap();
+    let calls = f.rpc.calls.lock().unwrap();
+    let (_, params) = calls
+        .iter()
+        .find(|(method, _)| method == "add_uri")
+        .unwrap();
+    assert_eq!(params[1]["dir"], json!(dest));
+}
+
+#[test]
 fn torrent_existing_root_integrity_for_local_adopted_and_refreshed_jobs() {
     let f = Fixture::new();
     f.m.store

@@ -73,6 +73,7 @@ const UYGULAMA_ZAMANI: &[(&str, &str)] = &[
     ("sunucu_proxy_guven", "hemen"),
     ("sunucu_acik", "hemen"),
     ("download_dir", "yeni_indirmelerde"),
+    ("torrent_dir", "yeni_indirmelerde"),
     ("kategori_klasorleri", "yeni_indirmelerde"),
     ("video_quality", "yeni_indirmelerde"),
     ("kaydetme_penceresi", "yeni_indirmelerde"),
@@ -364,6 +365,10 @@ fn hedef_klasor(
 ) -> Sonuc<Option<String>> {
     if !secilen.is_empty() {
         return Ok(Some(secilen.to_string()));
+    }
+    if kind == "torrent" {
+        // Varsayilani queue::add uygular; burada kullanici secimi sayilmasin.
+        return Ok(None);
     }
     let kl = c.store.get("kategori_klasorleri")?;
     if !kl.as_ref().is_some_and(bridge::truthy) {
@@ -1125,6 +1130,36 @@ fn defender_scan(c: &ApiCtx, gid: &str) -> Json {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn torrent_automatic_destination_keeps_rule_override_available() {
+        let ctx = crate::bridge::tests::torrent_ctx();
+        ctx.store.set("kategori_klasorleri", json!(false)).unwrap();
+        let hedef = hedef_klasor(&ctx, "", "magnet:?xt=urn:btih:abc", "torrent", "").unwrap();
+        let req = indirme_istegi(
+            &JsonMap::new(),
+            "magnet:?xt=urn:btih:abc",
+            "torrent",
+            hedef,
+            "",
+            true,
+            "",
+        );
+        assert!(req.get("dest_dir").is_none());
+    }
+
+    #[test]
+    fn torrent_category_destination_defers_default_and_honors_user_choice() {
+        let ctx = crate::bridge::tests::torrent_ctx();
+        assert_eq!(
+            hedef_klasor(&ctx, "", "magnet:?xt=urn:btih:abc", "torrent", "").unwrap(),
+            None
+        );
+        assert_eq!(
+            hedef_klasor(&ctx, "chosen", "magnet:?xt=urn:btih:abc", "torrent", "").unwrap(),
+            Some("chosen".into())
+        );
+    }
 
     #[test]
     fn toplu_liste_urls_ve_tek_url_ile_calisir() {
