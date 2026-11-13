@@ -64,7 +64,7 @@ pub(super) fn collect(m: &Manager) -> Result<Completed> {
                 {
                     m.store.log(
                         "warn",
-                        "Görsel indirilemedi; tarayıcıdan yeniden indirin.",
+                        "Dosya indirilemedi; tarayıcıdan yeniden indirin.",
                         gid,
                     );
                 }

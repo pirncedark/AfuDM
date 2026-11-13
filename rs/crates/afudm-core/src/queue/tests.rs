@@ -1327,6 +1327,50 @@ fn omniget_403_retries_once_with_preserved_request() {
 }
 
 #[test]
+fn http_auth_warning_does_not_mislabel_zip_download_as_image() {
+    let f = Fixture::new();
+    let m = Manager::new(
+        Arc::new(afudm_db::SqliteStore::open_in_memory().unwrap()),
+        f.rpc.clone(),
+        Arc::new(NoUi),
+        f.root.clone(),
+        f.root.clone(),
+    );
+    m.store.set("download_dir", json!(f.root)).unwrap();
+    let result = add(
+        &m,
+        json!({"source":"https://example.test/archive.zip"})
+            .as_object()
+            .unwrap(),
+    )
+    .unwrap();
+    let gid = text(&result["gid"]);
+    f.rpc
+        .statuses
+        .lock()
+        .unwrap()
+        .get_mut(gid)
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .extend(map(
+            json!({"status":"error", "errorCode":"22", "errorMessage":"status=401"}),
+        ));
+    sync_aria2(&m).unwrap();
+    sync_aria2(&m).unwrap();
+    let events = m.store.recent_events(20, gid).unwrap();
+    let warnings: Vec<_> = events.iter().filter(|e| e["level"] == "warn").collect();
+    assert_eq!(warnings.len(), 1, "{events:?}");
+    let message = warnings[0]["message"].as_str().unwrap();
+    assert!(
+        !message.contains("Görsel"),
+        "a ZIP is not an image: {message}"
+    );
+    assert!(message.contains("tarayıcıdan"));
+    assert_eq!(m.store.by_gid(gid).unwrap().unwrap()["status"], "error");
+}
+
+#[test]
 fn omniget_only_real_http_403_is_retried() {
     for (code, message) in [
         ("22", "status=404"),

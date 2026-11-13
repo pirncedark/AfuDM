@@ -325,6 +325,52 @@ pub fn hazir(data: &Path) -> bool {
     }
 }
 
+/// Remove only an obsolete staged update; keep `yedek` for the installer's rollback.
+fn eski_paketi_temizle(data: &Path) -> std::io::Result<()> {
+    let klasor = data.join("guncelleme");
+    let marker = klasor.join("hazir.json");
+    let Some(kayit) = fs::read(&marker)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Json>(&bytes).ok())
+    else {
+        return Ok(());
+    };
+    let (Some(surum), Some(mevcut)) = (
+        kayit["surum"].as_str().and_then(parcala),
+        parcala(MEVCUT_SURUM),
+    ) else {
+        return Ok(());
+    };
+    if surum > mevcut {
+        return Ok(());
+    }
+    // Construct the filename from parsed digits, never from a path in persisted JSON.
+    let surum = surum
+        .iter()
+        .map(u64::to_string)
+        .collect::<Vec<_>>()
+        .join(".");
+    let yeni = klasor.join("yeni");
+    if fs::symlink_metadata(&klasor)?.file_type().is_symlink()
+        || fs::symlink_metadata(&yeni).is_ok_and(|m| m.file_type().is_symlink())
+    {
+        return Ok(());
+    }
+    match fs::remove_dir_all(&yeni) {
+        Ok(()) => (),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+        Err(e) => return Err(e),
+    }
+    let zip = klasor.join(format!("AfuDM-v{surum}-win64.zip"));
+    match fs::remove_file(zip) {
+        Ok(()) => (),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+        Err(e) => return Err(e),
+    }
+    // Keep the marker until the other removals succeed so a later startup can retry.
+    fs::remove_file(marker)
+}
+
 /// Klasordeki (sembolik baglanti haric) dosyalarin goreli yolu -> sha256 haritasi.
 fn tarama(kok: &Path) -> std::io::Result<BTreeMap<String, String>> {
     fn gez(kok: &Path, dir: &Path, sonuc: &mut BTreeMap<String, String>) -> std::io::Result<()> {
@@ -437,6 +483,9 @@ pub struct Guncelleme {
 impl Guncelleme {
     /// `base`: AfuDM.exe'nin klasoru (ApiCtx.app_dir). `data`: ApiCtx.data_dir. `paketli`: paketli exe mi.
     pub fn new(data: PathBuf, base: PathBuf, paketli: bool) -> Self {
+        if let Err(error) = eski_paketi_temizle(&data) {
+            log::warn!("Eski guncelleme artigi temizlenemedi: {}", error.kind());
+        }
         Guncelleme {
             data,
             base,
@@ -637,6 +686,57 @@ mod tests {
     use crate::g1::test_sunucu;
 
     const TEST_YENI: &str = "99.0.0";
+
+    #[test]
+    fn startup_removes_obsolete_update_artifacts_but_preserves_rollback() {
+        for (label, version) in [("old", "3.2.0"), ("equal", MEVCUT_SURUM)] {
+            let d = gecici(&format!("startup-{label}"));
+            let folder = d.join("guncelleme");
+            fs::create_dir_all(folder.join("yeni/AfuDM")).unwrap();
+            fs::create_dir_all(folder.join("yedek")).unwrap();
+            fs::write(folder.join("yeni/AfuDM/AfuDM.exe"), b"old update").unwrap();
+            fs::write(folder.join("yedek/AfuDM.exe"), b"rollback").unwrap();
+            let zip = folder.join(format!("AfuDM-v{version}-win64.zip"));
+            fs::write(&zip, b"old zip").unwrap();
+            fs::write(folder.join("unrelated.zip"), b"keep").unwrap();
+            fs::write(
+                folder.join("hazir.json"),
+                json!({"surum":version}).to_string(),
+            )
+            .unwrap();
+            let _g = Guncelleme::new(d.clone(), d.clone(), true);
+            assert!(
+                !folder.join("hazir.json").exists(),
+                "{label} readiness marker survived startup"
+            );
+            assert!(!folder.join("yeni").exists());
+            assert!(!zip.exists());
+            assert_eq!(
+                fs::read(folder.join("yedek/AfuDM.exe")).unwrap(),
+                b"rollback"
+            );
+            assert_eq!(fs::read(folder.join("unrelated.zip")).unwrap(), b"keep");
+            fs::remove_dir_all(d).unwrap();
+        }
+    }
+
+    #[test]
+    fn startup_preserves_newer_and_invalid_update_state() {
+        for (label, version) in [("newer", "99.0.0"), ("invalid", "../../outside")] {
+            let d = gecici(&format!("startup-{label}"));
+            let folder = d.join("guncelleme");
+            fs::create_dir_all(folder.join("yeni")).unwrap();
+            fs::write(
+                folder.join("hazir.json"),
+                json!({"surum":version}).to_string(),
+            )
+            .unwrap();
+            let _g = Guncelleme::new(d.clone(), d.clone(), true);
+            assert!(folder.join("hazir.json").exists());
+            assert!(folder.join("yeni").exists());
+            fs::remove_dir_all(d).unwrap();
+        }
+    }
 
     #[test]
     fn omniget_corrupt_update_state_is_quarantined() {
