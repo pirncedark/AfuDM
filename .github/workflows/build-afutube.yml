@@ -62,7 +62,7 @@ jobs:
         run: ./gradlew assembleRelease --no-daemon --stacktrace -PversionCode="$RUN_NUMBER" -PversionName=0.0."$RUN_NUMBER"
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: success()
         with:
           name: AfuTube-Release-APK
@@ -71,7 +71,7 @@ jobs:
           retention-days: 14
 
       - name: Upload all ABI APKs for emulator test
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: AfuTube-All-APKs
           path: AfuTube/app/build/outputs/apk/release/*.apk
@@ -79,7 +79,7 @@ jobs:
           retention-days: 3
 
       - name: Upload build logs on failure
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: failure()
         with:
           name: build-logs
@@ -153,7 +153,7 @@ jobs:
 
       - name: Upload e2e evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: AfuTube-edit-e2e
           path: |
