@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.4](https://github.com/pirncedark/AfuDM/compare/v3.4.3...v3.4.4) (2026-11-13)
+
+
+### Bug Fixes
+
+* **torrent:** default torrent folder and use info.name as title ([#163](https://github.com/pirncedark/AfuDM/issues/163)) ([a606cc5](https://github.com/pirncedark/AfuDM/commit/a606cc58b43664184586793b90a3d4b896979fb2))
+
 ## [3.4.3](https://github.com/pirncedark/AfuDM/compare/v3.4.2...v3.4.3) (2026-11-13)
 
 
