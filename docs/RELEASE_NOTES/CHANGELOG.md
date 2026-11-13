@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.3](https://github.com/pirncedark/AfuDM/compare/v3.4.2...v3.4.3) (2026-11-13)
+
+
+### Bug Fixes
+
+* **engine:** restart aria2 when RPC is refused ([#161](https://github.com/pirncedark/AfuDM/issues/161)) ([44ab989](https://github.com/pirncedark/AfuDM/commit/44ab989c2ed3864ba6bdee69bb5ef11cdf82c0fe))
+
 ## [3.4.2](https://github.com/pirncedark/AfuDM/compare/v3.4.1...v3.4.2) (2026-11-01)
 
 
