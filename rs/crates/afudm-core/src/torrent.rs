@@ -114,6 +114,29 @@ fn torrent_kok_adi(veri: &[u8]) -> Option<String> {
     String::from_utf8(ad.clone()).ok()
 }
 
+/// Torrent hedefi: kullanici ayari, mevcut F:\torrent, genel indirme klasoru.
+pub fn kayit_klasoru(store: &dyn Store, genel: &str) -> Result<String> {
+    if let Some(ad) = store.get("torrent_dir")?.as_ref().and_then(|v| v.as_str()) {
+        if !ad.trim().is_empty() {
+            return Ok(ad.trim().to_string());
+        }
+    }
+    #[cfg(windows)]
+    if Path::new(r"F:\torrent").is_dir() {
+        return Ok(r"F:\torrent".to_string());
+    }
+    Ok(genel.to_string())
+}
+
+/// Yerel .torrent basligini mevcut bencode ayristiricisi ile okur.
+pub fn dosya_basligi(source: &str) -> Option<String> {
+    let yol = Path::new(source);
+    if !yol.extension()?.eq_ignore_ascii_case("torrent") {
+        return None;
+    }
+    torrent_kok_adi(&std::fs::read(yol).ok()?).filter(|ad| !ad.trim().is_empty())
+}
+
 fn mevcut_kok_butunlugu(secenekler: &mut JsonMap, hedef: &str, ad: Option<&str>) {
     let Some(ad) = ad else { return };
     // Noktali adlar (Game.v1.2) gecerli; yalniz "." / ".." ve yol ayiraclari reddedilir.
@@ -452,7 +475,7 @@ pub fn seed_tazele(m: &Manager, gid: &str) -> Result<Json> {
     let row_dir = row.as_ref().and_then(|r| dolu_str(r.get("dest_dir")));
     let hedef = match dolu_str(status.get("dir")).or(row_dir) {
         Some(h) => h,
-        None => m.current_download_dir()?,
+        None => kayit_klasoru(&*m.store, &m.current_download_dir()?)?,
     };
 
     let ek = str_of(m.store.get("ek_trackerlar")?.as_ref());
@@ -543,7 +566,7 @@ pub fn peers(m: &Manager, gid: &str) -> Result<Vec<Json>> {
 
 /// Python torrent_on_ekle: dosya secimi yapilabilsin diye torrenti duraklatilmis ekler (DB'ye yazmaz).
 pub fn torrent_on_ekle(m: &Manager, source: &str) -> Result<String> {
-    let dir = m.current_download_dir()?;
+    let dir = kayit_klasoru(&*m.store, &m.current_download_dir()?)?;
     let mut secenekler = JsonMap::new();
     secenekler.insert("dir".to_string(), json!(dir));
     secenekler.insert("bt-save-metadata".to_string(), json!("false"));
@@ -917,7 +940,7 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
     let source = str_of(req.get("source"));
     let dest_dir = match dolu_str(req.get("dest_dir")) {
         Some(d) => d,
-        None => m.current_download_dir()?,
+        None => kayit_klasoru(&*m.store, &m.current_download_dir()?)?,
     };
     let mut adopt_gid = dolu_str(req.get("adopt_gid"));
     let secili: Vec<i64> = req

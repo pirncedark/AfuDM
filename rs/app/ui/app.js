@@ -1930,6 +1930,7 @@ $("openSettings").onclick = async () => {
   $("sLang").value = s.language || "auto";
   $("sGuncellemeOto").checked = s.guncelleme_otomatik !== false;
   $("sDir").value = s.download_dir || "";
+  $("sTorrentDir").value = s.torrent_dir || "";
   $("sSplit").value = s.split ?? 64;
   $("sConn").value = s.max_conn_per_server ?? 16;
   $("sConc").value = s.max_concurrent ?? 5;
@@ -2310,6 +2311,7 @@ $("setGo").onclick = async () => {
   const payload = {
     language: $("sLang").value,
     download_dir: $("sDir").value.trim(),
+    torrent_dir: $("sTorrentDir").value.trim(),
     split: Number($("sSplit").value) || 64,
     max_conn_per_server: Number($("sConn").value) || 16,
     max_concurrent: Number($("sConc").value) || 5,
@@ -2672,6 +2674,10 @@ async function kaydetAc(istek) {
 }
 
 $("kayCat").onchange = kayHedefYaz;
+$("sTorrentPick").onclick = async () => {
+  const yol = await klasorSec($("sTorrentDir").value.trim());
+  if (yol) $("sTorrentDir").value = yol;
+};
 $("kayPick").onclick = async () => {
   const yol = await klasorSec($("kayDest").value.trim() || kayit.ana);
   if (yol) $("kayDest").value = yol;
@@ -4126,6 +4132,7 @@ $("srvPKaydet").onclick = async () => {
 const AYAR_ROZET_ALANI = {
   sLang: "language",
   sDir: "download_dir",
+  sTorrentDir: "torrent_dir",
   sSplit: "split",
   sConn: "max_conn_per_server",
   sConc: "max_concurrent",

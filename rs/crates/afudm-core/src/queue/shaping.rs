@@ -34,6 +34,7 @@ pub(super) fn aria(m: &Manager, status: &Json) -> Result<Json> {
     let torrent = truthy(&status["bittorrent"]) || truthy(&status["infoHash"]);
     let title = [
         text(&status["bittorrent"]["info"]["name"]),
+        if torrent { text(&row["title"]) } else { "" },
         &name,
         text(&row["title"]),
         gid,

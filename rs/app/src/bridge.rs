@@ -324,8 +324,14 @@ fn kaydet_bilgi(c: &ApiCtx, url: &str, dosya_adi: &str, kind: &str) -> Sonuc {
     } else {
         afudm_db::kaydet::kategori_tahmin(url, &kind, dosya_adi)
     };
-    let ana = c.manager.current_download_dir()?;
-    let ad = if !url.is_empty() && kind == "http" {
+    let ana = if kind == "torrent" {
+        afudm_core::torrent::kayit_klasoru(&*c.store, &c.manager.current_download_dir()?)?
+    } else {
+        c.manager.current_download_dir()?
+    };
+    let ad = if kind == "torrent" {
+        afudm_core::torrent::dosya_basligi(url).unwrap_or_default()
+    } else if !url.is_empty() && kind == "http" {
         afudm_core::queue::guess_name(url)
     } else {
         String::new()
@@ -343,7 +349,11 @@ fn kaydet_bilgi(c: &ApiCtx, url: &str, dosya_adi: &str, kind: &str) -> Sonuc {
         .map(|k| {
             (
                 (*k).to_string(),
-                json!(afudm_db::kaydet::kategori_klasoru(&ana, k)),
+                json!(if kind == "torrent" {
+                    ana.clone()
+                } else {
+                    afudm_db::kaydet::kategori_klasoru(&ana, k)
+                }),
             )
         })
         .collect::<JsonMap>();
@@ -1257,8 +1267,45 @@ pub fn sayfa_hazir(app: AppHandle, window: tauri::WebviewWindow) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+    use afudm_types::Store;
+
+    pub(crate) fn torrent_ctx() -> ApiCtx {
+        let store = Arc::new(afudm_db::SqliteStore::open_in_memory().unwrap());
+        store
+            .set("download_dir", json!("general-downloads"))
+            .unwrap();
+        store
+            .set("torrent_dir", json!("torrent-downloads"))
+            .unwrap();
+        store.set("kategori_klasorleri", json!(true)).unwrap();
+        let ui = Arc::new(afudm_types::NoUi);
+        let manager = Arc::new(afudm_core::Manager::new(
+            store.clone(),
+            Arc::new(afudm_engine::Aria2Rpc::new("127.0.0.1", 1, "")),
+            ui.clone(),
+            PathBuf::new(),
+            PathBuf::new(),
+        ));
+        ApiCtx {
+            manager,
+            store,
+            ui,
+            data_dir: PathBuf::new(),
+            app_dir: PathBuf::new(),
+        }
+    }
+
+    #[test]
+    fn torrent_save_dialog_uses_torrent_directory_without_category_suffix() {
+        let ctx = torrent_ctx();
+        let info = kaydet_bilgi(&ctx, "magnet:?xt=urn:btih:abc", "", "").unwrap();
+        assert_eq!(info["ana"], "torrent-downloads");
+        assert_eq!(info["klasorler"]["torrent"], "torrent-downloads");
+        let http = kaydet_bilgi(&ctx, "https://example.test/file.zip", "", "").unwrap();
+        assert_eq!(http["ana"], "general-downloads");
+    }
 
     #[test]
     fn servis_hatasi_python_sozlesmesi() {
