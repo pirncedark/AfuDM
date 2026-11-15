@@ -1412,7 +1412,7 @@ fn omniget_403_retries_once_with_preserved_request() {
     assert_ne!(new_gid, gid);
     let calls = f.rpc.calls.lock().unwrap();
     let (_, args) = calls.iter().rev().find(|(n, _)| n == "add_uri").unwrap();
-    assert_eq!(args[1]["dir"], json!(f.root));
+    assert_eq!(args[1]["dir"], json!(f.root.join("saved")));
     assert_eq!(args[1]["out"], "saved.zip");
     let headers = args[1]["header"].as_array().unwrap();
     for value in [

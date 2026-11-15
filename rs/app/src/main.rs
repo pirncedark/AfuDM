@@ -81,6 +81,11 @@ fn main() {
             tray::kur(app.handle())?;
             #[cfg(feature = "test-kapisi")]
             test_kapisi::baslat(kabuk.clone())?;
+            // .torrent/magnet kaydi bu exe'yi gostermiyorsa (eski surum/yol) otomatik duzelt.
+            #[cfg(not(feature = "test-kapisi"))]
+            if entegrasyon::iliskilendirme_durumu() != (true, true) {
+                let _ = entegrasyon::iliskilendir_ac();
+            }
             #[cfg(not(feature = "test-kapisi"))]
             boot::baslat(kabuk);
             #[cfg(feature = "test-kapisi")]
