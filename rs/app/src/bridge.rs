@@ -718,7 +718,9 @@ fn dosya_ac(c: &ApiCtx, gid: &str) -> Sonuc {
                 .and_then(|y| y.parent().map(Path::to_path_buf))
                 .filter(|p| p.is_dir())
                 .or(satir_klasoru)
-                .unwrap_or_else(|| PathBuf::from(c.manager.current_download_dir().unwrap_or_default()));
+                .unwrap_or_else(|| {
+                    PathBuf::from(c.manager.current_download_dir().unwrap_or_default())
+                });
             gezgin_ac(&klasor, false);
         }
     }
