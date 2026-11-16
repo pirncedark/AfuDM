@@ -70,6 +70,8 @@ pub(super) fn collect(m: &Manager) -> Result<Completed> {
                 }
                 let error = if html_error {
                     safety::HTML_ERROR.into()
+                } else if safety::mega_expired(row, &status) {
+                    safety::MEGA_EXPIRED_ERROR.into()
                 } else if state(m)?.auth_required_gids.contains(gid) {
                     "Kaydedilen oturumdaki Cookie/Authorization guvenlik icin silindi. Yeni giris bilgileriyle indirmeyi Yenile.".into()
                 } else {

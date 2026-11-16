@@ -2,6 +2,47 @@
 use super::*;
 use std::io::Read;
 
+pub(super) const MEGA_EXPIRED_ERROR: &str =
+    "MEGA bağlantısının süresi doldu; mega.nz sayfasından indirmeyi yeniden başlat.";
+
+fn is_mega_page(url: &str) -> bool {
+    url::Url::parse(url).ok().is_some_and(|url| {
+        matches!(url.scheme(), "http" | "https")
+            && url.host_str().is_some_and(|host| {
+                ["mega.nz", "www.mega.nz", "mega.co.nz", "www.mega.co.nz"]
+                    .iter()
+                    .any(|domain| host.eq_ignore_ascii_case(domain))
+            })
+    })
+}
+
+pub(super) fn mega_page_source(row: &Json) -> Option<String> {
+    let source = text(&row["source"]);
+    if is_mega_page(source) {
+        return Some(source.to_owned());
+    }
+    options(row)
+        .get("headers")
+        .and_then(Json::as_object)
+        .and_then(|headers| {
+            headers.iter().find_map(|(key, value)| {
+                (key.eq_ignore_ascii_case("referer") && is_mega_page(text(value)))
+                    .then(|| text(value).to_owned())
+            })
+        })
+}
+
+pub(super) fn mega_expired(row: &Json, status: &Json) -> bool {
+    row["kind"] == "http"
+        && text(&row["source"])
+            .to_ascii_lowercase()
+            .contains("userstorage.mega.co.nz")
+        && text(&status["errorCode"]) == "22"
+        && text(&status["errorMessage"])
+            .split(|c: char| !c.is_ascii_digit())
+            .any(|code| code == "403")
+}
+
 pub(super) const HTML_ERROR: &str =
     "Sunucu dosya yerine bir hata sayfası gönderdi. Bağlantıyı tarayıcıda açıp yeniden dene.";
 
@@ -34,6 +75,31 @@ pub(super) fn browser_headers(aria: &mut JsonMap, headers: &mut Vec<String>) {
 pub(super) fn retry_403(m: &Manager, row: &Json, status: &Json) -> Result<bool> {
     let gid = text(&status["gid"]);
     let mut opts = options(row);
+    if mega_expired(row, status) {
+        if opts.get("mega_retry") == Some(&json!(true)) {
+            return Ok(false);
+        }
+        let Some(page) = mega_page_source(row) else {
+            return Ok(false);
+        };
+        opts.insert("mega_retry".into(), json!(true));
+        m.store.update_by_id(
+            row_id(row),
+            &map(json!({"kind":"video","source":page,"options":opts,"status":"queued","gid":null,"error":null})),
+        )?;
+        let retry_row = m
+            .store
+            .by_id(row_id(row))?
+            .ok_or_else(|| invalid("kayit bulunamadi"))?;
+        match launch(m, &retry_row) {
+            Ok(_) => {
+                state(m)?.removed_gids.insert(gid.into());
+                let _ = m.rpc().remove_result(gid);
+                return Ok(true);
+            }
+            Err(_) => return Ok(false),
+        }
+    }
     if row["kind"] != "http"
         || !text(&row["source"]).starts_with("http")
         || text(&status["errorCode"]) != "22"

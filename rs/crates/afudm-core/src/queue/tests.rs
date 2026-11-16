@@ -17,6 +17,8 @@ struct MemoryRpc {
     offline: Mutex<bool>,
     asleep: Mutex<bool>,
     status_reads: Mutex<usize>,
+    alive_override: Mutex<Option<bool>>,
+    generation: Mutex<u64>,
 }
 
 fn manager() -> Manager {
@@ -809,8 +811,14 @@ impl Aria2 for MemoryRpc {
     fn sleeping(&self) -> bool {
         *self.asleep.lock().unwrap()
     }
+    fn generation(&self) -> u64 {
+        *self.generation.lock().unwrap()
+    }
     fn alive(&self) -> bool {
-        !*self.offline.lock().unwrap()
+        self.alive_override
+            .lock()
+            .unwrap()
+            .unwrap_or(!*self.offline.lock().unwrap())
     }
     fn add_uri(&self, uris: &[String], options: Option<&JsonMap>) -> Result<String> {
         self.call("add_uri", vec![json!(uris), json!(options)])?;
@@ -832,7 +840,7 @@ impl Aria2 for MemoryRpc {
             .unwrap()
             .get(gid)
             .cloned()
-            .ok_or_else(|| AfuError::NotFound(gid.into()))
+            .ok_or_else(|| AfuError::Engine(format!("aria2.tellStatus: GID {gid} is not found")))
     }
     fn tell_active(&self, _keys: &[&str]) -> Result<Vec<Json>> {
         if *self.offline.lock().unwrap() {
@@ -1136,8 +1144,110 @@ fn dosya_adi_cozumlemesi_python_ile_ayni_sonuc_verir() {
         "Film_2026"
     );
     assert_eq!(guess_name("https://x.test/a%20b.zip"), "a b.zip");
+    assert_eq!(
+        guess_name("https://downloader.disk.yandex.ru/disk/opaque?filename=MUGEN%20LEGACY%201.1%20(ACTUALIZADO%202018%20)-FP.rar&disposition=attachment"),
+        "MUGEN LEGACY 1.1 (ACTUALIZADO 2018 )-FP.rar"
+    );
+    assert_eq!(
+        guess_name("https://x.test/opaque?response-content-disposition=attachment%3B%20filename%3D%22game%20file.zip%22"),
+        "game file.zip"
+    );
     assert_eq!(clean_title("[METADATA]Ornek"), "Ornek");
     assert_eq!(clean_title("Ornek"), "Ornek");
+}
+
+#[test]
+fn retry_torrent_with_missing_adopt_gid_readds_source_and_updates_gid() {
+    let f = Fixture::new();
+    let id =
+        f.m.store
+            .add(
+                "torrent",
+                "magnet:?xt=urn:btih:abc",
+                Some("Game"),
+                Some(f.root.to_str().unwrap()),
+                Some(&map(json!({"adopt_gid":"missing-gid"}))),
+                None,
+                Some("missing-gid"),
+            )
+            .unwrap();
+
+    let result = retry(&f.m, id).unwrap();
+    let row = f.m.store.by_id(id).unwrap().unwrap();
+
+    assert_eq!(row["gid"], result["gid"]);
+    assert_ne!(row["gid"], "missing-gid");
+    assert!(f
+        .rpc
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|(method, _)| method == "add_uri"));
+}
+
+#[test]
+fn unknown_download_size_has_no_remaining_bytes_value() {
+    let f = Fixture::new();
+    let added = f.add("unknown.zip");
+    let gid = added["gid"].as_str().unwrap();
+    f.rpc.statuses.lock().unwrap().insert(
+        gid.to_string(),
+        json!({"gid":gid,"status":"active","totalLength":"0","completedLength":"0","files":[]}),
+    );
+
+    let item = snapshot(&f.m).unwrap()["items"][0].clone();
+    assert!(item["remaining"].is_null());
+}
+
+#[test]
+fn active_status_keeps_engine_indicator_alive_after_quick_probe_fails() {
+    let f = Fixture::new();
+    let added = f.add("busy.zip");
+    let gid = added["gid"].as_str().unwrap();
+    f.rpc.alive_override.lock().unwrap().replace(false);
+    f.rpc.statuses.lock().unwrap().insert(
+        gid.to_string(),
+        json!({"gid":gid,"status":"active","totalLength":"10","completedLength":"1","files":[]}),
+    );
+
+    let snap = snapshot(&f.m).unwrap();
+    assert_eq!(snap["engine_ok"], true);
+}
+
+#[test]
+fn mega_403_uses_saved_page_source_and_has_single_retry_message() {
+    use super::safety::{mega_page_source, MEGA_EXPIRED_ERROR};
+
+    let row = json!({"source":"https://userstorage.mega.co.nz/temporary","options":{"headers":{"Referer":"https://mega.nz/file/abc"}}});
+    assert_eq!(
+        mega_page_source(&row).as_deref(),
+        Some("https://mega.nz/file/abc")
+    );
+    assert_eq!(
+        mega_page_source(&json!({"source":"https://userstorage.mega.co.nz/temp","options":{}})),
+        None
+    );
+    let f = Fixture::new();
+    let result = add(
+        &f.m,
+        &map(json!({"source":"https://userstorage.mega.co.nz/temp"})),
+    )
+    .unwrap();
+    let gid = result["gid"].as_str().unwrap();
+    f.rpc.statuses.lock().unwrap().insert(
+        gid.to_owned(),
+        json!({"gid":gid,"status":"error","errorCode":"22","errorMessage":"status=403","totalLength":"0","completedLength":"0","files":[]}),
+    );
+
+    sync_aria2(&f.m).unwrap();
+    let row =
+        f.m.store
+            .by_id(result["id"].as_i64().unwrap())
+            .unwrap()
+            .unwrap();
+    assert_eq!(row["error"], MEGA_EXPIRED_ERROR);
+    assert_eq!(row["status"], "error");
 }
 
 #[test]
@@ -1297,6 +1407,64 @@ fn acilis_kurtarmasi_aria2da_olmayan_bitmemis_kaydi_yeniden_ekler() {
     let yeni = text(&satir[0]["gid"]).to_string();
     assert!(f.rpc.statuses.lock().unwrap().contains_key(&yeni));
     assert!(state(&f.m).unwrap().kurtarma_bitti);
+}
+
+#[test]
+fn motor_yeniden_baslayinca_kaybolan_indirmeler_her_seferinde_geri_eklenir() {
+    let f = Fixture::new();
+    let gid = f.add("kesik.bin")["gid"].as_str().unwrap().to_string();
+    sync_aria2(&f.m).unwrap();
+    let add_uri = |f: &Fixture| {
+        f.rpc
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(ad, _)| ad.as_str() == "add_uri")
+            .count()
+    };
+    assert_eq!(add_uri(&f), 1, "motorda olan indirme yeniden eklenmez");
+    // Motor yeniden basladi (cokme/uyanma), oturum bos: indirme motorda yok.
+    f.rpc.statuses.lock().unwrap().clear();
+    *f.rpc.generation.lock().unwrap() += 1;
+    sync_aria2(&f.m).unwrap();
+    assert_eq!(add_uri(&f), 2, "yeniden baslatmadan sonra geri eklendi");
+    assert!(f
+        .rpc
+        .statuses
+        .lock()
+        .unwrap()
+        .contains_key(text(&f.m.store.list(None, 10).unwrap()[0]["gid"])));
+    let _ = gid;
+    // Ikinci yeniden baslatma da kapsanir.
+    f.rpc.statuses.lock().unwrap().clear();
+    *f.rpc.generation.lock().unwrap() += 1;
+    sync_aria2(&f.m).unwrap();
+    assert_eq!(add_uri(&f), 3);
+    // Ayni nesilde tekrar senkron gereksiz ekleme yapmaz.
+    sync_aria2(&f.m).unwrap();
+    assert_eq!(add_uri(&f), 3);
+}
+
+#[test]
+fn motor_hatasiyla_baslatilamayan_indirme_motor_donunce_geri_eklenir() {
+    let f = Fixture::new();
+    let gid = f.add("hata.bin")["gid"].as_str().unwrap().to_string();
+    let id = f.m.store.by_gid(&gid).unwrap().unwrap()["id"]
+        .as_i64()
+        .unwrap();
+    f.m.store
+        .update_by_id(
+            id,
+            &map(json!({"status":"error","error":"indirme baslatilamadi"})),
+        )
+        .unwrap();
+    f.rpc.statuses.lock().unwrap().clear();
+    *f.rpc.generation.lock().unwrap() += 1;
+    sync_aria2(&f.m).unwrap();
+    let row = f.m.store.by_id(id).unwrap().unwrap();
+    assert_eq!(row["status"], "active");
+    assert!(row["error"].is_null());
 }
 
 #[test]

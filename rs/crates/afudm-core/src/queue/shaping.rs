@@ -59,7 +59,7 @@ pub(super) fn aria(m: &Manager, status: &Json) -> Result<Json> {
             .unwrap_or("")
     };
     let mut item = map(
-        json!({"id":row.get("id"),"gid":gid,"kind":if torrent{"torrent"}else{row.get("kind").and_then(Json::as_str).unwrap_or("http")},"status":if auth{"error"}else{status.get("status").and_then(Json::as_str).unwrap_or("unknown")},"title":title,"filename":name,"totalLength":total,"completedLength":done,"progress":if total!=0{rounded(done as f64/total as f64*100.0,1)}else{0.0},"downloadSpeed":speed,"avgSpeed":if elapsed>0.0 && done!=0{(done as f64/elapsed) as i64}else{0},"elapsed":elapsed as i64,"remaining":(total-done).max(0),"uploadSpeed":number(&status["uploadSpeed"]),"connections":number(&status["connections"]),"numSeeders":number(&status["numSeeders"]),"seeder":status["seeder"]=="true","eta":if speed>0 && total>done{(total-done)/speed}else{0},"dir":status.get("dir").cloned().unwrap_or(json!("")),"errorMessage":error,"infoHash":status.get("infoHash").cloned().unwrap_or(json!("")),"numPieces":number(&status["numPieces"]),"source":row.get("source").cloned().unwrap_or(json!("")),"uploadLength":number(&status["uploadLength"]),"ratio":if done!=0{rounded(number(&status["uploadLength"]) as f64/done as f64,3)}else{0.0}}),
+        json!({"id":row.get("id"),"gid":gid,"kind":if torrent{"torrent"}else{row.get("kind").and_then(Json::as_str).unwrap_or("http")},"status":if auth{"error"}else{status.get("status").and_then(Json::as_str).unwrap_or("unknown")},"title":title,"filename":name,"totalLength":total,"completedLength":done,"progress":if total!=0{rounded(done as f64/total as f64*100.0,1)}else{0.0},"downloadSpeed":speed,"avgSpeed":if elapsed>0.0 && done!=0{(done as f64/elapsed) as i64}else{0},"elapsed":elapsed as i64,"remaining":if total>0{json!((total-done).max(0))}else{Json::Null},"uploadSpeed":number(&status["uploadSpeed"]),"connections":number(&status["connections"]),"numSeeders":number(&status["numSeeders"]),"seeder":status["seeder"]=="true","eta":if speed>0 && total>done{(total-done)/speed}else{0},"dir":status.get("dir").cloned().unwrap_or(json!("")),"errorMessage":error,"infoHash":status.get("infoHash").cloned().unwrap_or(json!("")),"numPieces":number(&status["numPieces"]),"source":row.get("source").cloned().unwrap_or(json!("")),"uploadLength":number(&status["uploadLength"]),"ratio":if done!=0{rounded(number(&status["uploadLength"]) as f64/done as f64,3)}else{0.0}}),
     );
     if torrent {
         item.extend(crate::torrent::snapshot_alanlari(m, status));
@@ -228,8 +228,22 @@ pub(super) fn snapshot(m: &Manager) -> Result<Json> {
     let stat = m.rpc().global_stat().unwrap_or(json!({}));
     let lang = language(text(&setting(m, "language", json!("auto"))?));
     Ok(
-        json!({"items":items,"stat":{"downloadSpeed":number(&stat["downloadSpeed"])+crate::video::hiz_toplami(m) as i64,"uploadSpeed":number(&stat["uploadSpeed"]),"numActive":number(&stat["numActive"])+crate::video::aktif_sayisi(m) as i64,"numWaiting":number(&stat["numWaiting"]),"numStopped":number(&stat["numStopped"])},"settings":m.store.all_settings()?,"engine_ok":m.rpc().alive(),"download_dir":current_download_dir(m)?,"lang":lang,"last_error":state(m)?.last_error,"automation":m.store.automation_jobs("",200)?}),
+        json!({"items":items,"stat":{"downloadSpeed":number(&stat["downloadSpeed"])+crate::video::hiz_toplami(m) as i64,"uploadSpeed":number(&stat["uploadSpeed"]),"numActive":number(&stat["numActive"])+crate::video::aktif_sayisi(m) as i64,"numWaiting":number(&stat["numWaiting"]),"numStopped":number(&stat["numStopped"])},"settings":m.store.all_settings()?,"engine_ok":engine_ok(m),"download_dir":current_download_dir(m)?,"lang":lang,"last_error":state(m)?.last_error,"automation":m.store.automation_jobs("",200)?}),
     )
+}
+
+fn engine_ok(m: &Manager) -> bool {
+    let rpc = m.rpc();
+    if rpc.alive() {
+        return true;
+    }
+    rpc.tell_active(&[]).ok().is_some_and(|active| {
+        active.iter().any(|status| {
+            text(&status["status"]) == "active"
+                && !text(&status["gid"]).is_empty()
+                && rpc.tell_status(text(&status["gid"]), &[]).is_ok()
+        })
+    })
 }
 
 pub(super) fn track_previews(m: &Manager, live: &[Json]) -> Result<()> {
