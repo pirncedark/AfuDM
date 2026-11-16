@@ -107,6 +107,10 @@ pub trait Aria2: Send + Sync {
     fn sleeping(&self) -> bool {
         false
     }
+    /// Motor sureci her (yeniden) basladiginda artan sayac; kaybolan indirmelerin kurtarmasini tetikler.
+    fn generation(&self) -> u64 {
+        0
+    }
     fn add_uri(&self, uris: &[String], options: Option<&JsonMap>) -> Result<String>;
     fn add_torrent(&self, torrent_b64: &str, options: Option<&JsonMap>) -> Result<String>;
     fn add_metalink(&self, metalink_b64: &str, options: Option<&JsonMap>) -> Result<Vec<String>>;

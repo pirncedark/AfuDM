@@ -32,6 +32,8 @@ pub struct State {
     pub cookies: HashMap<i64, Vec<Json>>,
     /// Acilis kurtarmasi (kesilenleri_kurtar) motor ilk kez uyanik senkronda bir kez calisir.
     pub kurtarma_bitti: bool,
+    /// Kurtarmanin calistigi son motor nesli (motor yeniden baslayinca kurtarma tekrar calisir).
+    pub kurtarma_nesli: Option<u64>,
     pub last_error: String,
     pub settings_errors: Vec<Json>,
     pub started: bool,
@@ -887,7 +889,8 @@ fn kesilenleri_kurtar(m: &Manager) -> Result<usize> {
         let toplam = number(&row["total_bytes"]);
         let tamam = toplam > 0 && number(&row["done_bytes"]) >= toplam;
         if !["http", "torrent"].contains(&kind)
-            || !["active", "waiting", "paused"].contains(&status)
+            || !(["active", "waiting", "paused"].contains(&status)
+                || (status == "error" && text(&row["error"]) == "indirme baslatilamadi"))
             || gid.is_empty()
             || gid.starts_with("yt:")
             || gid.starts_with("row:")
@@ -902,6 +905,12 @@ fn kesilenleri_kurtar(m: &Manager) -> Result<usize> {
             Err(_) => continue,
         };
         let yeni_gid = text(&yeni["gid"]).to_owned();
+        if status == "error" {
+            m.store.update_by_gid(
+                &yeni_gid,
+                &map(json!({"status":"active","error":null,"finished_at":null})),
+            )?;
+        }
         if status == "paused" {
             m.rpc().pause(&yeni_gid, true)?;
             m.store
@@ -925,9 +934,15 @@ pub fn sync_aria2(m: &Manager) -> Result<()> {
             .lock()
             .map_err(|_| AfuError::Other("yonetici kilidi kullanilamiyor".into()))?;
         // Uyuyan motoru uyandirmaz; kurtarma motor uyanikken ilk senkronda bir kez calisir.
-        let kurtarma_bekliyor = !state(m)?.kurtarma_bitti;
+        // Motor her yeniden basladiginda (cokme, uyanma, elle yeniden baslatma) motorda kaybolan
+        // bitmemis indirmeler veritabanindan yeniden eklenir.
+        let nesil = m.rpc().generation();
+        let kurtarma_bekliyor =
+            !state(m)?.kurtarma_bitti || state(m)?.kurtarma_nesli != Some(nesil);
         if kurtarma_bekliyor && !m.rpc().sleeping() && kesilenleri_kurtar(m).is_ok() {
-            state(m)?.kurtarma_bitti = true;
+            let mut st = state(m)?;
+            st.kurtarma_bitti = true;
+            st.kurtarma_nesli = Some(nesil);
         }
         sync::collect(m)?
     };

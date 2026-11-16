@@ -283,6 +283,29 @@ fn filename_from_url(url: &str) -> Option<String> {
     (!guvenli.is_empty()).then_some(guvenli)
 }
 
+/// Download links sometimes carry the suggested name in query data instead of the URL path.
+fn filename_from_query(url: &str) -> Option<String> {
+    let parsed = url::Url::parse(url).ok()?;
+    let pairs = parsed.query_pairs().collect::<Vec<_>>();
+    for name in pairs
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case("filename"))
+        .map(|(_, value)| value.to_string())
+        .into_iter()
+        .chain(pairs.iter().find_map(|(key, value)| {
+            key.eq_ignore_ascii_case("response-content-disposition")
+                .then(|| filename_from_content_disposition(value))
+                .flatten()
+        }))
+    {
+        let name = guvenli_dosya_adi(&name);
+        if !name.is_empty() {
+            return Some(name);
+        }
+    }
+    None
+}
+
 /// Python resolve_filename: magnet dn, Content-Disposition, URL, MIME; sonuc guvenli ad.
 pub(crate) fn resolve_filename(
     url: &str,
@@ -312,6 +335,9 @@ pub(crate) fn resolve_filename(
         .and_then(filename_from_content_disposition)
         .map(|a| guvenli_dosya_adi(&a))
         .filter(|a| !a.is_empty());
+    if ad.is_none() {
+        ad = filename_from_query(url);
+    }
     if ad.is_none() {
         ad = filename_from_url(url);
     }

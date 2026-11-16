@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 struct State {
     daemon: Aria2Daemon,
     sleeping: bool,
+    generation: u64,
     last_recovery: Option<Instant>,
     global_options: JsonMap,
 }
@@ -26,7 +27,11 @@ impl State {
         {
             // The mutex serializes callers; count failed attempts too to prevent a restart storm.
             self.last_recovery = Some(Instant::now());
-            if self.daemon.start(Duration::from_secs(20)).is_ok()
+            let started = self.daemon.start(Duration::from_secs(20)).is_ok();
+            if started {
+                self.generation += 1;
+            }
+            if started
                 && (self.global_options.is_empty()
                     || self
                         .daemon
@@ -60,6 +65,7 @@ impl IdleRpc {
             state: Mutex::new(State {
                 daemon,
                 sleeping: false,
+                generation: 0,
                 last_recovery: None,
                 global_options: JsonMap::new(),
             }),
@@ -105,6 +111,7 @@ impl IdleRpc {
         let mut state = self.lock()?;
         state.daemon.stop()?;
         state.daemon.start(Duration::from_secs(20))?;
+        state.generation += 1;
         state.sleeping = false;
         Ok(())
     }
@@ -127,6 +134,7 @@ impl IdleRpc {
                 }
                 _ => {
                     state.daemon.start(Duration::from_secs(20))?;
+                    state.generation += 1;
                     state.sleeping = false;
                     (self.on_wake)();
                 }
@@ -142,6 +150,7 @@ impl Aria2 for IdleRpc {
         let mut state = self.lock()?;
         if state.sleeping {
             state.daemon.start(Duration::from_secs(20))?;
+            state.generation += 1;
             state.sleeping = false;
             (self.on_wake)();
         }
@@ -149,6 +158,9 @@ impl Aria2 for IdleRpc {
     }
     fn sleeping(&self) -> bool {
         self.state.lock().map(|s| s.sleeping).unwrap_or(false)
+    }
+    fn generation(&self) -> u64 {
+        self.state.lock().map(|s| s.generation).unwrap_or(0)
     }
     fn alive(&self) -> bool {
         self.state

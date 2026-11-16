@@ -101,6 +101,14 @@ fn torrent_hatasi(e: AfuError) -> AfuError {
     }
 }
 
+fn gid_not_found(error: &AfuError) -> bool {
+    if matches!(error, AfuError::NotFound(_)) {
+        return true;
+    }
+    let message = error.to_string().to_ascii_lowercase();
+    message.contains("gid") && message.contains("not found")
+}
+
 fn torrent_kok_adi(veri: &[u8]) -> Option<String> {
     let bencode::Bc::Sozluk(ust) = bencode::coz(veri).ok()? else {
         return None;
@@ -968,6 +976,14 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
                     break;
                 }
             }
+        }
+    }
+
+    if let Some(adopt) = adopt_gid.as_deref() {
+        match rpc.tell_status(adopt, &["gid"]) {
+            Ok(_) => {}
+            Err(error) if gid_not_found(&error) => adopt_gid = None,
+            Err(error) => return Err(torrent_hatasi(error)),
         }
     }
 
