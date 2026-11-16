@@ -15,7 +15,10 @@ struct State {
 
 impl State {
     fn call(&mut self, method: &str, params: Vec<Json>) -> Result<Json> {
-        let (mut result, refused) = self.daemon.rpc.call_with_refusal(method, params.clone());
+        let (mut result, refused) =
+            self.daemon
+                .rpc
+                .call_with_refusal(method, params.clone(), rpc_timeout(method));
         if refused
             && !self
                 .last_recovery
@@ -51,6 +54,26 @@ impl State {
             }
         }
         result
+    }
+}
+
+fn rpc_timeout(method: &str) -> Duration {
+    match method {
+        "aria2.tellActive"
+        | "aria2.tellWaiting"
+        | "aria2.tellStopped"
+        | "aria2.tellStatus"
+        | "aria2.forcePause"
+        | "aria2.pause"
+        | "aria2.unpause"
+        | "aria2.pauseAll"
+        | "aria2.unpauseAll"
+        | "aria2.forceRemove"
+        | "aria2.remove"
+        | "aria2.removeDownloadResult"
+        | "aria2.purgeDownloadResult"
+        | "aria2.saveSession" => Duration::from_millis(750),
+        _ => Duration::from_secs(15),
     }
 }
 
@@ -175,6 +198,14 @@ impl Aria2 for IdleRpc {
 mod tests {
     use super::*;
     use std::{fs, net::TcpListener};
+
+    #[test]
+    fn blocking_queue_rpc_calls_use_a_short_timeout() {
+        assert_eq!(rpc_timeout("aria2.tellActive"), Duration::from_millis(750));
+        assert_eq!(rpc_timeout("aria2.forcePause"), Duration::from_millis(750));
+        assert_eq!(rpc_timeout("aria2.forceRemove"), Duration::from_millis(750));
+        assert_eq!(rpc_timeout("aria2.addUri"), Duration::from_secs(15));
+    }
 
     fn engine() -> (tempfile::TempDir, IdleRpc) {
         let dir = tempfile::tempdir().unwrap();

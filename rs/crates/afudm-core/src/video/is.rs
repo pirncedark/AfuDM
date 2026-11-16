@@ -813,7 +813,7 @@ pub(crate) fn durdur(job: &Arc<Mutex<VideoJob>>) {
         j.pid
     };
     if pid != 0 {
-        surec_agaci_oldur(pid);
+        std::thread::spawn(move || surec_agaci_oldur(pid));
     }
 }
 

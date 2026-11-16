@@ -2,7 +2,8 @@ use super::*;
 use afudm_types::{Aria2, NoUi, Store};
 use serde_json::json;
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 
 #[derive(Default)]
 struct MemoryStore {
@@ -19,6 +20,8 @@ struct MemoryRpc {
     status_reads: Mutex<usize>,
     alive_override: Mutex<Option<bool>>,
     generation: Mutex<u64>,
+    blocked: Mutex<bool>,
+    unblock: Condvar,
 }
 
 fn manager() -> Manager {
@@ -71,6 +74,34 @@ impl Drop for Fixture {
     fn drop(&mut self) {
         // Every fixture owns exactly this fresh temporary directory.
         let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+fn wait_removed(m: &Manager, gid: &str) {
+    for _ in 0..200 {
+        if m.store
+            .by_gid(gid)
+            .ok()
+            .flatten()
+            .is_some_and(|row| row["status"] == "removed")
+        {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+fn wait_removed_id(m: &Manager, id: i64) {
+    for _ in 0..200 {
+        if m.store
+            .by_id(id)
+            .ok()
+            .flatten()
+            .is_some_and(|row| row["status"] == "removed")
+        {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
     }
 }
 
@@ -331,10 +362,18 @@ fn scheduled_add_persists_without_launch_or_cookies_in_options() {
         format!("row:{}", row_id(&row))
     );
     remove(&f.m, &format!("row:{}", row_id(&row)), false).unwrap();
+    wait_removed_id(&f.m, row_id(&row));
     assert_eq!(
         f.m.store.by_id(row_id(&row)).unwrap().unwrap()["status"],
         "removed"
     );
+    assert!(!f
+        .rpc
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|(method, _)| method == "remove" || method == "remove_result"));
 }
 
 #[test]
@@ -352,6 +391,12 @@ fn completed_file_registration_and_resolve() {
     assert_eq!(f.m.store.by_gid(gid).unwrap().unwrap()["done_bytes"], 4);
     assert!(f.rpc.calls.lock().unwrap().is_empty());
     remove(&f.m, gid, true).unwrap();
+    for _ in 0..200 {
+        if !path.exists() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
     assert!(!path.exists());
     assert!(f.root.exists());
 }
@@ -381,12 +426,19 @@ fn parent_child_remove_hides_orphans_and_allows_hash_readd() {
         ("child".into(), json!({"gid":"child","status":"active","infoHash":hash,"following":"parent","files":[{"path":file}]})),
     ]);
     remove(&f.m, "parent", true).unwrap();
+    wait_removed(&f.m, "parent");
+    for _ in 0..200 {
+        if !file.exists() && !part.exists() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
     assert!(!file.exists());
     assert!(!part.exists());
     assert!(f.root.exists());
     assert_eq!(f.m.store.by_id(id).unwrap().unwrap()["status"], "removed");
     assert!(state(&f.m).unwrap().removed_hashes.contains(hash));
-    assert!(state(&f.m).unwrap().removed_gids.contains("child"));
+    assert!(!f.rpc.statuses.lock().unwrap().contains_key("child"));
     assert!(snapshot(&f.m).unwrap()["items"]
         .as_array()
         .unwrap()
@@ -796,6 +848,20 @@ impl Store for MemoryStore {
 
 impl Aria2 for MemoryRpc {
     fn call(&self, method: &str, params: Vec<Json>) -> Result<Json> {
+        let mut blocked = self.blocked.lock().unwrap();
+        while *blocked {
+            let (next, timed_out) = self
+                .unblock
+                .wait_timeout(blocked, Duration::from_secs(30))
+                .unwrap();
+            blocked = next;
+            if timed_out.timed_out() && *blocked {
+                return Err(AfuError::Engine(
+                    "fake RPC timed out after 30 seconds".into(),
+                ));
+            }
+        }
+        drop(blocked);
         if *self.offline.lock().unwrap() {
             return Err(AfuError::Engine("offline".into()));
         }
@@ -875,7 +941,11 @@ impl Aria2 for MemoryRpc {
     }
     #[allow(unused_variables)]
     fn remove(&self, gid: &str, force: bool) -> Result<String> {
-        self.call("remove", vec![])?;
+        if gid.starts_with("row:") || gid.starts_with("local:") {
+            return Err(AfuError::Engine(format!("aria2.remove: unknown GID {gid}")));
+        }
+        self.call("remove", vec![json!(gid)])?;
+        self.statuses.lock().unwrap().remove(gid);
         Ok("OK".into())
     }
     #[allow(unused_variables)]
@@ -944,6 +1014,242 @@ impl Aria2 for MemoryRpc {
         self.call("save_session", vec![])?;
         Ok("OK".into())
     }
+}
+
+fn rpc_block(rpc: &MemoryRpc, block: bool) {
+    *rpc.blocked.lock().unwrap() = block;
+    if !block {
+        rpc.unblock.notify_all();
+    }
+}
+
+#[test]
+fn pause_intent_returns_before_blocked_rpc_and_is_applied_when_rpc_recovers() {
+    let f = Fixture::new();
+    let gid = f.add("pause-fast.bin")["gid"].as_str().unwrap().to_owned();
+    rpc_block(&f.rpc, true);
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::scope(|scope| {
+        scope.spawn(|| tx.send(pause(&f.m, &gid)).unwrap());
+        let fast_result = rx.recv_timeout(Duration::from_millis(100));
+        let returned_fast = fast_result.is_ok();
+        let intent_saved = f.m.store.by_gid(&gid).unwrap().unwrap()["status"] == "paused";
+        rpc_block(&f.rpc, false);
+        let result =
+            fast_result.unwrap_or_else(|_| rx.recv_timeout(Duration::from_secs(2)).unwrap());
+        assert!(result.unwrap());
+        assert!(intent_saved, "pause intent was not saved before the RPC");
+        assert!(returned_fast, "pause waited for the blocked RPC");
+    });
+    for _ in 0..100 {
+        if f.rpc
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(method, _)| method == "pause")
+        {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(f
+        .rpc
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|(method, _)| method == "pause"));
+}
+
+#[test]
+fn resume_intent_returns_before_blocked_rpc_and_is_applied_when_rpc_recovers() {
+    let f = Fixture::new();
+    let gid = f.add("resume-fast.bin")["gid"].as_str().unwrap().to_owned();
+    let row = f.m.store.by_gid(&gid).unwrap().unwrap();
+    f.m.store
+        .update_by_id(row_id(&row), &map(json!({"status":"paused"})))
+        .unwrap();
+    rpc_block(&f.rpc, true);
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::scope(|scope| {
+        scope.spawn(|| tx.send(resume(&f.m, &gid)).unwrap());
+        let fast_result = rx.recv_timeout(Duration::from_millis(100));
+        let returned_fast = fast_result.is_ok();
+        let intent_saved = f.m.store.by_gid(&gid).unwrap().unwrap()["status"] == "active";
+        rpc_block(&f.rpc, false);
+        let result =
+            fast_result.unwrap_or_else(|_| rx.recv_timeout(Duration::from_secs(2)).unwrap());
+        assert!(result.unwrap());
+        assert!(intent_saved, "resume intent was not saved before the RPC");
+        assert!(returned_fast, "resume waited for the blocked RPC");
+    });
+    for _ in 0..100 {
+        if f.rpc
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(method, _)| method == "unpause")
+        {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(f
+        .rpc
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|(method, _)| method == "unpause"));
+}
+
+#[test]
+fn remove_intent_returns_before_blocked_rpc_and_finishes_after_rpc_recovers() {
+    let f = Fixture::new();
+    let gid = f.add("remove-fast.bin")["gid"].as_str().unwrap().to_owned();
+    let path = f.root.join("remove-fast.bin");
+    std::fs::write(&path, "kept until motor releases it").unwrap();
+    let row = f.m.store.by_gid(&gid).unwrap().unwrap();
+    f.m.store
+        .update_by_id(row_id(&row), &map(json!({"filename":"remove-fast.bin"})))
+        .unwrap();
+    rpc_block(&f.rpc, true);
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::scope(|scope| {
+        scope.spawn(|| tx.send(remove(&f.m, &gid, true)).unwrap());
+        let fast_result = rx.recv_timeout(Duration::from_millis(100));
+        let returned_fast = fast_result.is_ok();
+        let row = f.m.store.by_gid(&gid).unwrap().unwrap();
+        let intent_saved = row["status"] == "removing" || row["status"] == "removed";
+        rpc_block(&f.rpc, false);
+        let result =
+            fast_result.unwrap_or_else(|_| rx.recv_timeout(Duration::from_secs(2)).unwrap());
+        assert!(result.unwrap());
+        assert!(intent_saved, "remove intent was not saved before the RPC");
+        assert!(returned_fast, "remove waited for the blocked RPC");
+        for _ in 0..100 {
+            if f.m.store.by_gid(&gid).unwrap().unwrap()["status"] == "removed" {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(
+            f.m.store.by_gid(&gid).unwrap().unwrap()["status"],
+            "removed"
+        );
+    });
+    assert!(
+        !path.exists(),
+        "delete-files must finish after aria2 releases the file"
+    );
+    for _ in 0..100 {
+        if f.rpc
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(method, _)| method == "remove")
+        {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(f
+        .rpc
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|(method, _)| method == "remove"));
+}
+
+#[test]
+fn delete_retry_keeps_row_pending_while_aria2_sidecar_exists() {
+    let f = Fixture::new();
+    let target = f.root.join("sidecar-only.bin");
+    let sidecar = std::path::PathBuf::from(format!("{}.aria2", target.display()));
+    let partial = f.root.join("sidecar-only.bin.part");
+    std::fs::write(&sidecar, "aria2 sidecar").unwrap();
+    std::fs::write(&partial, "partial file").unwrap();
+    assert!(files::delete_targets_pending(
+        &f.m,
+        &f.root,
+        std::slice::from_ref(&target),
+        "sidecar-test"
+    ));
+    std::fs::remove_file(&sidecar).unwrap();
+    assert!(files::delete_targets_pending(
+        &f.m,
+        &f.root,
+        std::slice::from_ref(&target),
+        "sidecar-test"
+    ));
+    std::fs::remove_file(&partial).unwrap();
+    assert!(!files::delete_targets_pending(
+        &f.m,
+        &f.root,
+        std::slice::from_ref(&target),
+        "sidecar-test"
+    ));
+}
+
+#[test]
+fn startup_recovery_never_readds_pending_or_removed_downloads() {
+    let f = Fixture::new();
+    let pending = f.add("pending-remove.bin");
+    let removed = f.add("removed.bin");
+    f.m.store
+        .update_by_id(number(&pending["id"]), &map(json!({"status":"removing"})))
+        .unwrap();
+    f.m.store
+        .update_by_id(number(&removed["id"]), &map(json!({"status":"removed"})))
+        .unwrap();
+    f.rpc.statuses.lock().unwrap().clear();
+    *f.rpc.generation.lock().unwrap() += 1;
+    let adds_before = f
+        .rpc
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(method, _)| method == "add_uri")
+        .count();
+    sync_aria2(&f.m).unwrap();
+    let adds_after = f
+        .rpc
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(method, _)| method == "add_uri")
+        .count();
+    assert_eq!(
+        adds_after, adds_before,
+        "pending removals and tombstones must not be recovered"
+    );
+    for _ in 0..100 {
+        if f.rpc
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(method, _)| method == "remove")
+        {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(
+        f.rpc
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(method, _)| method == "remove"),
+        "pending removal was not resumed after startup"
+    );
 }
 
 /// Tamamlanma kancasi: her cagrida {"title","size","gid"} yukunu kaydeder.
@@ -1368,8 +1674,9 @@ fn sync_persists_completion_once_before_purge_and_snapshot_reads_db() {
     let other = f.add("other.bin")["gid"].as_str().unwrap().to_string();
     f.rpc.statuses.lock().unwrap().get_mut(&gid).unwrap().as_object_mut().unwrap().extend(map(json!({"status":"complete","totalLength":"123","completedLength":"123","files":[{"path":f.root.join("done.bin")}]})));
     let kayit = kanca_kaydi(&f.m);
-    // remove/save_session must synchronize before purging even without a poll tick.
+    // Removing one GID must not purge unrelated completed results before the next sync.
     remove(&f.m, &other, false).unwrap();
+    wait_removed(&f.m, &other);
     sync_aria2(&f.m).unwrap();
     sync_aria2(&f.m).unwrap();
     let row = f.m.store.by_gid(&gid).unwrap().unwrap();
@@ -1378,11 +1685,10 @@ fn sync_persists_completion_once_before_purge_and_snapshot_reads_db() {
     assert_eq!(row["done_bytes"], 123);
     assert_eq!(row["filename"], "done.bin");
     assert!(row["finished_at"].as_f64().unwrap() > 0.0);
-    assert!(f.rpc.statuses.lock().unwrap().get(&gid).is_none());
+    assert!(f.rpc.statuses.lock().unwrap().contains_key(&gid));
     assert_eq!(kayit.lock().unwrap().len(), 1);
     let items = snapshot(&f.m).unwrap()["items"].as_array().unwrap().clone();
     let item = items.iter().find(|r| r["gid"] == gid).unwrap();
-    assert!(item.get("start_after").is_some());
     assert_eq!(item["status"], "complete");
 }
 

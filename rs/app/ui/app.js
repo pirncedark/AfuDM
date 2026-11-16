@@ -794,8 +794,31 @@ document.querySelectorAll(".filter").forEach((button) => {
 });
 $("search").oninput = (event) => { state.search = event.target.value; renderList(); };
 
-$("pauseAll").onclick = () => call("control", "pause_all", "", false).catch((e) => toast(e.message, true));
-$("resumeAll").onclick = () => call("control", "resume_all", "", false).catch((e) => toast(e.message, true));
+async function topluKontrol(act) {
+  const hedef = act === "pause_all" ? "paused" : "active";
+  const onceki = new Map();
+  state.items.forEach((item) => {
+    if (act === "pause_all" ? ["active", "waiting", "queued"].includes(item.status) : item.status === "paused") {
+      onceki.set(item.gid, item.status);
+      item.status = hedef;
+    }
+  });
+  renderCounts();
+  renderList();
+  try {
+    await call("control", act, "", false);
+  } catch (err) {
+    state.items.forEach((item) => {
+      if (onceki.has(item.gid)) item.status = onceki.get(item.gid);
+    });
+    renderCounts();
+    renderList();
+    toast(err.message, true);
+  }
+}
+
+$("pauseAll").onclick = () => topluKontrol("pause_all");
+$("resumeAll").onclick = () => topluKontrol("resume_all");
 $("clearDone").onclick = async () => {
   try {
     const out = await call("clear_finished");
@@ -962,6 +985,33 @@ if (removeSelBtn) {
   };
 }
 
+function uiKaldir(gids) {
+  const secilen = new Set(gids);
+  const onceki = state.items.filter((item) => secilen.has(item.gid));
+  state.items = state.items.filter((item) => !secilen.has(item.gid));
+  onceki.forEach((item) => {
+    state.lastDone.delete(item.gid);
+    state.selectedGids.delete(item.gid);
+  });
+  if (state.selected && secilen.has(state.selected)) state.selected = null;
+  renderCounts();
+  renderList();
+  renderDrawer();
+  updateBulkRemoveBtn();
+  return onceki;
+}
+
+function uiGeriAl(items) {
+  const present = new Set(state.items.map((item) => item.gid));
+  items.forEach((item) => {
+    if (!present.has(item.gid)) state.items.push(item);
+  });
+  renderCounts();
+  renderList();
+  renderDrawer();
+  updateBulkRemoveBtn();
+}
+
 $("remGo").onclick = async () => {
   const mode = $("remGo").dataset.mode || "single";
   const delFiles = $("remFiles").checked;
@@ -969,32 +1019,28 @@ $("remGo").onclick = async () => {
   if (mode === "bulk") {
     const gids = Array.from(state.selectedGids);
     if (!gids.length) return;
-    let removedCount = 0;
-    for (const gid of gids) {
-      try {
-        await call("control", "remove", gid, { delete_files: delFiles });
-        removedCount++;
-        state.items = state.items.filter((i) => i.gid !== gid);
-        state.lastDone.delete(gid);
-        if (state.selected === gid) state.selected = null;
-        state.selectedGids.delete(gid);
-      } catch (_) {}
-    }
+    const previous = uiKaldir(gids);
     closeVeil("removeVeil");
-    renderCounts();
-    renderList();
-    renderDrawer();
-    updateBulkRemoveBtn();
+    const results = await Promise.allSettled(gids.map((gid) =>
+      call("control", "remove", gid, { delete_files: delFiles })
+    ));
+    const failed = new Set();
+    results.forEach((result, index) => {
+      if (result.status === "rejected") failed.add(gids[index]);
+    });
+    uiGeriAl(previous.filter((item) => failed.has(item.gid)));
+    const removedCount = gids.length - failed.size;
     if (removedCount > 0) {
       toast(t("toast.bulkRemoved", { n: removedCount }));
-    } else {
-      toast(t("err.failed"), true);
     }
+    if (failed.size > 0) toast(t("err.failed"), true);
     return;
   }
 
   const gid = $("remGo").dataset.gid;
   if (!gid) return;
+  const previous = uiKaldir([gid]);
+  closeVeil("removeVeil");
   let isOrphan = false;
   try {
     const res = await call("control", "remove", gid, Boolean($("remFiles").checked));
@@ -1004,22 +1050,11 @@ $("remGo").onclick = async () => {
     if (msg.includes("kayit bulunamadi") || msg.includes("not found") || msg.includes("404")) {
       isOrphan = true;
     } else {
+      uiGeriAl(previous);
       toast(err.message, true);
       return;
     }
   }
-
-  state.items = state.items.filter((i) => i.gid !== gid);
-  state.lastDone.delete(gid);
-  state.selectedGids.delete(gid);
-  if (state.selected === gid) state.selected = null;
-
-  closeVeil("removeVeil");
-  renderCounts();
-  renderList();
-  renderDrawer();
-  updateBulkRemoveBtn();
-
   toast(isOrphan ? t("toast.orphanCleared") : t("toast.removed"));
 };
 

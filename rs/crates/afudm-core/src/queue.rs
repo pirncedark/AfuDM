@@ -18,7 +18,8 @@ use afudm_types::{AfuError, Json, JsonMap, Result};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::MutexGuard;
+use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::time::Duration;
 
 /// Shared queue state. D may use removed_hashes and register video snapshots/stop callbacks.
 #[derive(Default)]
@@ -40,6 +41,174 @@ pub struct State {
     pub last_error: String,
     pub settings_errors: Vec<Json>,
     pub started: bool,
+}
+
+static CONTROL_WORKERS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+static ALL_CONTROL_WORKERS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+fn background_manager(m: &Manager) -> Manager {
+    Manager::new(
+        m.store.clone(),
+        m.rpc(),
+        m.ui.clone(),
+        m.data_dir.clone(),
+        m.app_dir.clone(),
+    )
+}
+
+fn action_key(m: &Manager, gid: &str) -> String {
+    format!("{}|{gid}", m.data_dir.display())
+}
+
+fn control_action(row: &Json) -> Option<String> {
+    options(row)
+        .get("_afudm_pending_control")
+        .and_then(Json::as_str)
+        .map(str::to_owned)
+}
+
+fn set_control_intent(m: &Manager, row: &Json, action: &str) -> Result<()> {
+    let mut opts = options(row);
+    opts.insert("_afudm_pending_control".into(), json!(action));
+    m.store.update_by_id(
+        row_id(row),
+        &map(json!({
+            "status": if action == "pause" { "paused" } else { "active" },
+            "options": opts
+        })),
+    )
+}
+
+fn ensure_control_worker(m: &Manager, gid: &str) {
+    let key = action_key(m, gid);
+    let workers = CONTROL_WORKERS.get_or_init(|| Mutex::new(HashSet::new()));
+    let Ok(mut active) = workers.lock() else {
+        return;
+    };
+    if !active.insert(key.clone()) {
+        return;
+    }
+    drop(active);
+    let worker = background_manager(m);
+    std::thread::spawn(move || {
+        while let Ok(Some(row)) = worker.store.by_gid(gid_for_key(&key)) {
+            let Some(action) = control_action(&row) else {
+                break;
+            };
+            let result = if action == "pause" {
+                worker.rpc().pause(text(&row["gid"]), true)
+            } else {
+                worker.rpc().unpause(text(&row["gid"]))
+            };
+            if result.is_ok() {
+                let Ok(Some(current)) = worker.store.by_gid(text(&row["gid"])) else {
+                    break;
+                };
+                if control_action(&current).as_deref() == Some(action.as_str()) {
+                    let mut opts = options(&current);
+                    opts.remove("_afudm_pending_control");
+                    let _ = worker.store.update_by_id(
+                        row_id(&current),
+                        &map(json!({
+                            "status": if action == "pause" { "paused" } else { "active" },
+                            "options": opts
+                        })),
+                    );
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        if let Ok(mut set) = workers.lock() {
+            set.remove(&key);
+        }
+    });
+}
+
+// The key format ends with the GID; data_dir may itself contain `|`, so only
+// the suffix after the final delimiter is used as the persisted identifier.
+fn gid_for_key(key: &str) -> &str {
+    key.rsplit_once('|').map_or(key, |(_, gid)| gid)
+}
+
+fn ensure_all_control_worker(m: &Manager) {
+    let key = m.data_dir.to_string_lossy().into_owned();
+    let workers = ALL_CONTROL_WORKERS.get_or_init(|| Mutex::new(HashSet::new()));
+    let Ok(mut active) = workers.lock() else {
+        return;
+    };
+    if !active.insert(key.clone()) {
+        return;
+    }
+    drop(active);
+    let worker = background_manager(m);
+    std::thread::spawn(move || {
+        loop {
+            let action = worker
+                .store
+                .get("_afudm_pending_all_control")
+                .ok()
+                .flatten()
+                .and_then(|v| v.as_str().map(str::to_owned));
+            let Some(action) = action else { break };
+            let result = if action == "pause" {
+                worker.rpc().pause_all()
+            } else {
+                worker.rpc().unpause_all()
+            };
+            if result.is_ok() {
+                let latest = worker
+                    .store
+                    .get("_afudm_pending_all_control")
+                    .ok()
+                    .flatten();
+                if latest.as_ref().and_then(Json::as_str) == Some(action.as_str()) {
+                    if let Ok(rows) = worker.store.list(None, 1000) {
+                        for row in rows {
+                            if control_action(&row).as_deref() == Some(action.as_str()) {
+                                let mut opts = options(&row);
+                                opts.remove("_afudm_pending_control");
+                                let _ = worker.store.update_by_id(
+                                    row_id(&row),
+                                    &map(json!({
+                                        "status": if action == "pause" { "paused" } else { "active" },
+                                        "options": opts
+                                    })),
+                                );
+                            }
+                        }
+                    }
+                    let _ = worker.store.set("_afudm_pending_all_control", Json::Null);
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        if let Ok(mut set) = workers.lock() {
+            set.remove(&key);
+        }
+    });
+}
+
+fn resume_pending_controls(m: &Manager) -> Result<()> {
+    let all_action = m
+        .store
+        .get("_afudm_pending_all_control")?
+        .and_then(|v| v.as_str().map(str::to_owned));
+    if all_action.is_some() {
+        ensure_all_control_worker(m);
+    }
+    for row in m.store.list(None, 1000)? {
+        if control_action(&row).is_some()
+            && control_action(&row).as_deref() != all_action.as_deref()
+        {
+            let gid = text(&row["gid"]);
+            if !gid.is_empty() && !gid.starts_with("yt:") {
+                ensure_control_worker(m, gid);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn state(m: &Manager) -> Result<MutexGuard<'_, State>> {
@@ -119,6 +288,8 @@ pub fn start(m: &Manager) -> Result<()> {
     settings::apply(m)?;
     crate::video::yetimleri_duzelt(m)?;
     state(m)?.started = true;
+    resume_pending_controls(m)?;
+    files::resume_pending(m);
     m.store.log("info", "AfuDM basladi", "");
     Ok(())
 }
@@ -598,16 +769,17 @@ fn launch(m: &Manager, row: &Json) -> Result<Json> {
 }
 
 pub fn pause(m: &Manager, gid: &str) -> Result<bool> {
-    required_row(m, gid)?;
+    let row = required_row(m, gid)?;
     if gid.starts_with("yt:") {
         if !crate::video::durdur(m, gid) {
             return Ok(false);
         }
-    } else if m.rpc().pause(gid, true).is_err() {
-        return Ok(false);
+        m.store
+            .update_by_id(row_id(&row), &map(json!({"status":"paused"})))?;
+    } else {
+        set_control_intent(m, &row, "pause")?;
+        ensure_control_worker(m, gid);
     }
-    m.store
-        .update_by_gid(gid, &map(json!({"status":"paused"})))?;
     Ok(true)
 }
 
@@ -627,9 +799,8 @@ pub fn resume(m: &Manager, gid: &str) -> Result<bool> {
             .ok_or_else(|| invalid("kayit bulunamadi"))?;
         launch(m, &row)?;
     } else {
-        m.rpc().unpause(gid)?;
-        m.store
-            .update_by_gid(gid, &map(json!({"status":"active"})))?;
+        set_control_intent(m, &row, "resume")?;
+        ensure_control_worker(m, gid);
     }
     Ok(true)
 }
@@ -645,7 +816,19 @@ pub fn phone_download_path(m: &Manager, gid: &str) -> Result<Option<PathBuf>> {
 }
 
 pub fn pause_all(m: &Manager) -> Result<()> {
-    let _ = m.rpc().pause_all();
+    for row in m.store.list(None, 1000)? {
+        if ["active", "waiting", "queued"].contains(&text(&row["status"])) {
+            let gid = text(&row["gid"]);
+            if !gid.is_empty() && !gid.starts_with("yt:") {
+                set_control_intent(m, &row, "pause")?;
+            } else {
+                m.store
+                    .update_by_id(row_id(&row), &map(json!({"status":"paused"})))?;
+            }
+        }
+    }
+    m.store.set("_afudm_pending_all_control", json!("pause"))?;
+    ensure_all_control_worker(m);
     crate::video::tumunu_durdur(m);
     Ok(())
 }
@@ -653,19 +836,23 @@ pub fn pause_all(m: &Manager) -> Result<()> {
 pub fn resume_all(m: &Manager) -> Result<()> {
     let auth = state(m)?.auth_required_gids.clone();
     if auth.is_empty() {
-        let _ = m.rpc().unpause_all();
-    } else if let Ok(mut statuses) = m.rpc().tell_active(&[]) {
-        if let (Ok(waiting), Ok(stopped)) = (
-            m.rpc().tell_waiting(0, 1000, &[]),
-            m.rpc().tell_stopped(0, 1000, &[]),
-        ) {
-            statuses.extend(waiting);
-            statuses.extend(stopped);
-            for s in statuses {
-                let gid = text(&s["gid"]);
-                if !gid.is_empty() && !auth.contains(gid) && s["status"] == "paused" {
-                    let _ = m.rpc().unpause(gid);
-                }
+        for row in m.store.list(Some("paused"), 1000)? {
+            let gid = text(&row["gid"]);
+            if !gid.is_empty() && !gid.starts_with("yt:") {
+                set_control_intent(m, &row, "resume")?;
+            } else {
+                m.store
+                    .update_by_id(row_id(&row), &map(json!({"status":"active"})))?;
+            }
+        }
+        m.store.set("_afudm_pending_all_control", json!("resume"))?;
+        ensure_all_control_worker(m);
+    } else {
+        for row in m.store.list(Some("paused"), 1000)? {
+            let gid = text(&row["gid"]);
+            if !gid.is_empty() && !auth.contains(gid) && !gid.starts_with("yt:") {
+                set_control_intent(m, &row, "resume")?;
+                ensure_control_worker(m, gid);
             }
         }
     }
@@ -919,9 +1106,12 @@ fn kesilenleri_kurtar(m: &Manager) -> Result<(usize, usize)> {
             )?;
         }
         if status == "paused" {
-            m.rpc().pause(&yeni_gid, true)?;
-            m.store
-                .update_by_gid(&yeni_gid, &map(json!({"status":"paused"})))?;
+            let current = m
+                .store
+                .by_gid(&yeni_gid)?
+                .ok_or_else(|| invalid("kayit bulunamadi"))?;
+            set_control_intent(m, &current, "pause")?;
+            ensure_control_worker(m, &yeni_gid);
         }
         m.store.log(
             "info",
@@ -935,6 +1125,8 @@ fn kesilenleri_kurtar(m: &Manager) -> Result<(usize, usize)> {
 
 /// Python _sync_aria2: persist engine progress without requiring a snapshot reader.
 pub fn sync_aria2(m: &Manager) -> Result<()> {
+    resume_pending_controls(m)?;
+    files::resume_pending(m);
     let completed = {
         let _guard = m
             .kilit
