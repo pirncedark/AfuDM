@@ -1,5 +1,8 @@
 //! File lookup and bounded removal, matching manager.py's orphan/parent handling.
 use super::*;
+use std::sync::{Mutex, OnceLock};
+
+static REMOVE_WORKERS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 
 fn record(m: &Manager, gid: &str) -> Result<Option<Json>> {
     if let Some(id) = gid.strip_prefix("row:") {
@@ -39,32 +42,132 @@ fn safe(m: &Manager, root: &Path, candidate: &Path, gid: &str) -> Option<PathBuf
 }
 
 pub(super) fn remove(m: &Manager, gid: &str, delete_files: bool) -> Result<bool> {
-    let _guard = m
-        .kilit
-        .lock()
-        .map_err(|_| AfuError::Other("yonetici kilidi kullanilamiyor".into()))?;
-    // Persist every stopped job before save_session purges the engine results.
-    let mut completed = Vec::new();
-    let result = remove_locked(m, gid, delete_files, &mut completed);
-    drop(_guard);
-    sync::notify(m, completed);
-    result
+    let row = record(m, gid)?;
+    if gid.starts_with("yt:") {
+        let path = crate::video::kaldir(m, gid);
+        if !gid.is_empty() {
+            state(m)?.removed_gids.insert(gid.into());
+        }
+        if let Some(row) = &row {
+            m.store.update_by_id(
+                row_id(row),
+                &map(json!({"status":"removed","finished_at":now()})),
+            )?;
+        }
+        if delete_files {
+            if let Some(path) = path {
+                let root = path
+                    .parent()
+                    .map(Path::to_path_buf)
+                    .or_else(|| row.as_ref().map(|r| PathBuf::from(text(&r["dest_dir"]))))
+                    .unwrap_or_default();
+                if let Some(path) = safe(m, &root, &path, gid) {
+                    std::thread::spawn(move || {
+                        while path.exists() {
+                            erase(&path);
+                            std::thread::sleep(Duration::from_millis(250));
+                        }
+                    });
+                }
+            }
+        }
+        return Ok(true);
+    }
+    if let Some(row) = &row {
+        if row["status"] == "removed" {
+            return Ok(true);
+        }
+        let mut opts = options(row);
+        opts.insert("_afudm_remove_delete_files".into(), json!(delete_files));
+        m.store.update_by_id(
+            row_id(row),
+            &map(json!({"status":"removing","finished_at":now(),"options":opts})),
+        )?;
+        if row["kind"] == "torrent" {
+            let hash = dosya_adi::magnet_hash(text(&row["source"]));
+            if !hash.is_empty() {
+                state(m)?.removed_hashes.insert(hash);
+            }
+        }
+        state(m)?.cookies.remove(&row_id(row));
+    }
+    if !gid.is_empty() {
+        state(m)?.removed_gids.insert(gid.into());
+    }
+    ensure_remove_worker(m, gid, delete_files);
+    Ok(true)
 }
 
-fn remove_locked(
-    m: &Manager,
-    gid: &str,
-    delete_files: bool,
-    completed: &mut Vec<(String, u64, String)>,
-) -> Result<bool> {
+fn worker_key(m: &Manager, gid: &str) -> String {
+    format!("{}|{gid}", m.data_dir.display())
+}
+
+fn ensure_remove_worker(m: &Manager, gid: &str, delete_files: bool) {
+    let key = worker_key(m, gid);
+    let workers = REMOVE_WORKERS.get_or_init(|| Mutex::new(HashSet::new()));
+    let Ok(mut active) = workers.lock() else {
+        return;
+    };
+    if !active.insert(key.clone()) {
+        return;
+    }
+    drop(active);
+    let worker = background_manager(m);
+    let gid = gid.to_owned();
+    std::thread::spawn(move || {
+        loop {
+            let pending = record(&worker, &gid)
+                .ok()
+                .flatten()
+                .is_some_and(|row| row["status"] == "removing");
+            if !pending {
+                break;
+            }
+            if remove_locked(&worker, &gid, delete_files).is_ok() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        if let Ok(mut set) = workers.lock() {
+            set.remove(&key);
+        }
+    });
+}
+
+pub(super) fn resume_pending(m: &Manager) {
+    let Ok(rows) = m.store.list(Some("removing"), 1000) else {
+        return;
+    };
+    for row in rows {
+        let gid = text(&row["gid"]);
+        if gid.is_empty() {
+            continue;
+        }
+        let delete_files = options(&row)
+            .get("_afudm_remove_delete_files")
+            .and_then(Json::as_bool)
+            .unwrap_or(false);
+        ensure_remove_worker(m, gid, delete_files);
+    }
+}
+
+fn remove_locked(m: &Manager, gid: &str, delete_files: bool) -> Result<bool> {
     if !gid.is_empty() {
         state(m)?.removed_gids.insert(gid.into());
     }
     let row = record(m, gid)?;
-    let live = m
-        .rpc()
-        .tell_status(gid, &["followedBy", "following", "files", "infoHash"])
-        .ok();
+    let live = if gid.starts_with("row:") || gid.starts_with("yt:") || gid.starts_with("local:") {
+        None
+    } else {
+        match m
+            .rpc()
+            .tell_status(gid, &["followedBy", "following", "files", "infoHash"])
+        {
+            Ok(status) => Some(status),
+            Err(error) if rpc_not_found(&error) => None,
+            Err(error) => return Err(error),
+        }
+    };
     if row.is_none() && live.is_none() {
         return Ok(true);
     }
@@ -73,6 +176,9 @@ fn remove_locked(
         .map(|r| text(&r["gid"]))
         .filter(|s| !s.is_empty())
         .unwrap_or(gid);
+    let has_engine_job = !["row:", "local:", "yt:"]
+        .iter()
+        .any(|prefix| actual.starts_with(prefix));
     let mut gids = HashSet::from([actual.to_owned()]);
     let root = row
         .as_ref()
@@ -81,7 +187,15 @@ fn remove_locked(
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
         .unwrap_or(PathBuf::from(current_download_dir(m)?));
-    let mut targets = Vec::new();
+    let mut targets: Vec<PathBuf> = row
+        .as_ref()
+        .and_then(|r| options(r).get("_afudm_remove_targets").cloned())
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(Json::as_str)
+        .map(PathBuf::from)
+        .collect();
     if let Some(row) = &row {
         let hash = dosya_adi::magnet_hash(text(&row["source"]));
         if !hash.is_empty() {
@@ -96,7 +210,7 @@ fn remove_locked(
                 targets.push(path);
             }
         }
-    } else {
+    } else if has_engine_job {
         let live = if actual == gid {
             live
         } else {
@@ -130,14 +244,32 @@ fn remove_locked(
                         }
                     }
                 }
+                if let Some(row) = &row {
+                    let mut opts = options(row);
+                    opts.insert(
+                        "_afudm_remove_targets".into(),
+                        json!(targets
+                            .iter()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .collect::<Vec<_>>()),
+                    );
+                    m.store
+                        .update_by_id(row_id(row), &map(json!({"options":opts})))?;
+                }
             }
         }
-        completed.extend(sync::collect(m)?);
         for g in &gids {
-            let _ = m.rpc().remove(g, true);
-            let _ = m.rpc().remove_result(g);
+            if let Err(error) = m.rpc().remove(g, true) {
+                if !rpc_not_found(&error) {
+                    return Err(error);
+                }
+            }
+            if let Err(error) = m.rpc().remove_result(g) {
+                if !rpc_not_found(&error) {
+                    return Err(error);
+                }
+            }
         }
-        let _ = m.rpc().call("aria2.purgeDownloadResult", vec![]);
         let _ = m.rpc().save_session();
     }
     state(m)?.removed_gids.extend(gids);
@@ -168,7 +300,22 @@ fn remove_locked(
         }
     }
     if delete_files {
+        if let Some(row) = &row {
+            let mut opts = options(row);
+            opts.insert(
+                "_afudm_remove_targets".into(),
+                json!(targets
+                    .iter()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect::<Vec<_>>()),
+            );
+            m.store
+                .update_by_id(row_id(row), &map(json!({"options":opts})))?;
+        }
         delete_targets(m, &root, &targets, actual);
+        if delete_targets_pending(m, &root, &targets, actual) {
+            return Err(AfuError::Engine("indirme dosyasi halen kullanimda".into()));
+        }
     }
     if let Some(row) = &row {
         state(m)?.cookies.remove(&row_id(row));
@@ -183,6 +330,48 @@ fn remove_locked(
         &map(json!({"status":"removed", "finished_at":now()})),
     );
     Ok(true)
+}
+
+pub(super) fn delete_targets_pending(
+    m: &Manager,
+    root: &Path,
+    targets: &[PathBuf],
+    gid: &str,
+) -> bool {
+    targets.iter().any(|target| {
+        if target.exists() {
+            return true;
+        }
+        let sidecar = PathBuf::from(format!("{}.aria2", target.to_string_lossy()));
+        if safe(m, root, &sidecar, gid).is_some_and(|path| path.exists()) {
+            return true;
+        }
+        let (Some(parent), Some(stem)) =
+            (target.parent(), target.file_stem().and_then(|s| s.to_str()))
+        else {
+            return false;
+        };
+        std::fs::read_dir(parent).is_ok_and(|entries| {
+            entries.flatten().any(|entry| {
+                let path = entry.path();
+                let name = entry.file_name().to_string_lossy().into_owned();
+                path.is_file()
+                    && name.starts_with(stem)
+                    && ([".part", ".ytdl", ".temp", ".aria2"]
+                        .iter()
+                        .any(|suffix| name.ends_with(suffix))
+                        || name.contains(".f"))
+                    && safe(m, root, &path, gid).is_some_and(|path| path.exists())
+            })
+        })
+    })
+}
+
+fn rpc_not_found(error: &AfuError) -> bool {
+    let message = error.to_string().to_lowercase();
+    message.contains("not found")
+        || message.contains("notfound")
+        || message.contains("does not exist")
 }
 
 // Windows'ta salt-okunur bayragini kaldirmak icin set_readonly(false) sart (Python'daki chmod karsiligi).

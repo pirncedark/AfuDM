@@ -30,6 +30,12 @@ pub(super) fn collect(m: &Manager) -> Result<Completed> {
             Some(row) => Some(row),
             None => shaping::reattach(m, &status)?,
         };
+        if row
+            .as_ref()
+            .is_some_and(|r| ["removing", "removed"].contains(&text(&r["status"])))
+        {
+            continue;
+        }
         let total = number(&status["totalLength"]);
         let done = number(&status["completedLength"]);
         let html_error = row
@@ -47,8 +53,10 @@ pub(super) fn collect(m: &Manager) -> Result<Completed> {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
         if let Some(row) = &row {
-            let mut fields =
-                map(json!({"total_bytes":total,"done_bytes":done,"status":status_name}));
+            let mut fields = map(json!({"total_bytes":total,"done_bytes":done}));
+            if control_action(row).is_none() {
+                fields.insert("status".into(), json!(status_name));
+            }
             if !name.is_empty() {
                 fields.insert("filename".into(), json!(name));
             }

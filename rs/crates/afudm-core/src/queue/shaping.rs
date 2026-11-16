@@ -8,6 +8,29 @@ fn rounded(value: f64, digits: i32) -> f64 {
 pub(super) fn aria(m: &Manager, status: &Json) -> Result<Json> {
     let mut checked = status.clone();
     let saved = m.store.by_gid(text(&status["gid"]))?;
+    if let Some(row) = saved.as_ref() {
+        if let Some(action) = control_action(row) {
+            checked["status"] = json!(if action == "pause" {
+                "paused"
+            } else {
+                "active"
+            });
+        }
+    }
+    let all_action = if saved.is_none() {
+        m.store
+            .get("_afudm_pending_all_control")?
+            .and_then(|v| v.as_str().map(str::to_owned))
+    } else {
+        None
+    };
+    if let Some(action) = all_action {
+        if action == "pause" && ["active", "waiting"].contains(&text(&checked["status"])) {
+            checked["status"] = json!("paused");
+        } else if action == "resume" && checked["status"] == "paused" {
+            checked["status"] = json!("active");
+        }
+    }
     if saved
         .as_ref()
         .is_some_and(|r| r["status"] == "error" && r["error"] == safety::HTML_ERROR)
@@ -165,11 +188,10 @@ pub(super) fn snapshot(m: &Manager) -> Result<Json> {
         if !hash.is_empty() && state(m)?.removed_hashes.contains(&hash) && row.is_none() {
             continue;
         }
-        if row.as_ref().is_some_and(|r| r["status"] == "removed") {
-            state(m)?.removed_gids.insert(gid.into());
-            continue;
-        }
-        if row.as_ref().is_some_and(|r| r["status"] == "removed") {
+        if row
+            .as_ref()
+            .is_some_and(|r| ["removing", "removed"].contains(&text(&r["status"])))
+        {
             state(m)?.removed_gids.insert(gid.into());
             continue;
         }
@@ -187,7 +209,10 @@ pub(super) fn snapshot(m: &Manager) -> Result<Json> {
             continue;
         }
         let row = m.store.by_gid(&gid)?;
-        if row.as_ref().is_some_and(|r| r["status"] == "removed") {
+        if row
+            .as_ref()
+            .is_some_and(|r| ["removing", "removed"].contains(&text(&r["status"])))
+        {
             state(m)?.removed_gids.insert(gid.clone());
             continue;
         }
@@ -211,7 +236,9 @@ pub(super) fn snapshot(m: &Manager) -> Result<Json> {
         items.push(shaped);
     }
     for record in m.store.list(None, 200)? {
-        if ids.contains(&row_id(&record)) || record["status"] == "removed" {
+        if ids.contains(&row_id(&record))
+            || ["removing", "removed"].contains(&text(&record["status"]))
+        {
             continue;
         }
         let gid = text(&record["gid"]);

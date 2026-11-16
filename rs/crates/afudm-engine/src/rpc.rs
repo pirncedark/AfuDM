@@ -92,9 +92,10 @@ impl Aria2Rpc {
         &self,
         method: &str,
         params: Vec<Json>,
+        timeout: Duration,
     ) -> (Result<Json>, bool) {
         let mut refused = false;
-        let result = self.call_timeout_inner(method, params, Duration::from_secs(15), &mut refused);
+        let result = self.call_timeout_inner(method, params, timeout, &mut refused);
         (result, refused)
     }
 
