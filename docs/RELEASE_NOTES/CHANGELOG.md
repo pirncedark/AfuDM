@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.7](https://github.com/pirncedark/AfuDM/compare/v3.4.6...v3.4.7) (2026-11-16)
+
+
+### Bug Fixes
+
+* make queue controls respond immediately ([#170](https://github.com/pirncedark/AfuDM/issues/170)) ([a861617](https://github.com/pirncedark/AfuDM/commit/a8616175a16af9ad6ae7ba6f2b16dd2bc68585ed))
+
 ## [3.4.6](https://github.com/pirncedark/AfuDM/compare/v3.4.5...v3.4.6) (2026-11-16)
 
 
