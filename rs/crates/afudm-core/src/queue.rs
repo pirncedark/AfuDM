@@ -34,6 +34,9 @@ pub struct State {
     pub kurtarma_bitti: bool,
     /// Kurtarmanin calistigi son motor nesli (motor yeniden baslayinca kurtarma tekrar calisir).
     pub kurtarma_nesli: Option<u64>,
+    /// Basarisiz kurtarma denemesinin zamani; motor mesgulken (buyuk dosya ayirma) eklenemeyenler
+    /// her dakika yeniden denenir.
+    pub kurtarma_son_deneme: Option<std::time::Instant>,
     pub last_error: String,
     pub settings_errors: Vec<Json>,
     pub started: bool,
@@ -872,7 +875,7 @@ fn clear_auth(m: &Manager, gid: &str) -> Result<()> {
 /// aria2 --continue=true ile .aria2 kontrol dosyasindan devam eder. Duraklatilmis kayit duraklatilmis eklenir.
 /// Oturum bilgisi silinmis (auth_required) gid'ler atlanir; "Yenile" akisi onlari yeniden baslatir.
 /// Cerezler yalniz bellekte tutulur; yeniden eklenen cerezli kayitlar 401/403 ile hata durumuna duser.
-fn kesilenleri_kurtar(m: &Manager) -> Result<usize> {
+fn kesilenleri_kurtar(m: &Manager) -> Result<(usize, usize)> {
     let mut motorda = HashSet::new();
     for liste in [
         m.rpc().tell_active(&[])?,
@@ -882,6 +885,7 @@ fn kesilenleri_kurtar(m: &Manager) -> Result<usize> {
         motorda.extend(liste.iter().map(|s| text(&s["gid"]).to_owned()));
     }
     let mut kurtarilan = 0;
+    let mut basarisiz = 0;
     for row in m.store.list(None, 1000)? {
         let kind = text(&row["kind"]);
         let status = text(&row["status"]);
@@ -902,7 +906,10 @@ fn kesilenleri_kurtar(m: &Manager) -> Result<usize> {
         }
         let yeni = match launch(m, &row) {
             Ok(v) => v,
-            Err(_) => continue,
+            Err(_) => {
+                basarisiz += 1;
+                continue;
+            }
         };
         let yeni_gid = text(&yeni["gid"]).to_owned();
         if status == "error" {
@@ -923,7 +930,7 @@ fn kesilenleri_kurtar(m: &Manager) -> Result<usize> {
         );
         kurtarilan += 1;
     }
-    Ok(kurtarilan)
+    Ok((kurtarilan, basarisiz))
 }
 
 /// Python _sync_aria2: persist engine progress without requiring a snapshot reader.
@@ -939,10 +946,21 @@ pub fn sync_aria2(m: &Manager) -> Result<()> {
         let nesil = m.rpc().generation();
         let kurtarma_bekliyor =
             !state(m)?.kurtarma_bitti || state(m)?.kurtarma_nesli != Some(nesil);
-        if kurtarma_bekliyor && !m.rpc().sleeping() && kesilenleri_kurtar(m).is_ok() {
+        let tekrar_zamani = state(m)?
+            .kurtarma_son_deneme
+            .is_none_or(|t| t.elapsed() >= std::time::Duration::from_secs(60));
+        if kurtarma_bekliyor && tekrar_zamani && !m.rpc().sleeping() {
+            let sonuc = kesilenleri_kurtar(m);
             let mut st = state(m)?;
-            st.kurtarma_bitti = true;
-            st.kurtarma_nesli = Some(nesil);
+            match sonuc {
+                Ok((_, 0)) => {
+                    st.kurtarma_bitti = true;
+                    st.kurtarma_nesli = Some(nesil);
+                    st.kurtarma_son_deneme = None;
+                }
+                // Motor mesgul/yanit vermiyorsa eklenemeyenler bir dakika sonra yeniden denenir.
+                _ => st.kurtarma_son_deneme = Some(std::time::Instant::now()),
+            }
         }
         sync::collect(m)?
     };
