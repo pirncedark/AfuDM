@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.6](https://github.com/pirncedark/AfuDM/compare/v3.4.5...v3.4.6) (2026-11-16)
+
+
+### Bug Fixes
+
+* retry download recovery every minute while the engine is busy ([#168](https://github.com/pirncedark/AfuDM/issues/168)) ([41b3735](https://github.com/pirncedark/AfuDM/commit/41b3735b70b319ac10c6516041cd9a2b08586cb7))
+
 ## [3.4.5](https://github.com/pirncedark/AfuDM/compare/v3.4.4...v3.4.5) (2026-11-16)
 
 
