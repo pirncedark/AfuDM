@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.5](https://github.com/pirncedark/AfuDM/compare/v3.4.4...v3.4.5) (2026-11-16)
+
+
+### Bug Fixes
+
+* recover lost downloads after every engine restart and name files from URL query ([#166](https://github.com/pirncedark/AfuDM/issues/166)) ([7cd3364](https://github.com/pirncedark/AfuDM/commit/7cd33641171813c77ee370675b00d5a5a9d695a1))
+
 ## [3.4.4](https://github.com/pirncedark/AfuDM/compare/v3.4.3...v3.4.4) (2026-11-13)
 
 
