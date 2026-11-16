@@ -1447,6 +1447,38 @@ fn motor_yeniden_baslayinca_kaybolan_indirmeler_her_seferinde_geri_eklenir() {
 }
 
 #[test]
+fn motor_mesgulken_eklenemeyen_indirme_bir_dakika_sonra_yeniden_denenir() {
+    let f = Fixture::new();
+    f.add("mesgul.bin");
+    sync_aria2(&f.m).unwrap();
+    let add_uri = |f: &Fixture| {
+        f.rpc
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(ad, _)| ad.as_str() == "add_uri")
+            .count()
+    };
+    // Motor yeniden basladi ama mesgul (buyuk dosya ayirirken RPC yanit vermiyor).
+    f.rpc.statuses.lock().unwrap().clear();
+    *f.rpc.generation.lock().unwrap() += 1;
+    *f.rpc.offline.lock().unwrap() = true;
+    let _ = sync_aria2(&f.m);
+    assert!(state(&f.m).unwrap().kurtarma_son_deneme.is_some());
+    *f.rpc.offline.lock().unwrap() = false;
+    // Bekleme suresi dolmadan tekrar denenmez.
+    sync_aria2(&f.m).unwrap();
+    assert_eq!(add_uri(&f), 1);
+    // Bir dakika gecince yeniden eklenir ve kurtarma bu nesil icin tamamlanir.
+    state(&f.m).unwrap().kurtarma_son_deneme =
+        std::time::Instant::now().checked_sub(std::time::Duration::from_secs(61));
+    sync_aria2(&f.m).unwrap();
+    assert_eq!(add_uri(&f), 2);
+    assert!(state(&f.m).unwrap().kurtarma_son_deneme.is_none());
+}
+
+#[test]
 fn motor_hatasiyla_baslatilamayan_indirme_motor_donunce_geri_eklenir() {
     let f = Fixture::new();
     let gid = f.add("hata.bin")["gid"].as_str().unwrap().to_string();
