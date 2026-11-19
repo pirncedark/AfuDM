@@ -158,6 +158,7 @@ const DICT = {
     "trace.today": "bugün",
 
     "engine.connecting": "motor bağlanıyor",
+    "engine.busy": "motor meşgul — yeniden bağlanıyor",
     "engine.running": "aria2 çalışıyor",
     "engine.stopped": "motor kapalı",
     "engine.offline": "bağlantı yok",
@@ -1048,6 +1049,7 @@ const DICT = {
     "trace.today": "today",
 
     "engine.connecting": "connecting to engine",
+    "engine.busy": "engine busy — reconnecting",
     "engine.running": "aria2 running",
     "engine.stopped": "engine stopped",
     "engine.offline": "no connection",

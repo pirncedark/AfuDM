@@ -288,7 +288,7 @@ fn rpc_rejects_bad_http_json_and_rpc_shapes_without_panics_or_secrets() {
     }
     for body in [b"not JSON".to_vec(), vec![]] {
         let (port, server) = serve_bytes(200, body);
-        assert!(!Aria2Rpc::new("127.0.0.1", port, "").alive());
+        assert!(!Aria2Rpc::new("127.0.0.1", port, "").probe());
         server.join().unwrap();
     }
     let port = TcpListener::bind("127.0.0.1:0")
@@ -296,7 +296,7 @@ fn rpc_rejects_bad_http_json_and_rpc_shapes_without_panics_or_secrets() {
         .local_addr()
         .unwrap()
         .port();
-    assert!(!Aria2Rpc::new("127.0.0.1", port, "").alive());
+    assert!(!Aria2Rpc::new("127.0.0.1", port, "").probe());
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let server = thread::spawn(move || {
@@ -445,7 +445,7 @@ fn real_aria2_random_port_ownership_idle_and_http_download() {
     idle.call("aria2.getVersion", vec![]).unwrap();
     assert_eq!(wakes.load(std::sync::atomic::Ordering::SeqCst), 2);
     drop(idle);
-    assert!(!rpc.alive());
+    assert!(rpc.call("aria2.getVersion", vec![]).is_err());
 }
 
 #[test]

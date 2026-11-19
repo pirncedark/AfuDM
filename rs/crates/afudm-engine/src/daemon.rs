@@ -218,7 +218,7 @@ impl Aria2Daemon {
         );
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
-            if self.rpc.alive() {
+            if self.rpc.probe() {
                 return Ok(self.rpc.clone());
             }
             if let Some(status) = self

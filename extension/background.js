@@ -119,10 +119,28 @@ async function reportHandoffError(cfg, error) {
       method: "POST",
       signal: AbortSignal.timeout(3000),
       headers: { "Content-Type": "application/json", "X-AfuDM-Token": cfg.token },
-      body: JSON.stringify({ error: String(error.message || error) }),
+      body: JSON.stringify({ error_type: error.handoffType || handoffErrorType(error) }),
     });
   } catch (_) {}
 }
+
+function handoffErrorType(error) {
+  if (error?.handoffType) return error.handoffType;
+  if (error?.name === "TimeoutError" || error?.name === "AbortError" || /timed out|timeout/i.test(String(error?.message || error))) return "timeout";
+  if (error instanceof TypeError || /failed to fetch|network|connection refused/i.test(String(error?.message || error))) return "unavailable";
+  return "rejected";
+}
+
+const handoffNotificationActions = new Map();
+chrome.notifications.onClicked?.addListener((id) => {
+  const action = handoffNotificationActions.get(id);
+  handoffNotificationActions.delete(id);
+  if (action === "open-app") {
+    chrome.tabs.create({ url: "afudm://" });
+  } else if (action === "retry") {
+    chrome.tabs.create({ url: chrome.runtime.getURL("popup.html") });
+  }
+});
 
 const afudmSendActive = new Map();
 const afudmSendRecent = new Map();
@@ -164,7 +182,10 @@ async function sendToAfudmOnce(cfg, body) {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data?.ok !== true) {
-      throw new Error(data?.error || chrome.i18n.getMessage("msgNoResponse", [String(response.status)]));
+      const error = new Error(data?.error || chrome.i18n.getMessage("msgNoResponse", [String(response.status)]));
+      error.handoffType = !response.ok && response.status >= 500 ? "server"
+        : !response.ok && response.status < 400 ? "unavailable" : "rejected";
+      throw error;
     }
     return data;
   } catch (error) {
@@ -217,13 +238,15 @@ async function sendLocalFile(cfg, download, url) {
   } catch (error) { await reportHandoffError(cfg, error); throw error; }
 }
 
-function notify(message, title = "AfuDM") {
-  chrome.notifications.create({
+function notify(message, title = "AfuDM", id) {
+  const options = {
     type: "basic",
     iconUrl: "icon128.png",
     title,
     message,
-  });
+  };
+  if (id) chrome.notifications.create(id, options);
+  else chrome.notifications.create(options);
 }
 function sayfaToast(tabId, baslik, mesaj) {
   if (!tabId || tabId < 0) return;
@@ -970,8 +993,15 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
             preflightRecent.set(key,{at:Date.now(),result:accepted});
             for (const [old, value] of preflightRecent) if (Date.now()-value.at > 5000) preflightRecent.delete(old);
             return accepted;
-          } catch (_) {
-            notify(chrome.i18n.getMessage('handoffRetry'));
+          } catch (error) {
+            const type = handoffErrorType(error);
+            const key = type === "unavailable" ? "handoffUnavailable"
+              : type === "timeout" ? "handoffTimeout"
+              : type === "server" ? "handoffServer"
+              : type === "rejected" ? "handoffRejected" : "handoffRetry";
+            const id = "afudm-handoff-error";
+            handoffNotificationActions.set(id, type === "unavailable" ? "open-app" : "retry");
+            notify(chrome.i18n.getMessage(key), "AfuDM", id);
             return {ok:false,retryable:true};
           }
         })();

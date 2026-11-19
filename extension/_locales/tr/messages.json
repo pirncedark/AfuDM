@@ -1,5 +1,9 @@
 {
   "handoffRetry": {"message": "AfuDM indirmeyi alamadı. Eklenti menüsünden yeniden deneyin."},
+  "handoffUnavailable": {"message": "AfuDM kapalı — açmak için tıklayın."},
+  "handoffTimeout": {"message": "AfuDM yanıt vermedi — yeniden deneyin."},
+  "handoffRejected": {"message": "AfuDM isteği reddetti — eklenti menüsünden yeniden deneyin."},
+  "handoffServer": {"message": "AfuDM indirmeyi ekleyemedi — yeniden deneyin."},
   "appName": {
     "message": "AfuDM link yakalayıcı"
   },

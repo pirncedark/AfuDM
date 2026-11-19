@@ -597,6 +597,24 @@ async function renderDrawer() {
 let offlineArdisik = 0;   // art arda basarisiz snapshot sayisi (tek yavaslık yanıp sönme yapmasın)
 let tickTimer = null;
 let tickInFlight = false;
+let engineOfflineSince = null;
+let engineAutoRestartRequested = false;
+let engineRestartInFlight = false;
+
+async function restartEngine() {
+  if (engineRestartInFlight) return;
+  engineRestartInFlight = true;
+  if ($("engineRetry")) $("engineRetry").style.display = "none";
+  if ($("engineText")) $("engineText").textContent = t("engine.connecting");
+  try {
+    await call("reliability_restart_engine");
+  } catch (e) {
+    console.warn("[AfuDM] motor yeniden başlatılamadı:", e);
+  } finally {
+    engineRestartInFlight = false;
+    tick(true);
+  }
+}
 
 async function tick(isManual = false) {
   if (afudmHidden()) return;
@@ -606,7 +624,16 @@ async function tick(isManual = false) {
   try {
     const snap = await call("snapshot");
     offlineArdisik = 0;
-    state.items = snap.items || [];
+    const incomingItems = snap.items || [];
+    if (!snap.engine_ok) {
+      const incomingGids = new Set(incomingItems.map((item) => item.gid));
+      const temporarilyMissing = state.items.filter((item) =>
+        (item.status === "active" || item.status === "waiting") && !incomingGids.has(item.gid)
+      );
+      state.items = incomingItems.concat(temporarilyMissing);
+    } else {
+      state.items = incomingItems;
+    }
     state.items.forEach((item) => {
       const override = state.controlOverrides.get(item.gid);
       if (!override) return;
@@ -635,10 +662,27 @@ async function tick(isManual = false) {
       setLang(snap.lang);
       applyStatic();
     }
-    $("engineDot").className = "dot" + (snap.engine_ok ? " ok" : "");
-    $("engineText").textContent = snap.engine_ok ? t("engine.running") : t("engine.stopped");
-    // Motor asagi ama kopru ayakta: "Yeniden dene" ile gercekten yeniden baslat.
-    if ($("engineRetry")) $("engineRetry").style.display = snap.engine_ok ? "none" : "inline-block";
+    if (snap.engine_ok) {
+      engineOfflineSince = null;
+      engineAutoRestartRequested = false;
+      $("engineDot").className = "dot ok";
+      $("engineDot").style.backgroundColor = "";
+      $("engineText").style.color = "";
+      $("engineText").textContent = t("engine.running");
+      if ($("engineRetry")) $("engineRetry").style.display = "none";
+    } else {
+      if (engineOfflineSince === null) engineOfflineSince = Date.now();
+      const engineBusy = Date.now() - engineOfflineSince < 15000;
+      $("engineDot").className = "dot" + (engineBusy ? " busy" : "");
+      $("engineDot").style.backgroundColor = engineBusy ? "#eab308" : "";
+      $("engineText").style.color = engineBusy ? "#eab308" : "";
+      $("engineText").textContent = engineBusy ? t("engine.busy") : t("engine.stopped");
+      if ($("engineRetry")) $("engineRetry").style.display = engineBusy ? "none" : "inline-block";
+      if (!engineBusy && !engineAutoRestartRequested) {
+        engineAutoRestartRequested = true;
+        restartEngine();
+      }
+    }
     $("dirHint").textContent = snap.download_dir || "";
     $("dirHint").title = snap.download_dir || "";
 
@@ -665,14 +709,7 @@ async function tick(isManual = false) {
 
 if ($("engineRetry")) {
   $("engineRetry").onclick = async () => {
-    $("engineRetry").style.display = "none";
-    $("engineText").textContent = t("engine.connecting");
-    try {
-      await call("reliability_restart_engine");
-    } catch (e) {
-      console.warn("[AfuDM] motor yeniden başlatılamadı:", e);
-    }
-    tick(true);
+    await restartEngine();
   };
 }
 

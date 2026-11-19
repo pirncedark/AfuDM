@@ -576,12 +576,19 @@ async fn tracker(State(ctx): State<ApiCtx>, req: Request) -> Response {
     result(ctx.manager.tracker_tara(text(&data, "gid")))
 }
 async fn handoff_error(State(ctx): State<ApiCtx>, req: Request) -> Response {
-    let _data = match body(req).await {
+    let data = match body(req).await {
         Ok(v) => v,
         Err(r) => return r,
     };
-    // Browser-supplied errors may contain credentials; never persist that text.
-    ctx.store.log("error", "Tarayici devretme hatasi", "");
+    // Yalnız sabit hata sınıfını kaydet; URL, başlık ve kimlik bilgisi tutma.
+    let kind = match text(&data, "error_type") {
+        "unavailable" => "bağlantı yok",
+        "timeout" => "zaman aşımı",
+        "rejected" => "istek reddedildi",
+        _ => "bilinmeyen hata",
+    };
+    ctx.store
+        .log("error", &format!("Tarayıcı devretme hatası: {kind}"), "");
     merged(json!({}))
 }
 async fn rotate(State(ctx): State<ApiCtx>, req: Request) -> Response {
