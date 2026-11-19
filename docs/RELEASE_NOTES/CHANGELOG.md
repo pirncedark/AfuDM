@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.8](https://github.com/pirncedark/AfuDM/compare/v3.4.7...v3.4.8) (2026-11-19)
+
+
+### Bug Fixes
+
+* per-download folders, last used folder, open real folder, large .torrent RPC ([#165](https://github.com/pirncedark/AfuDM/issues/165)) ([cdf8394](https://github.com/pirncedark/AfuDM/commit/cdf8394af555b8ccbcfc8ef79d7d10a97640a017))
+
 ## [3.4.7](https://github.com/pirncedark/AfuDM/compare/v3.4.6...v3.4.7) (2026-11-16)
 
 
