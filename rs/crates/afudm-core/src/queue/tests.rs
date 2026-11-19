@@ -438,6 +438,21 @@ fn readded_torrent_db_row_survives_stale_hash_when_engine_is_offline() {
 }
 
 #[test]
+fn active_db_row_stays_visible_when_engine_is_offline() {
+    let f = Fixture::new();
+    let result = f.add("active.bin");
+    let gid = result["gid"].as_str().unwrap();
+    assert_eq!(f.m.store.by_gid(gid).unwrap().unwrap()["status"], "active");
+    *f.rpc.offline.lock().unwrap() = true;
+    let snap = snapshot(&f.m).unwrap();
+    let items = snap["items"].as_array().unwrap();
+    assert!(
+        items.iter().any(|item| item["gid"] == gid),
+        "active DB row {gid} vanished from snapshot: {items:?}"
+    );
+}
+
+#[test]
 fn intentional_magnet_readd_clears_removed_hash() {
     let f = Fixture::new();
     let hash = "0123456789012345678901234567890123456789";

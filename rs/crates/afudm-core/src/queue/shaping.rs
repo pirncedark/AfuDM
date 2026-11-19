@@ -219,8 +219,17 @@ pub(super) fn snapshot(m: &Manager) -> Result<Json> {
             continue;
         }
         // Persisted replacement jobs remain visible even when an old hash tombstone survives.
-        if ["complete", "error", "scheduled", "paused", "repairing"]
-            .contains(&text(&record["status"]))
+        if [
+            "complete",
+            "error",
+            "scheduled",
+            "paused",
+            "repairing",
+            "queued",
+            "active",
+            "waiting",
+        ]
+        .contains(&text(&record["status"]))
         {
             items.push(row(&record));
         }
