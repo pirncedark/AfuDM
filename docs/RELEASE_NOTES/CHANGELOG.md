@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.9](https://github.com/pirncedark/AfuDM/compare/v3.4.8...v3.4.9) (2026-11-19)
+
+
+### Bug Fixes
+
+* reliable folder opening, browser handoff and engine busy tolerance ([#174](https://github.com/pirncedark/AfuDM/issues/174)) ([c5c9592](https://github.com/pirncedark/AfuDM/commit/c5c959205396acc4092ae728922765bf6df02813))
+
 ## [3.4.8](https://github.com/pirncedark/AfuDM/compare/v3.4.7...v3.4.8) (2026-11-19)
 
 
