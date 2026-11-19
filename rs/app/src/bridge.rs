@@ -510,13 +510,46 @@ fn motor_cagri_ile(
 
 pub(crate) fn gezgin_ac(yol: &Path, sec: bool) {
     let mut komut = Command::new("explorer.exe");
-    if sec {
-        use std::os::windows::process::CommandExt;
-        komut.raw_arg(format!("/select,\"{}\"", yol.display()));
-    } else {
-        komut.arg(yol);
-    }
+    use std::os::windows::process::CommandExt;
+    komut.raw_arg(explorer_arg(yol, sec));
     let _ = komut.spawn();
+}
+
+fn explorer_arg(yol: &Path, sec: bool) -> String {
+    if sec {
+        format!("/select,\"{}\"", yol.display())
+    } else {
+        format!("\"{}\"", yol.display())
+    }
+}
+
+fn klasor_acma_hedefi(
+    resolved: Option<&Path>,
+    dest_dir: Option<&Path>,
+    download_dir: &Path,
+    torrent_title: Option<&str>,
+) -> (PathBuf, bool) {
+    if let (Some(dir), Some(title)) = (dest_dir, torrent_title) {
+        let torrent_dir = dir.join(title);
+        if torrent_dir.is_dir() {
+            return (torrent_dir, false);
+        }
+    }
+    if let Some(path) = resolved {
+        if path.is_file() {
+            return (path.to_path_buf(), true);
+        }
+        if path.is_dir() {
+            return (path.to_path_buf(), false);
+        }
+        if let Some(parent) = path.parent().filter(|p| p.is_dir()) {
+            return (parent.to_path_buf(), false);
+        }
+    }
+    if let Some(dir) = dest_dir.filter(|p| p.is_dir()) {
+        return (dir.to_path_buf(), false);
+    }
+    (download_dir.to_path_buf(), false)
 }
 
 fn api_info(k: &Kabuk) -> Json {
@@ -999,21 +1032,32 @@ fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Json {
             Some(Err(e)) => hata(e.to_string()),
             None => motor_hazir_degil(),
         },
-        "open_item_folder" => match k.manager().map(|m| m.resolve_item_path(s(a, 0))) {
-            Some(Ok(Some(yol))) if yol.exists() => {
-                gezgin_ac(&yol, true);
-                json!({"ok": true})
-            }
-            Some(Ok(Some(yol))) => {
-                if let Some(ust) = yol.parent() {
-                    gezgin_ac(ust, false);
-                }
-                json!({"ok":true,"message":"Dosya taşınmış veya silinmiş; kaydedildiği klasör açıldı."})
-            }
-            Some(Ok(None)) => hata("Dosyanın konumu bulunamadı; indirmeyi yeniden başlatın."),
-            Some(Err(e)) => hata(e.to_string()),
-            None => motor_hazir_degil(),
-        },
+        "open_item_folder" => ctx_cagri(k, |c| {
+            let gid = s(a, 0);
+            let row = c.store.by_gid(gid)?;
+            let Some(row) = row else {
+                return Ok(hata(kayit_bulunamadi()));
+            };
+            let resolved = c.manager.resolve_item_path(gid)?;
+            let dest_dir = row
+                .get("dest_dir")
+                .and_then(Json::as_str)
+                .filter(|v| !v.is_empty())
+                .map(PathBuf::from);
+            let torrent_title = row
+                .get("kind")
+                .filter(|v| *v == "torrent")
+                .and_then(|_| row["title"].as_str());
+            let download_dir = PathBuf::from(c.manager.current_download_dir()?);
+            let (target, select_file) = klasor_acma_hedefi(
+                resolved.as_deref(),
+                dest_dir.as_deref(),
+                &download_dir,
+                torrent_title,
+            );
+            gezgin_ac(&target, select_file);
+            Ok(json!({"ok": true}))
+        }),
 
         // --- reliability (G1) ---
         "reliability_integrity" => ctx_cagri(k, |c| reliability::integrity(&*c.store)),
@@ -1352,6 +1396,48 @@ pub(crate) mod tests {
         assert!(orphan_mi("kayıt bulunamadı"));
         assert!(orphan_mi("GID not found"));
         assert!(!orphan_mi("disk dolu"));
+    }
+
+    #[test]
+    fn explorer_args_keep_unicode_paths_with_spaces_as_one_select_target() {
+        let path = Path::new(r"C:\Oyunlar\Killzone 3\İndirilen dosya.iso");
+        assert_eq!(
+            explorer_arg(path, true),
+            r#"/select,"C:\Oyunlar\Killzone 3\İndirilen dosya.iso""#
+        );
+        assert_eq!(
+            explorer_arg(path, false),
+            r#""C:\Oyunlar\Killzone 3\İndirilen dosya.iso""#
+        );
+    }
+
+    #[test]
+    fn missing_torrent_path_falls_back_to_torrent_folder_then_destination() {
+        let base = std::env::temp_dir().join(format!(
+            "afudm-folder-fallback-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let dest = base.join("torrent");
+        let torrent = dest.join("Killzone 3");
+        std::fs::create_dir_all(&torrent).unwrap();
+
+        let (target, select) = klasor_acma_hedefi(
+            Some(&torrent.join("PS3_GAME\\missing.iso")),
+            Some(&dest),
+            &base,
+            Some("Killzone 3"),
+        );
+        assert_eq!(target, torrent);
+        assert!(!select);
+
+        std::fs::remove_dir_all(&torrent).unwrap();
+        let (target, select) = klasor_acma_hedefi(None, Some(&dest), &base, None);
+        assert_eq!(target, dest);
+        assert!(!select);
+        std::fs::remove_dir_all(base).unwrap();
     }
 
     #[test]

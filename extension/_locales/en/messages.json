@@ -1,5 +1,9 @@
 {
   "handoffRetry": {"message": "AfuDM could not receive the download. Retry from the extension menu."},
+  "handoffUnavailable": {"message": "AfuDM is closed. Click to open it."},
+  "handoffTimeout": {"message": "AfuDM did not respond. Please retry."},
+  "handoffRejected": {"message": "AfuDM rejected the request. Retry from the extension menu."},
+  "handoffServer": {"message": "AfuDM could not add the download. Please retry."},
   "appName": {
     "message": "AfuDM link catcher"
   },

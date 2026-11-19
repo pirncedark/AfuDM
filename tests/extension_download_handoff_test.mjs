@@ -245,19 +245,19 @@ const logged = [];
 bgContext.fetch = async (url, options = {}) => {
   if (String(url).endsWith('/ping')) return {ok:true};
   if (String(url).endsWith('/handoff/error')) {
-    logged.push(JSON.parse(options.body).error);
+    logged.push(JSON.parse(options.body).error_type);
     return {ok:true};
   }
   throw new Error('transport failed before download record');
 };
 await assert.rejects(vm.runInNewContext("sendToAfudm({port:6811,token:'test'}, {url:'https://example.test/pdf'})", bgContext), /transport failed/);
-assert.deepEqual(logged, ['transport failed before download record']);
+assert.deepEqual(logged, ['rejected']);
 
 logged.length = 0;
 bgContext.fetch = async (url, options = {}) => {
   if (String(url).endsWith('/ping')) return {ok:true};
   if (String(url).endsWith('/handoff/error')) {
-    logged.push(JSON.parse(options.body).error);
+    logged.push(JSON.parse(options.body).error_type);
     return {ok:true};
   }
   return {ok:true, status:200, json:async () => {throw new Error('invalid JSON');}};

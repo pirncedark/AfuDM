@@ -2,7 +2,37 @@
 use afudm_types::{AfuError, Aria2, Json, JsonMap, Result};
 use serde_json::json;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+const ALIVE_ERROR_LIMIT: u32 = 3;
+const ALIVE_GRACE: Duration = Duration::from_secs(15);
+const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
+
+#[derive(Clone, Copy, Default)]
+struct ProbeHealth {
+    last_success: Option<Instant>,
+    consecutive_errors: u32,
+}
+
+fn alive_from_health(consecutive_errors: u32, since_success: Option<Duration>) -> bool {
+    consecutive_errors < ALIVE_ERROR_LIMIT
+        || since_success.is_some_and(|elapsed| elapsed < ALIVE_GRACE)
+}
+
+fn next_probe_health(current: ProbeHealth, succeeded: bool, now: Instant) -> ProbeHealth {
+    if succeeded {
+        ProbeHealth {
+            last_success: Some(now),
+            consecutive_errors: 0,
+        }
+    } else {
+        ProbeHealth {
+            consecutive_errors: current.consecutive_errors.saturating_add(1),
+            ..current
+        }
+    }
+}
 
 // core/rpc.py STATUS_KEYS: an empty argument selects the Python defaults.
 pub(crate) const STATUS_KEYS: &[&str] = &[
@@ -41,6 +71,7 @@ pub struct Aria2Rpc {
     url: String,
     token: String,
     ids: AtomicU64,
+    probe_health: Mutex<ProbeHealth>,
 }
 
 pub(crate) fn hata_metni(body: &Json) -> String {
@@ -70,6 +101,7 @@ impl Aria2Rpc {
             url: format!("http://{host}:{port}/jsonrpc"),
             token: format!("token:{secret}"),
             ids: AtomicU64::new(1),
+            probe_health: Mutex::new(ProbeHealth::default()),
         }
     }
 
@@ -163,6 +195,17 @@ impl Aria2Rpc {
     pub(crate) fn invoke(&self, method: &str, params: Vec<Json>) -> Result<Json> {
         self.call(method, params)
     }
+
+    /// Strict health check used while starting aria2; unlike `alive`, it never
+    /// treats a temporarily unreachable engine as usable.
+    pub(crate) fn probe(&self) -> bool {
+        let ok = self
+            .call_timeout("aria2.getVersion", vec![], PROBE_TIMEOUT)
+            .is_ok();
+        let mut health = self.probe_health.lock().unwrap_or_else(|e| e.into_inner());
+        *health = next_probe_health(*health, ok, Instant::now());
+        ok
+    }
 }
 
 impl Aria2 for Aria2Rpc {
@@ -170,8 +213,48 @@ impl Aria2 for Aria2Rpc {
         self.call_timeout(method, params, Duration::from_secs(15))
     }
     fn alive(&self) -> bool {
-        self.call_timeout("aria2.getVersion", vec![], Duration::from_secs(3))
-            .is_ok()
+        let ok = self.probe();
+        if ok {
+            return true;
+        }
+        let health = self.probe_health.lock().unwrap_or_else(|e| e.into_inner());
+        let since_success = health.last_success.map(|last| last.elapsed());
+        alive_from_health(health.consecutive_errors, since_success)
     }
     aria2_methods!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{alive_from_health, next_probe_health, ProbeHealth, ALIVE_GRACE};
+    use std::time::Duration;
+
+    #[test]
+    fn one_probe_error_keeps_engine_alive() {
+        assert!(alive_from_health(1, Some(Duration::from_secs(1))));
+    }
+
+    #[test]
+    fn three_errors_after_grace_mark_engine_stopped() {
+        assert!(!alive_from_health(3, Some(ALIVE_GRACE)));
+    }
+
+    #[test]
+    fn a_success_resets_the_error_streak() {
+        let now = std::time::Instant::now();
+        let health = next_probe_health(
+            ProbeHealth {
+                last_success: Some(now - Duration::from_secs(20)),
+                consecutive_errors: 3,
+            },
+            true,
+            now,
+        );
+        assert_eq!(health.consecutive_errors, 0);
+        assert_eq!(health.last_success, Some(now));
+        assert!(alive_from_health(
+            health.consecutive_errors,
+            Some(Duration::ZERO)
+        ));
+    }
 }

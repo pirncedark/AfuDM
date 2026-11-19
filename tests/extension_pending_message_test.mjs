@@ -30,4 +30,10 @@ const tr = JSON.parse(trText);
 const en = JSON.parse(enText);
 assert.ok(tr.msgPending.message.length > 0);
 assert.ok(en.msgPending.message.length > 0);
+assert.match(background, /error_type: error\.handoffType \|\| handoffErrorType\(error\)/);
+assert.match(background, /chrome\.notifications\.onClicked\?\.addListener/);
+for (const key of ["handoffUnavailable", "handoffTimeout", "handoffRejected", "handoffServer"]) {
+  assert.ok(tr[key].message.length > 0, `Turkish ${key} notification exists`);
+  assert.ok(en[key].message.length > 0, `English ${key} notification exists`);
+}
 console.log("extension pending message tests passed");
