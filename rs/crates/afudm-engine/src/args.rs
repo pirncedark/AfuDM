@@ -12,6 +12,8 @@ pub(crate) fn arguments(
         format!("--rpc-listen-port={port}"),
         format!("--rpc-secret={secret}"),
         "--rpc-allow-origin-all=true".into(),
+        // 3 MB+ .torrent dosyalari base64 ile 2 MB varsayilan RPC sinirini asiyor ("RPC hatasi").
+        "--rpc-max-request-size=64M".into(),
         format!("--dir={}", download_dir.display()),
         "--max-connection-per-server=16".into(),
         "--split=64".into(),

@@ -337,9 +337,11 @@ fn kaydet_bilgi(c: &ApiCtx, url: &str, dosya_adi: &str, kind: &str) -> Sonuc {
         String::new()
     };
     let son_klasor = match c.store.get("son_klasor")? {
-        Some(Json::Object(m)) if m.get("ana").and_then(Json::as_str) == Some(ana.as_str()) => m
+        // Son secilen klasor, ana klasor degismis olsa da hatirlanir.
+        Some(Json::Object(m)) => m
             .get("yol")
             .and_then(Json::as_str)
+            .filter(|y| Path::new(y).is_dir())
             .unwrap_or("")
             .to_string(),
         _ => String::new(),
@@ -704,9 +706,22 @@ fn dosya_ac(c: &ApiCtx, gid: &str) -> Sonuc {
     let hedef = c.manager.resolve_item_path(gid)?;
     match hedef {
         Some(yol) if yol.is_file() => gezgin_ac(&yol, false),
-        _ => {
-            let klasor = c.manager.current_download_dir()?;
-            gezgin_ac(Path::new(&klasor), false);
+        // Dosya yoksa (indiriliyor/klasor) ana klasore degil indirmenin kendi klasorune git.
+        Some(yol) if yol.is_dir() => gezgin_ac(&yol, false),
+        other => {
+            let satir_klasoru = c
+                .store
+                .by_gid(gid)?
+                .and_then(|r| r.get("dest_dir").and_then(Json::as_str).map(PathBuf::from))
+                .filter(|p| p.is_dir());
+            let klasor = other
+                .and_then(|y| y.parent().map(Path::to_path_buf))
+                .filter(|p| p.is_dir())
+                .or(satir_klasoru)
+                .unwrap_or_else(|| {
+                    PathBuf::from(c.manager.current_download_dir().unwrap_or_default())
+                });
+            gezgin_ac(&klasor, false);
         }
     }
     Ok(json!({"ok": true}))

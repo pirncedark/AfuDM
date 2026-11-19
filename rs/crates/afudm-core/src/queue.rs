@@ -668,6 +668,15 @@ fn launch(m: &Manager, row: &Json) -> Result<Json> {
         .and_then(Json::as_str)
         .filter(|s| !s.is_empty())
         .map(str::to_owned)
+        .or_else(|| {
+            // Klasor secilmediyse son kullanilan klasor (hala varsa).
+            m.store
+                .get("son_klasor")
+                .ok()
+                .flatten()
+                .and_then(|v| v.get("yol").and_then(Json::as_str).map(str::to_owned))
+                .filter(|y| Path::new(y).is_dir())
+        })
         .unwrap_or(if kind == "torrent" {
             crate::torrent::kayit_klasoru(&*m.store, &current_download_dir(m)?)?
         } else {
@@ -695,7 +704,33 @@ fn launch(m: &Manager, row: &Json) -> Result<Json> {
             return Ok(gid.to_owned());
         }
         let mut aria = connection_options(&opts);
-        aria.insert("dir".into(), json!(dest));
+        // Her HTTP indirme kendi adiyla bir alt klasore iner (torrent ile ayni duzen).
+        let ham_ad = opts
+            .get("filename")
+            .and_then(Json::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .unwrap_or_else(|| guess_name(text(&row["source"])));
+        let klasor_adi = {
+            let ad = probe::guvenli_dosya_adi(&ham_ad);
+            match ad.rsplit_once('.') {
+                Some((govde, uzanti)) if !govde.is_empty() && uzanti.len() <= 5 => govde.to_owned(),
+                _ => ad,
+            }
+        };
+        // Yeniden denemede ayni klasor tekrar eklenmez (dest_dir motor dizininden guncellenir).
+        let zaten_icinde = std::path::Path::new(&dest)
+            .file_name()
+            .is_some_and(|n| n.to_string_lossy() == klasor_adi);
+        let hedef = if klasor_adi.is_empty() || zaten_icinde {
+            dest.clone()
+        } else {
+            std::path::Path::new(&dest)
+                .join(klasor_adi)
+                .to_string_lossy()
+                .into_owned()
+        };
+        aria.insert("dir".into(), json!(hedef));
         for (a, b) in [("user_agent", "user-agent"), ("checksum", "checksum")] {
             if let Some(v) = opts.get(a).filter(|v| truthy(v)) {
                 aria.insert(b.into(), v.clone());
