@@ -1522,10 +1522,9 @@ fn unknown_download_size_has_no_remaining_bytes_value() {
 }
 
 #[test]
-fn active_status_keeps_engine_indicator_alive_after_quick_probe_fails() {
+fn live_snapshot_displays_engine_only_download_without_an_extra_status_probe() {
     let f = Fixture::new();
-    let added = f.add("busy.zip");
-    let gid = added["gid"].as_str().unwrap();
+    let gid = "engine-only";
     f.rpc.alive_override.lock().unwrap().replace(false);
     f.rpc.statuses.lock().unwrap().insert(
         gid.to_string(),
@@ -1534,6 +1533,8 @@ fn active_status_keeps_engine_indicator_alive_after_quick_probe_fails() {
 
     let snap = snapshot(&f.m).unwrap();
     assert_eq!(snap["engine_ok"], true);
+    assert_eq!(snap["items"][0]["gid"], gid);
+    assert_eq!(*f.rpc.status_reads.lock().unwrap(), 0);
 }
 
 #[test]
