@@ -3,19 +3,55 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#14181f">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#141518">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#F5F5F7">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/ikon.png">
 <title>AfuDM</title>
 <style>
+:root {
+  color-scheme: light;
+  --afu-gold-primary: #B89452;
+  --afu-gold-light: #DCC28A;
+  --afu-gold-soft: #F2E5C9;
+  --afu-bg: #F5F5F7;
+  --afu-surface-glass: rgba(255,255,255,.72);
+  --afu-border-glass: rgba(184,148,82,.24);
+  --paper: #fff;
+  --raised: #efece6;
+  --ink: #24221e;
+  --secondary: #57534b;
+  --accent-ink: #70531d;
+  --rule: #857c6c;
+  --positive: #185533;
+  --danger: #912337;
+  --warning: #74510d;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --afu-bg: #141518;
+    --afu-surface-glass: rgba(26,28,34,.68);
+    --afu-border-glass: rgba(242,229,201,.14);
+    --paper: #202124;
+    --raised: #302f2d;
+    --ink: #f6f2eb;
+    --secondary: #c8c2b7;
+    --accent-ink: var(--afu-gold-light);
+    --rule: #8f8677;
+    --positive: #81deb0;
+    --danger: #ffacb7;
+    --warning: #ffd589;
+  }
+}
 /* Telefon arayuzu: tek dosya (API sadece bunu servis eder, ek istek yok).
    Renkler masaustu arayuzle ayni; olculer parmak icin buyutuldu. */
 :root {
-  --bg: #14181f; --bg-deep: #0f131a; --surface: #1c222c; --surface-2: #232b37;
-  --line: #2a3340; --text: #e6eaf0; --muted: #8a97a8; --dim: #616e80;
-  --dl: #5b9dff; --seed: #a78bfa; --hold: #f6c445; --err: #f2678a; --done: #46c98b;
+  --bg: var(--afu-bg); --bg-deep: var(--afu-bg); --surface: var(--paper); --surface-2: var(--raised);
+  --line: var(--rule); --text: var(--ink); --muted: var(--secondary); --dim: var(--secondary);
+  --dl: var(--accent-ink); --seed: var(--accent-ink); --hold: var(--warning); --err: var(--danger); --done: var(--positive);
   --mono: "Cascadia Mono", Consolas, monospace;
   --ui: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
 }
@@ -49,9 +85,9 @@ main { padding: 12px 12px 164px; }   /* alt cubuk iki satir */
 .tur {
   display: inline-block; font-size: 10px; font-family: var(--mono); padding: 2px 6px;
   border-radius: 4px; margin-right: 6px; vertical-align: 1px;
-  background: #5b9dff22; color: var(--dl);
+  background: #b8945222; color: var(--dl);
 }
-.tur.torrent { background: #a78bfa22; color: var(--seed); }
+.tur.torrent { background: #b8945222; color: var(--seed); }
 .tur.video { background: #f6c44522; color: var(--hold); }
 .cubuk { height: 6px; border-radius: 3px; background: var(--bg-deep); overflow: hidden; }
 .cubuk i { display: block; height: 100%; background: var(--dl); transition: width .4s; }
@@ -67,8 +103,8 @@ button {
   font-family: var(--ui); font-size: 13px; color: var(--text); background: var(--surface-2);
   border: 1px solid var(--line); border-radius: 8px; padding: 9px 13px; min-height: 40px;
 }
-button:active { background: #2c3644; }
-button.ana { background: var(--dl); border-color: var(--dl); color: #08121f; font-weight: 600; }
+button:active { background: var(--raised); }
+button.ana { background: var(--afu-gold-light); border-color: var(--afu-gold-primary); color: #211d15; font-weight: 600; }
 button.sessiz { background: transparent; border-color: transparent; color: var(--muted); padding: 9px 8px; }
 .bos { text-align: center; color: var(--dim); padding: 48px 16px; line-height: 1.6; }
 
@@ -92,7 +128,7 @@ input[type="text"], select {
 .satir { display: flex; gap: 8px; margin-top: 8px; }
 .uyari {
   margin: 10px 12px; padding: 12px 14px; border-radius: 10px; font-size: 13px;
-  line-height: 1.5; background: #f2678a1a; border: 1px solid #f2678a44; color: #ffc9d6;
+  line-height: 1.5; background: #f2678a1a; border: 1px solid #f2678a44; color: var(--danger);
 }
 .uyari code { font-family: var(--mono); font-size: 12px; }
 .bildirim {
@@ -102,8 +138,8 @@ input[type="text"], select {
   transition: opacity .2s, transform .2s; pointer-events: none;
 }
 .bildirim.goster { opacity: 1; transform: none; }
-.bildirim.kotu { border-color: #f2678a66; color: #ffc9d6; }
-#pwaKur { font-size: 11px; min-height: 32px; padding: 6px 8px; }
+.bildirim.kotu { border-color: #f2678a66; color: var(--danger); }
+#pwaKur { font-size: 11px; min-height: 48px; padding: 6px 8px; }
 .katman { position: fixed; inset: 0; z-index: 8; display: flex; align-items: flex-end; background: #0008; }
 .katman[hidden] { display: none; }
 .katman-icerik { width: 100%; max-height: min(78vh, 680px); overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 16px 16px 0 0; padding: 16px 14px calc(16px + env(safe-area-inset-bottom)); }
@@ -117,6 +153,20 @@ input[type="text"], select {
 .torrent-dosya b { display: block; font-size: 13px; overflow-wrap: anywhere; }
 .torrent-dosya small { display: block; margin-top: 3px; color: var(--muted); font: 11px var(--mono); }
 .katman-eylem { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+header, .ekle, .is, .katman-icerik { background-color: var(--paper); border-color: var(--afu-border-glass); }
+@supports ((backdrop-filter: blur(8px)) or (-webkit-backdrop-filter: blur(8px))) {
+  header, .ekle, .is, .katman-icerik {
+    background-color: var(--afu-surface-glass);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+}
+:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
+button, select, input:not([type=checkbox]):not([type=radio]), [role=button] { min-height: 48px; min-width: 48px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
 </style>
 </head>
 <body>

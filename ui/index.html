@@ -117,7 +117,7 @@
         <button class="btn" id="scanAllBtn" data-i18n="bar.scanAll">Tümünü tara</button>
         <button class="btn ghost" id="selectAllBtn" style="display:none;" data-i18n="bar.selectAll">Tümünü Seç</button>
         <button class="btn ghost" id="removeSelected"
-          style="display:none; color: #ff4d4f; border-color: rgba(255,77,79,0.4); font-weight: bold;"
+          style="display:none; color: var(--danger); border-color: rgba(255,77,79,0.4); font-weight: bold;"
           data-i18n="bar.removeSelected">🗑 Seçilenleri Sil (0)</button>
         <button class="btn" id="installPwaBtn"
           style="display:none; color: var(--accent); border-color: var(--accent); font-weight: bold;">📱 Uygulamayı
@@ -716,7 +716,7 @@
             <span class="num" id="srvRozet">—</span>
             <span class="num" id="srvUygulama">—</span>
           </div>
-          <div class="hint" id="srvHata" style="color:#ff8a8a"></div>
+          <div class="hint" id="srvHata" style="color:var(--danger)"></div>
         </div>
 
         <div class="seed-kutu" style="margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px;">
@@ -1278,7 +1278,7 @@
       <div class="body">
         <p data-i18n="renew.desc" style="margin-bottom: 12px; color: var(--text);">Eski linkin süresi dolduysa yenisini yapıştır. İndirme kaldığı yerden devam eder.</p>
         <input type="text" id="renewUrl" placeholder="https://" style="width:100%;">
-        <div id="renewErr" style="color:#ff6b6b; margin-top:8px; min-height:1em;"></div>
+        <div id="renewErr" style="color:var(--danger); margin-top:8px; min-height:1em;"></div>
       </div>
       <div class="foot">
         <button class="btn ghost" data-close="renewVeil" data-i18n="set.cancel">Vazgeç</button>
@@ -1295,7 +1295,7 @@
       <div class="body">
         <p data-i18n="fix.desc" style="margin-bottom: 12px; color: var(--text);">Eksik veya hatalı inmiş dosyayı silmeden, yeni bir link vererek sadece bozuk kısımları onarın.</p>
         <input type="text" id="fixUrl" placeholder="https://" style="width:100%;">
-        <div id="fixErr" style="color:#ff6b6b; margin-top:8px; min-height:1em;"></div>
+        <div id="fixErr" style="color:var(--danger); margin-top:8px; min-height:1em;"></div>
       </div>
       <div class="foot">
         <button class="btn ghost" data-close="fixVeil" data-i18n="set.cancel">Vazgeç</button>

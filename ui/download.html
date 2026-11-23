@@ -5,23 +5,72 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AfuDM — İndirme</title>
   <style>
-    :root { color-scheme: dark; font: 14px "Segoe UI", sans-serif; background:#14181f; color:#eef1f7; }
+:root {
+  color-scheme: light;
+  --afu-gold-primary: #B89452;
+  --afu-gold-light: #DCC28A;
+  --afu-gold-soft: #F2E5C9;
+  --afu-bg: #F5F5F7;
+  --afu-surface-glass: rgba(255,255,255,.72);
+  --afu-border-glass: rgba(184,148,82,.24);
+  --paper: #fff;
+  --raised: #efece6;
+  --ink: #24221e;
+  --secondary: #57534b;
+  --accent-ink: #70531d;
+  --rule: #857c6c;
+  --positive: #185533;
+  --danger: #912337;
+  --warning: #74510d;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --afu-bg: #141518;
+    --afu-surface-glass: rgba(26,28,34,.68);
+    --afu-border-glass: rgba(242,229,201,.14);
+    --paper: #202124;
+    --raised: #302f2d;
+    --ink: #f6f2eb;
+    --secondary: #c8c2b7;
+    --accent-ink: var(--afu-gold-light);
+    --rule: #8f8677;
+    --positive: #81deb0;
+    --danger: #ffacb7;
+    --warning: #ffd589;
+  }
+}
+:root { font: 14px "Segoe UI", sans-serif; background:var(--afu-bg); color:var(--ink); }
     body { margin:0; padding:16px; height:100vh; box-sizing:border-box; display:flex; flex-direction:column; overflow:hidden; }
     h1 { font-size:18px; margin:0 0 10px; }
-    #url { color:#aeb8c8; overflow-wrap:anywhere; max-height:40px; overflow:hidden; margin-bottom:10px; }
-    label { display:block; color:#c5ccda; margin:8px 0 4px; }
-    input, select { box-sizing:border-box; width:100%; padding:8px 10px; border:1px solid #394252; border-radius:7px; background:#1c222c; color:#fff; }
+    #url { color:var(--secondary); overflow-wrap:anywhere; max-height:40px; overflow:hidden; margin-bottom:10px; }
+    label { display:block; color:var(--secondary); margin:8px 0 4px; }
+    input, select { box-sizing:border-box; width:100%; padding:8px 10px; border:1px solid var(--rule); border-radius:7px; background:var(--paper); color:var(--ink); }
     .row { display:flex; gap:8px; }
     .row input, select { flex:1; min-width:0; }
-    #resetFolder { background:none; padding:4px 0; color:#aebfea; font-size:12px; margin-bottom:4px; cursor:pointer; }
-    button { border:0; border-radius:7px; padding:8px 14px; color:#fff; background:#303949; cursor:pointer; }
-    button.primary { background:#5579d7; font-weight:600; }
+    #resetFolder { background:none; padding:4px 0; color:var(--accent-ink); font-size:12px; margin-bottom:4px; cursor:pointer; }
+    button { border:0; border-radius:7px; padding:8px 14px; color:var(--ink); background:var(--raised); cursor:pointer; }
+    button.primary { background:var(--afu-gold-light); color:#211d15; font-weight:600; }
     [hidden] { display:none !important; }
     #confirmPane, #progressPane { flex:1; min-height:0; display:flex; flex-direction:column; overflow-y:auto; }
     #confirmPane > *, #progressPane > * { flex-shrink:0; }
     .actions { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:8px; margin-top:auto; padding-top:10px; padding-bottom:4px; }
-    #error { color:#ff9292; min-height:16px; margin-top:6px; }
-  </style>
+    #error { color:var(--danger); min-height:16px; margin-top:6px; }
+
+#confirmPane, #progressPane { background-color: var(--paper); border-color: var(--afu-border-glass); }
+@supports ((backdrop-filter: blur(8px)) or (-webkit-backdrop-filter: blur(8px))) {
+  #confirmPane, #progressPane {
+    background-color: var(--afu-surface-glass);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+}
+:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
+button, select, input:not([type=checkbox]):not([type=radio]), [role=button] { min-height: 48px; min-width: 48px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+</style>
 </head>
 <body>
   <h1 id="title" data-i18n="download.title">İndirme</h1>

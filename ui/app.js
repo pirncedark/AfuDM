@@ -155,7 +155,8 @@ function drawTrace() {
   const y = (v) => h - 6 - (v / peak) * (h - 16);
 
   // zemin izgarasi: iki sessiz cizgi
-  ctx.strokeStyle = "#1f2733";
+  const palette = getComputedStyle(document.documentElement);
+  ctx.strokeStyle = palette.getPropertyValue("--rule").trim();
   ctx.lineWidth = 1;
   [0.34, 0.67].forEach((f) => {
     ctx.beginPath();
@@ -170,14 +171,14 @@ function drawTrace() {
   ctx.lineTo(w, h);
   ctx.closePath();
   const fill = ctx.createLinearGradient(0, 0, 0, h);
-  fill.addColorStop(0, "#5b9dff3d");
-  fill.addColorStop(1, "#5b9dff00");
+  fill.addColorStop(0, "#b894523d");
+  fill.addColorStop(1, "#b8945200");
   ctx.fillStyle = fill;
   ctx.fill();
 
   ctx.beginPath();
   state.trace.forEach((v, i) => (i ? ctx.lineTo(i * step, y(v)) : ctx.moveTo(0, y(v))));
-  ctx.strokeStyle = "#5b9dff";
+  ctx.strokeStyle = palette.getPropertyValue("--accent-ink").trim();
   ctx.lineWidth = 1.5;
   ctx.stroke();
 }
