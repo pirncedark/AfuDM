@@ -224,10 +224,7 @@ button { cursor: pointer; }
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.01em;
-  background: var(--primary-gradient);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--accent-ink);
 }
 .brand span { -webkit-text-fill-color: var(--dl); color: var(--dl); }
 .brand small {
@@ -1020,7 +1017,7 @@ input, textarea, code, .kv, .row-title, .kay-url, .hint, .err-note { user-select
 .chr-adimlar li.calisiyor { color: var(--text); }
 .chr-adimlar li.calisiyor i { border-color: var(--dl); border-top-color: transparent; animation: chr-don 0.8s linear infinite; }
 .chr-adimlar li.tamam { color: var(--text); }
-.chr-adimlar li.tamam i { border-color: var(--done); background: var(--done); color: #07140d; }
+.chr-adimlar li.tamam i { border-color: var(--done); background: var(--done); color: var(--afu-bg); }
 .chr-adimlar li.tamam i::after { content: "✓"; font-weight: 700; }
 .chr-adimlar li.hata { color: var(--err); }
 .chr-adimlar li.hata i { border-color: var(--err); color: var(--err); }
