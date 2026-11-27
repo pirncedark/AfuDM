@@ -106,6 +106,30 @@ fn quoted(s: &str) -> String {
     format!("\"{}\"", s.replace('"', "\"\""))
 }
 impl SqliteStore {
+    fn delete_downloads(&self, condition: &str, args: &[Json]) -> Result<usize> {
+        let mut conn = self.lock()?;
+        let tx = conn.transaction().map_err(db_error)?;
+        let gids = format!("SELECT gid FROM downloads WHERE {condition}");
+        let values: Vec<_> = args.iter().map(sql_value).collect();
+        for (table, key) in [
+            ("torrent_file_selections", "gid"),
+            ("automation_jobs", "download_gid"),
+        ] {
+            tx.execute(
+                &format!("DELETE FROM {table} WHERE {key} IN ({gids})"),
+                params_from_iter(&values),
+            )
+            .map_err(db_error)?;
+        }
+        let count = tx
+            .execute(
+                &format!("DELETE FROM downloads WHERE {condition}"),
+                params_from_iter(&values),
+            )
+            .map_err(db_error)?;
+        tx.commit().map_err(db_error)?;
+        Ok(count)
+    }
     pub fn open(path: &Path) -> Result<Self> {
         Self::init(Connection::open(path).map_err(db_error)?)
     }
@@ -354,24 +378,29 @@ impl Store for SqliteStore {
             .is_empty())
     }
     fn torrent_dosya_secimlerini_tasi(&self, eski_gid: &str, yeni_gid: &str) -> Result<()> {
-        self.execute(
-            "UPDATE OR IGNORE torrent_file_selections SET gid=? WHERE gid=?",
-            &[json!(yeni_gid), json!(eski_gid)],
-        )?;
-        Ok(())
+        if eski_gid == yeni_gid {
+            return Ok(());
+        }
+        let mut conn = self.lock()?;
+        let tx = conn.transaction().map_err(db_error)?;
+        // The saved source selection is a complete set, including an explicit empty set.
+        tx.execute("DELETE FROM torrent_file_selections WHERE gid=? AND EXISTS (SELECT 1 FROM torrent_file_selections WHERE gid=?)", [yeni_gid, eski_gid]).map_err(db_error)?;
+        tx.execute(
+            "UPDATE torrent_file_selections SET gid=? WHERE gid=?",
+            [yeni_gid, eski_gid],
+        )
+        .map_err(db_error)?;
+        tx.commit().map_err(db_error)
     }
     fn due_scheduled(&self, time: Option<f64>) -> Result<Vec<Json>> {
         Ok(downloads(self.query("SELECT * FROM downloads WHERE status='scheduled' AND start_after IS NOT NULL AND start_after<=?",&[json!(time.filter(|v|*v!=0.0).unwrap_or_else(now))])?))
     }
     fn delete(&self, row_id: i64) -> Result<()> {
-        self.execute("DELETE FROM downloads WHERE id=?", &[json!(row_id)])?;
+        self.delete_downloads("id=?", &[json!(row_id)])?;
         Ok(())
     }
     fn clear_finished(&self) -> Result<usize> {
-        self.execute(
-            "DELETE FROM downloads WHERE status IN ('complete','removed','error')",
-            &[],
-        )
+        self.delete_downloads("status IN ('complete','removed','error')", &[])
     }
     fn automation_enqueue(&self, gid: &str, action: &str, payload: Option<&JsonMap>) -> Result<()> {
         self.execute("INSERT OR IGNORE INTO automation_jobs(download_gid,action,payload,created_at) VALUES(?,?,?,?)",&[json!(gid),json!(action),json!(json!(payload.cloned().unwrap_or_default()).to_string()),json!(now())])?;

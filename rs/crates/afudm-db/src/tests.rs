@@ -119,6 +119,46 @@ fn obj(v: serde_json::Value) -> JsonMap {
 }
 
 #[test]
+fn gid_move_replaces_destination_selection_and_is_repeatable() {
+    let s = SqliteStore::open_in_memory().unwrap();
+    s.torrent_dosya_secimlerini_kaydet("from", &[2, 4]).unwrap();
+    s.torrent_dosya_secimlerini_kaydet("to", &[1, 2]).unwrap();
+    for (from, to) in [("from", "to"), ("from", "to"), ("to", "to")] {
+        s.torrent_dosya_secimlerini_tasi(from, to).unwrap();
+        assert_eq!(s.torrent_dosya_secimleri("to").unwrap(), [2, 4]);
+        assert!(!s.torrent_dosya_secimi_var("from").unwrap());
+    }
+}
+
+#[test]
+fn deleting_downloads_removes_only_their_dependents_atomically() {
+    let s = SqliteStore::open_in_memory().unwrap();
+    for gid in ["one", "two", "keep"] {
+        s.add("torrent", "x", None, None, None, None, Some(gid))
+            .unwrap();
+        s.torrent_dosya_secimlerini_kaydet(gid, &[1]).unwrap();
+        s.automation_enqueue(gid, "checksum", None).unwrap();
+    }
+    let id = s.by_gid("one").unwrap().unwrap()["id"].as_i64().unwrap();
+    s.execute("CREATE TRIGGER prevent_delete BEFORE DELETE ON downloads BEGIN SELECT RAISE(ABORT, 'test'); END", &[]).unwrap();
+    assert!(s.delete(id).is_err());
+    assert!(s.torrent_dosya_secimi_var("one").unwrap());
+    assert_eq!(s.automation_jobs("one", 3).unwrap().len(), 1);
+    s.execute("DROP TRIGGER prevent_delete", &[]).unwrap();
+    s.delete(id).unwrap();
+    s.update_by_gid("two", &obj(json!({"status":"complete"})))
+        .unwrap();
+    assert_eq!(s.clear_finished().unwrap(), 1);
+    for gid in ["one", "two", "keep"] {
+        assert_eq!(s.torrent_dosya_secimi_var(gid).unwrap(), gid == "keep");
+        assert_eq!(
+            !s.automation_jobs(gid, 3).unwrap().is_empty(),
+            gid == "keep"
+        );
+    }
+}
+
+#[test]
 fn rules_are_ordered_and_failed_replace_rolls_back() {
     let s = SqliteStore::open_in_memory().unwrap();
     s.rules_save(&[
