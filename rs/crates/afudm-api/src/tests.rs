@@ -45,6 +45,13 @@ async fn request(ctx: &ApiCtx, method: &str, path: &str, data: &str, auth: bool)
     (status, serde_json::from_slice(&bytes).unwrap())
 }
 #[tokio::test]
+async fn missing_token_reports_service_unavailable_and_denies_access() {
+    let (dir, ctx, _) = fixture();
+    std::fs::remove_file(dir.path().join("api_token.txt")).unwrap();
+    assert_eq!(request(&ctx, "GET", "/snapshot", "", false).await.0, 503);
+}
+
+#[tokio::test]
 async fn authentication_rotation_and_json_errors() {
     let (_dir, ctx, _) = fixture();
     assert_eq!(
@@ -495,6 +502,9 @@ impl ManagerApi for FakeManager {
         Ok(json!({"gid":gid}))
     }
     #[allow(unused_variables)]
+    fn tracker_ekle(&self, gid: &str, liste: &str) -> Result<Value> {
+        Ok(json!({"gid":gid, "trackers":liste}))
+    }
     fn tracker_tara(&self, gid: &str) -> Result<Value> {
         Ok(json!({"gid":gid}))
     }

@@ -899,12 +899,13 @@ fn indir_onayla(c: &ApiCtx, t: &JsonMap) -> Json {
 }
 
 /// Kuyrugun onayini bekleyen is parcacigi: onay gelirse indirmeyi baslatir, iptal ise biter.
-fn onay_bekle(ctx: ApiCtx, rx: mpsc::Receiver<Option<JsonMap>>) {
-    std::thread::spawn(move || {
-        if let Ok(Some(secim)) = rx.recv() {
-            let _ = indir_onayla(&ctx, &secim);
+fn onay_bekle(ctx: &ApiCtx, rx: mpsc::Receiver<Option<JsonMap>>, hata_bildir: impl FnOnce(String)) {
+    if let Ok(Some(secim)) = rx.recv() {
+        let sonuc = indir_onayla(ctx, &secim);
+        if let Some(mesaj) = sonuc["error"].as_str() {
+            hata_bildir(mesaj.to_owned());
         }
-    });
+    }
 }
 
 /// Python `yerelden_sor`: masaustu dosya iliskilendirmesi; ana panelde onay bekler.
@@ -915,7 +916,8 @@ fn yerelden_sor(k: &Kabuk, mut istek: JsonMap) -> Json {
     istek.insert("source".into(), json!("desktop"));
     let (kimlik, rx) = k.ui.kuyruga_ekle(istek);
     if let Some(rx) = rx {
-        onay_bekle(ctx, rx);
+        let ui = k.ui.clone();
+        std::thread::spawn(move || onay_bekle(&ctx, rx, |hata| ui.onay_hatasi_bildir(hata)));
     }
     let app = k.app.clone();
     let _ = k.app.run_on_main_thread(move || {
@@ -1091,9 +1093,17 @@ fn security_rotate_token(k: &Kabuk) -> Json {
     let Some(c) = k.ctx.get() else {
         return bridge::motor_hazir_degil();
     };
-    match afudm_api::security::rotate_token(&c.data_dir) {
+    token_yenile(c, port(k))
+}
+
+fn token_yenile(c: &ApiCtx, port: u16) -> Json {
+    if port == 0 {
+        return bridge::motor_hazir_degil();
+    }
+    match afudm_api::security::rotate_token(&c.data_dir)
+        .and_then(|()| afudm_api::write_endpoint(c, port))
+    {
         Ok(()) => {
-            let _ = afudm_api::write_endpoint(c, port(k));
             json!({"ok": true, "message": "Yeni anahtar etkin; eski anahtar aninda gecersiz."})
         }
         Err(e) => hata(e.to_string()),
@@ -1119,6 +1129,35 @@ fn seed_tracker_kaydet(c: &ApiCtx, metin: &str) -> Result<Json> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rotation_waits_for_listener_and_reports_publication_failure() {
+        let mut c = bridge::tests::torrent_ctx();
+        c.data_dir = std::env::temp_dir().join(format!("afudm-rotate-{}", std::process::id()));
+        std::fs::create_dir_all(&c.data_dir).unwrap();
+        let endpoint = c.data_dir.join("api_endpoint.json");
+        assert_eq!(token_yenile(&c, 0)["ok"], false);
+        assert!(!endpoint.exists());
+        assert!(!c.data_dir.join("api_token.txt").exists());
+        std::fs::create_dir(&endpoint).unwrap();
+        assert_eq!(token_yenile(&c, 49123)["ok"], false);
+        std::fs::remove_dir(&endpoint).unwrap();
+        assert_eq!(token_yenile(&c, 49123)["ok"], true);
+        let record: Json = serde_json::from_slice(&std::fs::read(endpoint).unwrap()).unwrap();
+        assert_eq!(record["port"], 49123);
+        std::fs::remove_dir_all(c.data_dir).unwrap();
+    }
+
+    #[test]
+    fn approval_worker_reports_failed_add_to_ui() {
+        let c = bridge::tests::torrent_ctx();
+        let (tx, rx) = mpsc::channel();
+        tx.send(Some(harita(json!({"url":"invalid","kind":"http"}))))
+            .unwrap();
+        let mut error = String::new();
+        onay_bekle(&c, rx, |msg| error = msg);
+        assert!(!error.is_empty());
+    }
 
     #[test]
     fn fix8_telefon_paylasimi_ui_defterinde() {

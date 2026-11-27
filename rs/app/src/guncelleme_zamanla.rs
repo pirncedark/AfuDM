@@ -88,10 +88,37 @@ fn uygula_bosta(g: &Arc<Guncelleme>, ctx: &ApiCtx, kabuk: &Kabuk) {
             .unwrap_or(true)
             || !kabuk.ui.listele().is_empty();
         let sonuc = g.uygula(&*ctx.store, &snap, bekleyen, true, false);
+        sonuc_ile_kapat(&sonuc, || kabuk.app.exit(0));
         if sonuc["bekle"] == json!(true) && baslangic.elapsed() < BEKLEME_ZAMAN_ASIMI {
             std::thread::sleep(BOSTA_YOKLAMA);
             continue;
         }
         return;
+    }
+}
+
+pub(crate) fn sonuc_ile_kapat(sonuc: &Json, kapat: impl FnOnce()) {
+    if sonuc["ok"] == true && sonuc["kapat"] == true {
+        kapat();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exits_only_after_updater_started() {
+        let mut exits = 0;
+        for sonuc in [
+            json!({"ok":true,"bekle":true}),
+            json!({"ok":false,"kapat":true}),
+            json!({"ok":true,"zaten":true}),
+        ] {
+            sonuc_ile_kapat(&sonuc, || exits += 1);
+        }
+        assert_eq!(exits, 0);
+        sonuc_ile_kapat(&json!({"ok":true,"kapat":true}), || exits += 1);
+        assert_eq!(exits, 1);
     }
 }

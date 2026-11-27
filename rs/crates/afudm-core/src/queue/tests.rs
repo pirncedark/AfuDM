@@ -57,6 +57,7 @@ impl Fixture {
             root.clone(),
         );
         m.store.set("download_dir", json!(root)).unwrap();
+        m.store.set("torrent_dir", json!(root)).unwrap();
         Self { m, rpc, root }
     }
     fn add(&self, name: &str) -> Json {
@@ -103,6 +104,48 @@ fn wait_removed_id(m: &Manager, id: i64) {
         }
         std::thread::sleep(Duration::from_millis(10));
     }
+}
+
+#[test]
+fn local_torrent_selection_survives_missing_preview() {
+    let f = Fixture::new();
+    let source = f.root.join("nested.torrent");
+    std::fs::write(&source, b"d4:infod4:name4:Packee").unwrap();
+    add(
+        &f.m,
+        &map(json!({"source": source, "dest_dir": f.root,
+        "adopt_gid": "missing-gid", "selected_files": [2]})),
+    )
+    .unwrap();
+    let calls = f.rpc.calls.lock().unwrap();
+    let (_, params) = calls
+        .iter()
+        .find(|(method, _)| method == "add_torrent")
+        .unwrap();
+    assert_eq!(params[1]["select-file"], "2");
+}
+
+#[test]
+fn torrent_directory_error_reaches_live_and_saved_rows() {
+    let f = Fixture::new();
+    let gid = "nested-error";
+    f.m.store
+        .add("torrent", "file.torrent", None, None, None, None, Some(gid))
+        .unwrap();
+    let status = json!({"gid":gid, "status":"error", "infoHash":"abc", "errorCode":"18",
+        "errorMessage":"Failed to make the directory ..."});
+    f.rpc
+        .statuses
+        .lock()
+        .unwrap()
+        .insert(gid.into(), status.clone());
+    sync::collect(&f.m).unwrap();
+    let expected = "Windows Denetimli klasör erişimi bu klasöre yazmayı engelledi; AfuDM'i izinli uygulamalara ekleyin.";
+    assert_eq!(
+        shaping::aria(&f.m, &status).unwrap()["errorMessage"],
+        expected
+    );
+    assert_eq!(f.m.store.by_gid(gid).unwrap().unwrap()["error"], expected);
 }
 
 #[test]
@@ -2168,4 +2211,176 @@ fn upload_global_default_and_live_changes() {
             update_settings(&f.m, json!({"max_upload_kb": invalid}).as_object().unwrap()).is_err()
         );
     }
+}
+
+#[test]
+fn stopped_metadata_cannot_reclaim_payload_gid_or_progress() {
+    let f = Fixture::new();
+    let id =
+        f.m.store
+            .add(
+                "torrent",
+                "magnet:?xt=urn:btih:abc",
+                None,
+                None,
+                None,
+                None,
+                Some("old"),
+            )
+            .unwrap();
+    f.m.store
+        .update_by_id(id, &map(json!({"status":"active"})))
+        .unwrap();
+    f.rpc.statuses.lock().unwrap().extend([
+        ("a-child".into(),json!({"gid":"a-child","following":"old","infoHash":"abc","status":"active","completedLength":"42"})),
+        ("old".into(),json!({"gid":"old","followedBy":["a-child"],"infoHash":"abc","status":"complete","completedLength":"1"}))
+    ]);
+    for _ in 0..2 {
+        sync::collect(&f.m).unwrap();
+    }
+    let row = f.m.store.by_id(id).unwrap().unwrap();
+    assert_eq!(row["gid"], "a-child");
+    assert_eq!(row["done_bytes"], 42);
+    assert_eq!(row["status"], "active");
+}
+
+#[test]
+fn sync_clears_previous_error_when_job_recovers() {
+    let f = Fixture::new();
+    let item = f.add("recovered.bin");
+    f.m.store
+        .update_by_gid(
+            text(&item["gid"]),
+            &map(json!({"error":"previous failure","status":"error"})),
+        )
+        .unwrap();
+    sync::collect(&f.m).unwrap();
+    assert!(f.m.store.by_gid(text(&item["gid"])).unwrap().unwrap()["error"].is_null());
+}
+
+#[test]
+fn removing_supersedes_an_inflight_pause() {
+    let f = Fixture::new();
+    let gid = f.add("race.bin")["gid"].as_str().unwrap().to_string();
+    rpc_block(&f.rpc, true);
+    pause(&f.m, &gid).unwrap();
+    remove(&f.m, &gid, false).unwrap();
+    let row = f.m.store.by_gid(&gid).unwrap().unwrap();
+    assert!(control_action(&row).is_none());
+    assert!(pause(&f.m, &gid).is_err());
+    rpc_block(&f.rpc, false);
+    wait_removed(&f.m, &gid);
+    assert_eq!(
+        f.m.store.by_gid(&gid).unwrap().unwrap()["status"],
+        "removed"
+    );
+}
+
+#[test]
+fn permanent_rpc_errors_release_control_and_removal_intents() {
+    let f = Fixture::new();
+    let first = f.add("pause.bin")["gid"].as_str().unwrap().to_string();
+    let second = f.add("remove.bin")["gid"].as_str().unwrap().to_string();
+    *f.rpc.offline.lock().unwrap() = true;
+    pause(&f.m, &first).unwrap();
+    remove(&f.m, &second, false).unwrap();
+    for _ in 0..400 {
+        if [&first, &second]
+            .iter()
+            .all(|gid| f.m.store.by_gid(gid).unwrap().unwrap()["status"] == "error")
+        {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    for gid in [&first, &second] {
+        let row = f.m.store.by_gid(gid).unwrap().unwrap();
+        assert_eq!(row["status"], "error");
+        assert!(!text(&row["error"]).is_empty());
+        assert!(control_action(&row).is_none());
+        assert!(!state(&f.m).unwrap().removed_gids.contains(gid));
+    }
+    *f.rpc.offline.lock().unwrap() = false;
+    sync::collect(&f.m).unwrap();
+    let snap = snapshot(&f.m).unwrap();
+    let failed = snap["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["gid"] == second)
+        .unwrap();
+    assert_eq!(failed["status"], "error");
+    assert!(!text(&failed["errorMessage"]).is_empty());
+}
+
+#[test]
+fn retry_releases_video_worker_before_relaunch() {
+    let f = Fixture::new();
+    let old = "yt:7";
+    // Offline replacement avoids launching an external downloader in this fixture.
+    let id =
+        f.m.store
+            .add(
+                "http",
+                "https://example.test/a",
+                None,
+                Some(f.root.to_str().unwrap()),
+                None,
+                None,
+                Some(old),
+            )
+            .unwrap();
+    crate::video::test_is_ekle(&f.m, old, f.root.to_str().unwrap(), "test.mp4", "paused");
+    retry(&f.m, id).unwrap();
+    assert!(!crate::video::gidler(&f.m).contains(old));
+    assert!(!f
+        .rpc
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|(c, _)| c == "remove_result"));
+}
+
+#[test]
+fn resolve_prefers_existing_output_when_merged_candidate_is_missing() {
+    let f = Fixture::new();
+    let id =
+        f.m.store
+            .add(
+                "video",
+                "video",
+                None,
+                Some(f.root.to_str().unwrap()),
+                None,
+                None,
+                Some("yt:1"),
+            )
+            .unwrap();
+    let name = "clip.f123.mp4";
+    f.m.store
+        .update_by_id(id, &map(json!({"filename":name})))
+        .unwrap();
+    let target = f.root.join(name);
+    std::fs::write(&target, "test").unwrap();
+    assert_eq!(files::resolve(&f.m, "yt:1").unwrap().unwrap(), target);
+}
+
+#[test]
+fn failed_final_sync_still_shuts_down_and_clears_state() {
+    let f = Fixture::new();
+    state(&f.m).unwrap().started = true;
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _guard = f.m.kilit.lock().unwrap();
+        panic!("simulate poisoned synchronization lock");
+    }));
+    assert!(stop(&f.m).is_err());
+    assert!(!state(&f.m).unwrap().started);
+    assert!(f
+        .rpc
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|(c, _)| c == "shutdown"));
 }

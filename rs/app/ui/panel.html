@@ -331,6 +331,17 @@
         </table>
       </div>
     </section>
+    <dialog id="trackerMenu" class="card">
+      <button id="trackerManual" data-i18n="tracker.add"></button>
+      <button id="trackerBest" data-i18n="tracker.best"></button>
+      <button id="trackerClose" data-i18n="klas.cancel"></button>
+    </dialog>
+    <dialog id="trackerInput" class="card">
+      <label for="trackerUrls" data-i18n="seed.ek"></label>
+      <textarea id="trackerUrls" spellcheck="false"></textarea>
+      <button id="trackerSubmit" class="pri" data-i18n="tracker.add"></button>
+      <button id="trackerCancel" data-i18n="klas.cancel"></button>
+    </dialog>
   </main>
 </div>
 
@@ -576,7 +587,7 @@ function satir(o) {
   }
   var hata = o.error ? '<div class="sub" style="color:var(--err)">' +
              kacak(String(o.error).slice(0, 200)) + "</div>" : "";
-  return "<tr><td class='mono'>" + kacak(String(o.gid || "").slice(0, 8)) + "</td>" +
+  return '<tr data-kind="' + kacak(o.kind || "") + '" data-gid="' + gid + '"><td class="mono">' + kacak(String(o.gid || "").slice(0, 8)) + "</td>" +
     "<td><div>" + kacak(String(ad).slice(0, 90)) + "</div>" +
     "<div class='sub'>" + boyut(o.completed || o.done_bytes || 0) + " " +
     kacak(t("pnl.of")) + " " + boyut(o.total || o.total_bytes || 0) +
@@ -915,6 +926,31 @@ function baslat() {
 
 /* ===================== olaylar (DOM) ===================== */
 function kur() {
+  let trackerGid;
+  $("listeGovde").addEventListener("contextmenu", function (event) {
+    const row = event.target.closest('tr[data-kind="torrent"]');
+    if (!row || S.rol !== "yonetici") return;
+    event.preventDefault();
+    trackerGid = row.dataset.gid;
+    $("trackerMenu").showModal();
+  });
+  $("trackerClose").onclick = () => $("trackerMenu").close();
+  $("trackerCancel").onclick = () => $("trackerInput").close();
+  $("trackerManual").onclick = () => {
+    $("trackerMenu").close();
+    $("trackerUrls").value = "";
+    $("trackerInput").showModal();
+    $("trackerUrls").focus();
+  };
+  async function applyTrackers(path, data, dialog) {
+    const out = await istek(path, Object.assign({ gid: trackerGid }, data));
+    if (!out.ok) { hataBildir(out); return; }
+    $(dialog).close();
+    bildir(t("tracker.applied", { n: out.uygulanan }), "ok");
+  }
+  $("trackerBest").onclick = () => applyTrackers("/api/tracker/tara", {}, "trackerMenu");
+  $("trackerSubmit").onclick = () => applyTrackers("/api/tracker/ekle", {trackers: $("trackerUrls").value}, "trackerInput");
+
   setLang((navigator.language || "tr").toLowerCase().indexOf("tr") === 0 ? "tr" : "en");
   applyStatic();
   document.title = t("pnl.title");

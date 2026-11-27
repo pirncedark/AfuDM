@@ -1,5 +1,13 @@
 use super::*;
 
+pub(super) fn engine_error(status: &Json) -> &str {
+    if number(&status["errorCode"]) == 18 {
+        "Windows Denetimli klasör erişimi bu klasöre yazmayı engelledi; AfuDM'i izinli uygulamalara ekleyin."
+    } else {
+        text(&status["errorMessage"])
+    }
+}
+
 fn rounded(value: f64, digits: i32) -> f64 {
     let scale = 10f64.powi(digits);
     (value * scale).round_ties_even() / scale
@@ -9,6 +17,9 @@ pub(super) fn aria(m: &Manager, status: &Json) -> Result<Json> {
     let mut checked = status.clone();
     let saved = m.store.by_gid(text(&status["gid"]))?;
     if let Some(row) = saved.as_ref() {
+        if files::removal_failed(row) {
+            return Ok(self::row(row));
+        }
         if let Some(action) = control_action(row) {
             checked["status"] = json!(if action == "pause" {
                 "paused"
@@ -76,7 +87,7 @@ pub(super) fn aria(m: &Manager, status: &Json) -> Result<Json> {
     let error = if auth {
         "Kaydedilen oturumdaki Cookie/Authorization güvenlik için silindi. Yeni giriş bilgileriyle indirmeyi Yenile."
     } else {
-        [text(&status["errorMessage"]), text(&row["error"])]
+        [engine_error(status), text(&row["error"])]
             .into_iter()
             .find(|s| !s.is_empty())
             .unwrap_or("")
@@ -117,38 +128,71 @@ pub(super) fn row(row: &Json) -> Json {
     json!({"id":row["id"],"gid":row.get("gid").filter(|v|truthy(v)).cloned().unwrap_or(json!(format!("row:{}",row_id(row)))),"kind":row["kind"],"status":row["status"],"title":row.get("title").filter(|v|truthy(v)).cloned().unwrap_or_else(||row["source"].clone()),"filename":row.get("filename").filter(|v|truthy(v)).cloned().unwrap_or(json!("")),"totalLength":total,"completedLength":done,"progress":progress,"downloadSpeed":0,"uploadSpeed":0,"connections":0,"numSeeders":0,"eta":0,"dir":row.get("dest_dir").filter(|v|truthy(v)).cloned().unwrap_or(json!("")),"errorMessage":error,"source":row["source"],"start_after":row["start_after"]})
 }
 
+pub(super) fn attach_payload(m: &Manager, parent: &Json, child: &str) -> Result<()> {
+    let old = text(&parent["gid"]);
+    let selected = m.store.torrent_dosya_secimi_var(old)?;
+    let indexes = m.store.torrent_dosya_secimleri(old)?;
+    m.store
+        .update_by_id(row_id(parent), &map(json!({"gid":child,"status":"active"})))?;
+    m.store.torrent_dosya_secimlerini_tasi(old, child)?;
+    if selected {
+        let value = if indexes.is_empty() {
+            "0".into()
+        } else {
+            indexes
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        if let Err(e) = m
+            .rpc()
+            .change_option(child, &map(json!({"select-file":value})))
+        {
+            m.store.log(
+                "warn",
+                &format!("magnet dosya secimi uygulanamadi: {e}"),
+                child,
+            );
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn reattach(m: &Manager, status: &Json) -> Result<Option<Json>> {
     let gid = text(&status["gid"]);
     if state(m)?.preview_gids.contains(gid) {
         return Ok(None);
     }
     if let Some(parent) = m.store.by_gid(text(&status["following"]))? {
-        m.store
-            .update_by_id(row_id(&parent), &map(json!({"gid":gid})))?;
-        m.store
-            .torrent_dosya_secimlerini_tasi(text(&parent["gid"]), gid)?;
+        if matches!(text(&parent["status"]), "removed" | "removing") {
+            return Ok(None);
+        }
+        attach_payload(m, &parent, gid)?;
         return m.store.by_id(row_id(&parent));
     }
+    if let Some(row) = matching_magnet(m, status)? {
+        attach_payload(m, &row, gid)?;
+        m.store.log(
+            "info",
+            &format!("torrent kaydi yeniden baglandi: {}", text(&row["title"])),
+            gid,
+        );
+        return m.store.by_id(row_id(&row));
+    }
+    Ok(None)
+}
+
+pub(super) fn matching_magnet(m: &Manager, status: &Json) -> Result<Option<Json>> {
     let hash = text(&status["infoHash"]).to_lowercase();
     if hash.is_empty() {
         return Ok(None);
     }
-    for row in m.store.list(None, 300)? {
-        if row["kind"] == "torrent"
+    Ok(m.store.list(None, 300)?.into_iter().find(|row| {
+        row["kind"] == "torrent"
             && ACTIVE.contains(&text(&row["status"]))
             && dosya_adi::magnet_hash(text(&row["source"])) == hash
-        {
-            m.store
-                .update_by_id(row_id(&row), &map(json!({"gid":gid})))?;
-            m.store.log(
-                "info",
-                &format!("torrent kaydi yeniden baglandi: {}", text(&row["title"])),
-                gid,
-            );
-            return m.store.by_id(row_id(&row));
-        }
-    }
-    Ok(None)
+    }))
 }
 
 pub(super) fn snapshot(m: &Manager) -> Result<Json> {
@@ -192,7 +236,6 @@ pub(super) fn snapshot(m: &Manager) -> Result<Json> {
             .as_ref()
             .is_some_and(|r| ["removing", "removed"].contains(&text(&r["status"])))
         {
-            state(m)?.removed_gids.insert(gid.into());
             continue;
         }
         gids.insert(gid.to_owned());
@@ -213,7 +256,6 @@ pub(super) fn snapshot(m: &Manager) -> Result<Json> {
             .as_ref()
             .is_some_and(|r| ["removing", "removed"].contains(&text(&r["status"])))
         {
-            state(m)?.removed_gids.insert(gid.clone());
             continue;
         }
         let mut shaped = job.clone();

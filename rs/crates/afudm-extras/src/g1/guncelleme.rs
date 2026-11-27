@@ -112,15 +112,15 @@ pub fn indir_ve_dogrula_onekli(
     onek: &str,
 ) -> Json {
     let hedef = data.join("guncelleme");
-    let _ = fs::remove_file(hedef.join("hazir.json"));
     let mut zip_path = hedef.join("AfuDM-guncelleme.zip");
-    match adimlar(bilgi, &hedef, &mut zip_path, ilerleme, onek) {
-        Ok(sonuc) => sonuc,
-        Err(_) => {
-            let _ = fs::remove_file(&zip_path);
-            json!({"ok": false, "hata": HATA_INDIR})
-        }
+    let sonuc = adimlar(bilgi, &hedef, &mut zip_path, ilerleme, onek)
+        .unwrap_or_else(|neden| json!({"ok": false, "hata": HATA_INDIR, "detay": neden}));
+    if sonuc["ok"] == false {
+        let _ = fs::remove_file(&zip_path);
+        let _ = fs::remove_dir_all(hedef.join("yeni"));
+        let _ = fs::remove_file(hedef.join("hazir.json"));
     }
+    sonuc
 }
 
 fn adimlar(
@@ -130,6 +130,10 @@ fn adimlar(
     ilerleme: Option<&dyn Fn(u64, u64)>,
     onek: &str,
 ) -> std::result::Result<Json, String> {
+    match fs::remove_file(hedef.join("hazir.json")) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.to_string()),
+        _ => {}
+    }
     if !truthy(&bilgi["ok"]) || !truthy(&bilgi["var"]) {
         return Err("bilgi yok".into());
     }
@@ -173,7 +177,6 @@ fn adimlar(
     let beklenen = eslesme[1].to_ascii_lowercase();
     let zip_bytes = fs::read(zip_path.as_path()).map_err(|e| e.to_string())?;
     if format!("{:x}", Sha256::digest(&zip_bytes)) != beklenen {
-        let _ = fs::remove_file(zip_path.as_path());
         return Ok(json!({"ok": false, "hata": "Güncelleme dosyası doğrulanamadı."}));
     }
 
@@ -529,7 +532,7 @@ impl Guncelleme {
             *bu.durum.lock().expect("durum kilidi") = if truthy(&sonuc["ok"]) {
                 json!({"durum": "bitti"})
             } else {
-                json!({"durum": "hata", "hata": sonuc["hata"].as_str().unwrap_or("Güncelleme indirilemedi.")})
+                json!({"durum": "hata", "hata": sonuc["hata"], "detay": sonuc["detay"]})
             };
             *bu.isliyor.lock().expect("isliyor kilidi") = false;
         });
@@ -799,11 +802,15 @@ mod tests {
 
     /// AfuDM/AfuDM.exe iceren zip ve sha256 dosyasi uretir.
     fn paket_zip() -> (Vec<u8>, String) {
+        dosyali_paket_zip("AfuDM/AfuDM.exe")
+    }
+
+    fn dosyali_paket_zip(dosya: &str) -> (Vec<u8>, String) {
         let mut tampon = std::io::Cursor::new(Vec::new());
         {
             let mut yazar = zip::ZipWriter::new(&mut tampon);
             let secenek = zip::write::SimpleFileOptions::default();
-            yazar.start_file("AfuDM/AfuDM.exe", secenek).expect("exe");
+            yazar.start_file(dosya, secenek).expect("dosya");
             yazar.write_all(b"MZ-test-exe").expect("yaz");
             yazar
                 .start_file("AfuDM/_internal/veri.txt", secenek)
@@ -899,6 +906,28 @@ mod tests {
             json!({"ok": false, "hata": "Güncelleme dosyası doğrulanamadı."})
         );
         assert!(!hazir(&d));
+    }
+
+    #[test]
+    fn incomplete_extraction_is_removed_and_reason_retained() {
+        let d = gecici("eksik-paket");
+        let (zip_bytes, sha) = dosyali_paket_zip("AfuDM/other.txt");
+        let base = test_sunucu::baslat(vec![
+            ("/z.zip", zip_bytes),
+            (
+                "/z.sha256",
+                format!("{sha}  AfuDM-v{TEST_YENI}-win64.zip").into_bytes(),
+            ),
+        ]);
+        let s = indir_ve_dogrula_onekli(&yayin_bilgisi(&base, TEST_YENI), &d, None, &base);
+        assert_eq!(s["ok"], false);
+        assert_eq!(s["detay"], "AfuDM.exe yok");
+        let staging = d.join("guncelleme");
+        assert!(!staging.join("yeni").exists());
+        assert!(!staging.join("hazir.json").exists());
+        assert!(!staging
+            .join(format!("AfuDM-v{TEST_YENI}-win64.zip"))
+            .exists());
     }
 
     #[test]

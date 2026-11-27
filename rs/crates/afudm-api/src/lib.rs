@@ -47,6 +47,7 @@ pub fn router(ctx: ApiCtx) -> Router {
         .route("/torrent/secim", post(torrent_select))
         .route("/seed/tazele", post(seed_refresh))
         .route("/tracker/tara", post(tracker))
+        .route("/tracker/ekle", post(tracker_add))
         .route("/handoff/error", post(handoff_error))
         .route("/token/rotate", post(rotate))
         .route("/_listener/{action}", get(child_lifecycle))
@@ -567,6 +568,22 @@ async fn seed_refresh(State(ctx): State<ApiCtx>, req: Request) -> Response {
         return fault(400, "GID_GEREKLI", "gid gerekli");
     };
     result(ctx.manager.seed_tazele(gid))
+}
+async fn tracker_add(State(ctx): State<ApiCtx>, req: Request) -> Response {
+    let data = match body(req).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let gid = text(&data, "gid");
+    if gid.is_empty() { return fault(400, "GID_GEREKLI", "gid gerekli"); }
+    let urls = match &data["trackers"] {
+        Value::String(text) => text.clone(),
+        Value::Array(values) if values.iter().all(Value::is_string) => {
+            values.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n")
+        }
+        _ => return fault(400, "TRACKER_GEREKLI", "Tracker adreslerini girin."),
+    };
+    result(ctx.manager.tracker_ekle(gid, &urls))
 }
 async fn tracker(State(ctx): State<ApiCtx>, req: Request) -> Response {
     let data = match body(req).await {

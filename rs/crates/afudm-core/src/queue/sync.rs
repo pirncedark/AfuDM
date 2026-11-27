@@ -26,6 +26,27 @@ pub(super) fn collect(m: &Manager) -> Result<Completed> {
         {
             continue;
         }
+        // A stopped metadata GID may remain in aria2 long after its payload was attached.
+        // Never let that metadata overwrite the payload row or its progress.
+        if let Some(child) = status["followedBy"]
+            .as_array()
+            .and_then(|ids| ids.first())
+            .and_then(Json::as_str)
+            .filter(|id| !id.is_empty())
+        {
+            if m.store.by_gid(child)?.is_none() {
+                let parent = match m.store.by_gid(gid)? {
+                    Some(row) => Some(row),
+                    None => shaping::matching_magnet(m, &status)?,
+                };
+                if let Some(row) =
+                    parent.filter(|r| !matches!(text(&r["status"]), "removed" | "removing"))
+                {
+                    shaping::attach_payload(m, &row, child)?;
+                }
+            }
+            continue;
+        }
         let row = match m.store.by_gid(gid)? {
             Some(row) => Some(row),
             None => shaping::reattach(m, &status)?,
@@ -53,7 +74,7 @@ pub(super) fn collect(m: &Manager) -> Result<Completed> {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
         if let Some(row) = &row {
-            let mut fields = map(json!({"total_bytes":total,"done_bytes":done}));
+            let mut fields = map(json!({"total_bytes":total,"done_bytes":done,"error":null}));
             if control_action(row).is_none() {
                 fields.insert("status".into(), json!(status_name));
             }
@@ -83,7 +104,7 @@ pub(super) fn collect(m: &Manager) -> Result<Completed> {
                 } else if state(m)?.auth_required_gids.contains(gid) {
                     "Kaydedilen oturumdaki Cookie/Authorization guvenlik icin silindi. Yeni giris bilgileriyle indirmeyi Yenile.".into()
                 } else {
-                    text(&status["errorMessage"])
+                    shaping::engine_error(&status)
                         .chars()
                         .take(500)
                         .collect::<String>()
@@ -98,41 +119,28 @@ pub(super) fn collect(m: &Manager) -> Result<Completed> {
                 state(m)?.cookies.remove(&row_id(row));
                 clear_auth(m, gid)?;
             }
-            m.store.update_by_gid(gid, &fields)?;
-        }
-        let followed = status["followedBy"].as_array();
-        if let (Some(child), Some(row)) = (followed.and_then(|a| a.first()), &row) {
-            let child = text(child);
-            if m.store.by_gid(child)?.is_none() {
-                let has_selection = m.store.torrent_dosya_secimi_var(gid)?;
-                let selection = m.store.torrent_dosya_secimleri(gid)?;
-                m.store
-                    .update_by_id(row_id(row), &map(json!({"gid":child,"status":"active"})))?;
-                m.store.torrent_dosya_secimlerini_tasi(gid, child)?;
-                if has_selection {
-                    let value = if selection.is_empty() {
-                        "0".into()
-                    } else {
-                        selection
-                            .iter()
-                            .map(ToString::to_string)
-                            .collect::<Vec<_>>()
-                            .join(",")
-                    };
-                    if let Err(e) = rpc.change_option(child, &map(json!({"select-file":value}))) {
-                        m.store.log(
-                            "warn",
-                            &format!("magnet dosya secimi uygulanamadi: {e}"),
-                            child,
-                        );
-                    }
-                }
+            let _guard = INTENT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(current) = m.store.by_gid(gid)? else {
+                continue;
+            };
+            if matches!(text(&current["status"]), "removing" | "removed")
+                || files::removal_failed(&current)
+            {
+                continue;
             }
+            if control_action(&current).is_some() || current["status"] != row["status"] {
+                fields.remove("status");
+            }
+            m.store.update_by_gid(gid, &fields)?;
         }
         if status_name == "complete"
             && !truthy(&status["followedBy"])
-            && state(m)?.known_complete.insert(gid.into())
+            && !state(m)?.known_complete.contains(gid)
         {
+            if let Some(row) = &row {
+                crate::torrent::secilmeyenleri_temizle(m, row, &status)?;
+            }
+            state(m)?.known_complete.insert(gid.into());
             let title = if name.is_empty() {
                 row.as_ref()
                     .map(|r| text(&r["title"]))

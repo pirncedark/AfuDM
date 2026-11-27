@@ -42,6 +42,7 @@ fn safe(m: &Manager, root: &Path, candidate: &Path, gid: &str) -> Option<PathBuf
 }
 
 pub(super) fn remove(m: &Manager, gid: &str, delete_files: bool) -> Result<bool> {
+    let guard = INTENT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let row = record(m, gid)?;
     if gid.starts_with("yt:") {
         let path = crate::video::kaldir(m, gid);
@@ -78,22 +79,18 @@ pub(super) fn remove(m: &Manager, gid: &str, delete_files: bool) -> Result<bool>
             return Ok(true);
         }
         let mut opts = options(row);
+        opts.remove("_afudm_pending_control");
         opts.insert("_afudm_remove_delete_files".into(), json!(delete_files));
         m.store.update_by_id(
             row_id(row),
             &map(json!({"status":"removing","finished_at":now(),"options":opts})),
         )?;
-        if row["kind"] == "torrent" {
-            let hash = dosya_adi::magnet_hash(text(&row["source"]));
-            if !hash.is_empty() {
-                state(m)?.removed_hashes.insert(hash);
-            }
-        }
         state(m)?.cookies.remove(&row_id(row));
     }
     if !gid.is_empty() {
         state(m)?.removed_gids.insert(gid.into());
     }
+    drop(guard);
     ensure_remove_worker(m, gid, delete_files);
     Ok(true)
 }
@@ -115,7 +112,7 @@ fn ensure_remove_worker(m: &Manager, gid: &str, delete_files: bool) {
     let worker = background_manager(m);
     let gid = gid.to_owned();
     std::thread::spawn(move || {
-        loop {
+        for attempt in 1..=WORKER_ATTEMPTS {
             let pending = record(&worker, &gid)
                 .ok()
                 .flatten()
@@ -126,12 +123,31 @@ fn ensure_remove_worker(m: &Manager, gid: &str, delete_files: bool) {
             if remove_locked(&worker, &gid, delete_files).is_ok() {
                 break;
             }
+            if attempt == WORKER_ATTEMPTS {
+                let message = "İndirme kaldırılamadı, tekrar deneyin.";
+                if let Ok(Some(row)) = record(&worker, &gid) {
+                    let _ = worker.store.update_by_id(
+                        row_id(&row),
+                        &map(json!({"status":"error","error":message})),
+                    );
+                    if let Ok(mut s) = state(&worker) {
+                        s.removed_gids.remove(&gid);
+                    }
+                }
+                worker.ui.notify("AfuDM", message);
+                worker.store.log("error", message, &gid);
+                break;
+            }
             std::thread::sleep(Duration::from_millis(250));
         }
         if let Ok(mut set) = workers.lock() {
             set.remove(&key);
         }
     });
+}
+
+pub(super) fn removal_failed(row: &Json) -> bool {
+    row["status"] == "error" && options(row).contains_key("_afudm_remove_delete_files")
 }
 
 pub(super) fn resume_pending(m: &Manager) {
@@ -180,6 +196,7 @@ fn remove_locked(m: &Manager, gid: &str, delete_files: bool) -> Result<bool> {
         .iter()
         .any(|prefix| actual.starts_with(prefix));
     let mut gids = HashSet::from([actual.to_owned()]);
+    let mut hashes = HashSet::new();
     let root = row
         .as_ref()
         .and_then(|r| r.get("dest_dir"))
@@ -199,7 +216,7 @@ fn remove_locked(m: &Manager, gid: &str, delete_files: bool) -> Result<bool> {
     if let Some(row) = &row {
         let hash = dosya_adi::magnet_hash(text(&row["source"]));
         if !hash.is_empty() {
-            state(m)?.removed_hashes.insert(hash);
+            hashes.insert(hash);
         }
     }
     if actual.starts_with("yt:") {
@@ -219,7 +236,7 @@ fn remove_locked(m: &Manager, gid: &str, delete_files: bool) -> Result<bool> {
         if let Some(status) = live {
             let hash = text(&status["infoHash"]).to_lowercase();
             if !hash.is_empty() {
-                state(m)?.removed_hashes.insert(hash);
+                hashes.insert(hash);
             }
             for child in status["followedBy"].as_array().into_iter().flatten() {
                 if !text(child).is_empty() {
@@ -272,7 +289,6 @@ fn remove_locked(m: &Manager, gid: &str, delete_files: bool) -> Result<bool> {
         }
         let _ = m.rpc().save_session();
     }
-    state(m)?.removed_gids.extend(gids);
     if let Some(row) = &row {
         let opts = options(row);
         for raw in [
@@ -319,16 +335,19 @@ fn remove_locked(m: &Manager, gid: &str, delete_files: bool) -> Result<bool> {
     }
     if let Some(row) = &row {
         state(m)?.cookies.remove(&row_id(row));
-        let _ = m.store.update_by_id(
+        m.store.update_by_id(
             row_id(row),
             &map(json!({"status":"removed", "finished_at":now()})),
-        );
+        )?;
     }
     clear_auth(m, actual)?;
-    let _ = m.store.update_by_gid(
+    m.store.update_by_gid(
         actual,
         &map(json!({"status":"removed", "finished_at":now()})),
-    );
+    )?;
+    let mut state = state(m)?;
+    state.removed_gids.extend(gids);
+    state.removed_hashes.extend(hashes);
     Ok(true)
 }
 
@@ -538,10 +557,13 @@ pub(super) fn resolve(m: &Manager, gid: &str) -> Result<Option<PathBuf>> {
             } else {
                 candidates.push(Path::new(dir).join(text(&row["filename"])));
             }
-            if let Some(merged) = candidates.get(before).filter(|p| {
-                p.is_file() && p.file_name().is_some_and(|n| n != text(&row["filename"]))
-            }) {
-                let _ = m.store.update_by_id(row_id(row), &map(json!({"filename":merged.file_name().map(|s|s.to_string_lossy()), "total_bytes":merged.metadata()?.len()})));
+            if let Some(merged) = candidates
+                .get(before)
+                .filter(|p| p.file_name().is_some_and(|n| n != text(&row["filename"])))
+            {
+                if let Some(metadata) = merged.metadata().ok().filter(|m| m.is_file()) {
+                    let _ = m.store.update_by_id(row_id(row), &map(json!({"filename":merged.file_name().map(|s|s.to_string_lossy()), "total_bytes":metadata.len()})));
+                }
             }
         }
     }

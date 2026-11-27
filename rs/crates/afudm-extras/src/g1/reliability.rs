@@ -519,9 +519,12 @@ mod tests {
         assert!(yol.is_file());
         let liste = backups(&d);
         assert_eq!(liste["items"].as_array().map(Vec::len), Some(1));
+        fs::write(d.join(BEKLEYEN_GERI_YUKLEME), b"previous staged file").unwrap();
         let r = restore(&store, &d, yol.to_str().expect("utf8")).expect("geri yukle");
         assert_eq!(r["restart_required"], true);
-        assert!(d.join(BEKLEYEN_GERI_YUKLEME).is_file());
+        assert!(fs::read(d.join(BEKLEYEN_GERI_YUKLEME))
+            .unwrap()
+            .starts_with(b"SQLite format 3"));
         // Yedek klasoru disindaki dosya reddedilir.
         let dis = d.join("dis.zip");
         fs::write(&dis, b"x").expect("yaz");

@@ -124,7 +124,24 @@ pub(crate) fn origin_allowed(origin: &str) -> bool {
 }
 fn normalized(path: &Path) -> Option<PathBuf> {
     let raw = path.to_str()?;
-    if raw.is_empty() || raw.contains('\0') || raw.starts_with("\\\\") || raw.starts_with("//") {
+    if raw.is_empty() || raw.contains('\0') {
+        return None;
+    }
+    #[cfg(windows)]
+    if let Some(Component::Prefix(prefix)) = path.components().next() {
+        use std::path::Prefix;
+        if !matches!(
+            prefix.kind(),
+            Prefix::Disk(_)
+                | Prefix::VerbatimDisk(_)
+                | Prefix::UNC(_, _)
+                | Prefix::VerbatimUNC(_, _)
+        ) {
+            return None;
+        }
+    }
+    #[cfg(not(windows))]
+    if raw.starts_with("\\\\") || raw.starts_with("//") {
         return None;
     }
     let full = if path.is_absolute() {
@@ -147,7 +164,12 @@ fn normalized(path: &Path) -> Option<PathBuf> {
 fn comparable(path: &Path) -> PathBuf {
     #[cfg(windows)]
     {
-        PathBuf::from(path.to_string_lossy().to_lowercase())
+        let raw = path.to_string_lossy().to_lowercase();
+        if let Some(unc) = raw.strip_prefix(r"\\?\unc\") {
+            PathBuf::from(format!(r"\\{unc}"))
+        } else {
+            PathBuf::from(raw.strip_prefix(r"\\?\").unwrap_or(&raw))
+        }
     }
     #[cfg(not(windows))]
     {
@@ -157,10 +179,16 @@ fn comparable(path: &Path) -> PathBuf {
 fn resolved_existing(path: &Path) -> Option<PathBuf> {
     let mut base = path.to_path_buf();
     let mut rest = Vec::new();
-    while !base.exists() {
-        rest.push(base.file_name()?.to_os_string());
-        if !base.pop() {
-            return None;
+    loop {
+        match std::fs::symlink_metadata(&base) {
+            Ok(_) => break,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                rest.push(base.file_name()?.to_os_string());
+                if !base.pop() {
+                    return None;
+                }
+            }
+            Err(_) => return None,
         }
     }
     let mut out = base.canonicalize().ok()?;
@@ -267,9 +295,14 @@ async fn auth(State(state): State<Auth>, req: Request, next: Next) -> Response {
             } else {
                 supplied
             };
-            let token = std::fs::read_to_string(state.ctx.data_dir.join("api_token.txt"))
-                .unwrap_or_default();
-            if equal(supplied, token.trim()) {
+            let token = std::fs::read_to_string(state.ctx.data_dir.join("api_token.txt"));
+            if !token.as_ref().is_ok_and(|token| !token.trim().is_empty()) {
+                fault(
+                    503,
+                    "ANAHTAR_OKUNAMADI",
+                    "Erişim anahtarı okunamadı, AfuDM'i yeniden başlatın.",
+                )
+            } else if token.is_ok_and(|token| equal(supplied, token.trim())) {
                 next.run(req).await
             } else if path.starts_with("/_listener/") {
                 (
@@ -300,4 +333,22 @@ async fn auth(State(state): State<Auth>, req: Request, next: Next) -> Response {
         HeaderValue::from_static("GET, POST, OPTIONS"),
     );
     response
+}
+
+#[cfg(all(test, windows))]
+mod path_tests {
+    use super::*;
+
+    #[test]
+    fn network_and_verbatim_paths_keep_their_root() {
+        let ordinary = normalized(Path::new(r"\\server\share\dir")).unwrap();
+        let extended = normalized(Path::new(r"\\?\UNC\server\share\dir")).unwrap();
+        assert_eq!(comparable(&ordinary), comparable(&extended));
+        assert!(!path_inside(&extended, Path::new(r"\\server\another")));
+        assert!(normalized(Path::new(r"\\.\PhysicalDrive0")).is_none());
+        let dir = tempfile::tempdir().unwrap();
+        let canonical = dir.path().canonicalize().unwrap();
+        assert!(path_inside(&canonical.join("file"), dir.path()));
+        assert!(path_inside(&dir.path().join("file"), &canonical));
+    }
 }
