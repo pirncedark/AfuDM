@@ -578,7 +578,7 @@ async fn tracker_add(State(ctx): State<ApiCtx>, req: Request) -> Response {
     if gid.is_empty() {
         return fault(400, "GID_GEREKLI", "gid gerekli");
     }
-    let urls = match &data["trackers"] {
+    let urls = match data.get("trackers").unwrap_or(&Value::Null) {
         Value::String(text) => text.clone(),
         Value::Array(values) if values.iter().all(Value::is_string) => values
             .iter()

@@ -1506,6 +1506,9 @@ mod tracker_ve_seed_testleri {
     }
 
     impl Aria2 for FakeAria2 {
+        fn alive(&self) -> bool {
+            true
+        }
         fn call(&self, method: &str, _params: Vec<Json>) -> Result<Json> {
             if method == "aria2.getOption" {
                 if *self.fail_get_option.lock().unwrap() {

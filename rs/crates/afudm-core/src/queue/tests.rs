@@ -2270,6 +2270,8 @@ fn sync_clears_previous_error_when_job_recovers() {
 
     // Waiting jobs also clear previous error on sync and in live snapshot shaping.
     let waiting_item = f.add("waiting.bin");
+    // Add before any status removal so the fake engine cannot reuse a gid.
+    let paused_item = f.add("paused.bin");
     let waiting_gid = text(&waiting_item["gid"]);
     f.rpc.statuses.lock().unwrap().remove(waiting_gid);
     f.m.store
@@ -2290,7 +2292,6 @@ fn sync_clears_previous_error_when_job_recovers() {
     assert!(waiting_row["error"].is_null());
 
     // Paused jobs retain recorded error until resumed to waiting/active.
-    let paused_item = f.add("paused.bin");
     let paused_gid = text(&paused_item["gid"]);
     f.rpc.statuses.lock().unwrap().remove(paused_gid);
     f.m.store
