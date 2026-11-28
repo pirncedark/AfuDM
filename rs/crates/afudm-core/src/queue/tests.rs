@@ -14,8 +14,10 @@ struct MemoryStore {
 #[derive(Default)]
 struct MemoryRpc {
     statuses: Mutex<BTreeMap<String, Json>>,
+    files: Mutex<BTreeMap<String, Vec<Json>>>,
     waiting: Mutex<Vec<Json>>,
     calls: Mutex<Vec<(String, Vec<Json>)>>,
+    status_gids: Mutex<Vec<String>>,
     offline: Mutex<bool>,
     asleep: Mutex<bool>,
     status_reads: Mutex<usize>,
@@ -960,6 +962,7 @@ impl Aria2 for MemoryRpc {
         if *self.offline.lock().unwrap() {
             return Err(AfuError::Engine("offline".into()));
         }
+        self.status_gids.lock().unwrap().push(gid.to_string());
         self.statuses
             .lock()
             .unwrap()
@@ -982,7 +985,13 @@ impl Aria2 for MemoryRpc {
     #[allow(unused_variables)]
     fn add_torrent(&self, torrent_b64: &str, options: Option<&JsonMap>) -> Result<String> {
         self.call("add_torrent", vec![json!(torrent_b64), json!(options)])?;
-        Ok("OK".into())
+        let mut s = self.statuses.lock().unwrap();
+        let gid = format!("tg{}", s.len() + 1);
+        s.insert(
+            gid.clone(),
+            json!({"gid":gid,"status":"active","files":[],"dir":options.and_then(|o|o.get("dir"))}),
+        );
+        Ok(gid)
     }
     #[allow(unused_variables)]
     fn add_metalink(&self, metalink_b64: &str, options: Option<&JsonMap>) -> Result<Vec<String>> {
@@ -1039,7 +1048,7 @@ impl Aria2 for MemoryRpc {
     }
     #[allow(unused_variables)]
     fn get_files(&self, gid: &str) -> Result<Vec<Json>> {
-        Ok(vec![])
+        Ok(self.files.lock().unwrap().get(gid).cloned().unwrap_or_default())
     }
     #[allow(unused_variables)]
     fn get_servers(&self, gid: &str) -> Result<Vec<Json>> {
@@ -2539,4 +2548,238 @@ fn torrent_partial_selection_saves_gid_sets_allocation_and_cleans_unselected() {
     assert!(params[1].get("file-allocation").is_none());
 
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn secilmeyenleri_temizle_onceden_var_olan_dosyayi_korur_yeni_komsuyu_siler() {
+    let root = std::env::temp_dir().join(format!(
+        "afudm-preexisting-{}-{}",
+        std::process::id(),
+        rand::random::<u64>()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    // 3 files: 1 -> sub.dir/a.bin (pre-existing unselected), 2 -> b.bin (selected), 3 -> c.bin (newly created unselected sibling)
+    let torrent_bytes = b"d4:infod5:filesld6:lengthi10e4:pathl7:sub.dir5:a.bineed6:lengthi10e4:pathl5:b.bineed6:lengthi10e4:pathl5:c.bineee4:name4:Packee";
+    let source = root.join("pack.torrent");
+    std::fs::write(&source, torrent_bytes).unwrap();
+
+    let pack_dir = root.join("Pack");
+    let sub_dir = pack_dir.join("sub.dir");
+    std::fs::create_dir_all(&sub_dir).unwrap();
+    let preexisting_file = sub_dir.join("a.bin");
+    std::fs::write(&preexisting_file, b"old-complete").unwrap();
+
+    // 1) Local .torrent path
+    let rpc = Arc::new(MemoryRpc::default());
+    let store = Arc::new(afudm_db::SqliteStore::open_in_memory().unwrap());
+    let m = Manager::new(
+        store.clone(),
+        rpc.clone(),
+        Arc::new(NoUi),
+        root.clone(),
+        root.clone(),
+    );
+    m.store.set("download_dir", json!(root)).unwrap();
+    m.store.set("torrent_dir", json!(root)).unwrap();
+
+    let added = add(
+        &m,
+        &map(json!({"source": source, "dest_dir": root, "selected_files": [2]})),
+    )
+    .unwrap();
+    let gid = text(&added["gid"]).to_owned();
+    let row = store.by_gid(&gid).unwrap().unwrap();
+    assert_eq!(
+        options(&row).get("onceden_var"),
+        Some(&json!(["Pack/sub.dir/a.bin"]))
+    );
+
+    let selected_file = pack_dir.join("b.bin");
+    let sibling_unselected = pack_dir.join("c.bin");
+    std::fs::write(&selected_file, b"keep").unwrap();
+    std::fs::write(&sibling_unselected, b"new-unselected").unwrap();
+
+    rpc.statuses.lock().unwrap().insert(
+        gid.clone(),
+        json!({
+            "gid": gid,
+            "status": "complete",
+            "infoHash": "0123456789abcdef0123456789abcdef01234567",
+            "dir": root,
+            "totalLength": "10",
+            "completedLength": "10",
+            "files": [
+                {"index": "1", "path": preexisting_file.to_string_lossy().replace('\\', "/"), "selected": "false"},
+                {"index": "2", "path": selected_file, "selected": "true"},
+                {"index": "3", "path": sibling_unselected, "selected": "false"}
+            ]
+        }),
+    );
+    sync::collect(&m).unwrap();
+    assert!(preexisting_file.exists(), "onceden var olan dosya korunmali");
+    assert!(selected_file.exists(), "secili dosya korunmali");
+    assert!(!sibling_unselected.exists(), "yeni olusan komsu dosya silinmeli");
+
+    // 2) adopt_gid path
+    let sibling_unselected_2 = pack_dir.join("c.bin");
+    let rpc2 = Arc::new(MemoryRpc::default());
+    let store2 = Arc::new(afudm_db::SqliteStore::open_in_memory().unwrap());
+    let m2 = Manager::new(
+        store2.clone(),
+        rpc2.clone(),
+        Arc::new(NoUi),
+        root.clone(),
+        root.clone(),
+    );
+    m2.store.set("download_dir", json!(root)).unwrap();
+    m2.store.set("torrent_dir", json!(root)).unwrap();
+    rpc2.statuses.lock().unwrap().insert(
+        "preview-1".into(),
+        json!({
+            "gid": "preview-1",
+            "status": "paused",
+            "infoHash": "fedcba9876543210fedcba9876543210fedcba98",
+            "dir": root,
+            "bittorrent": {"info": {"name": "Pack"}}
+        }),
+    );
+    rpc2.files.lock().unwrap().insert(
+        "preview-1".into(),
+        vec![
+            json!({"index": "1", "path": preexisting_file, "selected": "true"}),
+            json!({"index": "2", "path": selected_file, "selected": "true"}),
+            json!({"index": "3", "path": sibling_unselected_2, "selected": "true"}),
+        ],
+    );
+    let adopted = add(
+        &m2,
+        &map(json!({
+            "source": "magnet:?xt=urn:btih:fedcba9876543210fedcba9876543210fedcba98",
+            "dest_dir": root,
+            "adopt_gid": "preview-1",
+            "selected_files": [2]
+        })),
+    )
+    .unwrap();
+    let gid2 = text(&adopted["gid"]).to_owned();
+    let row2 = store2.by_gid(&gid2).unwrap().unwrap();
+    assert_eq!(
+        options(&row2).get("onceden_var"),
+        Some(&json!(["Pack/sub.dir/a.bin"]))
+    );
+
+    std::fs::write(&sibling_unselected_2, b"new-unselected-2").unwrap();
+    rpc2.statuses.lock().unwrap().insert(
+        gid2.clone(),
+        json!({
+            "gid": gid2,
+            "status": "complete",
+            "infoHash": "fedcba9876543210fedcba9876543210fedcba98",
+            "dir": root,
+            "totalLength": "10",
+            "completedLength": "10",
+            "files": [
+                {"index": "1", "path": preexisting_file, "selected": "false"},
+                {"index": "2", "path": selected_file, "selected": "true"},
+                {"index": "3", "path": sibling_unselected_2, "selected": "false"}
+            ]
+        }),
+    );
+    sync::collect(&m2).unwrap();
+    assert!(preexisting_file.exists(), "adopt yolunda da onceden var olan dosya korunmali");
+    assert!(!sibling_unselected_2.exists(), "adopt yolunda da yeni olusan komsu dosya silinmeli");
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn canli_secim_guncellemesi_options_selected_files_gunceller_ve_retry_korur() {
+    let root = std::env::temp_dir().join(format!(
+        "afudm-livesel-{}-{}",
+        std::process::id(),
+        rand::random::<u64>()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let torrent_bytes = b"d4:infod5:filesld6:lengthi10e4:pathl5:a.bineed6:lengthi10e4:pathl5:b.bineee4:name4:Packee";
+    let source = root.join("pack.torrent");
+    std::fs::write(&source, torrent_bytes).unwrap();
+
+    let rpc = Arc::new(MemoryRpc::default());
+    let store = Arc::new(afudm_db::SqliteStore::open_in_memory().unwrap());
+    let m = Manager::new(
+        store.clone(),
+        rpc.clone(),
+        Arc::new(NoUi),
+        root.clone(),
+        root.clone(),
+    );
+    m.store.set("download_dir", json!(root)).unwrap();
+    m.store.set("torrent_dir", json!(root)).unwrap();
+
+    let added = add(
+        &m,
+        &map(json!({"source": source, "dest_dir": root, "selected_files": [1]})),
+    )
+    .unwrap();
+    let id = added["id"].as_i64().unwrap();
+    let gid = text(&added["gid"]).to_owned();
+    rpc.files.lock().unwrap().insert(
+        gid.clone(),
+        vec![
+            json!({"index": "1", "path": root.join("Pack/a.bin"), "selected": "true"}),
+            json!({"index": "2", "path": root.join("Pack/b.bin"), "selected": "false"}),
+        ],
+    );
+
+    crate::torrent::torrent_secimi_ayarla(&m, &gid, &[2]).unwrap();
+    let updated_row = store.by_id(id).unwrap().unwrap();
+    assert_eq!(options(&updated_row).get("selected_files"), Some(&json!([2])));
+    assert_eq!(store.torrent_dosya_secimleri(&gid).unwrap(), vec![2]);
+
+    rpc.calls.lock().unwrap().clear();
+    let retried = retry(&m, id).unwrap();
+    let new_gid = text(&retried["gid"]).to_owned();
+    assert_eq!(store.torrent_dosya_secimleri(&new_gid).unwrap(), vec![2]);
+    let calls = rpc.calls.lock().unwrap();
+    let (_, params) = calls
+        .iter()
+        .find(|(method, _)| method == "add_torrent")
+        .unwrap();
+    assert_eq!(params[1]["select-file"], "2");
+
+    drop(calls);
+    crate::torrent::torrent_dosya_secimini_kaydet(&m, &new_gid, &[1, 2]).unwrap();
+    let after_save = store.by_id(id).unwrap().unwrap();
+    assert_eq!(
+        options(&after_save).get("selected_files"),
+        Some(&json!([1, 2]))
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn retry_clears_stale_adopt_gid_from_options() {
+    let f = Fixture::new();
+    let id =
+        f.m.store
+            .add(
+                "torrent",
+                "magnet:?xt=urn:btih:abc",
+                Some("Game"),
+                Some(f.root.to_str().unwrap()),
+                Some(&map(json!({"adopt_gid":"dead-adopt-gid","selected_files":[2]}))),
+                None,
+                Some("old-gid"),
+            )
+            .unwrap();
+
+    let result = retry(&f.m, id).unwrap();
+    let row = f.m.store.by_id(id).unwrap().unwrap();
+    assert_eq!(row["gid"], result["gid"]);
+    let opts = options(&row);
+    assert!(!opts.contains_key("adopt_gid"));
+    assert_eq!(opts.get("selected_files"), Some(&json!([2])));
+    let status_gids = f.rpc.status_gids.lock().unwrap();
+    assert!(!status_gids.iter().any(|g| g == "dead-adopt-gid"));
 }

@@ -954,6 +954,7 @@ pub fn retry(m: &Manager, row_id: i64) -> Result<Json> {
     let mut opts = options(&row);
     opts.remove("_afudm_remove_delete_files");
     opts.remove("_afudm_remove_targets");
+    opts.remove("adopt_gid");
     m.store.update_by_id(
         row_id,
         &map(json!({"status":"queued","gid":null,"error":null,"options":opts})),

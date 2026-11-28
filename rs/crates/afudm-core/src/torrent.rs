@@ -200,6 +200,269 @@ pub(crate) fn select_degeri(indeksler: &[i64]) -> String {
         .join(",")
 }
 
+fn satir_options(row: &Json) -> JsonMap {
+    row.get("options")
+        .and_then(Json::as_object)
+        .cloned()
+        .or_else(|| {
+            row.get("options")
+                .and_then(Json::as_str)
+                .and_then(|s| serde_json::from_str(s).ok())
+        })
+        .unwrap_or_default()
+}
+
+fn satir_options_guncelle(m: &Manager, row: &Json, f: impl FnOnce(&mut JsonMap)) -> Result<()> {
+    let id = sayi_of(row.get("id"));
+    if id <= 0 {
+        return Ok(());
+    }
+    let mut opts = satir_options(row);
+    f(&mut opts);
+    let mut fields = JsonMap::new();
+    fields.insert("options".to_string(), Json::Object(opts));
+    m.store.update_by_id(id, &fields)
+}
+
+fn guvenli_parca(parca: &str) -> bool {
+    !parca.is_empty()
+        && parca != "."
+        && parca != ".."
+        && !parca.contains(['/', '\\', ':', '\0'])
+}
+
+fn bencode_metin(v: &bencode::Bc) -> Option<String> {
+    let bencode::Bc::Metin(b) = v else {
+        return None;
+    };
+    String::from_utf8(b.clone()).ok()
+}
+
+fn torrent_bencode_dosyalari(veri: &[u8]) -> Vec<(i64, PathBuf)> {
+    let Ok(bencode::Bc::Sozluk(ust)) = bencode::coz(veri) else {
+        return Vec::new();
+    };
+    let Some(bencode::Bc::Sozluk(info)) = ust.get(b"info".as_slice()) else {
+        return Vec::new();
+    };
+    let Some(kok_ad) = info
+        .get(b"name.utf-8".as_slice())
+        .or_else(|| info.get(b"name".as_slice()))
+        .and_then(bencode_metin)
+        .filter(|ad| guvenli_parca(ad))
+    else {
+        return Vec::new();
+    };
+    let Some(files) = info.get(b"files".as_slice()) else {
+        return vec![(1, PathBuf::from(kok_ad))];
+    };
+    let bencode::Bc::Liste(dosyalar) = files else {
+        return Vec::new();
+    };
+    let mut sonuc = Vec::with_capacity(dosyalar.len());
+    for (i, item) in dosyalar.iter().enumerate() {
+        let bencode::Bc::Sozluk(sozluk) = item else {
+            continue;
+        };
+        let Some(bencode::Bc::Liste(parcalar)) = sozluk
+            .get(b"path.utf-8".as_slice())
+            .or_else(|| sozluk.get(b"path".as_slice()))
+        else {
+            continue;
+        };
+        let mut yol = PathBuf::from(&kok_ad);
+        let mut gecerli = !parcalar.is_empty();
+        for p in parcalar {
+            let Some(ad) = bencode_metin(p).filter(|s| guvenli_parca(s)) else {
+                gecerli = false;
+                break;
+            };
+            yol.push(ad);
+        }
+        if gecerli {
+            sonuc.push(((i + 1) as i64, yol));
+        }
+    }
+    sonuc
+}
+
+fn goreli_yol_metni(yol: &Path) -> String {
+    yol.components()
+        .filter_map(|c| match c {
+            std::path::Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn goreli_yol_anahtari(yol: &str) -> String {
+    let normal = yol.replace('\\', "/");
+    let temiz = normal.trim_matches('/');
+    #[cfg(windows)]
+    {
+        temiz.to_lowercase()
+    }
+    #[cfg(not(windows))]
+    {
+        temiz.to_string()
+    }
+}
+
+fn guvenli_hedef_dosya(dir: &str, root: &Path, path: &str) -> Option<(PathBuf, PathBuf)> {
+    if path.is_empty() {
+        return None;
+    }
+    let raw_path = if Path::new(path).is_absolute() {
+        PathBuf::from(path)
+    } else {
+        Path::new(dir).join(path)
+    };
+    let meta = std::fs::symlink_metadata(&raw_path).ok()?;
+    if meta.file_type().is_symlink() || !meta.is_file() {
+        return None;
+    }
+    let mut reaches_root = false;
+    for ancestor in raw_path.ancestors().skip(1) {
+        if ancestor.canonicalize().ok().as_deref() == Some(root) {
+            reaches_root = true;
+            break;
+        }
+        if std::fs::symlink_metadata(ancestor).is_ok_and(|m| m.file_type().is_symlink()) {
+            reaches_root = false;
+            break;
+        }
+    }
+    if !reaches_root {
+        return None;
+    }
+    let candidate = raw_path.canonicalize().ok()?;
+    let relative = candidate.strip_prefix(root).ok()?.to_path_buf();
+    if relative.as_os_str().is_empty()
+        || !relative
+            .components()
+            .all(|part| matches!(part, std::path::Component::Normal(_)))
+    {
+        return None;
+    }
+    Some((candidate, relative))
+}
+
+fn rpc_dosya_yollari(
+    dosyalar: &[Json],
+    dest_dir: &str,
+    old_dir: Option<&str>,
+    torrent_adi: Option<&str>,
+) -> Vec<(i64, PathBuf)> {
+    let mut sonuc = Vec::with_capacity(dosyalar.len());
+    for file in dosyalar {
+        let index = sayi_of(file.get("index"));
+        let path_str = str_of(file.get("path"));
+        if index <= 0 || path_str.is_empty() {
+            continue;
+        }
+        let path = Path::new(&path_str);
+        let rel = if path.is_relative() {
+            path.to_path_buf()
+        } else if let Some(od) = old_dir.filter(|s| !s.is_empty()) {
+            if let Ok(r) = path.strip_prefix(od) {
+                r.to_path_buf()
+            } else if let Ok(r) = path.strip_prefix(dest_dir) {
+                r.to_path_buf()
+            } else if let Some(ad) = torrent_adi.filter(|s| !s.is_empty()) {
+                torrent_yol_parcalari(&path_str, ad).into_iter().collect()
+            } else {
+                continue;
+            }
+        } else if let Ok(r) = path.strip_prefix(dest_dir) {
+            r.to_path_buf()
+        } else if let Some(ad) = torrent_adi.filter(|s| !s.is_empty()) {
+            torrent_yol_parcalari(&path_str, ad).into_iter().collect()
+        } else {
+            continue;
+        };
+        if !rel.as_os_str().is_empty()
+            && rel
+                .components()
+                .all(|part| matches!(part, std::path::Component::Normal(_)))
+        {
+            sonuc.push((index, rel));
+        }
+    }
+    sonuc
+}
+
+fn onceden_var_secilmeyenler(
+    dest_dir: &str,
+    secili: &[i64],
+    dosyalar: &[(i64, PathBuf)],
+) -> Vec<String> {
+    if secili.is_empty() || dosyalar.is_empty() {
+        return Vec::new();
+    }
+    let Ok(root) = Path::new(dest_dir).canonicalize() else {
+        return Vec::new();
+    };
+    let mut sonuc = Vec::new();
+    let mut gorulen = HashSet::new();
+    for (index, rel) in dosyalar {
+        if *index <= 0 || secili.contains(index) {
+            continue;
+        }
+        let rel_str = goreli_yol_metni(rel);
+        if rel_str.is_empty() {
+            continue;
+        }
+        let Some((_, relative)) = guvenli_hedef_dosya(dest_dir, &root, &rel_str) else {
+            continue;
+        };
+        let metin = goreli_yol_metni(&relative);
+        let anahtar = goreli_yol_anahtari(&metin);
+        if !metin.is_empty() && gorulen.insert(anahtar) {
+            sonuc.push(metin);
+        }
+    }
+    sonuc
+}
+
+fn rpc_onceden_var(
+    durum: Option<&Json>,
+    dosyalar: &[Json],
+    dest_dir: &str,
+    secili: &[i64],
+) -> Vec<String> {
+    let old_dir = durum
+        .and_then(|d| d.get("dir"))
+        .and_then(Json::as_str)
+        .filter(|s| !s.is_empty());
+    let torrent_adi = durum.and_then(durum_kok_adi);
+    let yollar = rpc_dosya_yollari(dosyalar, dest_dir, old_dir, torrent_adi);
+    onceden_var_secilmeyenler(dest_dir, secili, &yollar)
+}
+
+fn onceden_var_kaydet(
+    m: &Manager,
+    req: &JsonMap,
+    gid: &str,
+    onceden_var: &[String],
+) -> Result<()> {
+    let row_id = sayi_of(req.get("row_id"));
+    let row = if row_id > 0 {
+        m.store.by_id(row_id)?
+    } else {
+        m.store.by_gid(gid)?
+    };
+    let Some(row) = row else {
+        return Ok(());
+    };
+    if satir_options(&row).contains_key("onceden_var") {
+        return Ok(());
+    }
+    satir_options_guncelle(m, &row, |opts| {
+        opts.insert("onceden_var".to_string(), json!(onceden_var));
+    })
+}
+
 /// Only unlink unselected manifest entries inside the recorded destination.
 pub(crate) fn secilmeyenleri_temizle(m: &Manager, row: &Json, status: &Json) -> Result<()> {
     if row["kind"] != "torrent" {
@@ -223,6 +486,15 @@ pub(crate) fn secilmeyenleri_temizle(m: &Manager, row: &Json, status: &Json) -> 
     let Some(files) = status["files"].as_array() else {
         return Ok(());
     };
+    let onceden_var: HashSet<String> = satir_options(row)
+        .get("onceden_var")
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Json::as_str)
+        .map(goreli_yol_anahtari)
+        .filter(|s| !s.is_empty())
+        .collect();
     for file in files {
         let index = sayi_of(file.get("index"));
         if index <= 0 || selected.contains(&index) || str_of(file.get("selected")) != "false" {
@@ -231,42 +503,10 @@ pub(crate) fn secilmeyenleri_temizle(m: &Manager, row: &Json, status: &Json) -> 
         let Some(path) = file["path"].as_str().filter(|s| !s.is_empty()) else {
             continue;
         };
-        let raw_path = if Path::new(path).is_absolute() {
-            PathBuf::from(path)
-        } else {
-            Path::new(dir).join(path)
-        };
-        let Ok(meta) = std::fs::symlink_metadata(&raw_path) else {
+        let Some((candidate, relative)) = guvenli_hedef_dosya(dir, &root, path) else {
             continue;
         };
-        if meta.file_type().is_symlink() || !meta.is_file() {
-            continue;
-        }
-        let mut reaches_root = false;
-        for ancestor in raw_path.ancestors().skip(1) {
-            if ancestor.canonicalize().ok().as_deref() == Some(root.as_path()) {
-                reaches_root = true;
-                break;
-            }
-            if std::fs::symlink_metadata(ancestor).is_ok_and(|m| m.file_type().is_symlink()) {
-                reaches_root = false;
-                break;
-            }
-        }
-        if !reaches_root {
-            continue;
-        }
-        let Ok(candidate) = raw_path.canonicalize() else {
-            continue;
-        };
-        let Ok(relative) = candidate.strip_prefix(&root) else {
-            continue;
-        };
-        if relative.as_os_str().is_empty()
-            || !relative
-                .components()
-                .all(|part| matches!(part, std::path::Component::Normal(_)))
-        {
+        if onceden_var.contains(&goreli_yol_anahtari(&goreli_yol_metni(&relative))) {
             continue;
         }
         if let Err(e) = std::fs::remove_file(&candidate) {
@@ -988,33 +1228,36 @@ pub fn torrent_dosya_secimini_kaydet(
     gid: &str,
     indeksler: &[i64],
 ) -> Result<Vec<i64>> {
-    let torrent = m
+    let Some(row) = m
         .store
         .by_gid(gid)?
-        .is_some_and(|r| str_of(r.get("kind")) == "torrent");
-    if !torrent {
+        .filter(|r| str_of(r.get("kind")) == "torrent")
+    else {
         return Err(AfuError::Invalid(
             "dosya secimi yalnizca torrent GID icin kaydedilir".to_string(),
         ));
-    }
+    };
     let mut temiz: Vec<i64> = indeksler.iter().copied().filter(|&i| i > 0).collect();
     temiz.sort_unstable();
     temiz.dedup();
     m.store.torrent_dosya_secimlerini_kaydet(gid, &temiz)?;
+    satir_options_guncelle(m, &row, |opts| {
+        opts.insert("selected_files".to_string(), json!(temiz));
+    })?;
     Ok(temiz)
 }
 
 /// Python torrent_secimi_ayarla: secimi calisan torrente aria2 uzerinden uygular ve kalici saklar.
 pub fn torrent_secimi_ayarla(m: &Manager, gid: &str, indeksler: &[i64]) -> Result<Json> {
-    let torrent = m
+    let Some(row) = m
         .store
         .by_gid(gid)?
-        .is_some_and(|r| str_of(r.get("kind")) == "torrent");
-    if !torrent {
+        .filter(|r| str_of(r.get("kind")) == "torrent")
+    else {
         return Err(AfuError::Invalid(
             "dosya secimi yalnizca torrent GID icin ayarlanir".to_string(),
         ));
-    }
+    };
     let mut temiz: Vec<i64> = indeksler.to_vec();
     temiz.sort_unstable();
     temiz.dedup();
@@ -1056,6 +1299,9 @@ pub fn torrent_secimi_ayarla(m: &Manager, gid: &str, indeksler: &[i64]) -> Resul
         ))
     })?;
     m.store.torrent_dosya_secimlerini_kaydet(gid, &temiz)?;
+    satir_options_guncelle(m, &row, |opts| {
+        opts.insert("selected_files".to_string(), json!(temiz));
+    })?;
     m.store.log(
         "info",
         &format!("dosya secimi guncellendi ({} dosya)", temiz.len()),
@@ -1218,11 +1464,22 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
                 gid = child;
             }
         }
+        let durum = rpc.tell_status(&gid, &["bittorrent", "dir"]).ok();
+        let dosyalar = if !secili.is_empty() {
+            rpc.get_files(&gid).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let onceden_var = if !secili.is_empty() && !dosyalar.is_empty() {
+            Some(rpc_onceden_var(durum.as_ref(), &dosyalar, &dest_dir, &secili))
+        } else {
+            None
+        };
         let mut dizin = JsonMap::new();
         dizin.insert("dir".to_string(), json!(dest_dir));
         dizin.insert("bt-save-metadata".to_string(), json!("false"));
-        if let Ok(durum) = rpc.tell_status(&gid, &["bittorrent"]) {
-            mevcut_kok_butunlugu(&mut dizin, &dest_dir, durum_kok_adi(&durum));
+        if let Some(durum) = durum.as_ref() {
+            mevcut_kok_butunlugu(&mut dizin, &dest_dir, durum_kok_adi(durum));
         }
         if let Err(e) = rpc.change_option(&gid, &dizin) {
             m.store
@@ -1238,7 +1495,7 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
             ));
         }
         if !secili.is_empty() {
-            let toplam = rpc.get_files(&gid).ok().map(|f| f.len()).filter(|&n| n > 0);
+            let toplam = (!dosyalar.is_empty()).then_some(dosyalar.len());
             let mut secim = JsonMap::new();
             secim.insert("select-file".to_string(), json!(select_degeri(&secili)));
             if kismi_secim_mi(&secili, toplam) {
@@ -1246,6 +1503,9 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
             }
             rpc.change_option(&gid, &secim)?;
             m.store.torrent_dosya_secimlerini_kaydet(&gid, &secili)?;
+            if let Some(liste) = onceden_var.as_deref() {
+                onceden_var_kaydet(m, req, &gid, liste)?;
+            }
         }
         let _ = rpc.unpause(&gid);
         return Ok(json!({"gid": gid}));
@@ -1257,7 +1517,18 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
     } else {
         None
     };
-    let toplam_dosya = yerel_bayt.as_deref().and_then(torrent_dosya_sayisi);
+    let bencode_dosyalar = yerel_bayt
+        .as_deref()
+        .map(torrent_bencode_dosyalari)
+        .unwrap_or_default();
+    let onceden_var = if !secili.is_empty() && !bencode_dosyalar.is_empty() {
+        Some(onceden_var_secilmeyenler(&dest_dir, &secili, &bencode_dosyalar))
+    } else {
+        None
+    };
+    let toplam_dosya = (!bencode_dosyalar.is_empty())
+        .then_some(bencode_dosyalar.len())
+        .or_else(|| yerel_bayt.as_deref().and_then(torrent_dosya_sayisi));
     let mut secenekler = JsonMap::new();
     secenekler.insert("dir".to_string(), json!(dest_dir));
     secenekler.insert("bt-save-metadata".to_string(), json!("false"));
@@ -1289,6 +1560,25 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
                 if let Err(e) = m.store.torrent_dosya_secimlerini_kaydet(&gid, &secili) {
                     let _ = rpc.remove(&gid, true);
                     return Err(e);
+                }
+                let kaydedilecek = if let Some(liste) = onceden_var {
+                    Some(liste)
+                } else {
+                    let dosyalar = rpc.get_files(&gid).unwrap_or_default();
+                    let durum = rpc.tell_status(&gid, &["bittorrent", "dir"]).ok();
+                    if !dosyalar.is_empty()
+                        && durum.as_ref().is_some_and(|d| truthy(d.get("bittorrent")))
+                    {
+                        Some(rpc_onceden_var(durum.as_ref(), &dosyalar, &dest_dir, &secili))
+                    } else {
+                        None
+                    }
+                };
+                if let Some(liste) = kaydedilecek {
+                    if let Err(e) = onceden_var_kaydet(m, req, &gid, &liste) {
+                        let _ = rpc.remove(&gid, true);
+                        return Err(e);
+                    }
                 }
             }
             Ok(json!({"gid": gid}))
