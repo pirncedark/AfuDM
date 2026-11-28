@@ -201,9 +201,8 @@ pub(crate) fn path_inside(path: &Path, root: &Path) -> bool {
     let (Some(p), Some(r)) = (normalized(path), normalized(root)) else {
         return false;
     };
-    if !comparable(&p).starts_with(comparable(&r)) {
-        return false;
-    }
+    // Compare resolved forms only: a lexical pre-check rejects the same folder
+    // written as a Windows 8.3 short name (C:\Users\RUNNER~1) vs its long name.
     let (Some(p), Some(r)) = (resolved_existing(&p), resolved_existing(&r)) else {
         return false;
     };
