@@ -4,6 +4,7 @@
 //! - Motor (Manager), store ve kabuk (klasor, baslangic, iliskilendirme) metotlari baglanir.
 //! - Bagli olmayan her ad "henüz yok" doner (SONUC_F.md listesi).
 
+use std::collections::VecDeque;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -169,7 +170,7 @@ fn sayilar(a: &[Json], i: usize) -> Vec<i64> {
 pub struct TauriUi {
     app: AppHandle,
     bekleyen: Mutex<afudm_core::prompt::PromptQueue>,
-    bildirim: Mutex<Option<Json>>,
+    bildirim: Mutex<VecDeque<Json>>,
     pub lg: Arc<LinkGrabberDurum>,
 }
 
@@ -216,10 +217,11 @@ impl TauriUi {
                         .filter(|s| !s.is_empty())
                         .map(str::to_owned)
                         .unwrap_or_else(|| format!("row:{}", row["id"]));
-                    *kilit(&self.bildirim) =
-                        Some(json!({"gid":gid,"message": if row["status"] == "complete" {
+                    kilit(&self.bildirim).push_back(
+                        json!({"gid":gid,"message": if row["status"] == "complete" {
                         "Bu dosya zaten indirildi"
-                    } else { "Bu dosya zaten iniyor" }}));
+                    } else { "Bu dosya zaten iniyor" }}),
+                    );
                 }
                 (0, None)
             }
@@ -230,7 +232,7 @@ impl TauriUi {
         Self {
             app,
             bekleyen: Mutex::new(Default::default()),
-            bildirim: Mutex::new(None),
+            bildirim: Mutex::new(VecDeque::new()),
             lg: Arc::new(LinkGrabberDurum {
                 bekleyen: Mutex::new(None),
                 hazir: AtomicBool::new(false),
@@ -240,6 +242,10 @@ impl TauriUi {
 
     pub(crate) fn listele(&self) -> Vec<Json> {
         kilit(&self.bekleyen).list()
+    }
+
+    pub(crate) fn onay_hatasi_bildir(&self, hata: String) {
+        kilit(&self.bildirim).push_back(json!({"error": hata}));
     }
 
     fn onayla(&self, kimlik: i64, secim: JsonMap) -> bool {
@@ -516,7 +522,7 @@ pub(crate) fn gezgin_ac(yol: &Path, sec: bool) {
 }
 
 fn explorer_arg(yol: &Path, sec: bool) -> String {
-    if sec {
+    if sec || yol.is_file() {
         format!("/select,\"{}\"", yol.display())
     } else {
         format!("\"{}\"", yol.display())
@@ -731,14 +737,14 @@ fn item_yolu(c: &ApiCtx, gid: &str) -> Sonuc {
     }))
 }
 
-/// Python dosya_ac: dosya varsa kendi programiyla, yoksa klasoru acar (Explorer).
+/// Dosyayı Gezgin'de seçer, inmemişse hedef klasörü açar.
 fn dosya_ac(c: &ApiCtx, gid: &str) -> Sonuc {
     if c.store.by_gid(gid)?.is_none() {
         return Ok(hata(kayit_bulunamadi()));
     }
     let hedef = c.manager.resolve_item_path(gid)?;
     match hedef {
-        Some(yol) if yol.is_file() => gezgin_ac(&yol, false),
+        Some(yol) if yol.is_file() => gezgin_ac(&yol, true),
         // Dosya yoksa (indiriliyor/klasor) ana klasore degil indirmenin kendi klasorune git.
         Some(yol) if yol.is_dir() => gezgin_ac(&yol, false),
         other => {
@@ -860,7 +866,7 @@ fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Json {
             json!({"ok": true})
         }
         "bekleyen_listesi" => {
-            json!({"ok": true, "ogeler": k.ui.listele(), "bildirim": kilit(&k.ui.bildirim).take()})
+            json!({"ok": true, "ogeler": k.ui.listele(), "bildirim": kilit(&k.ui.bildirim).pop_front()})
         }
         "bekleyen_onayla" => {
             let secim = a
@@ -1119,8 +1125,11 @@ fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Json {
             (Some(e), Some(c)) => {
                 let bekleyen = c.manager.snapshot().map(|s| aktif_var(&s)).unwrap_or(true);
                 let snap = || c.manager.snapshot();
-                e.guncelleme
-                    .uygula(&*c.store, &snap, bekleyen, b(a, 0), b(a, 1))
+                let sonuc = e
+                    .guncelleme
+                    .uygula(&*c.store, &snap, bekleyen, b(a, 0), b(a, 1));
+                crate::guncelleme_zamanla::sonuc_ile_kapat(&sonuc, || k.app.exit(0));
+                sonuc
             }
             _ => motor_hazir_degil(),
         },
@@ -1151,6 +1160,7 @@ fn dispatch(k: &Kabuk, name: &str, a: &[Json]) -> Json {
         "seed_dosyalari" => motor_cagri(k, |m| m.seed_dosyalari()),
         "seed_dosya_ekle" => motor_cagri(k, |m| m.seed_dosya_ekle(s(a, 0))),
         "seed_dosya_sil" => motor_cagri(k, |m| m.seed_dosya_sil(s(a, 0))),
+        "tracker_ekle" => motor_cagri(k, |m| m.tracker_ekle(s(a, 0), s(a, 1))),
         "tracker_tara" => motor_cagri(k, |m| m.tracker_tara(s(a, 0))),
         "torrent_on_ekle" => motor_cagri_ile(
             k,
@@ -1423,6 +1433,11 @@ pub(crate) mod tests {
         let dest = base.join("torrent");
         let torrent = dest.join("Killzone 3");
         std::fs::create_dir_all(&torrent).unwrap();
+
+        let file = torrent.join("installer.exe");
+        std::fs::write(&file, b"download").unwrap();
+        assert!(explorer_arg(&file, false).starts_with("/select,"));
+        assert!(!explorer_arg(&torrent, false).starts_with("/select,"));
 
         let (target, select) = klasor_acma_hedefi(
             Some(&torrent.join("PS3_GAME\\missing.iso")),

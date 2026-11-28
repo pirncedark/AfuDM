@@ -2873,7 +2873,8 @@ async function bekleyenYokla() {
   try {
     const out = await call("bekleyen_listesi");
     ogeler = out.ogeler || [];
-    if (out.bildirim) await window.afudmMevcut(out.bildirim);
+    if (out.bildirim?.error) toast(out.bildirim.error, true);
+    else if (out.bildirim) await window.afudmMevcut(out.bildirim);
   } catch (_) { return; }
   if (kayKapatiliyor || sira !== kaySira) return;
   // Gosterilen istek listeden DUSMEZ (onay/iptalde duser): sayarken cikarilir.
@@ -3070,6 +3071,25 @@ function metinMenusu(alan) {
   ];
 }
 
+async function applyTrackers(method, gid, ...args) {
+  const out = await call(method, gid, ...args);
+  if (!out?.ok) throw new Error(out?.error || t("pnl.error"));
+  toast(t("tracker.applied", { n: out.uygulanan ?? 0 }));
+}
+
+function openTrackerInput(gid) {
+  $("trackerUrls").value = "";
+  $("trackerError").textContent = "";
+  $("trackerSubmit").onclick = async () => {
+    try {
+      await applyTrackers("tracker_ekle", gid, $("trackerUrls").value);
+      closeVeil("trackerVeil");
+    } catch (err) { $("trackerError").textContent = err.message; }
+  };
+  openVeil("trackerVeil");
+  $("trackerUrls").focus();
+}
+
 let renewGid = "";
 $("renewGo").onclick = async () => {
   const url = $("renewUrl").value.trim();
@@ -3090,7 +3110,8 @@ $("fixGo").onclick = async () => {
     if (out && out.ok === false) { $("fixErr").textContent = out.neden || t("renew.bad"); return; }
     closeVeil("fixVeil");
     toast(t("fix.done") || "Onarım başlatıldı.");
-    updateRowCache(fixGid, { status: "repairing", errorMessage: "" });
+    const row = state.items.find((item) => item.gid === fixGid);
+    if (row) Object.assign(row, { status: "repairing", errorMessage: "" });
     renderList();
   } catch (err) { $("fixErr").textContent = err.message || err.toString(); }
 };
@@ -3123,6 +3144,11 @@ document.addEventListener("contextmenu", async (event) => {
   const yol = ad ? (oge.dir ? oge.dir.replace(/[\/]+$/, "") + "\\" + ad : ad) : (oge.dir || "");
   ctxAc(event.clientX, event.clientY, [
     { baslik: adres || oge.title || gid },
+    ...(oge.kind === "torrent" ? [
+      { etiket: t("tracker.add"), calis: () => openTrackerInput(gid) },
+      { etiket: t("tracker.best"), calis: () => applyTrackers("tracker_tara", gid) },
+      "ayrac",
+    ] : []),
     { etiket: t("ctx.copyLink"), pasif: !adres,
       calis: async () => { if (await panoyaYaz(adres)) toast(t("ctx.copied")); } },
     { etiket: t("ctx.copyPath"), pasif: !yol,

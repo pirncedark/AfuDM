@@ -22,7 +22,7 @@ pub struct Manager {
     pub app_dir: PathBuf,
     /// Python: manager.py self._kilit() — ekleme/silme yarisini onler.
     pub kilit: Mutex<()>,
-    pub queue_state: Mutex<queue::State>,
+    pub queue_state: Arc<Mutex<queue::State>>,
     pub torrent_state: Mutex<torrent::State>,
     pub video_state: Mutex<video::State>,
     pub butunluk_state: Mutex<butunluk::State>,
@@ -48,7 +48,7 @@ impl Manager {
             data_dir,
             app_dir,
             kilit: Mutex::new(()),
-            queue_state: Mutex::new(Default::default()),
+            queue_state: Default::default(),
             torrent_state: Mutex::new(Default::default()),
             video_state: Mutex::new(Default::default()),
             butunluk_state: Mutex::new(Default::default()),
@@ -140,6 +140,9 @@ impl ManagerApi for Manager {
     }
     fn seed_bilgi(&self, gid: &str) -> Result<Json> {
         torrent::seed_bilgi(self, gid)
+    }
+    fn tracker_ekle(&self, gid: &str, liste: &str) -> Result<Json> {
+        torrent::tracker_ekle(self, gid, liste)
     }
     fn tracker_tara(&self, gid: &str) -> Result<Json> {
         torrent::tracker_tara(self, gid)

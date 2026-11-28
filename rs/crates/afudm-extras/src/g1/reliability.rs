@@ -196,7 +196,17 @@ pub fn restore(store: &dyn Store, data: &Path, arsiv: &str) -> Result<Json> {
         return Err(e);
     }
     let hedef = data.join(BEKLEYEN_GERI_YUKLEME);
-    fs::rename(&gecici, &hedef)?;
+    let tasima = match fs::rename(&gecici, &hedef) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+            fs::remove_file(&hedef).and_then(|()| fs::rename(&gecici, &hedef))
+        }
+        Err(e) => Err(e),
+    };
+    if let Err(e) = tasima {
+        let _ = fs::remove_file(&gecici);
+        return Err(e.into());
+    }
     let _ = store; // canli baglanti bu adimda degismez
     Ok(json!({
         "ok": true,
@@ -519,9 +529,12 @@ mod tests {
         assert!(yol.is_file());
         let liste = backups(&d);
         assert_eq!(liste["items"].as_array().map(Vec::len), Some(1));
+        fs::write(d.join(BEKLEYEN_GERI_YUKLEME), b"previous staged file").unwrap();
         let r = restore(&store, &d, yol.to_str().expect("utf8")).expect("geri yukle");
         assert_eq!(r["restart_required"], true);
-        assert!(d.join(BEKLEYEN_GERI_YUKLEME).is_file());
+        assert!(fs::read(d.join(BEKLEYEN_GERI_YUKLEME))
+            .unwrap()
+            .starts_with(b"SQLite format 3"));
         // Yedek klasoru disindaki dosya reddedilir.
         let dis = d.join("dis.zip");
         fs::write(&dis, b"x").expect("yaz");

@@ -195,8 +195,17 @@ async function sendToAfudmOnce(cfg, body) {
 }
 
 // Page-owned objects travel in bounded messages; never send their URL to aria2.
+const blobExtensions = new Map(Object.entries({
+  "image/png":"png", "image/jpeg":"jpg", "image/gif":"gif", "image/webp":"webp",
+  "image/svg+xml":"svg", "image/avif":"avif", "image/bmp":"bmp", "image/tiff":"tif",
+  "application/pdf":"pdf", "application/zip":"zip", "application/json":"json",
+  "application/gzip":"gz", "application/x-7z-compressed":"7z",
+  "text/plain":"txt", "text/csv":"csv", "text/html":"html",
+  "video/mp4":"mp4", "video/webm":"webm", "audio/mpeg":"mp3", "audio/wav":"wav",
+  "audio/ogg":"ogg", "audio/mp4":"m4a"
+}));
+
 async function sendLocalFile(cfg, download, url) {
-  const filename = download.filename ? download.filename.split(/[\\/]/).pop() : "download.png";
   let body;
   const limit = 512 * 1024 * 1024;
   try {
@@ -223,11 +232,15 @@ async function sendLocalFile(cfg, download, url) {
           if (!chunk?.ok || chunk.bytes.length !== Math.min(256 * 1024, source.size-offset)) throw new Error("Görsel alınamadı; tarayıcıdan kaydedin.");
           chunks.push(new Uint8Array(chunk.bytes));
         }
-        body = new Blob(chunks);
+        body = new Blob(chunks, {type:source.mime || ""});
       } finally {
         await chrome.tabs.sendMessage(source.tabId, {type:"afudmBlobClose", id:source.id}, {frameId:source.frameId}).catch(() => {});
       }
     }
+    const extension = [body.type, download.mime]
+      .map(type => blobExtensions.get((type || "").split(";")[0].trim().toLowerCase()))
+      .find(Boolean) || "bin";
+    const filename = download.filename?.split(/[\\/]/).pop() || ("download." + extension);
     const response = await fetch(endpoint(cfg, "/add_blob?filename=" + encodeURIComponent(filename)), {
       method:"POST", headers:{"X-AfuDM-Token":cfg.token, "Content-Type":"application/octet-stream"}, body,
       signal:AbortSignal.timeout(120000),

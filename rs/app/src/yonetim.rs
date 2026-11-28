@@ -781,6 +781,8 @@ fn post_izin(yol: &str) -> Option<&'static str> {
     match yol {
         "/api/oturum" | "/api/oturum/kapat" => Some("oku"),
         "/api/ekle"
+        | "/api/tracker/ekle"
+        | "/api/tracker/tara"
         | "/api/kontrol"
         | "/api/yeniden-dene"
         | "/api/temizle"
@@ -1068,6 +1070,8 @@ fn post_calistir(
             Ok(json!({"ok": true}))
         }
         "/api/ekle" => ekle(p, veri),
+        "/api/tracker/ekle" => c.manager.tracker_ekle(&metin("gid"), &metin("trackers")),
+        "/api/tracker/tara" => c.manager.tracker_tara(&metin("gid")),
         "/api/kontrol" => {
             let eylem = {
                 let a = metin("action");

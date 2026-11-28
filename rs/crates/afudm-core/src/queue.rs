@@ -43,17 +43,22 @@ pub struct State {
     pub started: bool,
 }
 
+const WORKER_ATTEMPTS: usize = 8;
+// Serialize short intent writes only. Engine RPC may take seconds.
+static INTENT_LOCK: Mutex<()> = Mutex::new(());
 static CONTROL_WORKERS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 static ALL_CONTROL_WORKERS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 
 fn background_manager(m: &Manager) -> Manager {
-    Manager::new(
+    let mut worker = Manager::new(
         m.store.clone(),
         m.rpc(),
         m.ui.clone(),
         m.data_dir.clone(),
         m.app_dir.clone(),
-    )
+    );
+    worker.queue_state = m.queue_state.clone();
+    worker
 }
 
 fn action_key(m: &Manager, gid: &str) -> String {
@@ -68,10 +73,19 @@ fn control_action(row: &Json) -> Option<String> {
 }
 
 fn set_control_intent(m: &Manager, row: &Json, action: &str) -> Result<()> {
-    let mut opts = options(row);
+    let _guard = INTENT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let row = m
+        .store
+        .by_id(row_id(row))?
+        .ok_or_else(|| invalid("Kayıt bulunamadı."))?;
+    if matches!(text(&row["status"]), "removing" | "removed") {
+        return Err(invalid("İndirme kaldırılıyor."));
+    }
+    let mut opts = options(&row);
+    opts.remove("_afudm_remove_delete_files");
     opts.insert("_afudm_pending_control".into(), json!(action));
     m.store.update_by_id(
-        row_id(row),
+        row_id(&row),
         &map(json!({
             "status": if action == "pause" { "paused" } else { "active" },
             "options": opts
@@ -91,7 +105,10 @@ fn ensure_control_worker(m: &Manager, gid: &str) {
     drop(active);
     let worker = background_manager(m);
     std::thread::spawn(move || {
-        while let Ok(Some(row)) = worker.store.by_gid(gid_for_key(&key)) {
+        for attempt in 1..=WORKER_ATTEMPTS {
+            let Ok(Some(row)) = worker.store.by_gid(gid_for_key(&key)) else {
+                break;
+            };
             let Some(action) = control_action(&row) else {
                 break;
             };
@@ -100,17 +117,27 @@ fn ensure_control_worker(m: &Manager, gid: &str) {
             } else {
                 worker.rpc().unpause(text(&row["gid"]))
             };
-            if result.is_ok() {
+            if result.is_ok() || attempt == WORKER_ATTEMPTS {
+                let _guard = INTENT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
                 let Ok(Some(current)) = worker.store.by_gid(text(&row["gid"])) else {
                     break;
                 };
                 if control_action(&current).as_deref() == Some(action.as_str()) {
+                    if matches!(text(&current["status"]), "removing" | "removed") {
+                        break;
+                    }
                     let mut opts = options(&current);
                     opts.remove("_afudm_pending_control");
+                    let failed = result.is_err();
+                    let error = "İşlem uygulanamadı, tekrar deneyin.";
+                    if failed {
+                        worker.ui.notify("AfuDM", error);
+                    }
                     let _ = worker.store.update_by_id(
                         row_id(&current),
                         &map(json!({
-                            "status": if action == "pause" { "paused" } else { "active" },
+                            "status": if failed { "error" } else if action == "pause" { "paused" } else { "active" },
+                            "error": if failed { json!(error) } else { Json::Null },
                             "options": opts
                         })),
                     );
@@ -121,6 +148,19 @@ fn ensure_control_worker(m: &Manager, gid: &str) {
         }
         if let Ok(mut set) = workers.lock() {
             set.remove(&key);
+        }
+        // A newer request may have arrived while this worker still owned its slot.
+        let gid = gid_for_key(&key);
+        if worker
+            .store
+            .by_gid(gid)
+            .ok()
+            .flatten()
+            .as_ref()
+            .and_then(control_action)
+            .is_some()
+        {
+            ensure_control_worker(&worker, gid);
         }
     });
 }
@@ -163,6 +203,7 @@ fn ensure_all_control_worker(m: &Manager) {
                     .ok()
                     .flatten();
                 if latest.as_ref().and_then(Json::as_str) == Some(action.as_str()) {
+                    let _guard = INTENT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
                     if let Ok(rows) = worker.store.list(None, 1000) {
                         for row in rows {
                             if control_action(&row).as_deref() == Some(action.as_str()) {
@@ -296,8 +337,8 @@ pub fn start(m: &Manager) -> Result<()> {
 
 pub fn stop(m: &Manager) -> Result<()> {
     crate::video::aktif_isleri_kapat(m);
-    sync_aria2(m)?;
-    if !m.rpc().sleeping() {
+    let sync_result = sync_aria2(m);
+    if sync_result.is_ok() && !m.rpc().sleeping() {
         let _ = m.rpc().call("aria2.purgeDownloadResult", vec![]);
     }
     let _ = m.rpc().save_session();
@@ -307,7 +348,7 @@ pub fn stop(m: &Manager) -> Result<()> {
     s.cookies.clear();
     drop(s);
     m.store.log("info", "AfuDM kapandi", "");
-    Ok(())
+    sync_result
 }
 
 pub fn set_mode(m: &Manager, ad: &str) -> Result<Json> {
@@ -910,13 +951,21 @@ pub fn retry(m: &Manager, row_id: i64) -> Result<Json> {
             "Bu indirme yeni giris bilgisi gerektiriyor; Yenile akisini kullanin.",
         ));
     }
+    let mut opts = options(&row);
+    opts.remove("_afudm_remove_delete_files");
+    opts.remove("_afudm_remove_targets");
+    opts.remove("adopt_gid");
     m.store.update_by_id(
         row_id,
-        &map(json!({"status":"queued","gid":null,"error":null})),
+        &map(json!({"status":"queued","gid":null,"error":null,"options":opts})),
     )?;
     if !old.is_empty() {
         state(m)?.removed_gids.insert(old.into());
-        let _ = m.rpc().remove_result(old);
+        if old.starts_with("yt:") {
+            crate::video::kaldir(m, old);
+        } else {
+            let _ = m.rpc().remove_result(old);
+        }
     }
     launch(
         m,

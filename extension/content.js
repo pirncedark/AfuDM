@@ -578,7 +578,7 @@
           if (blob.size > 512 * 1024 * 1024) throw new Error("blob too large");
           const id = crypto.randomUUID();
           objects.set(id, {blob, at:Date.now()});
-          reply({ok:true, id, size:blob.size});
+          reply({ok:true, id, size:blob.size, mime:blob.type});
         } else if (message.type === "afudmBlobClose") {
           objects.delete(message.id); reply({ok:true});
         } else {

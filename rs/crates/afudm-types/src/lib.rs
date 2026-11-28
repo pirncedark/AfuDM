@@ -197,6 +197,7 @@ pub trait ManagerApi: Send + Sync {
     /// manager.py:1510
     fn seed_bilgi(&self, gid: &str) -> Result<Json>;
     /// manager.py:1545
+    fn tracker_ekle(&self, gid: &str, liste: &str) -> Result<Json>;
     fn tracker_tara(&self, gid: &str) -> Result<Json>;
     /// manager.py:1570
     fn seed_dosyalari(&self) -> Result<Json>;

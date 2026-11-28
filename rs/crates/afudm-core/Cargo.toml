@@ -22,3 +22,6 @@ afudm-db.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"
+
+[dev-dependencies]
+tempfile = "3"

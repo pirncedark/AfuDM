@@ -45,6 +45,13 @@ async fn request(ctx: &ApiCtx, method: &str, path: &str, data: &str, auth: bool)
     (status, serde_json::from_slice(&bytes).unwrap())
 }
 #[tokio::test]
+async fn missing_token_reports_service_unavailable_and_denies_access() {
+    let (dir, ctx, _) = fixture();
+    std::fs::remove_file(dir.path().join("api_token.txt")).unwrap();
+    assert_eq!(request(&ctx, "GET", "/snapshot", "", false).await.0, 503);
+}
+
+#[tokio::test]
 async fn authentication_rotation_and_json_errors() {
     let (_dir, ctx, _) = fixture();
     assert_eq!(
@@ -495,6 +502,9 @@ impl ManagerApi for FakeManager {
         Ok(json!({"gid":gid}))
     }
     #[allow(unused_variables)]
+    fn tracker_ekle(&self, gid: &str, liste: &str) -> Result<Value> {
+        Ok(json!({"gid":gid, "trackers":liste}))
+    }
     fn tracker_tara(&self, gid: &str) -> Result<Value> {
         Ok(json!({"gid":gid}))
     }
@@ -665,4 +675,44 @@ async fn interactive_handoff_queues_once_without_starting_the_manager() {
         assert_eq!(body, json!({"ok":true,"pending":true,"kimlik":42}));
     }
     assert!(manager.calls.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn tracker_add_endpoint_validates_and_forwards() {
+    let (_dir, ctx, _manager) = fixture();
+    let (status, body) = request(
+        &ctx,
+        "POST",
+        "/tracker/ekle",
+        r#"{"gid":"g1","trackers":"udp://a.example.org/announce"}"#,
+        true,
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(body["gid"], "g1");
+    assert_eq!(body["trackers"], "udp://a.example.org/announce");
+
+    let (status, body) = request(
+        &ctx,
+        "POST",
+        "/tracker/ekle",
+        r#"{"gid":"g2","trackers":["udp://a.example.org/announce","https://b.example.org/announce"]}"#,
+        true,
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        body["trackers"],
+        "udp://a.example.org/announce\nhttps://b.example.org/announce"
+    );
+
+    let (status, body) = request(&ctx, "POST", "/tracker/ekle", r#"{"trackers":"x"}"#, true).await;
+    assert_eq!(status, 400);
+    assert_eq!(body["code"], "GID_GEREKLI");
+
+    for payload in [r#"{"gid":"g1"}"#, r#"{"gid":"g1","trackers":[123]}"#] {
+        let (status, body) = request(&ctx, "POST", "/tracker/ekle", payload, true).await;
+        assert_eq!(status, 400);
+        assert_eq!(body["code"], "TRACKER_GEREKLI");
+    }
 }
