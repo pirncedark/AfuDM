@@ -225,10 +225,7 @@ fn satir_options_guncelle(m: &Manager, row: &Json, f: impl FnOnce(&mut JsonMap))
 }
 
 fn guvenli_parca(parca: &str) -> bool {
-    !parca.is_empty()
-        && parca != "."
-        && parca != ".."
-        && !parca.contains(['/', '\\', ':', '\0'])
+    !parca.is_empty() && parca != "." && parca != ".." && !parca.contains(['/', '\\', ':', '\0'])
 }
 
 fn bencode_metin(v: &bencode::Bc) -> Option<String> {
@@ -440,12 +437,7 @@ fn rpc_onceden_var(
     onceden_var_secilmeyenler(dest_dir, secili, &yollar)
 }
 
-fn onceden_var_kaydet(
-    m: &Manager,
-    req: &JsonMap,
-    gid: &str,
-    onceden_var: &[String],
-) -> Result<()> {
+fn onceden_var_kaydet(m: &Manager, req: &JsonMap, gid: &str, onceden_var: &[String]) -> Result<()> {
     let row_id = sayi_of(req.get("row_id"));
     let row = if row_id > 0 {
         m.store.by_id(row_id)?
@@ -1471,7 +1463,12 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
             Vec::new()
         };
         let onceden_var = if !secili.is_empty() && !dosyalar.is_empty() {
-            Some(rpc_onceden_var(durum.as_ref(), &dosyalar, &dest_dir, &secili))
+            Some(rpc_onceden_var(
+                durum.as_ref(),
+                &dosyalar,
+                &dest_dir,
+                &secili,
+            ))
         } else {
             None
         };
@@ -1522,7 +1519,11 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
         .map(torrent_bencode_dosyalari)
         .unwrap_or_default();
     let onceden_var = if !secili.is_empty() && !bencode_dosyalar.is_empty() {
-        Some(onceden_var_secilmeyenler(&dest_dir, &secili, &bencode_dosyalar))
+        Some(onceden_var_secilmeyenler(
+            &dest_dir,
+            &secili,
+            &bencode_dosyalar,
+        ))
     } else {
         None
     };
@@ -1569,7 +1570,12 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
                     if !dosyalar.is_empty()
                         && durum.as_ref().is_some_and(|d| truthy(d.get("bittorrent")))
                     {
-                        Some(rpc_onceden_var(durum.as_ref(), &dosyalar, &dest_dir, &secili))
+                        Some(rpc_onceden_var(
+                            durum.as_ref(),
+                            &dosyalar,
+                            &dest_dir,
+                            &secili,
+                        ))
                     } else {
                         None
                     }

@@ -1048,7 +1048,13 @@ impl Aria2 for MemoryRpc {
     }
     #[allow(unused_variables)]
     fn get_files(&self, gid: &str) -> Result<Vec<Json>> {
-        Ok(self.files.lock().unwrap().get(gid).cloned().unwrap_or_default())
+        Ok(self
+            .files
+            .lock()
+            .unwrap()
+            .get(gid)
+            .cloned()
+            .unwrap_or_default())
     }
     #[allow(unused_variables)]
     fn get_servers(&self, gid: &str) -> Result<Vec<Json>> {
@@ -2616,9 +2622,15 @@ fn secilmeyenleri_temizle_onceden_var_olan_dosyayi_korur_yeni_komsuyu_siler() {
         }),
     );
     sync::collect(&m).unwrap();
-    assert!(preexisting_file.exists(), "onceden var olan dosya korunmali");
+    assert!(
+        preexisting_file.exists(),
+        "onceden var olan dosya korunmali"
+    );
     assert!(selected_file.exists(), "secili dosya korunmali");
-    assert!(!sibling_unselected.exists(), "yeni olusan komsu dosya silinmeli");
+    assert!(
+        !sibling_unselected.exists(),
+        "yeni olusan komsu dosya silinmeli"
+    );
 
     // 2) adopt_gid path
     let sibling_unselected_2 = pack_dir.join("c.bin");
@@ -2686,8 +2698,14 @@ fn secilmeyenleri_temizle_onceden_var_olan_dosyayi_korur_yeni_komsuyu_siler() {
         }),
     );
     sync::collect(&m2).unwrap();
-    assert!(preexisting_file.exists(), "adopt yolunda da onceden var olan dosya korunmali");
-    assert!(!sibling_unselected_2.exists(), "adopt yolunda da yeni olusan komsu dosya silinmeli");
+    assert!(
+        preexisting_file.exists(),
+        "adopt yolunda da onceden var olan dosya korunmali"
+    );
+    assert!(
+        !sibling_unselected_2.exists(),
+        "adopt yolunda da yeni olusan komsu dosya silinmeli"
+    );
 
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -2733,7 +2751,10 @@ fn canli_secim_guncellemesi_options_selected_files_gunceller_ve_retry_korur() {
 
     crate::torrent::torrent_secimi_ayarla(&m, &gid, &[2]).unwrap();
     let updated_row = store.by_id(id).unwrap().unwrap();
-    assert_eq!(options(&updated_row).get("selected_files"), Some(&json!([2])));
+    assert_eq!(
+        options(&updated_row).get("selected_files"),
+        Some(&json!([2]))
+    );
     assert_eq!(store.torrent_dosya_secimleri(&gid).unwrap(), vec![2]);
 
     rpc.calls.lock().unwrap().clear();
@@ -2768,7 +2789,9 @@ fn retry_clears_stale_adopt_gid_from_options() {
                 "magnet:?xt=urn:btih:abc",
                 Some("Game"),
                 Some(f.root.to_str().unwrap()),
-                Some(&map(json!({"adopt_gid":"dead-adopt-gid","selected_files":[2]}))),
+                Some(&map(
+                    json!({"adopt_gid":"dead-adopt-gid","selected_files":[2]}),
+                )),
                 None,
                 Some("old-gid"),
             )
