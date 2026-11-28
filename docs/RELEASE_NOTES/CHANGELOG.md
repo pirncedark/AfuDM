@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.4.10](https://github.com/pirncedark/AfuDM/compare/v3.4.9...v3.4.10) (2026-11-28)
+
+
+### Bug Fixes
+
+* keep torrent file selection on retry and harden download queue ([#178](https://github.com/pirncedark/AfuDM/issues/178)) ([5639e58](https://github.com/pirncedark/AfuDM/commit/5639e584a7fbc2365ae0b05c9e3a5ab6f78f8abb))
+* refresh downloads promptly on startup and after additions ([#176](https://github.com/pirncedark/AfuDM/issues/176)) ([1952a9f](https://github.com/pirncedark/AfuDM/commit/1952a9fee8901e1fc5e57ce6cb308fc52a523d7f))
+
 ## [3.4.9](https://github.com/pirncedark/AfuDM/compare/v3.4.8...v3.4.9) (2026-11-19)
 
 
