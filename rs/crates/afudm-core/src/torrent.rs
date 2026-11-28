@@ -122,6 +122,35 @@ fn torrent_kok_adi(veri: &[u8]) -> Option<String> {
     String::from_utf8(ad.clone()).ok()
 }
 
+fn torrent_dosya_sayisi(veri: &[u8]) -> Option<usize> {
+    let bencode::Bc::Sozluk(ust) = bencode::coz(veri).ok()? else {
+        return None;
+    };
+    let bencode::Bc::Sozluk(info) = ust.get(b"info".as_slice())? else {
+        return None;
+    };
+    match info.get(b"files".as_slice()) {
+        Some(bencode::Bc::Liste(dosyalar)) if !dosyalar.is_empty() => Some(dosyalar.len()),
+        Some(_) => None,
+        None => info.contains_key(b"name".as_slice()).then_some(1),
+    }
+}
+
+fn kismi_secim_mi(secili: &[i64], toplam: Option<usize>) -> bool {
+    if secili.is_empty() {
+        return false;
+    }
+    let Some(toplam) = toplam.filter(|&n| n > 0) else {
+        return true;
+    };
+    let unique: HashSet<i64> = secili
+        .iter()
+        .copied()
+        .filter(|&i| i >= 1 && i <= toplam as i64)
+        .collect();
+    unique.len() < toplam
+}
+
 /// Torrent hedefi: kullanici ayari, mevcut F:\torrent, genel indirme klasoru.
 pub fn kayit_klasoru(store: &dyn Store, genel: &str) -> Result<String> {
     if let Some(ad) = store.get("torrent_dir")?.as_ref().and_then(|v| v.as_str()) {
@@ -181,31 +210,74 @@ pub(crate) fn secilmeyenleri_temizle(m: &Manager, row: &Json, status: &Json) -> 
     if selected.is_empty() {
         return Ok(());
     }
-    let Some(dir) = row["dest_dir"].as_str() else { return Ok(()) };
-    let Ok(root) = Path::new(dir).canonicalize() else { return Ok(()) };
-    let Some(files) = status["files"].as_array() else { return Ok(()) };
+    let Some(dir) = row["dest_dir"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .or_else(|| status["dir"].as_str().filter(|s| !s.is_empty()))
+    else {
+        return Ok(());
+    };
+    let Ok(root) = Path::new(dir).canonicalize() else {
+        return Ok(());
+    };
+    let Some(files) = status["files"].as_array() else {
+        return Ok(());
+    };
     for file in files {
         let index = sayi_of(file.get("index"));
         if index <= 0 || selected.contains(&index) || str_of(file.get("selected")) != "false" {
             continue;
         }
-        let Some(path) = file["path"].as_str() else { continue };
-        let path = Path::new(path);
-        let Ok(relative) = path.strip_prefix(dir) else { continue };
-        if !relative.components().all(|part| matches!(part, std::path::Component::Normal(_))) {
+        let Some(path) = file["path"].as_str().filter(|s| !s.is_empty()) else {
+            continue;
+        };
+        let raw_path = if Path::new(path).is_absolute() {
+            PathBuf::from(path)
+        } else {
+            Path::new(dir).join(path)
+        };
+        let Ok(meta) = std::fs::symlink_metadata(&raw_path) else {
+            continue;
+        };
+        if meta.file_type().is_symlink() || !meta.is_file() {
             continue;
         }
-        let candidate = root.join(relative);
-        // Canonical equality also excludes symlink/junction ancestors and aliased paths.
-        if candidate.canonicalize().ok().as_deref() != Some(&candidate) || !candidate.is_file() {
+        let mut reaches_root = false;
+        for ancestor in raw_path.ancestors().skip(1) {
+            if ancestor.canonicalize().ok().as_deref() == Some(root.as_path()) {
+                reaches_root = true;
+                break;
+            }
+            if std::fs::symlink_metadata(ancestor).is_ok_and(|m| m.file_type().is_symlink()) {
+                reaches_root = false;
+                break;
+            }
+        }
+        if !reaches_root {
+            continue;
+        }
+        let Ok(candidate) = raw_path.canonicalize() else {
+            continue;
+        };
+        let Ok(relative) = candidate.strip_prefix(&root) else {
+            continue;
+        };
+        if relative.as_os_str().is_empty()
+            || !relative
+                .components()
+                .all(|part| matches!(part, std::path::Component::Normal(_)))
+        {
             continue;
         }
         if let Err(e) = std::fs::remove_file(&candidate) {
-            m.store.log("warn", &format!("Seçilmeyen dosya kaldırılamadı: {e}"), gid);
+            m.store
+                .log("warn", &format!("Seçilmeyen dosya kaldırılamadı: {e}"), gid);
             continue;
         }
         for parent in candidate.ancestors().skip(1).take_while(|p| *p != root) {
-            if std::fs::remove_dir(parent).is_err() { break; }
+            if std::fs::remove_dir(parent).is_err() {
+                break;
+            }
         }
     }
     Ok(())
@@ -367,37 +439,54 @@ fn tracker_tara_ic(
 
 fn tracker_secenegi(rpc: &dyn Aria2, gid: &str) -> Result<Vec<String>> {
     let options = rpc.call("aria2.getOption", vec![json!(gid)])?;
-    Ok(str_of(options.get("bt-tracker")).split(',').map(str::trim)
-        .filter(|s| !s.is_empty()).map(str::to_owned).collect())
+    Ok(str_of(options.get("bt-tracker"))
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .collect())
 }
 
 fn tracker_uygula(rpc: &dyn Aria2, gid: &str, liste: &[String]) -> Result<usize> {
     let status = rpc.tell_status(gid, &["status", "bittorrent", "infoHash"])?;
     if !truthy(status.get("infoHash")) && !truthy(status.get("bittorrent")) {
-        return Err(AfuError::Invalid("Tracker eklemek için bir torrent seçin.".into()));
+        return Err(AfuError::Invalid(
+            "Tracker eklemek için bir torrent seçin.".into(),
+        ));
     }
-    if liste.is_empty() { return Ok(0) }
+    if liste.is_empty() {
+        return Ok(0);
+    }
     let active = status["status"] == "active";
-    if active { rpc.pause(gid, true)?; }
+    if active {
+        rpc.pause(gid, true)?;
+    }
     let update = (|| {
         if active {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
             while rpc.tell_status(gid, &["status"])?["status"] != "paused" {
                 if std::time::Instant::now() >= deadline {
-                    return Err(AfuError::Engine("Torrent duraklatılamadı, yeniden deneyin.".into()));
+                    return Err(AfuError::Engine(
+                        "Torrent duraklatılamadı, yeniden deneyin.".into(),
+                    ));
                 }
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
         }
         let mut merged = tracker_secenegi(rpc, gid)?;
         for url in liste {
-            if !merged.contains(url) { merged.push(url.clone()); }
+            if !merged.iter().any(|m| m.eq_ignore_ascii_case(url)) {
+                merged.push(url.clone());
+            }
         }
         let mut options = JsonMap::new();
         options.insert("bt-tracker".into(), json!(merged.join(",")));
         rpc.change_option(gid, &options)?;
         let applied = tracker_secenegi(rpc, gid)?;
-        Ok(liste.iter().filter(|url| applied.contains(url)).count())
+        Ok(liste
+            .iter()
+            .filter(|url| applied.iter().any(|a| a.eq_ignore_ascii_case(url)))
+            .count())
     })();
     if active {
         let resumed = rpc.unpause(gid);
@@ -409,16 +498,40 @@ fn tracker_uygula(rpc: &dyn Aria2, gid: &str, liste: &[String]) -> Result<usize>
 
 pub fn tracker_ekle(m: &Manager, gid: &str, liste: &str) -> Result<Json> {
     let urls = trackers::ayikla(liste);
-    if urls.is_empty() { return Err(AfuError::Invalid("Geçerli bir tracker adresi girin.".into())); }
+    if urls.is_empty() {
+        return Err(AfuError::Invalid(
+            "Geçerli bir tracker adresi girin.".into(),
+        ));
+    }
     let applied = tracker_uygula(&*m.rpc(), gid, &urls)?;
     Ok(json!({"ok": true, "uygulanan": applied}))
 }
 
-fn tracker_sayilari(rpc: &dyn Aria2, gid: &str, duyuru: &[Json], canli: &str) -> Result<(usize, usize)> {
-    let mut configured: HashSet<String> = tracker_secenegi(rpc, gid)?.into_iter().collect();
-    configured.extend(duyuru.iter().filter_map(Json::as_array).flatten()
-        .filter_map(Json::as_str).map(str::to_owned));
-    let live = trackers::ayikla(canli).iter().filter(|url| configured.contains(*url)).count();
+fn tracker_sayilari(
+    rpc: &dyn Aria2,
+    gid: &str,
+    duyuru: &[Json],
+    canli: &str,
+) -> Result<(usize, usize)> {
+    let mut configured: HashSet<String> = tracker_secenegi(rpc, gid)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|u| u.trim().to_ascii_lowercase())
+        .filter(|u| !u.is_empty())
+        .collect();
+    configured.extend(
+        duyuru
+            .iter()
+            .filter_map(Json::as_array)
+            .flatten()
+            .filter_map(Json::as_str)
+            .map(|u| u.trim().to_ascii_lowercase())
+            .filter(|u| !u.is_empty()),
+    );
+    let live = trackers::ayikla(canli)
+        .into_iter()
+        .filter(|url| configured.contains(&url.to_ascii_lowercase()))
+        .count();
     Ok((configured.len(), live))
 }
 
@@ -633,10 +746,13 @@ pub fn seed_tazele(m: &Manager, gid: &str) -> Result<Json> {
         Ok(g) => g,
         Err(e) => {
             if let Some(row) = &row {
-                let fields = json!({"status": "error", "error": "Torrent yenilenemedi, yeniden deneyin."});
-                m.store.update_by_id(sayi_of(row.get("id")), fields.as_object().unwrap())?;
+                let fields =
+                    json!({"status": "error", "error": "Torrent yenilenemedi, yeniden deneyin."});
+                m.store
+                    .update_by_id(sayi_of(row.get("id")), fields.as_object().unwrap())?;
             }
-            m.store.log("warn", &format!("seed tazeleme basarisiz: {e}"), gid);
+            m.store
+                .log("warn", &format!("seed tazeleme basarisiz: {e}"), gid);
             return Ok(hata_json(&e));
         }
     };
@@ -1122,9 +1238,12 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
             ));
         }
         if !secili.is_empty() {
+            let toplam = rpc.get_files(&gid).ok().map(|f| f.len()).filter(|&n| n > 0);
             let mut secim = JsonMap::new();
             secim.insert("select-file".to_string(), json!(select_degeri(&secili)));
-            secim.insert("file-allocation".into(), json!("none"));
+            if kismi_secim_mi(&secili, toplam) {
+                secim.insert("file-allocation".into(), json!("none"));
+            }
             rpc.change_option(&gid, &secim)?;
             m.store.torrent_dosya_secimlerini_kaydet(&gid, &secili)?;
         }
@@ -1132,19 +1251,26 @@ pub(crate) fn torrent_ekle_ic(m: &Manager, req: &JsonMap) -> Result<Json> {
         return Ok(json!({"gid": gid}));
     }
 
+    let yerel = Path::new(&source);
+    let yerel_bayt = if yerel.exists() && uzanti_kucuk(&dosya_adi_of(yerel)) == ".torrent" {
+        Some(std::fs::read(yerel)?)
+    } else {
+        None
+    };
+    let toplam_dosya = yerel_bayt.as_deref().and_then(torrent_dosya_sayisi);
     let mut secenekler = JsonMap::new();
     secenekler.insert("dir".to_string(), json!(dest_dir));
     secenekler.insert("bt-save-metadata".to_string(), json!("false"));
     if !secili.is_empty() {
         secenekler.insert("select-file".into(), json!(select_degeri(&secili)));
-        secenekler.insert("file-allocation".into(), json!("none"));
+        if kismi_secim_mi(&secili, toplam_dosya) {
+            secenekler.insert("file-allocation".into(), json!("none"));
+        }
     }
     if let Some(p) = proxy::proksi_bul(m, req)? {
         secenekler.extend(proxy::aria2_secenekleri(&p));
     }
-    let yerel = Path::new(&source);
-    let sonuc = if yerel.exists() && uzanti_kucuk(&dosya_adi_of(yerel)) == ".torrent" {
-        let bayt = std::fs::read(yerel)?;
+    let sonuc = if let Some(bayt) = yerel_bayt {
         mevcut_kok_butunlugu(
             &mut secenekler,
             &dest_dir,
@@ -1344,5 +1470,320 @@ mod oto_motor_hiz_testleri {
             torrent_hatasi(e).to_string(),
             AfuError::Engine("offline".into()).to_string()
         );
+    }
+}
+
+#[cfg(test)]
+mod tracker_ve_seed_testleri {
+    use super::*;
+    use afudm_types::NoUi;
+    use std::sync::Mutex;
+
+    struct FakeAria2 {
+        calls: Mutex<Vec<String>>,
+        status: Mutex<String>,
+        bt_tracker: Mutex<String>,
+        announce_list: Mutex<Vec<Vec<String>>>,
+        is_torrent: Mutex<bool>,
+        fail_change_option: Mutex<bool>,
+        fail_get_option: Mutex<bool>,
+        fail_add_uri: Mutex<bool>,
+    }
+
+    impl Default for FakeAria2 {
+        fn default() -> Self {
+            Self {
+                calls: Mutex::new(Vec::new()),
+                status: Mutex::new("active".into()),
+                bt_tracker: Mutex::new(String::new()),
+                announce_list: Mutex::new(Vec::new()),
+                is_torrent: Mutex::new(true),
+                fail_change_option: Mutex::new(false),
+                fail_get_option: Mutex::new(false),
+                fail_add_uri: Mutex::new(false),
+            }
+        }
+    }
+
+    impl Aria2 for FakeAria2 {
+        fn call(&self, method: &str, _params: Vec<Json>) -> Result<Json> {
+            if method == "aria2.getOption" {
+                if *self.fail_get_option.lock().unwrap() {
+                    return Err(AfuError::Engine("getOption unavailable".into()));
+                }
+                return Ok(json!({"bt-tracker": *self.bt_tracker.lock().unwrap()}));
+            }
+            Ok(json!("OK"))
+        }
+        fn add_uri(&self, _uris: &[String], _options: Option<&JsonMap>) -> Result<String> {
+            self.calls.lock().unwrap().push("add_uri".into());
+            if *self.fail_add_uri.lock().unwrap() {
+                return Err(AfuError::Engine("add_uri failed".into()));
+            }
+            Ok("new-gid".into())
+        }
+        fn add_torrent(&self, _torrent_b64: &str, _options: Option<&JsonMap>) -> Result<String> {
+            self.calls.lock().unwrap().push("add_torrent".into());
+            Ok("new-gid".into())
+        }
+        fn add_metalink(
+            &self,
+            _metalink_b64: &str,
+            _options: Option<&JsonMap>,
+        ) -> Result<Vec<String>> {
+            Ok(vec![])
+        }
+        fn pause(&self, _gid: &str, _force: bool) -> Result<String> {
+            self.calls.lock().unwrap().push("pause".into());
+            *self.status.lock().unwrap() = "paused".into();
+            Ok("OK".into())
+        }
+        fn unpause(&self, _gid: &str) -> Result<String> {
+            self.calls.lock().unwrap().push("unpause".into());
+            *self.status.lock().unwrap() = "active".into();
+            Ok("OK".into())
+        }
+        fn remove(&self, _gid: &str, _force: bool) -> Result<String> {
+            self.calls.lock().unwrap().push("remove".into());
+            Ok("OK".into())
+        }
+        fn remove_result(&self, _gid: &str) -> Result<String> {
+            Ok("OK".into())
+        }
+        fn pause_all(&self) -> Result<String> {
+            Ok("OK".into())
+        }
+        fn unpause_all(&self) -> Result<String> {
+            Ok("OK".into())
+        }
+        fn tell_status(&self, gid: &str, _keys: &[&str]) -> Result<Json> {
+            let is_torrent = *self.is_torrent.lock().unwrap();
+            Ok(json!({
+                "gid": gid,
+                "status": *self.status.lock().unwrap(),
+                "infoHash": if is_torrent { "0123456789abcdef0123456789abcdef01234567" } else { "" },
+                "bittorrent": if is_torrent {
+                    json!({"info": {"name": "Demo"}, "announceList": *self.announce_list.lock().unwrap()})
+                } else {
+                    Json::Null
+                },
+                "totalLength": "100",
+                "completedLength": "50",
+                "uploadLength": "10",
+                "downloadSpeed": "0",
+                "uploadSpeed": "0",
+                "numSeeders": "3",
+                "connections": "5",
+                "seeder": "false"
+            }))
+        }
+        fn tell_active(&self, _keys: &[&str]) -> Result<Vec<Json>> {
+            Ok(vec![])
+        }
+        fn tell_waiting(&self, _offset: i64, _num: i64, _keys: &[&str]) -> Result<Vec<Json>> {
+            Ok(vec![])
+        }
+        fn tell_stopped(&self, _offset: i64, _num: i64, _keys: &[&str]) -> Result<Vec<Json>> {
+            Ok(vec![])
+        }
+        fn get_peers(&self, _gid: &str) -> Result<Vec<Json>> {
+            Ok(vec![])
+        }
+        fn get_files(&self, _gid: &str) -> Result<Vec<Json>> {
+            Ok(vec![])
+        }
+        fn get_servers(&self, _gid: &str) -> Result<Vec<Json>> {
+            Ok(vec![])
+        }
+        fn get_global_option(&self) -> Result<JsonMap> {
+            Ok(JsonMap::new())
+        }
+        fn change_option(&self, _gid: &str, options: &JsonMap) -> Result<String> {
+            self.calls.lock().unwrap().push("change_option".into());
+            if *self.fail_change_option.lock().unwrap() {
+                return Err(AfuError::Engine("changeOption failed".into()));
+            }
+            if let Some(val) = options.get("bt-tracker").and_then(Json::as_str) {
+                *self.bt_tracker.lock().unwrap() = val.to_owned();
+            }
+            Ok("OK".into())
+        }
+        fn change_global_option(&self, _options: &JsonMap) -> Result<String> {
+            Ok("OK".into())
+        }
+        fn change_uri(
+            &self,
+            _gid: &str,
+            _file_index: i64,
+            _del_uris: &[String],
+            _add_uris: &[String],
+            _position: i64,
+        ) -> Result<i64> {
+            Ok(0)
+        }
+        fn global_stat(&self) -> Result<Json> {
+            Ok(json!({}))
+        }
+        fn shutdown(&self, _force: bool) -> Result<String> {
+            Ok("OK".into())
+        }
+        fn save_session(&self) -> Result<String> {
+            Ok("OK".into())
+        }
+    }
+
+    fn test_manager(rpc: Arc<FakeAria2>, dir: &Path) -> Manager {
+        let store = Arc::new(afudm_db::SqliteStore::open_in_memory().unwrap());
+        Manager::new(
+            store,
+            rpc,
+            Arc::new(NoUi),
+            dir.to_path_buf(),
+            dir.to_path_buf(),
+        )
+    }
+
+    #[test]
+    fn tracker_ekle_aktif_torrentte_duraklat_degistir_devam() {
+        let dir = tempfile::tempdir().unwrap();
+        let rpc = Arc::new(FakeAria2::default());
+        *rpc.bt_tracker.lock().unwrap() = "udp://existing.example.org:1337/announce".into();
+        let m = test_manager(rpc.clone(), dir.path());
+
+        let out = tracker_ekle(
+            &m,
+            "g1",
+            "udp://t1.example.org:1337/announce\nhttps://t2.example.org/announce",
+        )
+        .unwrap();
+        assert_eq!(out["ok"], true);
+        assert_eq!(out["uygulanan"], 2);
+        assert_eq!(
+            *rpc.calls.lock().unwrap(),
+            vec!["pause", "change_option", "unpause"]
+        );
+        assert_eq!(*rpc.status.lock().unwrap(), "active");
+        let saved = rpc.bt_tracker.lock().unwrap().clone();
+        assert!(saved.contains("udp://existing.example.org:1337/announce"));
+        assert!(saved.contains("udp://t1.example.org:1337/announce"));
+        assert!(saved.contains("https://t2.example.org/announce"));
+
+        rpc.calls.lock().unwrap().clear();
+        *rpc.fail_change_option.lock().unwrap() = true;
+        assert!(tracker_ekle(&m, "g1", "udp://t3.example.org:1337/announce").is_err());
+        assert_eq!(
+            *rpc.calls.lock().unwrap(),
+            vec!["pause", "change_option", "unpause"]
+        );
+        assert_eq!(*rpc.status.lock().unwrap(), "active");
+    }
+
+    #[test]
+    fn tracker_ekle_duraklatilmis_ve_hatali_girdiler() {
+        let dir = tempfile::tempdir().unwrap();
+        let rpc = Arc::new(FakeAria2::default());
+        *rpc.status.lock().unwrap() = "paused".into();
+        let m = test_manager(rpc.clone(), dir.path());
+
+        let out = tracker_ekle(&m, "g1", "udp://t1.example.org:1337/announce").unwrap();
+        assert_eq!(out["uygulanan"], 1);
+        assert_eq!(*rpc.calls.lock().unwrap(), vec!["change_option"]);
+        assert_eq!(*rpc.status.lock().unwrap(), "paused");
+
+        assert!(tracker_ekle(&m, "g1", "ws://localhost:8080/bad").is_err());
+        *rpc.is_torrent.lock().unwrap() = false;
+        assert!(tracker_ekle(&m, "g1", "udp://t1.example.org:1337/announce").is_err());
+    }
+
+    #[test]
+    fn tracker_sayilari_gercek_toplam_ve_canli_ve_durmus_torrent() {
+        let dir = tempfile::tempdir().unwrap();
+        let rpc = Arc::new(FakeAria2::default());
+        *rpc.bt_tracker.lock().unwrap() =
+            "udp://live1.example.org:1337/announce,udp://dead.example.org:1337/announce".into();
+        *rpc.announce_list.lock().unwrap() = vec![
+            vec!["UDP://LIVE1.EXAMPLE.ORG:1337/announce".into()],
+            vec!["https://ann.example.org/announce".into()],
+        ];
+        let m = test_manager(rpc.clone(), dir.path());
+        m.store
+            .set(
+                "canli_trackerlar",
+                json!(
+                    "udp://live1.example.org:1337/announce\nudp://unused.example.org:1337/announce"
+                ),
+            )
+            .unwrap();
+
+        let seed = seed_bilgi(&m, "g1").unwrap();
+        assert_eq!(seed["tracker"], 3);
+        assert_eq!(seed["canli_sayisi"], 1);
+
+        let metrics = torrent_metrikleri(&m, "g1").unwrap();
+        assert_eq!(metrics["tracker_sayisi"], 3);
+        assert_eq!(metrics["canli_tracker"], 1);
+
+        // Stopped/completed torrents fail aria2.getOption; announceList counts still work.
+        *rpc.fail_get_option.lock().unwrap() = true;
+        let stopped_seed = seed_bilgi(&m, "g1").unwrap();
+        assert_eq!(stopped_seed["tracker"], 2);
+        assert_eq!(stopped_seed["canli_sayisi"], 1);
+    }
+
+    #[test]
+    fn seed_tazele_hatada_yetim_birakmaz() {
+        let dir = tempfile::tempdir().unwrap();
+        let rpc = Arc::new(FakeAria2::default());
+        let m = test_manager(rpc.clone(), dir.path());
+        m.store
+            .set(
+                "canli_trackerlar",
+                json!("udp://live.example.org:1337/announce"),
+            )
+            .unwrap();
+
+        let id1 = m
+            .store
+            .add(
+                "torrent",
+                "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567",
+                Some("Magnet"),
+                Some(dir.path().to_str().unwrap()),
+                None,
+                None,
+                Some("old-gid"),
+            )
+            .unwrap();
+        m.store
+            .update_by_id(
+                id1,
+                &json!({"status": "active"}).as_object().unwrap().clone(),
+            )
+            .unwrap();
+        *rpc.fail_add_uri.lock().unwrap() = true;
+
+        let res = seed_tazele(&m, "old-gid").unwrap();
+        assert_eq!(res["ok"], false);
+        let row = m.store.by_id(id1).unwrap().unwrap();
+        assert_eq!(row["status"], "error");
+        assert!(!str_of(row.get("error")).is_empty());
+
+        // Unreadable local .torrent path must fail before removing the active engine job.
+        rpc.calls.lock().unwrap().clear();
+        let bad_torrent = dir.path().join("unreadable.torrent");
+        std::fs::create_dir_all(&bad_torrent).unwrap();
+        m.store
+            .add(
+                "torrent",
+                bad_torrent.to_str().unwrap(),
+                Some("Broken"),
+                Some(dir.path().to_str().unwrap()),
+                None,
+                None,
+                Some("local-gid"),
+            )
+            .unwrap();
+        assert!(seed_tazele(&m, "local-gid").is_err());
+        assert!(!rpc.calls.lock().unwrap().iter().any(|c| c == "remove"));
     }
 }

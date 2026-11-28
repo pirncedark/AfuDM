@@ -9,8 +9,13 @@ pub(super) fn collect(m: &Manager) -> Result<Completed> {
     if rpc.sleeping() {
         return Ok(completed);
     }
-    let statuses = match (rpc.tell_active(&[]), rpc.tell_stopped(0, 100, &[])) {
-        (Ok(mut active), Ok(stopped)) => {
+    let statuses = match (
+        rpc.tell_active(&[]),
+        rpc.tell_waiting(0, 200, &[]),
+        rpc.tell_stopped(0, 100, &[]),
+    ) {
+        (Ok(mut active), Ok(waiting), Ok(stopped)) => {
+            active.extend(waiting);
             active.extend(stopped);
             active
         }
@@ -74,7 +79,10 @@ pub(super) fn collect(m: &Manager) -> Result<Completed> {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
         if let Some(row) = &row {
-            let mut fields = map(json!({"total_bytes":total,"done_bytes":done,"error":null}));
+            let mut fields = map(json!({"total_bytes":total,"done_bytes":done}));
+            if matches!(status_name, "active" | "waiting") {
+                fields.insert("error".into(), Json::Null);
+            }
             if control_action(row).is_none() {
                 fields.insert("status".into(), json!(status_name));
             }

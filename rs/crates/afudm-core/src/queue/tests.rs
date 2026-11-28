@@ -14,6 +14,7 @@ struct MemoryStore {
 #[derive(Default)]
 struct MemoryRpc {
     statuses: Mutex<BTreeMap<String, Json>>,
+    waiting: Mutex<Vec<Json>>,
     calls: Mutex<Vec<(String, Vec<Json>)>>,
     offline: Mutex<bool>,
     asleep: Mutex<bool>,
@@ -1023,7 +1024,10 @@ impl Aria2 for MemoryRpc {
     }
     #[allow(unused_variables)]
     fn tell_waiting(&self, offset: i64, num: i64, keys: &[&str]) -> Result<Vec<Json>> {
-        Ok(vec![])
+        if *self.offline.lock().unwrap() {
+            return Err(AfuError::Engine("offline".into()));
+        }
+        Ok(self.waiting.lock().unwrap().clone())
     }
     #[allow(unused_variables)]
     fn tell_stopped(&self, offset: i64, num: i64, keys: &[&str]) -> Result<Vec<Json>> {
@@ -2248,14 +2252,63 @@ fn stopped_metadata_cannot_reclaim_payload_gid_or_progress() {
 fn sync_clears_previous_error_when_job_recovers() {
     let f = Fixture::new();
     let item = f.add("recovered.bin");
+    let gid = text(&item["gid"]);
     f.m.store
         .update_by_gid(
-            text(&item["gid"]),
+            gid,
             &map(json!({"error":"previous failure","status":"error"})),
         )
         .unwrap();
+    // Live active status hides stale DB error immediately before sync runs.
+    let live_active = f.rpc.statuses.lock().unwrap().get(gid).unwrap().clone();
+    assert_eq!(
+        shaping::aria(&f.m, &live_active).unwrap()["errorMessage"],
+        ""
+    );
     sync::collect(&f.m).unwrap();
-    assert!(f.m.store.by_gid(text(&item["gid"])).unwrap().unwrap()["error"].is_null());
+    assert!(f.m.store.by_gid(gid).unwrap().unwrap()["error"].is_null());
+
+    // Waiting jobs also clear previous error on sync and in live snapshot shaping.
+    let waiting_item = f.add("waiting.bin");
+    let waiting_gid = text(&waiting_item["gid"]);
+    f.rpc.statuses.lock().unwrap().remove(waiting_gid);
+    f.m.store
+        .update_by_gid(
+            waiting_gid,
+            &map(json!({"error":"stale waiting error","status":"error"})),
+        )
+        .unwrap();
+    let waiting_status = json!({"gid":waiting_gid,"status":"waiting","files":[]});
+    assert_eq!(
+        shaping::aria(&f.m, &waiting_status).unwrap()["errorMessage"],
+        ""
+    );
+    f.rpc.waiting.lock().unwrap().push(waiting_status);
+    sync::collect(&f.m).unwrap();
+    let waiting_row = f.m.store.by_gid(waiting_gid).unwrap().unwrap();
+    assert_eq!(waiting_row["status"], "waiting");
+    assert!(waiting_row["error"].is_null());
+
+    // Paused jobs retain recorded error until resumed to waiting/active.
+    let paused_item = f.add("paused.bin");
+    let paused_gid = text(&paused_item["gid"]);
+    f.rpc.statuses.lock().unwrap().remove(paused_gid);
+    f.m.store
+        .update_by_gid(
+            paused_gid,
+            &map(json!({"error":"kept error","status":"error"})),
+        )
+        .unwrap();
+    f.rpc
+        .waiting
+        .lock()
+        .unwrap()
+        .push(json!({"gid":paused_gid,"status":"paused","files":[]}));
+    sync::collect(&f.m).unwrap();
+    assert_eq!(
+        f.m.store.by_gid(paused_gid).unwrap().unwrap()["error"],
+        "kept error"
+    );
 }
 
 #[test]
@@ -2383,4 +2436,106 @@ fn failed_final_sync_still_shuts_down_and_clears_state() {
         .unwrap()
         .iter()
         .any(|(c, _)| c == "shutdown"));
+}
+
+#[test]
+fn torrent_partial_selection_saves_gid_sets_allocation_and_cleans_unselected() {
+    let root = std::env::temp_dir().join(format!(
+        "afudm-tselect-{}-{}",
+        std::process::id(),
+        rand::random::<u64>()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let torrent_bytes = b"d4:infod5:filesld6:lengthi10e4:pathl7:sub.dir5:a.bineed6:lengthi10e4:pathl5:b.bineee4:name4:Packee";
+    let source = root.join("pack.torrent");
+    std::fs::write(&source, torrent_bytes).unwrap();
+
+    // 1) Partial selection: select-file + file-allocation=none + saved on new gid + cleans unselected.
+    let rpc = Arc::new(MemoryRpc::default());
+    let store = Arc::new(afudm_db::SqliteStore::open_in_memory().unwrap());
+    let m = Manager::new(
+        store.clone(),
+        rpc.clone(),
+        Arc::new(NoUi),
+        root.clone(),
+        root.clone(),
+    );
+    m.store.set("download_dir", json!(root)).unwrap();
+    m.store.set("torrent_dir", json!(root)).unwrap();
+
+    let added = add(
+        &m,
+        &map(json!({"source": source, "dest_dir": root, "selected_files": [2]})),
+    )
+    .unwrap();
+    let gid = text(&added["gid"]).to_owned();
+    assert_eq!(store.torrent_dosya_secimleri(&gid).unwrap(), vec![2]);
+    {
+        let calls = rpc.calls.lock().unwrap();
+        let (_, params) = calls.iter().find(|(n, _)| n == "add_torrent").unwrap();
+        assert_eq!(params[1]["select-file"], "2");
+        assert_eq!(params[1]["file-allocation"], "none");
+    }
+
+    let pack_dir = root.join("Pack");
+    let sub_dir = pack_dir.join("sub.dir");
+    std::fs::create_dir_all(&sub_dir).unwrap();
+    let unselected_file = sub_dir.join("a.bin");
+    let selected_file = pack_dir.join("b.bin");
+    let outside_file = root
+        .parent()
+        .unwrap()
+        .join(format!("afudm-outside-{}.bin", rand::random::<u64>()));
+    std::fs::write(&unselected_file, b"pad").unwrap();
+    std::fs::write(&selected_file, b"keep").unwrap();
+    std::fs::write(&outside_file, b"outside").unwrap();
+
+    // Forward slashes test canonical path handling on Windows too.
+    let fwd_unselected = unselected_file.to_string_lossy().replace('\\', "/");
+    rpc.statuses.lock().unwrap().insert(
+        gid.clone(),
+        json!({
+            "gid": gid,
+            "status": "complete",
+            "infoHash": "0123456789abcdef0123456789abcdef01234567",
+            "dir": root,
+            "totalLength": "10",
+            "completedLength": "10",
+            "files": [
+                {"index": "1", "path": fwd_unselected, "selected": "false"},
+                {"index": "2", "path": selected_file, "selected": "true"},
+                {"index": "3", "path": outside_file, "selected": "false"}
+            ]
+        }),
+    );
+    sync::collect(&m).unwrap();
+    assert!(!unselected_file.exists());
+    assert!(!sub_dir.exists());
+    assert!(selected_file.exists());
+    assert!(outside_file.exists());
+    let _ = std::fs::remove_file(&outside_file);
+
+    // 2) Full selection: select-file set, file-allocation NOT forced to none.
+    let rpc_full = Arc::new(MemoryRpc::default());
+    let store_full = Arc::new(afudm_db::SqliteStore::open_in_memory().unwrap());
+    let m_full = Manager::new(
+        store_full,
+        rpc_full.clone(),
+        Arc::new(NoUi),
+        root.clone(),
+        root.clone(),
+    );
+    m_full.store.set("download_dir", json!(root)).unwrap();
+    m_full.store.set("torrent_dir", json!(root)).unwrap();
+    add(
+        &m_full,
+        &map(json!({"source": source, "dest_dir": root, "selected_files": [1, 2]})),
+    )
+    .unwrap();
+    let calls = rpc_full.calls.lock().unwrap();
+    let (_, params) = calls.iter().find(|(n, _)| n == "add_torrent").unwrap();
+    assert_eq!(params[1]["select-file"], "1,2");
+    assert!(params[1].get("file-allocation").is_none());
+
+    let _ = std::fs::remove_dir_all(&root);
 }

@@ -676,3 +676,43 @@ async fn interactive_handoff_queues_once_without_starting_the_manager() {
     }
     assert!(manager.calls.lock().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn tracker_add_endpoint_validates_and_forwards() {
+    let (_dir, ctx, _manager) = fixture();
+    let (status, body) = request(
+        &ctx,
+        "POST",
+        "/tracker/ekle",
+        r#"{"gid":"g1","trackers":"udp://a.example.org/announce"}"#,
+        true,
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(body["gid"], "g1");
+    assert_eq!(body["trackers"], "udp://a.example.org/announce");
+
+    let (status, body) = request(
+        &ctx,
+        "POST",
+        "/tracker/ekle",
+        r#"{"gid":"g2","trackers":["udp://a.example.org/announce","https://b.example.org/announce"]}"#,
+        true,
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        body["trackers"],
+        "udp://a.example.org/announce\nhttps://b.example.org/announce"
+    );
+
+    let (status, body) = request(&ctx, "POST", "/tracker/ekle", r#"{"trackers":"x"}"#, true).await;
+    assert_eq!(status, 400);
+    assert_eq!(body["code"], "GID_GEREKLI");
+
+    for payload in [r#"{"gid":"g1"}"#, r#"{"gid":"g1","trackers":[123]}"#] {
+        let (status, body) = request(&ctx, "POST", "/tracker/ekle", payload, true).await;
+        assert_eq!(status, 400);
+        assert_eq!(body["code"], "TRACKER_GEREKLI");
+    }
+}

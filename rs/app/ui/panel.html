@@ -946,7 +946,7 @@ function kur() {
     const out = await istek(path, Object.assign({ gid: trackerGid }, data));
     if (!out.ok) { hataBildir(out); return; }
     $(dialog).close();
-    bildir(t("tracker.applied", { n: out.uygulanan }), "ok");
+    bildir(t("tracker.applied", { n: out.uygulanan ?? 0 }), "ok");
   }
   $("trackerBest").onclick = () => applyTrackers("/api/tracker/tara", {}, "trackerMenu");
   $("trackerSubmit").onclick = () => applyTrackers("/api/tracker/ekle", {trackers: $("trackerUrls").value}, "trackerInput");

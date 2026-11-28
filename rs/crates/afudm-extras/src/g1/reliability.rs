@@ -196,7 +196,17 @@ pub fn restore(store: &dyn Store, data: &Path, arsiv: &str) -> Result<Json> {
         return Err(e);
     }
     let hedef = data.join(BEKLEYEN_GERI_YUKLEME);
-    fs::rename(&gecici, &hedef)?;
+    let tasima = match fs::rename(&gecici, &hedef) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+            fs::remove_file(&hedef).and_then(|()| fs::rename(&gecici, &hedef))
+        }
+        Err(e) => Err(e),
+    };
+    if let Err(e) = tasima {
+        let _ = fs::remove_file(&gecici);
+        return Err(e.into());
+    }
     let _ = store; // canli baglanti bu adimda degismez
     Ok(json!({
         "ok": true,

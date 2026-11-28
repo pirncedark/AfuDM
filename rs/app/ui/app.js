@@ -3074,7 +3074,7 @@ function metinMenusu(alan) {
 async function applyTrackers(method, gid, ...args) {
   const out = await call(method, gid, ...args);
   if (!out?.ok) throw new Error(out?.error || t("pnl.error"));
-  toast(t("tracker.applied", { n: out.uygulanan }));
+  toast(t("tracker.applied", { n: out.uygulanan ?? 0 }));
 }
 
 function openTrackerInput(gid) {

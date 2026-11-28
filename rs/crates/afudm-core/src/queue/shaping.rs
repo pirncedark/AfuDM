@@ -84,8 +84,11 @@ pub(super) fn aria(m: &Manager, status: &Json) -> Result<Json> {
         0.0
     };
     let auth = state(m)?.auth_required_gids.contains(gid);
+    let live_status = text(&status["status"]);
     let error = if auth {
         "Kaydedilen oturumdaki Cookie/Authorization güvenlik için silindi. Yeni giriş bilgileriyle indirmeyi Yenile."
+    } else if matches!(live_status, "active" | "waiting") {
+        ""
     } else {
         [engine_error(status), text(&row["error"])]
             .into_iter()

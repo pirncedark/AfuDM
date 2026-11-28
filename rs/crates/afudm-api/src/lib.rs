@@ -575,12 +575,16 @@ async fn tracker_add(State(ctx): State<ApiCtx>, req: Request) -> Response {
         Err(r) => return r,
     };
     let gid = text(&data, "gid");
-    if gid.is_empty() { return fault(400, "GID_GEREKLI", "gid gerekli"); }
+    if gid.is_empty() {
+        return fault(400, "GID_GEREKLI", "gid gerekli");
+    }
     let urls = match &data["trackers"] {
         Value::String(text) => text.clone(),
-        Value::Array(values) if values.iter().all(Value::is_string) => {
-            values.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n")
-        }
+        Value::Array(values) if values.iter().all(Value::is_string) => values
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>()
+            .join("\n"),
         _ => return fault(400, "TRACKER_GEREKLI", "Tracker adreslerini girin."),
     };
     result(ctx.manager.tracker_ekle(gid, &urls))
