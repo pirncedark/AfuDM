@@ -199,7 +199,7 @@ pub(super) fn matching_magnet(m: &Manager, status: &Json) -> Result<Option<Json>
 }
 
 pub(super) fn snapshot(m: &Manager) -> Result<Json> {
-    let live = {
+    let (live, list_ok) = {
         let _guard = m
             .kilit
             .lock()
@@ -207,11 +207,11 @@ pub(super) fn snapshot(m: &Manager) -> Result<Json> {
         match live_statuses(m) {
             Ok(live) => {
                 track_previews(m, &live)?;
-                live
+                (live, true)
             }
             Err(_) => {
                 state(m)?.last_error = "motor durum bilgisi alinamadi".into();
-                vec![]
+                (vec![], false)
             }
         }
     };
@@ -309,7 +309,7 @@ pub(super) fn snapshot(m: &Manager) -> Result<Json> {
     let stat = m.rpc().global_stat().unwrap_or(json!({}));
     let lang = language(text(&setting(m, "language", json!("auto"))?));
     Ok(
-        json!({"items":items,"stat":{"downloadSpeed":number(&stat["downloadSpeed"])+crate::video::hiz_toplami(m) as i64,"uploadSpeed":number(&stat["uploadSpeed"]),"numActive":number(&stat["numActive"])+crate::video::aktif_sayisi(m) as i64,"numWaiting":number(&stat["numWaiting"]),"numStopped":number(&stat["numStopped"])},"settings":m.store.all_settings()?,"engine_ok":engine_ok(m),"download_dir":current_download_dir(m)?,"lang":lang,"last_error":state(m)?.last_error,"automation":m.store.automation_jobs("",200)?}),
+        json!({"items":items,"stat":{"downloadSpeed":number(&stat["downloadSpeed"])+crate::video::hiz_toplami(m) as i64,"uploadSpeed":number(&stat["uploadSpeed"]),"numActive":number(&stat["numActive"])+crate::video::aktif_sayisi(m) as i64,"numWaiting":number(&stat["numWaiting"]),"numStopped":number(&stat["numStopped"])},"settings":m.store.all_settings()?,"engine_ok":list_ok || engine_ok(m),"download_dir":current_download_dir(m)?,"lang":lang,"last_error":state(m)?.last_error,"automation":m.store.automation_jobs("",200)?}),
     )
 }
 

@@ -597,6 +597,20 @@ async function renderDrawer() {
 let offlineArdisik = 0;   // art arda basarisiz snapshot sayisi (tek yavaslık yanıp sönme yapmasın)
 let tickTimer = null;
 let tickInFlight = false;
+let tickRequested = false;
+let drawerRefreshPending = false;
+
+async function refreshDrawerWhileIdle() {
+  if (drawerRefreshPending) return;
+  drawerRefreshPending = true;
+  try {
+    await renderDrawer();
+  } catch (err) {
+    console.warn("[AfuDM] drawer:", err);
+  } finally {
+    drawerRefreshPending = false;
+  }
+}
 let engineOfflineSince = null;
 let engineAutoRestartRequested = false;
 let engineRestartInFlight = false;
@@ -618,7 +632,11 @@ async function restartEngine() {
 
 async function tick(isManual = false) {
   if (afudmHidden()) return;
-  if (tickInFlight) return;
+  if (tickInFlight) {
+    if (isManual) tickRequested = true;
+    return;
+  }
+  const started = performance.now();
   if (tickTimer) { clearTimeout(tickTimer); tickTimer = null; }
   tickInFlight = true;
   try {
@@ -689,8 +707,8 @@ async function tick(isManual = false) {
     drawTrace();
     renderCounts();
     renderList();
-    await renderDrawer();
-    await bekleyenYokla();
+    void refreshDrawerWhileIdle();
+    void bekleyenYokla().catch(err => console.warn("[AfuDM] pending:", err));
   } catch (err) {
     console.warn("[AfuDM] tick:", err);
     // Tek bir yavaslik/kisa takilma yuzunden surekli "baglanti yok" yanip
@@ -704,7 +722,9 @@ async function tick(isManual = false) {
     }
   }
   tickInFlight = false;
-  if (!afudmHidden()) tickTimer = setTimeout(tick, POLL_MS);
+  const delay = tickRequested ? 0 : Math.max(0, POLL_MS - (performance.now() - started));
+  tickRequested = false;
+  if (!afudmHidden()) tickTimer = setTimeout(tick, delay);
 }
 
 if ($("engineRetry")) {
@@ -982,6 +1002,7 @@ $("addGo").onclick = async () => {
   };
   try {
     const out = await call("add_links", payload);
+    tick(true);
     closeVeil("addVeil");
     $("urls").value = "";
     let message = t("toast.started", { n: out.added });
@@ -1272,6 +1293,7 @@ async function linkgrabberEkle() {
   };
   try {
     const out = await call("linkgrabber_ekle", secili.map((o) => o.url), secim);
+    tick(true);
     closeVeil("lgVeil");
     $("lgMetin").value = "";
     lgState.ogeler = [];
@@ -2853,6 +2875,7 @@ $("kayGo").onclick = async () => {
     kayit.preGid = null;
     kayit.kimlik = null;
     closeVeil("kaydetVeil");
+    tick(true);
     toast(secim.start_at ? t("toast.scheduled", { n: 1 }) : t("toast.started", { n: 1 }));
     bekleyenYokla();
   } catch (err) {
@@ -2975,13 +2998,14 @@ window.addEventListener("resize", () => {
 
 window.addEventListener("pywebviewready", () => {
   state.ready = true;
+  tick(true);
   window.afudmPencere();
   surumuYukle();
   setTimeout(() => { if (!afudmHidden()) guncellemeOtomatikKontrol(); }, 1200);
 });
 afudmSetInterval(() => { if (state.ready) guncellemeOtomatikKontrol(); }, 3600000);
 initDrawerResize();
-tick();
+if (window.pywebview?.api) tick();
 drawTrace();
 
 /* ---------- Sag tik menusu + pano ------------------------------------
